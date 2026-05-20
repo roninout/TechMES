@@ -1,0 +1,827 @@
+@page "/messages"
+@inject MessageApiClient MessageApi
+@inject Microsoft.Extensions.Options.IOptions<RuntimeServiceOptions> RuntimeOptions
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+@implements IAsyncDisposable
+
+<PageTitle>Messages</PageTitle>
+
+<RadzenStack Gap="12px">
+    <RadzenStack Orientation="Orientation.Horizontal"
+                 AlignItems="AlignItems.Center"
+                 JustifyContent="JustifyContent.SpaceBetween">
+        <RadzenStack Gap="2px">
+            <RadzenText Text="Messages" TextStyle="TextStyle.H5" />
+            <RadzenText Text="WEB получает эти данные из Runtime Service через HTTP API, а live-изменения — через SignalR."
+                        TextStyle="TextStyle.Caption"
+                        Style="color: gray;" />
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+            <RadzenBadge Text="@($"Active: {_activeMessageCount}")" BadgeStyle="BadgeStyle.Info" />
+
+            <RadzenBadge Text="@(_isRealtimeConnected ? "Live" : "Offline live")"
+                         BadgeStyle="@(_isRealtimeConnected ? BadgeStyle.Success : BadgeStyle.Warning)" />
+
+            <RadzenText Text="@_lastRealtimeEventText"
+                        TextStyle="TextStyle.Caption"
+                        Style="color: gray;" />
+
+            <RadzenCheckBox TValue="bool"
+                            Value="@_includeInactive"
+                            Change="@OnIncludeInactiveChangedAsync" />
+            <RadzenLabel Text="Show inactive" />
+
+            <RadzenButton Text="Refresh"
+                          Icon="refresh"
+                          ButtonStyle="ButtonStyle.Light"
+                          Disabled="@_isCommandRunning"
+                          Click="@RefreshAsync" />
+
+            <RadzenButton Text="New"
+                          Icon="add"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Disabled="@_isCommandRunning"
+                          Click="@AddNew" />
+        </RadzenStack>
+    </RadzenStack>
+
+    @if (!string.IsNullOrWhiteSpace(_statusText))
+    {
+        <RadzenAlert AlertStyle="@_statusStyle"
+                     ShowIcon="true"
+                     AllowClose="true"
+                     Close="@(() => _statusText = string.Empty)">
+            @_statusText
+        </RadzenAlert>
+    }
+
+    @if (_pendingRealtimeChanges && _isEditMode)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+            Messages были изменены другим клиентом. Завершите редактирование или нажмите Cancel, после этого список обновится.
+        </RadzenAlert>
+    }
+
+    @if (_isLoading)
+    {
+        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+    }
+
+    <RadzenSplitter Style="height: calc(100vh - 185px); min-height: 520px;">
+        <RadzenSplitterPane Size="38%" Min="320px">
+            @if (_messages.Count == 0 && !_isLoading)
+            {
+                <RadzenCard>
+                    <RadzenStack Gap="8px">
+                        <RadzenText Text="No messages" TextStyle="TextStyle.Subtitle1" />
+                        <RadzenText Text="Создайте первое сообщение через кнопку New."
+                                    TextStyle="TextStyle.Caption"
+                                    Style="color: gray;" />
+                    </RadzenStack>
+                </RadzenCard>
+            }
+            else
+            {
+                <RadzenDataList Data="@_messages"
+                                TItem="EquipmentMessageDto"
+                                Style="height: 100%; overflow:auto; padding-right: 8px;">
+                    <Template Context="message">
+                        <RadzenCard Style="@GetCardStyle(message)"
+                                    @onclick="() => SelectMessageAsync(message)">
+                            <RadzenStack Gap="6px">
+                                <RadzenStack Orientation="Orientation.Horizontal"
+                                             AlignItems="AlignItems.Center"
+                                             JustifyContent="JustifyContent.SpaceBetween">
+                                    <b>@message.MessageSubject</b>
+                                    <RadzenBadge Text="@message.MessageType.ToString()"
+                                                 BadgeStyle="@GetBadgeStyle(message.MessageType)" />
+                                </RadzenStack>
+
+                                <div style="color: gray; font-size: 12px;">
+                                    @message.CreatedBy · @message.CreatedAt.ToString("dd.MM.yyyy HH:mm")
+                                </div>
+
+                                <div>@message.PreviewText</div>
+
+                                <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
+                                    @if (message.IsActive)
+                                    {
+                                        <RadzenBadge Text="Active" BadgeStyle="BadgeStyle.Success" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenBadge Text="Inactive" BadgeStyle="BadgeStyle.Light" />
+                                    }
+
+                                    @if (message.IsViewedByCurrentDevice)
+                                    {
+                                        <span style="color: gray; font-size: 12px;">Viewed by me</span>
+                                    }
+
+                                    @if (message.IsViewedByOtherDevice)
+                                    {
+                                        <span style="color: gray; font-size: 12px;">✓✓ @message.ViewedByText</span>
+                                    }
+                                </RadzenStack>
+                            </RadzenStack>
+                        </RadzenCard>
+                    </Template>
+                </RadzenDataList>
+            }
+        </RadzenSplitterPane>
+
+        <RadzenSplitterPane>
+            @if (_isEditMode)
+            {
+                <RadzenCard>
+                    <RadzenStack Gap="12px">
+                        <RadzenText Text="@(_editId <= 0 ? "New message" : "Edit message")"
+                                    TextStyle="TextStyle.H6" />
+
+                        <RadzenStack Gap="4px">
+                            <RadzenLabel Text="Type" />
+                            <RadzenDropDown TValue="MessageType"
+                                            Data="@_messageTypes"
+                                            @bind-Value="_editType"
+                                            Style="width: 240px;" />
+                        </RadzenStack>
+
+                        <RadzenStack Gap="4px">
+                            <RadzenLabel Text="Subject" />
+                            <RadzenTextBox @bind-Value="_editSubject"
+                                           Style="width: 100%;"
+                                           Disabled="@_isCommandRunning" />
+                        </RadzenStack>
+
+                        <RadzenStack Gap="4px">
+                            <RadzenLabel Text="Text" />
+                            <RadzenTextArea @bind-Value="_editText"
+                                            Rows="12"
+                                            Style="width: 100%;"
+                                            Disabled="@_isCommandRunning" />
+                        </RadzenStack>
+
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="8px">
+                            <RadzenButton Text="Save"
+                                          Icon="save"
+                                          ButtonStyle="ButtonStyle.Primary"
+                                          Disabled="@(_isCommandRunning || !CanSaveMessage())"
+                                          Click="@SaveAsync" />
+
+                            <RadzenButton Text="Cancel"
+                                          Icon="close"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Disabled="@_isCommandRunning"
+                                          Click="@CancelEdit" />
+                        </RadzenStack>
+                    </RadzenStack>
+                </RadzenCard>
+            }
+            else if (_selectedMessage is null)
+            {
+                <RadzenCard>
+                    <RadzenStack Gap="8px">
+                        <RadzenText Text="No selected message"
+                                    TextStyle="TextStyle.Subtitle1"
+                                    Style="color: gray;" />
+
+                        <RadzenText Text="Если список слева не пустой, первый message выбирается автоматически."
+                                    TextStyle="TextStyle.Caption"
+                                    Style="color: gray;" />
+                    </RadzenStack>
+                </RadzenCard>
+            }
+            else
+            {
+                <RadzenCard>
+                    <RadzenStack Gap="12px">
+                        <RadzenStack Orientation="Orientation.Horizontal"
+                                     AlignItems="AlignItems.Center"
+                                     JustifyContent="JustifyContent.SpaceBetween">
+                            <RadzenStack Gap="4px">
+                                <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
+                                    <RadzenText Text="@_selectedMessage.MessageSubject" TextStyle="TextStyle.H6" />
+                                    <RadzenBadge Text="@_selectedMessage.MessageType.ToString()"
+                                                 BadgeStyle="@GetBadgeStyle(_selectedMessage.MessageType)" />
+
+                                    @if (_selectedMessage.IsActive)
+                                    {
+                                        <RadzenBadge Text="Active" BadgeStyle="BadgeStyle.Success" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenBadge Text="Inactive" BadgeStyle="BadgeStyle.Light" />
+                                    }
+                                </RadzenStack>
+
+                                <RadzenText Text="@($"Id: {_selectedMessage.Id}")"
+                                            TextStyle="TextStyle.Caption"
+                                            Style="color: gray;" />
+                            </RadzenStack>
+
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="8px">
+                                <RadzenButton Text="Edit"
+                                              Icon="edit"
+                                              ButtonStyle="ButtonStyle.Light"
+                                              Disabled="@_isCommandRunning"
+                                              Click="@BeginEdit" />
+
+                                <RadzenButton Text="@(_selectedMessage.IsActive ? "Deactivate" : "Activate")"
+                                              Icon="power_settings_new"
+                                              ButtonStyle="@(_selectedMessage.IsActive ? ButtonStyle.Warning : ButtonStyle.Success)"
+                                              Disabled="@_isCommandRunning"
+                                              Click="@ToggleActiveAsync" />
+
+                                <RadzenButton Text="Delete"
+                                              Icon="delete"
+                                              ButtonStyle="ButtonStyle.Danger"
+                                              Disabled="@_isCommandRunning"
+                                              Click="@DeleteAsync" />
+                            </RadzenStack>
+                        </RadzenStack>
+
+                        <div style="white-space: pre-wrap; font-size: 15px;">
+                            @_selectedMessage.MessageText
+                        </div>
+
+                        <RadzenStack Gap="2px" Style="color: gray; font-size: 13px;">
+                            <div>Created by @_selectedMessage.CreatedBy at @_selectedMessage.CreatedAt.ToString("dd.MM.yyyy HH:mm")</div>
+
+                            @if (_selectedMessage.UpdatedAt is not null)
+                            {
+                                <div>Updated by @_selectedMessage.UpdatedBy at @_selectedMessage.UpdatedAt.Value.ToString("dd.MM.yyyy HH:mm")</div>
+                            }
+
+                            <div>Viewed by: @_selectedMessage.ViewedByText</div>
+                        </RadzenStack>
+                    </RadzenStack>
+                </RadzenCard>
+            }
+        </RadzenSplitterPane>
+    </RadzenSplitter>
+</RadzenStack>
+
+@code {
+    private readonly MessageType[] _messageTypes = Enum.GetValues<MessageType>();
+
+    private List<EquipmentMessageDto> _messages = [];
+    private EquipmentMessageDto? _selectedMessage;
+
+    private bool _includeInactive;
+    private bool _isLoading;
+    private bool _isEditMode;
+    private bool _isRealtimeConnected;
+    private bool _pendingRealtimeChanges;
+    private bool _isCommandRunning;
+
+    private int _activeMessageCount;
+
+    private string _statusText = string.Empty;
+    private AlertStyle _statusStyle = AlertStyle.Info;
+
+    private long _editId;
+    private MessageType _editType = MessageType.Info;
+    private string _editSubject = string.Empty;
+    private string _editText = string.Empty;
+
+    private HubConnection? _hubConnection;
+    private CancellationTokenSource? _viewDelayCts;
+
+    // Диагностика live-обновлений.
+    // Эти поля помогают понять: SignalR реально получил событие или нет.
+    private int _realtimeEventCount;
+    private string _lastRealtimeEventText = "Live event: none";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Первичная загрузка всё равно остаётся HTTP-запросом.
+        // SignalR не отдаёт список сообщений, он только сообщает: "данные изменились".
+        await LoadAsync();
+
+        // После первичной загрузки подключаемся к live-событиям Runtime.Service.
+        await StartMessagesHubAsync();
+    }
+
+    private async Task StartMessagesHubAsync()
+    {
+        try
+        {
+            var options = RuntimeOptions.Value;
+
+            var baseUri = new Uri(options.BaseUrl);
+
+            // На всякий случай убираем начальный "/",
+            // чтобы путь корректно склеивался с BaseUrl.
+            var hubPath = options.MessagesHubPath.TrimStart('/');
+
+            var hubUri = new Uri(baseUri, hubPath);
+
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(hubUri)
+                .WithAutomaticReconnect()
+                .Build();
+
+            // Runtime.Service отправляет событие "MessagesChanged".
+            // WEB получает это событие и перечитывает сообщения через обычный HTTP API.
+            _hubConnection.On<MessageChangedNotification>(
+                "MessagesChanged",
+                notification =>
+                {
+                    _ = InvokeAsync(async () =>
+                    {
+                        try
+                        {
+                            await OnMessagesChangedAsync(notification);
+
+                            // Важно:
+                            // SignalR callback — это внешний callback,
+                            // поэтому после изменения состояния компонента нужно явно обновить UI.
+                            StateHasChanged();
+                        }
+                        catch (Exception ex)
+                        {
+                            SetStatus(AlertStyle.Warning, "Live event received, but refresh failed: " + ex.Message);
+                            StateHasChanged();
+                        }
+                    });
+                });
+
+            _hubConnection.Reconnecting += error =>
+            {
+                _ = InvokeAsync(() =>
+                {
+                    _isRealtimeConnected = false;
+                    SetStatus(AlertStyle.Warning, "Live connection is reconnecting...");
+                    StateHasChanged();
+                });
+
+                return Task.CompletedTask;
+            };
+
+            _hubConnection.Reconnected += connectionId =>
+            {
+                _ = InvokeAsync(async () =>
+                {
+                    _isRealtimeConnected = true;
+                    ClearStatus();
+
+                    // После reconnect перечитываем данные,
+                    // потому что во время обрыва могли быть изменения.
+                    if (!_isEditMode)
+                    {
+                        await LoadAsync();
+                    }
+                    else
+                    {
+                        _pendingRealtimeChanges = true;
+                    }
+
+                    StateHasChanged();
+                });
+
+                return Task.CompletedTask;
+            };
+
+            _hubConnection.Closed += error =>
+            {
+                _ = InvokeAsync(() =>
+                {
+                    _isRealtimeConnected = false;
+                    SetStatus(AlertStyle.Warning, "Live connection is closed. Use Refresh button.");
+                    StateHasChanged();
+                });
+
+                return Task.CompletedTask;
+            };
+
+            await _hubConnection.StartAsync();
+
+            _isRealtimeConnected = true;
+            ClearStatus();
+            _lastRealtimeEventText = $"Live connected: {hubUri}";
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            // Если SignalR не подключился, страница всё равно остаётся рабочей:
+            // HTTP-запросы и кнопка Refresh продолжают работать.
+            _isRealtimeConnected = false;
+            SetStatus(AlertStyle.Warning, "Cannot connect to live updates: " + ex.Message);
+            _lastRealtimeEventText = "Live connection failed";
+
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnMessagesChangedAsync(MessageChangedNotification notification)
+    {
+        _realtimeEventCount++;
+
+        _lastRealtimeEventText =
+            $"Live event #{_realtimeEventCount}: {notification.EventType}, id={notification.MessageId}, by={notification.ChangedBy}";
+
+        // Если пользователь сейчас редактирует сообщение,
+        // мы не перечитываем список автоматически,
+        // чтобы не потерять введённый текст.
+        if (_isEditMode)
+        {
+            _pendingRealtimeChanges = true;
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task OnIncludeInactiveChangedAsync(bool value)
+    {
+        _includeInactive = value;
+
+        // При смене фильтра выбираем первый message из нового списка.
+        _selectedMessage = null;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+
+        var preferredSelectedId = _selectedMessage?.Id;
+
+        try
+        {
+            var response = await MessageApi.GetMessagesAsync(_includeInactive);
+
+            _messages = response.Messages.ToList();
+            _activeMessageCount = response.ActiveMessageCount;
+
+            ApplySelectionAfterLoad(preferredSelectedId);
+
+            _pendingRealtimeChanges = false;
+            ClearStatus();
+        }
+        catch (Exception ex)
+        {
+            SetStatus(AlertStyle.Danger, "Cannot load messages from Runtime Service: " + ex.Message);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ApplySelectionAfterLoad(long? preferredSelectedId)
+    {
+        // Если пользователь редактирует сообщение, автоматический выбор не трогаем.
+        // Иначе можно потерять вводимый текст.
+        if (_isEditMode)
+            return;
+
+        if (_messages.Count == 0)
+        {
+            SetSelectedMessage(null, startViewedTimer: false);
+            return;
+        }
+
+        var selected = preferredSelectedId.HasValue
+            ? _messages.FirstOrDefault(x => x.Id == preferredSelectedId.Value)
+            : null;
+
+        // Если старый выбранный message исчез после фильтра/удаления/live update,
+        // выбираем первый элемент списка.
+        selected ??= _messages.First();
+
+        if (_selectedMessage?.Id == selected.Id)
+        {
+            // Обновляем ссылку на DTO после свежей загрузки,
+            // но не перезапускаем таймер Viewed.
+            _selectedMessage = selected;
+            return;
+        }
+
+        SetSelectedMessage(selected, startViewedTimer: true);
+    }
+
+    private Task SelectMessageAsync(EquipmentMessageDto message)
+    {
+        if (_isCommandRunning)
+            return Task.CompletedTask;
+
+        _isEditMode = false;
+        SetSelectedMessage(message, startViewedTimer: true);
+
+        return Task.CompletedTask;
+    }
+
+    private void SetSelectedMessage(EquipmentMessageDto? message, bool startViewedTimer)
+    {
+        _selectedMessage = message;
+
+        _viewDelayCts?.Cancel();
+        _viewDelayCts?.Dispose();
+        _viewDelayCts = null;
+
+        if (message is null)
+            return;
+
+        if (!startViewedTimer)
+            return;
+
+        if (message.IsViewedByCurrentDevice)
+            return;
+
+        _viewDelayCts = new CancellationTokenSource();
+
+        // Fire-and-forget осознанно:
+        // пользовательский интерфейс не должен ждать 3 секунды.
+        _ = MarkViewedAfterDelayAsync(message.Id, _viewDelayCts.Token);
+    }
+
+    private async Task MarkViewedAfterDelayAsync(long messageId, CancellationToken ct)
+    {
+        try
+        {
+            // Как в WPF-версии:
+            // считаем сообщение просмотренным не сразу,
+            // а только если пользователь удержал его выбранным несколько секунд.
+            await Task.Delay(TimeSpan.FromSeconds(3), ct);
+
+            if (_selectedMessage?.Id != messageId)
+                return;
+
+            await MessageApi.MarkViewedAsync(messageId, ct);
+
+            // MarkViewed также отправляет SignalR-событие,
+            // но текущий клиент обновляем сразу, чтобы UI не ждал обратное событие.
+            await InvokeAsync(async () =>
+            {
+                await LoadAsync();
+                StateHasChanged();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Пользователь быстро выбрал другое сообщение — это нормальная ситуация.
+        }
+        catch (Exception ex)
+        {
+            await InvokeAsync(() =>
+            {
+                SetStatus(AlertStyle.Warning, "Cannot mark message as viewed: " + ex.Message);
+                StateHasChanged();
+            });
+        }
+    }
+
+    private void AddNew()
+    {
+        if (_isCommandRunning)
+            return;
+
+        _selectedMessage = null;
+        _isEditMode = true;
+        _editId = 0;
+        _editType = MessageType.Info;
+        _editSubject = string.Empty;
+        _editText = string.Empty;
+    }
+
+    private void BeginEdit()
+    {
+        if (_selectedMessage is null)
+            return;
+
+        _isEditMode = true;
+        _editId = _selectedMessage.Id;
+        _editType = _selectedMessage.MessageType;
+        _editSubject = _selectedMessage.MessageSubject;
+        _editText = _selectedMessage.MessageText;
+    }
+
+    private async Task CancelEdit()
+    {
+        _isEditMode = false;
+
+        // Если во время редактирования пришли live-изменения,
+        // после выхода из edit mode перечитываем список.
+        if (_pendingRealtimeChanges)
+        {
+            await LoadAsync();
+            return;
+        }
+
+        // Если пользователь создавал новый message и нажал Cancel,
+        // снова выбираем первый элемент списка.
+        if (_selectedMessage is null)
+        {
+            ApplySelectionAfterLoad(preferredSelectedId: null);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!CanSaveMessage())
+        {
+            SetStatus(AlertStyle.Warning, "Subject and text are required.");
+            Notify(NotificationSeverity.Warning, "Messages", "Subject and text are required.");
+            return;
+        }
+
+        _isCommandRunning = true;
+
+        try
+        {
+            var saved = await MessageApi.SaveAsync(new SaveMessageRequest
+            {
+                Id = _editId,
+                MessageType = _editType,
+                MessageSubject = _editSubject.Trim(),
+                MessageText = _editText.Trim()
+            });
+
+            _isEditMode = false;
+            _selectedMessage = saved;
+
+            // Runtime.Service отправит SignalR-событие всем клиентам.
+            // Но текущий клиент обновляем сразу, чтобы UI не ждал событие.
+            await LoadAsync();
+
+            Notify(
+                NotificationSeverity.Success,
+                "Messages",
+                _editId <= 0 ? "Message created." : "Message updated.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(AlertStyle.Danger, "Cannot save message: " + ex.Message);
+            Notify(NotificationSeverity.Error, "Messages", "Cannot save message.");
+        }
+        finally
+        {
+            _isCommandRunning = false;
+        }
+    }
+
+    private async Task ToggleActiveAsync()
+    {
+        if (_selectedMessage is null)
+            return;
+
+        // Сохраняем состояние ДО выполнения команды.
+        // После LoadAsync выбранный message может измениться,
+        // особенно если мы деактивировали сообщение и оно исчезло из active-only списка.
+        var wasActive = _selectedMessage.IsActive;
+        var messageId = _selectedMessage.Id;
+
+        var actionText = wasActive ? "deactivate" : "activate";
+
+        var confirmed = await DialogService.Confirm(
+            $"Do you want to {actionText} this message?",
+            wasActive ? "Deactivate message" : "Activate message",
+            new ConfirmOptions
+            {
+                OkButtonText = wasActive ? "Deactivate" : "Activate",
+                CancelButtonText = "Cancel"
+            });
+
+        if (confirmed != true)
+            return;
+
+        _isCommandRunning = true;
+
+        try
+        {
+            await MessageApi.ToggleActiveAsync(messageId);
+
+            // Runtime.Service отправит SignalR-событие.
+            // Текущий клиент обновляем сразу.
+            await LoadAsync();
+
+            Notify(
+                NotificationSeverity.Success,
+                "Messages",
+                wasActive
+                    ? "Message deactivated."
+                    : "Message activated.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(AlertStyle.Warning, "Cannot change message activity: " + ex.Message);
+            Notify(NotificationSeverity.Warning, "Messages", "Cannot change message activity.");
+        }
+        finally
+        {
+            _isCommandRunning = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_selectedMessage is null)
+            return;
+
+        var deletedSubject = _selectedMessage.MessageSubject;
+
+        var confirmed = await DialogService.Confirm(
+            $"Delete message \"{deletedSubject}\"?",
+            "Delete message",
+            new ConfirmOptions
+            {
+                OkButtonText = "Delete",
+                CancelButtonText = "Cancel"
+            });
+
+        if (confirmed != true)
+            return;
+
+        _isCommandRunning = true;
+
+        try
+        {
+            await MessageApi.DeleteAsync(_selectedMessage.Id);
+
+            _selectedMessage = null;
+
+            // После удаления LoadAsync выберет первый доступный message.
+            await LoadAsync();
+
+            Notify(NotificationSeverity.Success, "Messages", "Message deleted.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(AlertStyle.Danger, "Cannot delete message: " + ex.Message);
+            Notify(NotificationSeverity.Error, "Messages", "Cannot delete message.");
+        }
+        finally
+        {
+            _isCommandRunning = false;
+        }
+    }
+
+    private bool CanSaveMessage()
+    {
+        return !string.IsNullOrWhiteSpace(_editSubject)
+               && !string.IsNullOrWhiteSpace(_editText);
+    }
+
+    private void SetStatus(AlertStyle style, string text)
+    {
+        _statusStyle = style;
+        _statusText = text;
+    }
+
+    private void ClearStatus()
+    {
+        _statusText = string.Empty;
+    }
+
+    private void Notify(NotificationSeverity severity, string summary, string detail)
+    {
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = severity,
+            Summary = summary,
+            Detail = detail,
+            Duration = 3500
+        });
+    }
+
+    private string GetCardStyle(EquipmentMessageDto message)
+    {
+        var selected = _selectedMessage?.Id == message.Id;
+        var opacity = message.IsActive ? "1" : "0.55";
+
+        return selected
+            ? $"margin-bottom:8px; cursor:pointer; border: 2px solid var(--rz-primary); opacity:{opacity};"
+            : $"margin-bottom:8px; cursor:pointer; opacity:{opacity};";
+    }
+
+    private static BadgeStyle GetBadgeStyle(MessageType type)
+    {
+        return type switch
+        {
+            MessageType.Warning => BadgeStyle.Warning,
+            MessageType.Critical => BadgeStyle.Danger,
+            _ => BadgeStyle.Info
+        };
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _viewDelayCts?.Cancel();
+        _viewDelayCts?.Dispose();
+
+        if (_hubConnection is not null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+    }
+}

@@ -1,0 +1,51 @@
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TechMES.Contracts", "TechMES.Contracts\TechMES.Contracts.csproj", "{40534609-8C87-4BB6-952A-290DA7CF744F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TechMES.Application", "TechMES.Application\TechMES.Application.csproj", "{E49C8781-2D44-4723-883C-67BE3B2C43D6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TechMES.Infrastructure.PostgreSql", "TechMES.Infrastructure.PostgreSql\TechMES.Infrastructure.PostgreSql.csproj", "{6CE5B8F1-86D8-4812-A613-59893D8344F7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TechMES.Infrastructure.CtApi", "TechMES.Infrastructure.CtApi\TechMES.Infrastructure.CtApi.csproj", "{4918097E-C954-4F7A-89C3-BE4586B5D8D1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TechMES.Runtime.Service", "TechMES.Runtime.Service\TechMES.Runtime.Service.csproj", "{2D8FEAA6-3223-4CA2-85A5-ACA88F400A14}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TechMES.Web", "TechMES.Web\TechMES.Web.csproj", "{63BE9974-964E-4AD9-9FA4-D2B94F8FBCFE}"
+EndProject
+Global
+    GlobalSection(SolutionConfigurationPlatforms) = preSolution
+        Debug|Any CPU = Debug|Any CPU
+        Release|Any CPU = Release|Any CPU
+    EndGlobalSection
+    GlobalSection(ProjectConfigurationPlatforms) = postSolution
+        {40534609-8C87-4BB6-952A-290DA7CF744F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {40534609-8C87-4BB6-952A-290DA7CF744F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {40534609-8C87-4BB6-952A-290DA7CF744F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {40534609-8C87-4BB6-952A-290DA7CF744F}.Release|Any CPU.Build.0 = Release|Any CPU
+        {E49C8781-2D44-4723-883C-67BE3B2C43D6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {E49C8781-2D44-4723-883C-67BE3B2C43D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {E49C8781-2D44-4723-883C-67BE3B2C43D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {E49C8781-2D44-4723-883C-67BE3B2C43D6}.Release|Any CPU.Build.0 = Release|Any CPU
+        {6CE5B8F1-86D8-4812-A613-59893D8344F7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {6CE5B8F1-86D8-4812-A613-59893D8344F7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {6CE5B8F1-86D8-4812-A613-59893D8344F7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {6CE5B8F1-86D8-4812-A613-59893D8344F7}.Release|Any CPU.Build.0 = Release|Any CPU
+        {4918097E-C954-4F7A-89C3-BE4586B5D8D1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {4918097E-C954-4F7A-89C3-BE4586B5D8D1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {4918097E-C954-4F7A-89C3-BE4586B5D8D1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {4918097E-C954-4F7A-89C3-BE4586B5D8D1}.Release|Any CPU.Build.0 = Release|Any CPU
+        {2D8FEAA6-3223-4CA2-85A5-ACA88F400A14}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {2D8FEAA6-3223-4CA2-85A5-ACA88F400A14}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {2D8FEAA6-3223-4CA2-85A5-ACA88F400A14}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {2D8FEAA6-3223-4CA2-85A5-ACA88F400A14}.Release|Any CPU.Build.0 = Release|Any CPU
+        {63BE9974-964E-4AD9-9FA4-D2B94F8FBCFE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {63BE9974-964E-4AD9-9FA4-D2B94F8FBCFE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {63BE9974-964E-4AD9-9FA4-D2B94F8FBCFE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {63BE9974-964E-4AD9-9FA4-D2B94F8FBCFE}.Release|Any CPU.Build.0 = Release|Any CPU
+    EndGlobalSection
+    GlobalSection(SolutionProperties) = preSolution
+        HideSolutionNode = FALSE
+    EndGlobalSection
+EndGlobal

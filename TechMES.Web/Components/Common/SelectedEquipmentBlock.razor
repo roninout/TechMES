@@ -1,0 +1,44 @@
+﻿@inject SelectedEquipmentState SelectedEquipmentState
+@implements IDisposable
+
+<RadzenStack Orientation="Orientation.Horizontal"
+             AlignItems="AlignItems.Center"
+             Gap="6px">
+
+    @if (SelectedEquipmentState.SelectedEquipment is null)
+    {
+        <RadzenBadge Text="Equipment: none"
+                     BadgeStyle="BadgeStyle.Light" />
+    }
+    else
+    {
+        <RadzenBadge Text="@SelectedEquipmentState.SelectedEquipment.TypeGroup.ToString()"
+                     BadgeStyle="BadgeStyle.Info" />
+
+        <RadzenText Text="@SelectedEquipmentState.SelectedEquipment.Name"
+                    TextStyle="TextStyle.Caption"
+                    Style="font-weight: 600;" />
+
+        <RadzenText Text="@SelectedEquipmentState.SelectedEquipment.DisplayName"
+                    TextStyle="TextStyle.Caption"
+                    Style="color: gray;" />
+    }
+</RadzenStack>
+
+@code {
+    protected override void OnInitialized()
+    {
+        // Layout должен обновиться, когда пользователь выбрал другое оборудование на странице Equipment.
+        SelectedEquipmentState.Changed += OnSelectedEquipmentChanged;
+    }
+
+    private void OnSelectedEquipmentChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        SelectedEquipmentState.Changed -= OnSelectedEquipmentChanged;
+    }
+}

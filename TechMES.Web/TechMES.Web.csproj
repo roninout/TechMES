@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+	<!-- SignalR Client нужен WEB-приложению, чтобы получать live-события от Runtime.Service. -->    
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.8" />
+	<!-- Radzen — библиотека UI-компонентов для Blazor: кнопки, списки, формы, layout. -->
+    <PackageReference Include="Radzen.Blazor" Version="10.4.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Web использует Contracts, чтобы понимать DTO/request/response классы Runtime Service. -->
+    <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

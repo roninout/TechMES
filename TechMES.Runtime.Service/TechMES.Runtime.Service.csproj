@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TechMES.Application\TechMES.Application.csproj" />
+    <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
+    <ProjectReference Include="..\TechMES.Infrastructure.CtApi\TechMES.Infrastructure.CtApi.csproj" />
+    <ProjectReference Include="..\TechMES.Infrastructure.PostgreSql\TechMES.Infrastructure.PostgreSql.csproj" />
+  </ItemGroup>
+
+</Project>

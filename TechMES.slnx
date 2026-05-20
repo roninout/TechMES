@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="TechMES.Contracts/TechMES.Contracts.csproj" />
+  <Project Path="TechMES.Application/TechMES.Application.csproj" />
+  <Project Path="TechMES.Infrastructure.CtApi/TechMES.Infrastructure.CtApi.csproj" Id="4918097e-c954-4f7a-89c3-be4586b5d8d1" />
+  <Project Path="TechMES.Infrastructure.PostgreSql/TechMES.Infrastructure.PostgreSql.csproj" />
+  <Project Path="TechMES.Runtime.Service/TechMES.Runtime.Service.csproj" />
+  <Project Path="TechMES.Web/TechMES.Web.csproj" />
+</Solution>

@@ -1,0 +1,33 @@
+﻿@page "/param"
+@inject SelectedEquipmentState SelectedEquipmentState
+
+<PageTitle>Param</PageTitle>
+
+<RadzenStack Gap="12px">
+    <RadzenText Text="Param" TextStyle="TextStyle.H5" />
+
+    @if (SelectedEquipmentState.SelectedEquipment is null)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
+            Оборудование не выбрано. Перейдите на страницу Equipment и выберите equipment.
+        </RadzenAlert>
+    }
+    else
+    {
+        <RadzenCard>
+            <RadzenStack Gap="8px">
+                <RadzenText Text="@SelectedEquipmentState.SelectedEquipment.Name"
+                            TextStyle="TextStyle.H6" />
+
+                <RadzenText Text="@SelectedEquipmentState.SelectedEquipment.DisplayName"
+                            TextStyle="TextStyle.Subtitle2"
+                            Style="color: gray;" />
+
+                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                    Здесь позже будет Param-модуль.
+                    Он будет запрашивать параметры выбранного оборудования через Runtime.Service.
+                </RadzenAlert>
+            </RadzenStack>
+        </RadzenCard>
+    }
+</RadzenStack>

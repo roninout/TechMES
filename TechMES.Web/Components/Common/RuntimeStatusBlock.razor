@@ -1,0 +1,128 @@
+﻿@inject RuntimeStatusApiClient RuntimeStatusApi
+@implements IAsyncDisposable
+
+<RadzenStack Orientation="Orientation.Horizontal"
+             AlignItems="AlignItems.Center"
+             Gap="8px">
+
+    @if (_isLoading && _health is null)
+    {
+        <RadzenBadge Text="Runtime: checking..."
+                     BadgeStyle="BadgeStyle.Light" />
+    }
+    else if (_health?.IsHealthy == true)
+    {
+        <RadzenBadge Text="Runtime: Online"
+                     BadgeStyle="BadgeStyle.Success" />
+
+        <RadzenBadge Text="@($"DB: {_health.Database}")"
+                     BadgeStyle="BadgeStyle.Success" />
+
+        <RadzenText Text="@($"Storage: {_health.MessageStorageProvider}")"
+                    TextStyle="TextStyle.Caption"
+                    Style="color: gray;" />
+
+        <RadzenText Text="@($"Active: {_health.ActiveMessageCount}")"
+                    TextStyle="TextStyle.Caption"
+                    Style="color: gray;" />
+    }
+    else
+    {
+        <RadzenBadge Text="Runtime: Offline"
+                     BadgeStyle="BadgeStyle.Danger" />
+
+        <RadzenText Text="@_errorText"
+                    TextStyle="TextStyle.Caption"
+                    Style="color: #c62828;" />
+    }
+
+    <RadzenButton Icon="refresh"
+                  Size="ButtonSize.Small"
+                  ButtonStyle="ButtonStyle.Light"
+                  Disabled="@_isLoading"
+                  Click="@RefreshAsync" />
+</RadzenStack>
+
+@code {
+    private RuntimeHealthResponse? _health;
+
+    private bool _isLoading;
+
+    private string _errorText = "";
+
+    private PeriodicTimer? _timer;
+
+    private CancellationTokenSource? _timerCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Первая проверка запускается сразу при открытии WEB.
+        await RefreshAsync();
+
+        // Это не polling данных Messages.
+        // Это лёгкий heartbeat состояния Runtime.Service.
+        _timerCts = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+
+        _ = RunHealthLoopAsync(_timerCts.Token);
+    }
+
+    private async Task RefreshAsync()
+    {
+        _isLoading = true;
+
+        try
+        {
+            _health = await RuntimeStatusApi.GetHealthAsync();
+
+            if (_health.IsHealthy)
+            {
+                _errorText = "";
+            }
+            else
+            {
+                _errorText = _health.Error ?? "Runtime Service health check failed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _health = null;
+            _errorText = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task RunHealthLoopAsync(CancellationToken ct)
+    {
+        if (_timer is null)
+            return;
+
+        try
+        {
+            while (await _timer.WaitForNextTickAsync(ct))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshAsync();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Нормальная ситуация при закрытии страницы/приложения.
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _timerCts?.Cancel();
+        _timerCts?.Dispose();
+        _timer?.Dispose();
+
+        return ValueTask.CompletedTask;
+    }
+}

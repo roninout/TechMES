@@ -1,0 +1,638 @@
+@page "/equipment"
+@inject EquipmentApiClient EquipmentApi
+@inject NotificationService NotificationService
+@inject SelectedEquipmentState SelectedEquipmentState
+
+<PageTitle>Equipment</PageTitle>
+
+<RadzenStack Gap="12px">
+    <RadzenStack Gap="2px">
+        <RadzenText Text="Equipment Catalog" TextStyle="TextStyle.H5" />
+        <RadzenText Text="Каталог приходит из Runtime.Service. Источник выбирается в настройках: InMemory или CtApi."
+                    TextStyle="TextStyle.Caption"
+                    Style="color: gray;" />
+    </RadzenStack>
+
+    <RadzenStack Orientation="Orientation.Horizontal"
+                 AlignItems="AlignItems.Center"
+                 Gap="8px">
+
+        <RadzenDropDown TValue="string"
+                        Data="@_stationItems"
+                        @bind-Value="_selectedStation"
+                        Change="@(_ => ApplyFilters())"
+                        Style="width: 160px;" />
+
+        <RadzenDropDown TValue="string"
+                        Data="@_typeItems"
+                        @bind-Value="_selectedType"
+                        Change="@(_ => ApplyFilters())"
+                        Style="width: 180px;" />
+
+        <RadzenTextBox Placeholder="Search equipment..."
+                       @bind-Value="_searchText"
+                       Change="@(_ => ApplyFilters())"
+                       Style="width: 260px;" />
+
+        <RadzenButton Text="Refresh"
+                      Icon="refresh"
+                      ButtonStyle="ButtonStyle.Light"
+                      Disabled="@_isLoading"
+                      Click="@LoadAsync" />
+
+        <RadzenBadge Text="@($"Nodes: {_treeRows.Count}")"
+                     BadgeStyle="BadgeStyle.Info" />
+
+        <RadzenBadge Text="@($"Matches: {_matchedCount}")"
+                     BadgeStyle="BadgeStyle.Light" />
+    </RadzenStack>
+
+    @if (!string.IsNullOrWhiteSpace(_statusText))
+    {
+        <RadzenAlert AlertStyle="@_statusStyle"
+                     ShowIcon="true"
+                     AllowClose="true"
+                     Close="@(() => _statusText = string.Empty)">
+            @_statusText
+        </RadzenAlert>
+    }
+
+    @if (_isLoading)
+    {
+        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+    }
+
+    <RadzenSplitter Style="height: calc(100vh - 210px); min-height: 520px;">
+        <RadzenSplitterPane Size="46%" Min="420px">
+            @if (_treeRows.Count == 0 && !_isLoading)
+            {
+                <RadzenCard>
+                    <RadzenText Text="No equipment found." TextStyle="TextStyle.Subtitle1" />
+                </RadzenCard>
+            }
+            else
+            {
+                <RadzenCard Style="height: 100%; padding: 0; overflow: hidden;">
+                    <div style="height: 100%; overflow: auto; padding: 8px;">
+                        @foreach (var row in _treeRows)
+                        {
+                            <div style="@GetTreeRowStyle(row)"
+                                 @onclick="() => SelectEquipment(row.Node)">
+
+                                <span style="display:inline-block; width:@(row.Level * 22)px;"></span>
+
+                                @if (row.HasChildren)
+                                {
+                                    <span @onclick:stopPropagation="true">
+                                        <RadzenButton Icon="@(row.IsExpanded ? "expand_more" : "chevron_right")"
+                                                      ButtonStyle="ButtonStyle.Light"
+                                                      Size="ButtonSize.Small"
+                                                      Click="@(() => ToggleNode(row.Node))"
+                                                      Style="width: 28px; height: 28px; min-width: 28px; padding: 0; margin-right: 4px;" />
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span style="display:inline-block; width:32px;"></span>
+                                }
+
+                                <RadzenIcon Icon="@GetNodeIcon(row.Node)"
+                                            Style="font-size: 20px; margin-right: 8px; color: var(--rz-primary); vertical-align: middle;" />
+
+                                <span style="font-weight: 600;">@row.Node.Name</span>
+
+                                @if (row.Node.IsGroup)
+                                {
+                                    <RadzenBadge Text="Group"
+                                                 BadgeStyle="BadgeStyle.Dark"
+                                                 Style="margin-left: 8px;" />
+                                }
+                                else if (row.Node.IsEquipmentChildNode)
+                                {
+                                    <RadzenBadge Text="Child"
+                                                 BadgeStyle="BadgeStyle.Light"
+                                                 Style="margin-left: 8px;" />
+                                }
+
+                                <RadzenBadge Text="@row.Node.TypeGroup.ToString()"
+                                             BadgeStyle="@GetTypeBadgeStyle(row.Node.TypeGroup)"
+                                             Style="margin-left: 8px;" />
+
+                                <div style="margin-left:@(row.Level * 22 + 68)px; color: gray; font-size: 12px; line-height: 1.3;">
+                                    @row.Node.DisplayName
+                                    @if (!string.IsNullOrWhiteSpace(row.Node.Description)
+                                        && !string.Equals(row.Node.Description, row.Node.DisplayName, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span> · @row.Node.Description</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </RadzenCard>
+            }
+        </RadzenSplitterPane>
+
+        <RadzenSplitterPane>
+            @if (_selectedEquipment is null)
+            {
+                <RadzenCard>
+                    <RadzenText Text="No selected equipment"
+                                TextStyle="TextStyle.Subtitle1"
+                                Style="color: gray;" />
+                </RadzenCard>
+            }
+            else
+            {
+                <RadzenCard>
+                    <RadzenStack Gap="12px">
+                        <RadzenStack Orientation="Orientation.Horizontal"
+                                     AlignItems="AlignItems.Center"
+                                     JustifyContent="JustifyContent.SpaceBetween">
+                            <RadzenStack Gap="4px">
+                                <RadzenText Text="@_selectedEquipment.Name" TextStyle="TextStyle.H6" />
+                                <RadzenText Text="@_selectedEquipment.DisplayName"
+                                            TextStyle="TextStyle.Caption"
+                                            Style="color: gray;" />
+                            </RadzenStack>
+
+                            <RadzenBadge Text="@_selectedEquipment.TypeGroup.ToString()"
+                                         BadgeStyle="@GetTypeBadgeStyle(_selectedEquipment.TypeGroup)" />
+                        </RadzenStack>
+
+                        <RadzenFieldset Text="General">
+                            <RadzenStack Gap="6px">
+                                <div><b>Station:</b> @_selectedEquipment.Station</div>
+                                <div><b>Type:</b> @_selectedEquipment.TypeName</div>
+                                <div><b>Type group:</b> @_selectedEquipment.TypeGroup</div>
+                                <div><b>Description:</b> @_selectedEquipment.Description</div>
+                                <div><b>Is group:</b> @_selectedEquipment.IsGroup</div>
+                                <div><b>Is child node:</b> @_selectedEquipment.IsEquipmentChildNode</div>
+                                <div><b>Parent:</b> @_selectedEquipment.ParentName</div>
+                                <div><b>NodeId:</b> @_selectedEquipment.NodeId</div>
+                                <div><b>ParentNodeId:</b> @_selectedEquipment.ParentNodeId</div>
+                            </RadzenStack>
+                        </RadzenFieldset>
+
+                        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                            Теперь страница показывает дерево оборудования: обычные root-ноды,
+                            group-ноды Equipment и child-ноды внутри групп. Выбранный узел сохраняется
+                            в общем SelectedEquipmentState для будущих страниц Info, Param, Trends и SOE.
+                        </RadzenAlert>
+                    </RadzenStack>
+                </RadzenCard>
+            }
+        </RadzenSplitterPane>
+    </RadzenSplitter>
+</RadzenStack>
+
+@code {
+    private const string AllStationsText = "All stations";
+    private const string AllTypesText = "All types";
+    private const string RootParentNodeId = "0";
+
+    private List<EquipmentDto> _allEquipments = [];
+    private List<TreeRow> _treeRows = [];
+
+    private EquipmentDto? _selectedEquipment;
+
+    private List<string> _stationItems = [AllStationsText];
+    private List<string> _typeItems = [AllTypesText];
+
+    private readonly HashSet<string> _expandedNodeIds = new(StringComparer.OrdinalIgnoreCase);
+
+    private string _selectedStation = AllStationsText;
+    private string _selectedType = AllTypesText;
+    private string _searchText = "";
+
+    private bool _isLoading;
+    private int _matchedCount;
+
+    private string _statusText = "";
+    private AlertStyle _statusStyle = AlertStyle.Info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+
+        // Если в текущей странице выбранного equipment ещё нет,
+        // пробуем взять выбор из глобального state.
+        // Это пригодится, когда пользователь вернулся на /equipment с другой страницы.
+        var preferredName = _selectedEquipment?.Name ?? SelectedEquipmentState.SelectedEquipmentName;
+        var preferredNodeId = _selectedEquipment?.NodeId;
+
+        try
+        {
+            var response = await EquipmentApi.GetEquipmentListAsync();
+
+            _allEquipments = response.Equipments.ToList();
+            NormalizeTreeFields(_allEquipments);
+
+            _stationItems = [AllStationsText];
+            _stationItems.AddRange(response.Stations);
+
+            _typeItems = [AllTypesText];
+            _typeItems.AddRange(response.TypeGroups.Select(x => x.ToString()));
+
+            // При первой загрузке раскрываем группы, чтобы пользователь сразу увидел,
+            // что WEB уже получил не плоский список, а структуру для дерева.
+            foreach (var group in _allEquipments.Where(x => x.IsGroup))
+            {
+                _expandedNodeIds.Add(GetNodeId(group));
+            }
+
+            ApplyFilters(preferredName, preferredNodeId);
+
+            _statusText = "";
+        }
+        catch (Exception ex)
+        {
+            _statusStyle = AlertStyle.Danger;
+            _statusText = "Cannot load equipment catalog from Runtime Service: " + ex.Message;
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Equipment",
+                Detail = "Cannot load equipment catalog.",
+                Duration = 3500
+            });
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        ApplyFilters(_selectedEquipment?.Name, _selectedEquipment?.NodeId);
+    }
+
+    private void ApplyFilters(string? preferredName, string? preferredNodeId)
+    {
+        var directlyMatched = _allEquipments
+            .Where(MatchesFilters)
+            .ToList();
+
+        _matchedCount = directlyMatched.Count;
+
+        var includedNodeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var isEquipmentTypeFilter = IsEquipmentTypeFilterActive();
+
+        foreach (var equipment in directlyMatched)
+        {
+            IncludeNodeWithParents(equipment, includedNodeIds);
+
+            // Особенность Tree-фильтра для Type = Equipment:
+            // сама group-нода имеет TypeGroup=Equipment, а её дочерние узлы могут быть Motor/AI/VGA/etc.
+            // Если оставить обычную фильтрацию только по TypeGroup, группа будет показана пустой.
+            // Поэтому в режиме Equipment дополнительно включаем дочерние узлы выбранной группы.
+            if (isEquipmentTypeFilter && equipment.IsGroup)
+            {
+                IncludeNodeWithChildren(equipment, includedNodeIds);
+                _expandedNodeIds.Add(GetNodeId(equipment));
+            }
+        }
+
+        // Если есть активный поиск или фильтр типа, автоматически раскрываем родителей найденных child-нод.
+        // Иначе совпадение могло бы быть внутри закрытой группы, и пользователь не увидел бы результат.
+        if (IsAnyNarrowFilterActive())
+        {
+            foreach (var equipment in directlyMatched)
+            {
+                ExpandParents(equipment);
+
+                if (isEquipmentTypeFilter && equipment.IsGroup)
+                {
+                    _expandedNodeIds.Add(GetNodeId(equipment));
+                }
+            }
+        }
+
+        _treeRows = BuildTreeRows(includedNodeIds);
+
+        ApplySelectionAfterFilter(preferredName, preferredNodeId);
+    }
+
+    private bool MatchesFilters(EquipmentDto equipment)
+    {
+        if (!string.Equals(_selectedStation, AllStationsText, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(equipment.Station, _selectedStation, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.Equals(_selectedType, AllTypesText, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(equipment.TypeGroup.ToString(), _selectedType, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            var search = _searchText.Trim();
+
+            return equipment.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || equipment.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || equipment.Description.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || equipment.TypeName.Contains(search, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return true;
+    }
+
+    private bool IsAnyNarrowFilterActive()
+    {
+        return !string.Equals(_selectedType, AllTypesText, StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrWhiteSpace(_searchText);
+    }
+
+    private void IncludeNodeWithParents(
+        EquipmentDto equipment,
+        HashSet<string> includedNodeIds)
+    {
+        var current = equipment;
+
+        while (true)
+        {
+            includedNodeIds.Add(GetNodeId(current));
+
+            if (string.IsNullOrWhiteSpace(current.ParentNodeId)
+                || string.Equals(current.ParentNodeId, RootParentNodeId, StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            var parent = _allEquipments.FirstOrDefault(x =>
+                string.Equals(GetNodeId(x), current.ParentNodeId, StringComparison.OrdinalIgnoreCase));
+
+            if (parent is null)
+                break;
+
+            current = parent;
+        }
+    }
+
+    private void IncludeNodeWithChildren(
+        EquipmentDto equipment,
+        HashSet<string> includedNodeIds)
+    {
+        var parentNodeId = GetNodeId(equipment);
+
+        var children = _allEquipments
+            .Where(x => string.Equals(x.ParentNodeId, parentNodeId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var child in children)
+        {
+            includedNodeIds.Add(GetNodeId(child));
+
+            // Оставляем метод рекурсивным на будущее.
+            // Сейчас у нас обычно один уровень: Equipment group -> child equipment.
+            IncludeNodeWithChildren(child, includedNodeIds);
+        }
+    }
+
+    private bool IsEquipmentTypeFilterActive()
+    {
+        return string.Equals(
+            _selectedType,
+            EquipmentTypeGroup.Equipment.ToString(),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ExpandParents(EquipmentDto equipment)
+    {
+        var current = equipment;
+
+        while (!string.IsNullOrWhiteSpace(current.ParentNodeId)
+            && !string.Equals(current.ParentNodeId, RootParentNodeId, StringComparison.OrdinalIgnoreCase))
+        {
+            var parent = _allEquipments.FirstOrDefault(x =>
+                string.Equals(GetNodeId(x), current.ParentNodeId, StringComparison.OrdinalIgnoreCase));
+
+            if (parent is null)
+                break;
+
+            _expandedNodeIds.Add(GetNodeId(parent));
+            current = parent;
+        }
+    }
+
+    private List<TreeRow> BuildTreeRows(HashSet<string> includedNodeIds)
+    {
+        var includedItems = _allEquipments
+            .Where(x => includedNodeIds.Contains(GetNodeId(x)))
+            .ToList();
+
+        var childrenByParent = includedItems
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.ParentNodeId) ? RootParentNodeId : x.ParentNodeId)
+            .ToDictionary(
+                x => x.Key,
+                x => x.OrderBy(item => item.IsGroup ? 0 : 1)
+                    .ThenBy(item => item.Station)
+                    .ThenBy(item => item.TypeGroup)
+                    .ThenBy(item => item.Name)
+                    .ToList(),
+                StringComparer.OrdinalIgnoreCase);
+
+        var result = new List<TreeRow>();
+
+        AddChildren(RootParentNodeId, level: 0);
+
+        return result;
+
+        void AddChildren(string parentNodeId, int level)
+        {
+            if (!childrenByParent.TryGetValue(parentNodeId, out var children))
+                return;
+
+            foreach (var child in children)
+            {
+                var nodeId = GetNodeId(child);
+                var hasChildren = childrenByParent.ContainsKey(nodeId);
+                var isExpanded = _expandedNodeIds.Contains(nodeId);
+
+                result.Add(new TreeRow(child, level, hasChildren, isExpanded));
+
+                if (hasChildren && isExpanded)
+                {
+                    AddChildren(nodeId, level + 1);
+                }
+            }
+        }
+    }
+
+    private void ApplySelectionAfterFilter(string? preferredName, string? preferredNodeId)
+    {
+        if (_treeRows.Count == 0)
+        {
+            SetSelectedEquipment(null);
+            return;
+        }
+
+        EquipmentDto? selected = null;
+
+        if (!string.IsNullOrWhiteSpace(preferredNodeId))
+        {
+            selected = _treeRows.FirstOrDefault(x =>
+                string.Equals(GetNodeId(x.Node), preferredNodeId, StringComparison.OrdinalIgnoreCase))?.Node;
+        }
+
+        if (selected is null && !string.IsNullOrWhiteSpace(preferredName))
+        {
+            selected = _treeRows.FirstOrDefault(x =>
+                string.Equals(x.Node.Name, preferredName, StringComparison.OrdinalIgnoreCase))?.Node;
+        }
+
+        // Как и в Messages:
+        // если старый выбранный элемент остался в дереве — оставляем его;
+        // если исчез после фильтра — выбираем первый видимый узел.
+        SetSelectedEquipment(selected ?? _treeRows.First().Node);
+    }
+
+    private void SelectEquipment(EquipmentDto equipment)
+    {
+        SetSelectedEquipment(equipment);
+    }
+
+    private void SetSelectedEquipment(EquipmentDto? equipment)
+    {
+        _selectedEquipment = equipment;
+
+        // Сохраняем выбор в общем state service.
+        // Теперь другие страницы могут узнать, какое оборудование выбрано.
+        SelectedEquipmentState.SetSelectedEquipment(equipment);
+    }
+
+    private void ToggleNode(EquipmentDto equipment)
+    {
+        var nodeId = GetNodeId(equipment);
+
+        if (!_expandedNodeIds.Add(nodeId))
+        {
+            _expandedNodeIds.Remove(nodeId);
+        }
+
+        ApplyFilters(_selectedEquipment?.Name, _selectedEquipment?.NodeId);
+    }
+
+    private string GetTreeRowStyle(TreeRow row)
+    {
+        var selected = IsSelected(row.Node);
+
+        var baseStyle = "border-radius: 10px; padding: 8px; margin-bottom: 4px; cursor: pointer; border: 1px solid transparent;";
+
+        if (selected)
+            return baseStyle + " border-color: var(--rz-primary); background: var(--rz-primary-lighter);";
+
+        if (row.Node.IsGroup)
+            return baseStyle + " background: rgba(0, 0, 0, 0.025);";
+
+        if (row.Node.IsEquipmentChildNode)
+            return baseStyle + " background: rgba(0, 0, 0, 0.015);";
+
+        return baseStyle;
+    }
+
+    private bool IsSelected(EquipmentDto equipment)
+    {
+        return string.Equals(
+            _selectedEquipment?.NodeId,
+            GetNodeId(equipment),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetNodeIcon(EquipmentDto equipment)
+    {
+        if (equipment.IsGroup)
+            return "folder";
+
+        return equipment.TypeGroup switch
+        {
+            EquipmentTypeGroup.Motor => "settings",
+            EquipmentTypeGroup.ATV => "speed",
+            EquipmentTypeGroup.AI => "show_chart",
+            EquipmentTypeGroup.DI => "login",
+            EquipmentTypeGroup.DO => "logout",
+            EquipmentTypeGroup.VGA => "valve",
+            EquipmentTypeGroup.VGD => "call_split",
+            EquipmentTypeGroup.VGA_EL => "electrical_services",
+            _ => "precision_manufacturing"
+        };
+    }
+
+    private static BadgeStyle GetTypeBadgeStyle(EquipmentTypeGroup typeGroup)
+    {
+        return typeGroup switch
+        {
+            EquipmentTypeGroup.Motor => BadgeStyle.Success,
+            EquipmentTypeGroup.ATV => BadgeStyle.Warning,
+            EquipmentTypeGroup.AI => BadgeStyle.Info,
+            EquipmentTypeGroup.DI => BadgeStyle.Light,
+            EquipmentTypeGroup.DO => BadgeStyle.Light,
+            EquipmentTypeGroup.VGA => BadgeStyle.Primary,
+            EquipmentTypeGroup.VGD => BadgeStyle.Secondary,
+            EquipmentTypeGroup.Equipment => BadgeStyle.Dark,
+            _ => BadgeStyle.Light
+        };
+    }
+
+    private static string GetNodeId(EquipmentDto equipment)
+    {
+        return string.IsNullOrWhiteSpace(equipment.NodeId)
+            ? equipment.Name
+            : equipment.NodeId;
+    }
+
+    private static void NormalizeTreeFields(List<EquipmentDto> equipments)
+    {
+        // InMemory provider и будущие адаптеры могут вернуть старую плоскую модель.
+        // Здесь WEB аккуратно достраивает NodeId/ParentNodeId, чтобы Tree UI не падал.
+        foreach (var equipment in equipments)
+        {
+            if (string.IsNullOrWhiteSpace(equipment.NodeId))
+            {
+                equipment.NodeId = equipment.IsGroup
+                    ? $"GRP:{equipment.Name}"
+                    : string.IsNullOrWhiteSpace(equipment.ParentName)
+                        ? $"EQ:{equipment.Name}"
+                        : $"CH:{equipment.ParentName}:{equipment.Name}";
+            }
+
+            if (string.IsNullOrWhiteSpace(equipment.ParentNodeId))
+            {
+                equipment.ParentNodeId = RootParentNodeId;
+            }
+        }
+
+        var groupNodeByName = equipments
+            .Where(x => x.IsGroup)
+            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First().NodeId, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var equipment in equipments)
+        {
+            if (string.IsNullOrWhiteSpace(equipment.ParentName))
+                continue;
+
+            if (groupNodeByName.TryGetValue(equipment.ParentName, out var parentNodeId))
+            {
+                equipment.ParentNodeId = parentNodeId;
+                equipment.IsEquipmentChildNode = true;
+            }
+        }
+    }
+
+    private sealed record TreeRow(
+        EquipmentDto Node,
+        int Level,
+        bool HasChildren,
+        bool IsExpanded);
+}

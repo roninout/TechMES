@@ -1,0 +1,55 @@
+@inherits LayoutComponentBase
+
+<RadzenLayout>
+    <RadzenHeader>
+        <RadzenStack Orientation="Orientation.Horizontal"
+                     AlignItems="AlignItems.Center"
+                     Gap="12px"
+                     Style="height: 56px; padding: 0 16px;">
+            <RadzenText Text="TechMES WEB" TextStyle="TextStyle.H6" />
+            <RadzenText Text="Blazor + Runtime Service" TextStyle="TextStyle.Caption" Style="color: gray;" />
+
+            <!--
+            SelectedEquipmentBlock показывает выбранное оборудование глобально.
+            Позже Info/Param/Trends будут использовать это выбранное оборудование.
+            -->
+            <SelectedEquipmentBlock />
+
+            <!--
+            RuntimeStatusBlock показывает состояние Runtime.Service:
+            - сервис онлайн/оффлайн;
+            - доступна ли БД;
+            - какой adapter используется;
+            - сколько активных сообщений.
+            -->
+            <div style="margin-left: auto;">
+                <RuntimeStatusBlock />
+            </div>
+        </RadzenStack>
+    </RadzenHeader>
+
+    <RadzenSidebar Style="width: 240px;">
+        <RadzenPanelMenu>
+            <RadzenPanelMenuItem Text="Home" Path="/" Icon="home" />
+            <RadzenPanelMenuItem Text="Equipment" Path="/equipment" Icon="precision_manufacturing" />
+            <RadzenPanelMenuItem Text="Info" Path="/info" Icon="info" />
+            <RadzenPanelMenuItem Text="Param" Path="/param" Icon="tune" />
+            <RadzenPanelMenuItem Text="Messages" Path="/messages" Icon="mail" />
+        </RadzenPanelMenu>
+    </RadzenSidebar>
+
+    <RadzenBody>
+        <div class="page-content">
+            @Body
+        </div>
+    </RadzenBody>
+</RadzenLayout>
+
+<!--
+    Эти компоненты визуально почти не занимают место,
+    но они нужны сервисам Radzen:
+    - DialogService показывает Confirm/Alert окна;
+    - NotificationService показывает всплывающие уведомления.
+-->
+<RadzenDialog />
+<RadzenNotification />

@@ -1,0 +1,33 @@
+﻿@page "/info"
+@inject SelectedEquipmentState SelectedEquipmentState
+
+<PageTitle>Info</PageTitle>
+
+<RadzenStack Gap="12px">
+    <RadzenText Text="Info" TextStyle="TextStyle.H5" />
+
+    @if (SelectedEquipmentState.SelectedEquipment is null)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
+            Оборудование не выбрано. Перейдите на страницу Equipment и выберите equipment.
+        </RadzenAlert>
+    }
+    else
+    {
+        <RadzenCard>
+            <RadzenStack Gap="8px">
+                <RadzenText Text="@SelectedEquipmentState.SelectedEquipment.Name"
+                            TextStyle="TextStyle.H6" />
+
+                <RadzenText Text="@SelectedEquipmentState.SelectedEquipment.DisplayName"
+                            TextStyle="TextStyle.Subtitle2"
+                            Style="color: gray;" />
+
+                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                    Здесь позже будет Info-модуль:
+                    фото, инструкции, схемы, notes и PDF.
+                </RadzenAlert>
+            </RadzenStack>
+        </RadzenCard>
+    }
+</RadzenStack>
