@@ -1,0 +1,402 @@
+﻿<param:ParamViewBase x:Class="TechEquipments.Views.Common.AtvSettingsSectionView"
+                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                     xmlns:param="clr-namespace:TechEquipments.Views.Param"
+                     xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
+                     xmlns:dxlc="http://schemas.devexpress.com/winfx/2008/xaml/layoutcontrol"
+                     xmlns:dxga="http://schemas.devexpress.com/winfx/2008/xaml/gauges"
+                     xmlns:local="clr-namespace:TechEquipments">
+
+    <param:ParamViewBase.Resources>
+        <local:PositiveDoubleOrDefaultConverter x:Key="PositiveDoubleOrDefaultConverter"/>
+        <local:RoundUpToStepConverter x:Key="RoundUpToStepConverter"/>
+    </param:ParamViewBase.Resources>
+
+    <dxlc:LayoutGroup Orientation="Vertical" View="Group">
+
+        <!-- ====== блок Params Settings ====== -->
+        <dxlc:LayoutGroup x:Name="AtvSettingsGroup" Header="Params" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical">
+
+            <Grid>
+
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Grid.ColumnDefinitions >
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+
+                <!-- ====== RPM gauge ====== -->
+                <dxlc:LayoutItem Margin="0,0,0,0" Grid.Column="0" Grid.Row="0">
+                    <StackPanel HorizontalAlignment="Center">
+
+                        <TextBlock Text="Motor speed" HorizontalAlignment="Center" Margin="0,0,0,8" FontWeight="SemiBold" Style="{StaticResource AppTextBlockStyle}"/>
+
+                        <dxga:CircularGaugeControl Width="260" Height="180">
+
+                            <dxga:CircularGaugeControl.Scales>
+                                <dxga:ArcScale StartValue="0"
+                                               EndValue="{Binding NMax, Mode=OneWay, Converter={StaticResource PositiveDoubleOrDefaultConverter}, ConverterParameter=1000}"
+                                               StartAngle="-180" EndAngle="0"
+                                               MajorIntervalCount="5" MinorIntervalCount="4">
+
+                                    <dxga:ArcScale.LabelOptions>
+                                        <dxga:ArcScaleLabelOptions ShowFirst="True" Orientation="LeftToRight"/>
+                                    </dxga:ArcScale.LabelOptions>
+
+                                    <dxga:ArcScale.Needles>
+                                        <dxga:ArcScaleNeedle Value="{Binding RpmHmi, Mode=OneWay}" />
+                                    </dxga:ArcScale.Needles>
+                                </dxga:ArcScale>
+                            </dxga:CircularGaugeControl.Scales>
+
+                        </dxga:CircularGaugeControl>
+
+                        <TextBlock HorizontalAlignment="Center" Margin="0,0,0,0" FontSize="22" FontWeight="SemiBold" Text="{Binding RpmHmi, StringFormat={}{0:0} rpm}" />
+                        <TextBlock HorizontalAlignment="Center" Text="{Binding NHmi, StringFormat={}{0:0.0} %}" Style="{StaticResource AppTextBlockStyle}" />
+
+                    </StackPanel>
+                </dxlc:LayoutItem>
+
+                <TextBlock Text="Speed nominal" Style="{StaticResource AppTextBlockStyle}" FontWeight="Normal" Margin="0,30,30,10" Grid.Column="0" Grid.Row="1" HorizontalAlignment="Center"/>
+                
+                <StackPanel Margin="0,0,0,0" Orientation="Horizontal" HorizontalAlignment="Center" Grid.Column="0" Grid.Row="2">
+                    <!-- field -->
+                    <dxe:TextEdit Tag="Nsp" Width="80" Margin="0,0,6,0" EditValue="{Binding Nsp, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" 
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!-- unit -->
+                    <TextBlock Text="rpm" Style="{StaticResource AppTextBlockStyle}"/>
+                </StackPanel>
+
+                <!-- ====== Motor current gauge ====== -->
+                <dxlc:LayoutItem Margin="0,0,0,0" Grid.Column="1" Grid.Row="0">
+                    <StackPanel HorizontalAlignment="Center">
+
+                        <TextBlock Text="Motor current" HorizontalAlignment="Center" Margin="0,0,0,8" FontWeight="SemiBold" Style="{StaticResource AppTextBlockStyle}"/>
+
+                        <dxga:CircularGaugeControl Width="260" Height="180">
+
+                            <dxga:CircularGaugeControl.Scales>
+                                <dxga:ArcScale StartValue="0"
+                                               EndValue="{Binding Cli, Mode=OneWay, Converter={StaticResource RoundUpToStepConverter}, ConverterParameter=0.5}"
+                                               StartAngle="-180" EndAngle="0"
+                                               MajorIntervalCount="5" MinorIntervalCount="4">
+
+                                    <dxga:ArcScale.LabelOptions>
+                                        <dxga:ArcScaleLabelOptions ShowFirst="True" Orientation="LeftToRight"/>
+                                    </dxga:ArcScale.LabelOptions>
+
+                                    <!-- Стрелка -->
+                                    <dxga:ArcScale.Needles>
+                                        <dxga:ArcScaleNeedle Value="{Binding IHmi, Mode=OneWay}" />
+                                    </dxga:ArcScale.Needles>
+
+                                </dxga:ArcScale>
+                            </dxga:CircularGaugeControl.Scales>
+
+                        </dxga:CircularGaugeControl>
+
+                        <TextBlock HorizontalAlignment="Center" Margin="0,0,0,0" FontSize="22" FontWeight="SemiBold" Text="{Binding IHmi, StringFormat={}{0:0.0} A}" />
+
+                    </StackPanel>
+                </dxlc:LayoutItem>
+
+                <TextBlock Text="Current limit" Style="{StaticResource AppTextBlockStyle}" FontWeight="Normal"  Margin="0,30,15,10" Grid.Column="1" Grid.Row="1" HorizontalAlignment="Center"/>
+                
+                <StackPanel Margin="0,0,0,0" Orientation="Horizontal" HorizontalAlignment="Center" Grid.Column="1" Grid.Row="2">
+                    <!-- field -->
+                    <dxe:TextEdit Tag="Cli" Width="80" Margin="0,0,6,0" EditValue="{Binding Cli, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" 
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!-- unit -->
+                    <TextBlock Text="A" Style="{StaticResource AppTextBlockStyle}"/>
+                </StackPanel>
+
+                <!-- ====== Motor torque gauge ====== -->
+                <dxlc:LayoutItem Margin="0,0,0,0" Grid.Column="2" Grid.Row="0">
+                    <StackPanel HorizontalAlignment="Center">
+
+                        <TextBlock Text="Motor torque" HorizontalAlignment="Center" Margin="0,0,0,8" FontWeight="SemiBold" Style="{StaticResource AppTextBlockStyle}"/>
+
+                        <dxga:CircularGaugeControl Width="260" Height="180">
+
+                            <dxga:CircularGaugeControl.Scales>
+                                <dxga:ArcScale StartValue="0"
+                                               EndValue="100"
+                                               StartAngle="-180" EndAngle="0"
+                                               MajorIntervalCount="5" MinorIntervalCount="4">
+
+                                    <dxga:ArcScale.LabelOptions>
+                                        <dxga:ArcScaleLabelOptions ShowFirst="True" Orientation="LeftToRight"/>
+                                    </dxga:ArcScale.LabelOptions>
+
+                                    <!-- Стрелка -->
+                                    <dxga:ArcScale.Needles>
+                                        <dxga:ArcScaleNeedle Value="{Binding THmi, Mode=OneWay}" />
+                                    </dxga:ArcScale.Needles>
+
+                                </dxga:ArcScale>
+                            </dxga:CircularGaugeControl.Scales>
+
+                        </dxga:CircularGaugeControl>
+
+                        <TextBlock HorizontalAlignment="Center" Margin="0,0,0,0" FontSize="22" FontWeight="SemiBold" Text="{Binding THmi, StringFormat={}{0:0} %}" />
+
+                    </StackPanel>
+                </dxlc:LayoutItem>
+
+                <!-- ====== Motor power supply gauge ====== -->
+                <dxlc:LayoutItem Margin="0,0,0,0" Grid.Column="4" Grid.Row="0">
+                    <StackPanel HorizontalAlignment="Center">
+
+                        <TextBlock Text="Motor frequency" HorizontalAlignment="Center" Margin="0,0,0,8" FontWeight="SemiBold" Style="{StaticResource AppTextBlockStyle}"/>
+
+                        <dxga:CircularGaugeControl Width="260" Height="180">
+
+                            <dxga:CircularGaugeControl.Scales>
+                                <dxga:ArcScale StartValue="0"
+                                               EndValue="100"
+                                               StartAngle="-180" EndAngle="0"
+                                               MajorIntervalCount="5" MinorIntervalCount="4">
+
+                                    <dxga:ArcScale.LabelOptions>
+                                        <dxga:ArcScaleLabelOptions ShowFirst="True" Orientation="LeftToRight"/>
+                                    </dxga:ArcScale.LabelOptions>
+
+                                    <!-- Стрелка -->
+                                    <dxga:ArcScale.Needles>
+                                        <dxga:ArcScaleNeedle Value="{Binding FHmi, Mode=OneWay}" />
+                                    </dxga:ArcScale.Needles>
+
+                                </dxga:ArcScale>
+                            </dxga:CircularGaugeControl.Scales>
+
+                        </dxga:CircularGaugeControl>
+
+                        <TextBlock HorizontalAlignment="Center" Margin="0,0,0,0" FontSize="22" FontWeight="SemiBold" Text="{Binding FHmi, StringFormat={}{0:0.0} Hz}" />
+
+                    </StackPanel>
+                </dxlc:LayoutItem>
+
+            </Grid>
+
+        </dxlc:LayoutGroup>
+
+        <!-- ====== блок RemoteMode Settings ====== -->
+        <dxlc:LayoutGroup x:Name="RemoteMode" Header="Remote mode" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical" IsCollapsible="True">
+
+            <!-- ====== Setting the rotation speed ====== -->
+            <dxlc:LayoutItem>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- addition left comment -->
+                    <TextBlock Text="max" Style="{StaticResource AppTextBlockStyle}"/>
+                    <!-- field -->
+                    <dxe:TextEdit Tag="OutMax" Width="80" Margin="6,0,20,0" EditValue="{Binding OutMax, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!-- unit -->
+                    <TextBlock Text="%" Style="{StaticResource AppTextBlockStyle}"/>
+                </StackPanel>
+            </dxlc:LayoutItem>
+
+            <dxlc:LayoutItem  Label="Setting the rotation speed">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- addition left comment -->
+                    <TextBlock Text="" Style="{StaticResource AppTextBlockStyle}"/>
+                    <!-- field -->
+                    <dxe:TextEdit Tag="RemoteSet" Width="80" Margin="6,0,20,0" EditValue="{Binding RemoteSet, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!-- unit -->
+                    <TextBlock Text="%" Style="{StaticResource AppTextBlockStyle}"/>
+                </StackPanel>
+            </dxlc:LayoutItem>
+
+            <dxlc:LayoutItem>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!--addition left comment-->
+                    <TextBlock Text="min" Style="{StaticResource AppTextBlockStyle}"/>
+                    <!--field-->
+                    <dxe:TextEdit Tag="OutMin" Width="80" Margin="6,0,20,0" EditValue="{Binding OutMin, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" 
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!--unit-->
+                    <TextBlock Text="%" Style="{StaticResource AppTextBlockStyle}"/>
+                </StackPanel>
+            </dxlc:LayoutItem>
+
+
+            <!--====== Acceleration time ======-->
+            <dxlc:LayoutItem Label="Acceleration time" Margin="0,20,0,0">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!--field-->
+                    <dxe:TextEdit Tag="RemoteAcc" Width="80" Margin="6,0,11,0" EditValue="{Binding RemoteAcc, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!--unit-->
+                    <TextBlock Text="sec" Style="{StaticResource AppTextBlockStyle}"/>
+                </StackPanel>
+            </dxlc:LayoutItem>
+
+
+            <!--====== Deceleration time ======-->
+            <dxlc:LayoutItem Label="Deceleration time" Margin="0,0,0,0">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!--field-->
+                    <dxe:TextEdit Tag="RemoteDec" Width="80" Margin="6,0,11,0" EditValue="{Binding RemoteDec, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!--unit-->
+                    <TextBlock Text="sec" Style="{StaticResource AppTextBlockStyle}"/>
+                </StackPanel>
+            </dxlc:LayoutItem>
+
+
+        </dxlc:LayoutGroup>
+
+        <!--====== блок LocalMode Settings ======-->
+        <dxlc:LayoutGroup x:Name="LocalMode" Header="Local mode" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical" IsCollapsible="True">
+
+            <!--====== Setting the rotation speed ======-->
+            <dxlc:LayoutItem>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!--addition left comment-->
+                    <TextBlock Text="max" Style="{StaticResource AppTextBlockStyle}"/>
+                    <!--field-->
+                    <dxe:TextEdit Tag="NMax" Width="80" Margin="6,0,6,0" EditValue="{Binding NMax, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!--unit-->
+                    <TextBlock Text="rpm" Style="{StaticResource AppTextBlockStyle}"/>
+                </StackPanel>
+            </dxlc:LayoutItem>
+
+            <dxlc:LayoutItem  Label="Setting the rotation speed">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!--addition left comment-->
+                    <TextBlock Text="" Style="{StaticResource AppTextBlockStyle}"/>
+                    <!--field-->
+                    <dxe:TextEdit Tag="LocalSet" Width="80" Margin="6,0,20,0" EditValue="{Binding LocalSet, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!--unit-->
+                    <TextBlock Text="%" Style="{StaticResource AppTextBlockStyle}"/>
+                </StackPanel>
+            </dxlc:LayoutItem>
+
+
+            <!--====== Acceleration time ======-->
+            <dxlc:LayoutItem Label="Acceleration time" Margin="0,20,0,0">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!--field-->
+                    <dxe:TextEdit Tag="LocalAcc" Width="80" Margin="6,0,11,0" EditValue="{Binding LocalAcc, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!--unit-->
+                    <TextBlock Text="sec" Style="{StaticResource AppTextBlockStyle}"/>
+                </StackPanel>
+            </dxlc:LayoutItem>
+
+
+            <!--====== Deceleration time ======-->
+            <dxlc:LayoutItem Label="Deceleration time" Margin="0,0,0,0">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!--field-->
+                    <dxe:TextEdit Tag="LocalDec" Width="80" Margin="6,0,11,0" EditValue="{Binding LocalDec, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!--unit-->
+                    <TextBlock Text="sec" Style="{StaticResource AppTextBlockStyle}"/>
+                </StackPanel>
+            </dxlc:LayoutItem>
+
+
+        </dxlc:LayoutGroup>
+
+
+    </dxlc:LayoutGroup>
+</param:ParamViewBase>
+
+
+<!-- ====== Rotational of the frequency converter ====== --><!--
+<dxlc:LayoutItem Label="Rotational of the frequency converter">
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        --><!-- addition left comment --><!--
+        <TextBlock Text="real" Style="{StaticResource AppTextBlockStyle}"/>
+        --><!-- field --><!--
+        <dxe:TextEdit Tag="NHmi" Width="80" Margin="6,0,20,0" EditValue="{Binding NHmi, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"  IsReadOnly="True"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+        --><!-- unit --><!--
+        <TextBlock Text="%" Style="{StaticResource AppTextBlockStyle}"/>
+    </StackPanel>
+</dxlc:LayoutItem>
+
+<dxlc:LayoutItem>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        --><!-- addition left comment --><!--
+        <TextBlock Text="real" Style="{StaticResource AppTextBlockStyle}"/>
+        --><!-- field --><!--
+        <dxe:TextEdit Tag="RpmHmi" Width="80" Margin="6,0,6,0" EditValue="{Binding RpmHmi, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"  IsReadOnly="True"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+        --><!-- unit --><!--
+        <TextBlock Text="rpm" Style="{StaticResource AppTextBlockStyle}"/>
+    </StackPanel>
+</dxlc:LayoutItem>
+
+<dxlc:LayoutItem>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        --><!-- addition left comment --><!--
+        <TextBlock Text="nominal" Style="{StaticResource AppTextBlockStyle}" FontWeight="SemiBold" />
+        --><!-- field --><!--
+        <dxe:TextEdit Tag="Nsp" Width="80" Margin="6,0,6,0" EditValue="{Binding Nsp, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" 
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+        --><!-- unit --><!--
+        <TextBlock Text="rpm" Style="{StaticResource AppTextBlockStyle}"/>
+    </StackPanel>
+</dxlc:LayoutItem>-->
+
+<!-- ====== Motor current from VFD ====== --><!--
+<dxlc:LayoutItem Label="Motor current from VFD" Margin="0,20,0,0">
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        --><!-- addition left comment --><!--
+        <TextBlock Text="" Style="{StaticResource AppTextBlockStyle}"/>
+        --><!-- field --><!--
+        <dxe:TextEdit Tag="IHmi" Width="80" Margin="6,0,22,0" EditValue="{Binding IHmi, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+        --><!-- unit --><!--
+        <TextBlock Text="A" Style="{StaticResource AppTextBlockStyle}"/>
+    </StackPanel>
+</dxlc:LayoutItem>
+
+<dxlc:LayoutItem>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        --><!-- addition left comment --><!--
+        <TextBlock Text="max - Cli" Style="{StaticResource AppTextBlockStyle}" FontWeight="SemiBold"/>
+        --><!-- field --><!--
+        <dxe:TextEdit Tag="Cli" Width="80" Margin="6,0,22,0" EditValue="{Binding Cli, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" 
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+        --><!-- unit --><!--
+        <TextBlock Text="A" Style="{StaticResource AppTextBlockStyle}"/>
+    </StackPanel>
+</dxlc:LayoutItem>
+
+
+--><!-- ====== Motor torque ====== --><!--
+<dxlc:LayoutItem Label="Motor torque" Margin="0,20,0,0">
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        --><!-- field --><!--
+        <dxe:TextEdit Tag="THmi" Width="80" Margin="6,0,20,0" EditValue="{Binding THmi, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"  IsReadOnly="True"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+        --><!-- unit --><!--
+        <TextBlock Text="%" Style="{StaticResource AppTextBlockStyle}"/>
+    </StackPanel>
+</dxlc:LayoutItem>
+
+
+--><!-- ====== Motor power supply frequency ====== --><!--
+<dxlc:LayoutItem Label="Motor power supply frequency" Margin="0,0,0,0">
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        --><!-- field --><!--
+        <dxe:TextEdit Tag="FHmi" Width="80" Margin="6,0,15,0" EditValue="{Binding FHmi, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"  IsReadOnly="True"
+                          HorizontalAlignment="Right" Style="{StaticResource AppBaseEditStyle}" PreviewKeyDown="ParamEditable_EditValueChanged"/>
+        --><!-- unit --><!--
+        <TextBlock Text="Hz" Style="{StaticResource AppTextBlockStyle}"/>
+    </StackPanel>
+</dxlc:LayoutItem>-->

@@ -1,0 +1,572 @@
+﻿<local:ParamViewBase x:Class="TechEquipments.Views.Param.VGA_ELParamView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:TechEquipments.Views.Param"
+             xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
+             xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
+             xmlns:dxc="http://schemas.devexpress.com/winfx/2008/xaml/charts"
+             xmlns:dxlc="http://schemas.devexpress.com/winfx/2008/xaml/layoutcontrol"
+             xmlns:dxch="clr-namespace:DevExpress.Xpf.Charts;assembly=DevExpress.Xpf.Charts.v21.2"
+             xmlns:conv="clr-namespace:TechEquipments"
+             xmlns:common="clr-namespace:TechEquipments.Views.Common"
+             MinHeight="260" MinWidth="520">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <conv:BoolToGridLengthConverter x:Key="BoolToGridLength"/>
+        <conv:DiDoValueToBrushConverter x:Key="DiDoValueToBrush"/>
+        <conv:DiDoValueToTextConverter x:Key="DiDoValueToText"/>
+        <conv:PlcDouble01ToBoolConverter x:Key="PlcDouble01ToBool"/>
+        <conv:ParamSettingsPageToVisibilityConverter x:Key="ParamPageToVis"/>
+        <conv:ObjectNullToVisibilityConverter x:Key="NullToVis"/>
+
+        <!-- Конвертер текста состояния VGD -->
+        <conv:VGDStateToTextConverter x:Key="StateToText"/>
+    </UserControl.Resources>
+
+
+    <dxlc:LayoutControl Margin="0" DataContext="{Binding Param}">
+        <dxlc:LayoutGroup View="Group" GroupBoxDisplayMode="Light">
+
+            <!-- ================= LEFT BLOCK ================= -->
+            <dxlc:LayoutGroup View="GroupBox" GroupBoxDisplayMode="Light" Width="180" HorizontalAlignment="Left">
+
+                <dxlc:LayoutGroup Orientation="Vertical">
+
+                    <!-- Общая тревога -->
+                    <dxlc:LayoutGroup View="Group">
+                        <TextBlock Text="Alarm active!"
+                                   Style="{StaticResource AlarmHealthBlinkTextStyle}"
+                                   Visibility="{Binding Alarm, Converter={StaticResource BoolToVis}}"/>
+                    </dxlc:LayoutGroup>
+
+                    <!-- Авария открытия -->
+                    <dxlc:LayoutGroup View="Group">
+                        <TextBlock Text="Open alarm!"
+                                   Style="{StaticResource AlarmHealthBlinkTextStyle}"
+                                   Visibility="{Binding OpenAl, Converter={StaticResource BoolToVis}}"/>
+                    </dxlc:LayoutGroup>
+
+                    <!-- Авария закрытия -->
+                    <dxlc:LayoutGroup View="Group">
+                        <TextBlock Text="Close alarm!"
+                                   Style="{StaticResource AlarmHealthBlinkTextStyle}"
+                                   Visibility="{Binding CloseAl, Converter={StaticResource BoolToVis}}"/>
+                    </dxlc:LayoutGroup>
+
+                    <!-- State -->
+                    <dxlc:LayoutGroup Header="LayoutGroup" View="Group" Margin="0,0,0,6">
+                        <dxe:TextEdit Tag="State"
+                                      Width="156"
+                                      HorizontalAlignment="Center"
+                                      HorizontalContentAlignment="Center"
+                                      EditValue="{Binding State, Converter={StaticResource StateToText}, Mode=OneWay}"
+                                      Style="{StaticResource StateTextEditStyle}"/>
+                    </dxlc:LayoutGroup>
+
+                    <!-- Man -->
+                    <dxlc:LayoutGroup Header="LayoutGroup" View="Group">
+
+                        <dxe:TextEdit Tag="Man"
+                                      Width="80"
+                                      HorizontalAlignment="Center" HorizontalContentAlignment="Center"
+                                      EditValue="{Binding Man, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                      PreviewKeyDown="ParamEditable_EditValueChanged">
+
+                            <dxe:TextEdit.Style>
+                                <Style TargetType="{x:Type dxe:TextEdit}" BasedOn="{StaticResource AppBaseEditStyle}">
+                                    <!-- По умолчанию (Mode=false => Man): редактируемый -->
+                                    <Setter Property="IsReadOnly" Value="False"/>
+
+                                    <Style.Triggers>
+                                        <!-- Mode=true => Auto: запрещаем редактирование и "затемняем" -->
+                                        <DataTrigger Binding="{Binding Mode}" Value="True">
+                                            <Setter Property="IsReadOnly" Value="True"/>
+                                            <Setter Property="Background" Value="#FFE6E6E6"/>
+                                            <Setter Property="IsTabStop" Value="False"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </dxe:TextEdit.Style>
+
+                        </dxe:TextEdit>
+
+                    </dxlc:LayoutGroup>
+
+
+                    <Grid>
+
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="20"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Grid.ColumnDefinitions >
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="30"/>
+                            <ColumnDefinition Width="30"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- ProgressBar and scale - Left -->
+                        <Grid Grid.Column="1" Grid.Row="1" x:Name="BarLeft" Visibility="{Binding DataContext.Trend.IsSettingsVisible, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <Border BorderBrush="Black" BorderThickness="1">
+                                <dxe:ProgressBarEdit
+                                    Value="{Binding CurrPos, Mode=OneWay}" 
+                                    Minimum="{Binding OutMin}"
+                                    Maximum="{Binding OutMax}"
+                                    ContentDisplayMode="Value" 
+                                    DisplayFormatString="CurrPos:   {0}"
+                                    Orientation="Vertical"
+                                    Width="30"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Stretch"
+                                    ProgressBrush="DimGray"/>
+                            </Border>
+                        </Grid>
+
+                        <Rectangle Grid.Column="0" Grid.Row="1" Height="1" Width="20" HorizontalAlignment="Right" VerticalAlignment="Top" Fill="Black"/>
+                        <TextBlock Grid.Column="0" Grid.Row="1" Margin="0,0,8,0" HorizontalAlignment="Right" VerticalAlignment="Top" Style="{StaticResource AppTextBlockStyle}" Text="{Binding OutMax}"/>
+                        <Rectangle Grid.Column="0" Grid.Row="1" Height="1" Width="10" HorizontalAlignment="Right" VerticalAlignment="Center" Fill="Black"/>
+                        <Rectangle Grid.Column="0" Grid.Row="1" Height="1" Width="20" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="Black"/>
+                        <TextBlock Grid.Column="0" Grid.Row="1" Margin="0,0,8,0" HorizontalAlignment="Right" VerticalAlignment="Bottom" Style="{StaticResource AppTextBlockStyle}" Text="{Binding OutMin}"/>
+
+                        <!-- ProgressBar and scale - Right -->
+                        <Grid Grid.Column="2" Grid.Row="1" x:Name="BarRight">
+                            <Border BorderBrush="Black" BorderThickness="1">
+                                <dxe:ProgressBarEdit
+                                    Value="{Binding R, Mode=OneWay}" 
+                                    Minimum="{Binding OutMin}"
+                                    Maximum="{Binding OutMax}"
+                                    ContentDisplayMode="Value" 
+                                    DisplayFormatString="R:   {0}"
+                                    Orientation="Vertical"
+                                    Width="30"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Stretch"
+                                    ProgressBrush="#4F81BD"/>
+                            </Border>
+                        </Grid>
+
+                        <Rectangle Grid.Column="3" Grid.Row="1" Height="1" Width="20" HorizontalAlignment="Left" VerticalAlignment="Top" Fill="Black" />
+                        <TextBlock Grid.Column="3" Grid.Row="1" Margin="8,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Style="{StaticResource AppTextBlockStyle}" Text="{Binding OutMax}" />
+                        <Rectangle Grid.Column="3" Grid.Row="1" Height="1" Width="10" HorizontalAlignment="Left" VerticalAlignment="Center" Fill="Black" />
+                        <Rectangle Grid.Column="3" Grid.Row="1" Height="1" Width="20" HorizontalAlignment="Left" VerticalAlignment="Bottom" Fill="Black" />
+                        <TextBlock Grid.Column="3" Grid.Row="1" Margin="8,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Bottom" Style="{StaticResource AppTextBlockStyle}" Text="{Binding OutMin}" />
+
+                    </Grid>
+
+                    <!-- Unit + Mode (Man/Auto) -->
+                    <dxlc:LayoutGroup Header="LayoutGroup" View="Group" VerticalAlignment="Bottom">
+                        <StackPanel HorizontalAlignment="Center">
+
+                            <TextBlock Text="{Binding Unit}" HorizontalAlignment="Center" Style="{StaticResource AppTextBlockStyle}"/>
+
+                            <!-- Mode: false = Man, true = Auto -->
+                            <ToggleButton Tag="Mode"
+                                          Width="120" Height="40" Margin="0,8,0,0" FontWeight="Bold"
+                                          HorizontalAlignment="Center"
+                                          IsChecked="{Binding Mode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          Click="ParamEditable_ToggleClick">
+
+                                <ToggleButton.Style>
+                                    <Style TargetType="{x:Type ToggleButton}">
+                                        <Setter Property="Content" Value="Manual"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter Property="Content" Value="Auto"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ToggleButton.Style>
+
+                            </ToggleButton>
+
+                        </StackPanel>
+                    </dxlc:LayoutGroup>
+
+                </dxlc:LayoutGroup>
+
+            </dxlc:LayoutGroup>
+
+            <!-- ================= CENTER BLOCK ================= -->
+            <dxlc:LayoutGroup Orientation="Vertical" HorizontalAlignment="Stretch">
+
+                <!-- ====== CHART (по умолчанию виден) ====== -->
+                <dxlc:LayoutItem
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Visibility="{Binding DataContext.Trend.IsChartVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+
+                    <!-- Trend chart (DevExpress WPF Charts).
+                         IMPORTANT:
+                         - VisualRange (AxisXMin/AxisXMax) = текущая видимая область.
+                         - WholeRange  (AxisXWholeMin/AxisXWholeMax) = весь диапазон загруженных данных.
+                           WholeRange должен быть шире VisualRange, чтобы работали scrollbars/пан.
+                    -->
+                    <dxc:ChartControl DataSource="{Binding DataContext.Trend.Points, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      BoundDataChanged="ParamChart_BoundDataChanged"
+                                      CustomDrawCrosshair="Chart_CustomDrawCrosshair"
+                                      IsManipulationEnabled="True">
+                        <dxc:ChartControl.Diagram>
+                            <dxc:XYDiagram2D
+                                SeriesDataMember="Series"
+                                EnableAxisXNavigation="True"
+                                EnableAxisYNavigation="False"
+                                Scroll="ParamChart_DiagramScroll"
+                                Zoom="ParamChart_DiagramZoom">
+
+                                <dxc:XYDiagram2D.NavigationOptions>
+                                    <dxc:NavigationOptions UseMouse="True" UseScrollBars="True" UseKeyboard="True" UseTouchDevice="True"/>
+                                </dxc:XYDiagram2D.NavigationOptions>
+
+                                <!-- AxisX -->
+                                <dxc:XYDiagram2D.AxisX>
+                                    <dxc:AxisX2D>
+
+                                        <dxc:AxisX2D.VisualRange>
+                                            <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
+                                                MinValue="{Binding DataContext.Trend.AxisXMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                MaxValue="{Binding DataContext.Trend.AxisXMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        </dxc:AxisX2D.VisualRange>
+
+                                        <dxc:AxisX2D.WholeRange>
+                                            <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
+                                                MinValue="{Binding DataContext.Trend.AxisXWholeMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                MaxValue="{Binding DataContext.Trend.AxisXWholeMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        </dxc:AxisX2D.WholeRange>
+
+                                        <dxc:AxisX2D.DateTimeScaleOptions>
+                                            <dxc:ContinuousDateTimeScaleOptions GridAlignment="Second" AutoGrid="True"/>
+                                        </dxc:AxisX2D.DateTimeScaleOptions>
+
+                                    </dxc:AxisX2D>
+                                </dxc:XYDiagram2D.AxisX>
+
+                                <!-- AxisY: -->
+                                <dxc:XYDiagram2D.AxisY>
+                                    <dxc:AxisY2D>
+                                        <dxc:AxisY2D.VisualRange>
+                                            <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
+                                                       MinValue="{Binding DataContext.Trend.AxisYMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       MaxValue="{Binding DataContext.Trend.AxisYMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        </dxc:AxisY2D.VisualRange>
+                                        <dxc:AxisY2D.WholeRange>
+                                            <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
+                                                       MinValue="{Binding DataContext.Trend.AxisYMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       MaxValue="{Binding DataContext.Trend.AxisYMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        </dxc:AxisY2D.WholeRange>
+                                    </dxc:AxisY2D>
+                                </dxc:XYDiagram2D.AxisY>
+
+                                <!-- ====== Series ====== -->
+                                <dxc:XYDiagram2D.SeriesTemplate>
+                                    <dxc:SplineAreaSeries2D
+                                        ArgumentDataMember="Time"
+                                        ValueDataMember="Value"
+                                        ArgumentScaleType="DateTime"
+                                        MarkerVisible="False"
+                                        LineTension="0.0">
+                                    </dxc:SplineAreaSeries2D>
+                                </dxc:XYDiagram2D.SeriesTemplate>
+
+                            </dxc:XYDiagram2D>
+                        </dxc:ChartControl.Diagram>
+                    </dxc:ChartControl>
+
+                </dxlc:LayoutItem>
+
+                <!-- ====== SETTINGS (PLC / Chanel / Alarm) ====== -->
+                <dxlc:LayoutItem Visibility="{Binding DataContext.Trend.IsSettingsVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+
+                    <!-- вложенный LayoutControl, чтобы можно было показывать/скрывать целиком -->
+                    <dxlc:LayoutControl Margin="-12">
+
+                        <dxlc:LayoutGroup Orientation="Vertical" View="Group" GroupBoxDisplayMode="Light">
+
+                            <!-- ====== твой блок PLC Settings ====== -->
+                            <dxlc:LayoutGroup x:Name="PlcSettingsGroup"
+                                                Header="PLC settings"
+                                                View="GroupBox"
+                                                HorizontalAlignment="Stretch"
+                                                Orientation="Vertical"
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
+                                                                    Converter={StaticResource ParamPageToVis},
+                                                                    ConverterParameter=Plc}">
+                                <!-- ====== Full running time ====== -->
+                                <dxlc:LayoutItem Label="Full running time">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <dxe:TextEdit Tag="TimeOpening"
+                                                      Width="80" HorizontalAlignment="Right"
+                                                      EditValue="{Binding TimeOpening, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      Style="{StaticResource AppBaseEditStyle}"
+                                                      PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                        <!-- unit -->
+                                        <TextBlock Text="sec" Margin="6,0,0,0" VerticalAlignment="Center" Style="{StaticResource AppTextBlockStyle}"/>
+                                    </StackPanel>
+                                </dxlc:LayoutItem>
+
+                                <!-- ====== Availability of limit switches ====== -->
+                                <dxlc:LayoutGroup Orientation="Horizontal">
+                                    <TextBlock Text="Availability of limit switches" VerticalAlignment="Center" Style="{StaticResource AppTextBlockStyle}"/>
+
+                                    <dxlc:LayoutItem HorizontalAlignment="Right" Margin="0,0,27,0">
+                                        <dxe:ToggleSwitchEdit Tag="SQEn"
+                                                                Width="80"
+                                                                HorizontalAlignment="Left"
+                                                                UncheckedStateContent="Off"
+                                                                CheckedStateContent="On"
+                                                                IsChecked="{Binding SQEn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"                                                                
+                                                                EditValueChanged="ParamEditable_EditValueChanged"
+                                                                Style="{StaticResource AppBaseEditStyle}" />
+                                    </dxlc:LayoutItem>
+                                </dxlc:LayoutGroup>
+
+                                <!-- ====== Availability of an actuator ====== -->
+                                <dxlc:LayoutGroup Orientation="Horizontal">
+                                    <TextBlock Text="Availability of an actuator" VerticalAlignment="Center" Style="{StaticResource AppTextBlockStyle}"/>
+
+                                    <dxlc:LayoutItem HorizontalAlignment="Right" Margin="0,0,27,0">
+                                        <dxe:ToggleSwitchEdit Tag="ActuatorEn"
+                                                                Width="80"
+                                                                HorizontalAlignment="Left"
+                                                                UncheckedStateContent="Off"
+                                                                CheckedStateContent="On"
+                                                                IsChecked="{Binding ActuatorEn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"                                                                
+                                                                EditValueChanged="ParamEditable_EditValueChanged"
+                                                                Style="{StaticResource AppBaseEditStyle}" />
+                                    </dxlc:LayoutItem>
+                                </dxlc:LayoutGroup>
+
+                            </dxlc:LayoutGroup>
+
+
+                            <!-- ====== DI settings ====== -->
+                            <dxlc:LayoutGroup x:Name="DiSettingsGroup"
+                                                Header="DI chanels"
+                                                View="GroupBox"
+                                                HorizontalAlignment="Stretch"
+                                                Orientation="Vertical"
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage,
+                                                                    RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
+                                                                    Converter={StaticResource ParamPageToVis},
+                                                                    ConverterParameter=DiDo}">
+
+                                <dxlc:LayoutItem>
+                                    <ScrollViewer Height="215" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsControl ItemsSource="{Binding DataContext.ParamDiRows, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="2">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="105"/>
+                                                            <ColumnDefinition Width="40"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- "{Equipment}: {Description}" -->
+                                                        <TextBlock Grid.Column="0"
+                                                                   Text="{Binding Title}"
+                                                                   VerticalAlignment="Center"
+                                                                   TextWrapping="Wrap"
+                                                                   Style="{StaticResource AppTextBlockStyle}"/>
+
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+
+                                                            <!-- Forced label -->
+                                                            <TextBlock Margin="0,0,6,0"
+                                                                       VerticalAlignment="Center"
+                                                                       Style="{StaticResource DIDOForcedBlinkTextStyle}"/>
+
+                                                            <!-- прямоугольник Value -->
+                                                            <Border Grid.Column="1"
+                                                                    Width="54"
+                                                                    Height="24"
+                                                                    Margin="0,2,0,0"
+                                                                    BorderBrush="Black"
+                                                                    BorderThickness="1"
+                                                                    Background="{Binding Value, Converter={StaticResource DiDoValueToBrush}}"
+                                                                    VerticalAlignment="Center"
+                                                                    Cursor="Hand"
+                                                                    ToolTip="Go to this equipment"
+                                                                    MouseLeftButtonUp="DiDoValue_MouseLeftButtonUp">
+                                                                <TextBlock Text="{Binding Value, Converter={StaticResource DiDoValueToText}}"
+                                                                    HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center"
+                                                                    FontWeight="SemiBold"/>
+                                                            </Border>
+
+                                                        </StackPanel>
+
+                                                        <!-- chanel -->
+                                                        <TextBlock Grid.Column="2"
+                                                                   Text="{Binding ChanelShort}"
+                                                                   VerticalAlignment="Center"
+                                                                   HorizontalAlignment="Right"
+                                                                   Style="{StaticResource AppTextBlockStyle}"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </dxlc:LayoutItem>
+                            </dxlc:LayoutGroup>
+
+                            <!-- ====== DO settings ====== -->
+                            <dxlc:LayoutGroup x:Name="DoSettingsGroup"
+                                                Header="DO chanels"
+                                                View="GroupBox"
+                                                HorizontalAlignment="Stretch"
+                                                Orientation="Vertical"
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage,
+                                                                    RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
+                                                                    Converter={StaticResource ParamPageToVis},
+                                                                    ConverterParameter=DiDo}">
+
+                                <dxlc:LayoutItem>
+                                    <ScrollViewer Height="215" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsControl ItemsSource="{Binding DataContext.ParamDoRows, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="2">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="105"/>
+                                                            <ColumnDefinition Width="40"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- "{Equipment}: {Description}" -->
+                                                        <TextBlock Grid.Column="0"
+                                                                   Text="{Binding Title}"
+                                                                   VerticalAlignment="Center"
+                                                                   TextWrapping="Wrap"
+                                                                   Style="{StaticResource AppTextBlockStyle}"/>
+
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+
+                                                            <!-- Forced label -->
+                                                            <TextBlock Margin="0,0,6,0"
+                                                                       VerticalAlignment="Center"
+                                                                       Style="{StaticResource DIDOForcedBlinkTextStyle}"/>
+
+                                                            <!-- прямоугольник Value -->
+                                                            <Border Grid.Column="1"
+                                                                    Width="54"
+                                                                    Height="25"
+                                                                    Margin="0,2,0,0"
+                                                                    BorderBrush="Black"
+                                                                    BorderThickness="1"
+                                                                    Background="{Binding Value, Converter={StaticResource DiDoValueToBrush}}"
+                                                                    VerticalAlignment="Center"
+                                                                    Cursor="Hand"
+                                                                    ToolTip="Go to this equipment"
+                                                                    MouseLeftButtonUp="DiDoValue_MouseLeftButtonUp">
+                                                                <TextBlock Text="{Binding Value, Converter={StaticResource DiDoValueToText}}"
+                                                                           HorizontalAlignment="Center"
+                                                                           VerticalAlignment="Center"
+                                                                           FontWeight="SemiBold"/>
+                                                            </Border>
+
+                                                        </StackPanel>
+
+                                                        <!-- chanel -->
+                                                        <TextBlock Grid.Column="2"
+                                                                    Text="{Binding ChanelShort}"
+                                                                    VerticalAlignment="Center"
+                                                                    HorizontalAlignment="Right"
+                                                                    Style="{StaticResource AppTextBlockStyle}"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </dxlc:LayoutItem>
+                            </dxlc:LayoutGroup>
+
+                            <!-- ====== Alarm settings ====== -->
+                            <dxlc:LayoutGroup x:Name="AlarmSettingsGroup"
+                                                Header="Alarm settings"
+                                                View="GroupBox"
+                                                HorizontalAlignment="Stretch"
+                                                Orientation="Vertical"
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage,
+                                                                    RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
+                                                                    Converter={StaticResource ParamPageToVis},
+                                                                    ConverterParameter=Alarm}">
+
+                                <!--Alarm message signaling status-->
+                                <dxlc:LayoutItem Label="Alarm message signaling status" Margin="0,0,0,50">
+                                    <dxe:ToggleSwitchEdit Tag="AlarmEn" 
+                                                          Width="80" HorizontalAlignment="Right"
+                                                          UncheckedStateContent="Off"
+                                                          CheckedStateContent="On"
+                                                          IsChecked="{Binding AlarmEn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          EditValueChanged="ParamEditable_EditValueChanged"
+                                                          Style="{StaticResource AppBaseEditStyle}" />
+                                </dxlc:LayoutItem>
+
+                            </dxlc:LayoutGroup>
+
+                        </dxlc:LayoutGroup>
+
+                    </dxlc:LayoutControl>
+
+                </dxlc:LayoutItem>
+
+            </dxlc:LayoutGroup>
+
+            <!-- ================= RIGHT BLOCK (buttons) ================= -->
+            <dxlc:LayoutGroup View="Group" GroupBoxDisplayMode="Light"
+                  Header=""
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Stretch">
+
+                <!-- Один LayoutItem, внутри Grid с "пружиной" -->
+                <dxlc:LayoutItem VerticalAlignment="Stretch">
+                    <Grid VerticalAlignment="Stretch">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <!-- верхние кнопки -->
+                            <RowDefinition Height="*"/>
+                            <!-- пружина -->
+                            <RowDefinition Height="Auto"/>
+                            <!-- нижняя кнопка -->
+                        </Grid.RowDefinitions>
+
+                        <!-- Верх: Chart + Params -->
+                        <common:ParamPageButtons Grid.Row="0"/>
+
+                        <!-- Низ: + / - / Live-History -->
+                        <StackPanel Grid.Row="2" Orientation="Vertical" VerticalAlignment="Bottom">
+
+                            <dx:SimpleButton Padding="0"
+                                             GlyphWidth="40" GlyphHeight="40"
+                                             Glyph="{dx:DXImage 'SvgImages/DiagramIcons/ZoomIn.svg'}"
+                                             ToolTip="Zoom in"
+                                             Style="{StaticResource ParamTrendHistoryZoomButtonStyle}"
+                                             Click="TrendZoomIn_Click"/>
+
+                            <dx:SimpleButton Margin="0,8,0,0" Padding="0"
+                                             GlyphWidth="40" GlyphHeight="40"
+                                             Glyph="{dx:DXImage 'SvgImages/DiagramIcons/ZoomOut.svg'}"
+                                             Click="TrendZoomOut_Click"
+                                             ToolTip="Zoom out"
+                                             Style="{StaticResource ParamTrendHistoryZoomButtonStyle}"/>
+
+                            <ToggleButton x:Name="TrendModeButton"
+                                          Margin="0,8,0,0"
+                                          Click="TrendModeToggle_Click"
+                                          Style="{StaticResource ParamTrendModeToggleStyle}"/>
+
+                        </StackPanel>
+
+                    </Grid>
+                </dxlc:LayoutItem>
+
+            </dxlc:LayoutGroup>
+
+        </dxlc:LayoutGroup>
+
+    </dxlc:LayoutControl>
+
+</local:ParamViewBase>

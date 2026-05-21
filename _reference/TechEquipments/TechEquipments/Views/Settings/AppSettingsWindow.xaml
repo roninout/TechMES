@@ -1,0 +1,74 @@
+﻿<dx:ThemedWindow x:Class="TechEquipments.Views.Settings.AppSettingsWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
+                 Title="Application settings"
+                 Width="900"
+                 Height="650"
+                 WindowStartupLocation="CenterOwner"
+                 ResizeMode="CanResize"
+                 ShowInTaskbar="False">
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Путь к редактируемому appsettings.json -->
+        <TextBlock x:Name="PathTextBlock"
+                   Grid.Row="0"
+                   TextWrapping="Wrap"
+                   FontWeight="SemiBold" />
+
+        <!-- Редактор JSON -->
+        <TextBox x:Name="EditorTextBox"
+                 Grid.Row="2"
+                 AcceptsReturn="True"
+                 AcceptsTab="True"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 TextWrapping="NoWrap"
+                 FontFamily="Consolas"
+                 FontSize="13" />
+
+        <!-- Нижняя панель: Кнопки -->
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Слева: массовая генерация QR -->
+            <dx:SimpleButton x:Name="GenerateAllQrButton"
+                             Grid.Column="0"
+                             Width="180"
+                             HorizontalAlignment="Left"
+                             Content="Generate all QR"
+                             Style="{StaticResource AppButtonStyle}"
+                             Click="GenerateAllQr_Click"/>
+
+            <!-- Справа: Apply / Cancel -->
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+                <dx:SimpleButton x:Name="ApplyButton"
+                                 Width="120"
+                                 Margin="0,0,8,0"
+                                 Content="Apply"
+                                 Style="{StaticResource AppButtonStyle}"
+                                 Click="Apply_Click"/>
+
+                <dx:SimpleButton x:Name="CancelButton"
+                                 Width="120"
+                                 Content="Cancel"
+                                 Style="{StaticResource AppButtonStyle}"
+                                 Click="Cancel_Click"/>
+            </StackPanel>
+        </Grid>
+
+    </Grid>
+</dx:ThemedWindow>

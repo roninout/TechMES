@@ -6,11 +6,17 @@ using TechMES.Web.State;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
 // Blazor Web App + Interactive Server.
 // Компоненты выполняются на сервере, а браузер общается с ними через SignalR-соединение.
 builder.Services
     .AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddAntiforgery();
 
 // Сервисы Radzen: нужны для Dialog, Notification, ContextMenu и других UI-компонентов.
 builder.Services.AddRadzenComponents();

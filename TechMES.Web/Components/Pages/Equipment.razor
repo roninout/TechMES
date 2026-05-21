@@ -27,7 +27,26 @@
                         Data="@_typeItems"
                         @bind-Value="_selectedType"
                         Change="@(_ => ApplyFilters())"
-                        Style="width: 180px;" />
+                        Style="width: 180px;">
+            <Template Context="typeItem">
+                <div style="display: flex; align-items: center;">
+                    @if (TryGetTypeGroup(typeItem, out EquipmentTypeGroup typeGroup))
+                    {
+                        <EquipmentTypeBadge TypeGroup="@typeGroup" Style="margin-right: 8px;" />
+                    }
+                    <span>@typeItem</span>
+                </div>
+            </Template>
+            <ValueTemplate Context="typeItem">
+                <div style="display: flex; align-items: center;">
+                    @if (TryGetTypeGroup(typeItem, out EquipmentTypeGroup typeGroup))
+                    {
+                        <EquipmentTypeBadge TypeGroup="@typeGroup" Style="margin-right: 8px;" />
+                    }
+                    <span>@typeItem</span>
+                </div>
+            </ValueTemplate>
+        </RadzenDropDown>
 
         <RadzenTextBox Placeholder="Search equipment..."
                        @bind-Value="_searchText"
@@ -62,8 +81,8 @@
         <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
     }
 
-    <RadzenSplitter Style="height: calc(100vh - 210px); min-height: 520px;">
-        <RadzenSplitterPane Size="46%" Min="420px">
+    <RadzenSplitter Style="height: calc(100vh - 240px); min-height: 480px;">
+        <RadzenSplitterPane Size="420px" Min="420px" Max="420px">
             @if (_treeRows.Count == 0 && !_isLoading)
             {
                 <RadzenCard>
@@ -96,29 +115,11 @@
                                     <span style="display:inline-block; width:32px;"></span>
                                 }
 
-                                <RadzenIcon Icon="@GetNodeIcon(row.Node)"
-                                            Style="font-size: 20px; margin-right: 8px; color: var(--rz-primary); vertical-align: middle;" />
+                                <EquipmentTypeBadge TypeGroup="@row.Node.TypeGroup" Style="margin-right: 8px;" />
 
                                 <span style="font-weight: 600;">@row.Node.Name</span>
 
-                                @if (row.Node.IsGroup)
-                                {
-                                    <RadzenBadge Text="Group"
-                                                 BadgeStyle="BadgeStyle.Dark"
-                                                 Style="margin-left: 8px;" />
-                                }
-                                else if (row.Node.IsEquipmentChildNode)
-                                {
-                                    <RadzenBadge Text="Child"
-                                                 BadgeStyle="BadgeStyle.Light"
-                                                 Style="margin-left: 8px;" />
-                                }
-
-                                <RadzenBadge Text="@row.Node.TypeGroup.ToString()"
-                                             BadgeStyle="@GetTypeBadgeStyle(row.Node.TypeGroup)"
-                                             Style="margin-left: 8px;" />
-
-                                <div style="margin-left:@(row.Level * 22 + 68)px; color: gray; font-size: 12px; line-height: 1.3;">
+                                <div style="margin-left:@(row.Level * 22 + TreeDescriptionBaseIndent)px; color: gray; font-size: 12px; line-height: 1.3;">
                                     @row.Node.DisplayName
                                     @if (!string.IsNullOrWhiteSpace(row.Node.Description)
                                         && !string.Equals(row.Node.Description, row.Node.DisplayName, StringComparison.OrdinalIgnoreCase))
@@ -156,8 +157,7 @@
                                             Style="color: gray;" />
                             </RadzenStack>
 
-                            <RadzenBadge Text="@_selectedEquipment.TypeGroup.ToString()"
-                                         BadgeStyle="@GetTypeBadgeStyle(_selectedEquipment.TypeGroup)" />
+                            <EquipmentTypeBadge TypeGroup="@_selectedEquipment.TypeGroup" />
                         </RadzenStack>
 
                         <RadzenFieldset Text="General">
@@ -190,6 +190,7 @@
     private const string AllStationsText = "All stations";
     private const string AllTypesText = "All types";
     private const string RootParentNodeId = "0";
+    private const int TreeDescriptionBaseIndent = 73;
 
     private List<EquipmentDto> _allEquipments = [];
     private List<TreeRow> _treeRows = [];
@@ -549,39 +550,13 @@
             StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string GetNodeIcon(EquipmentDto equipment)
+    private static bool TryGetTypeGroup(string? typeText, out EquipmentTypeGroup typeGroup)
     {
-        if (equipment.IsGroup)
-            return "folder";
+        if (Enum.TryParse(typeText, ignoreCase: true, out typeGroup))
+            return true;
 
-        return equipment.TypeGroup switch
-        {
-            EquipmentTypeGroup.Motor => "settings",
-            EquipmentTypeGroup.ATV => "speed",
-            EquipmentTypeGroup.AI => "show_chart",
-            EquipmentTypeGroup.DI => "login",
-            EquipmentTypeGroup.DO => "logout",
-            EquipmentTypeGroup.VGA => "valve",
-            EquipmentTypeGroup.VGD => "call_split",
-            EquipmentTypeGroup.VGA_EL => "electrical_services",
-            _ => "precision_manufacturing"
-        };
-    }
-
-    private static BadgeStyle GetTypeBadgeStyle(EquipmentTypeGroup typeGroup)
-    {
-        return typeGroup switch
-        {
-            EquipmentTypeGroup.Motor => BadgeStyle.Success,
-            EquipmentTypeGroup.ATV => BadgeStyle.Warning,
-            EquipmentTypeGroup.AI => BadgeStyle.Info,
-            EquipmentTypeGroup.DI => BadgeStyle.Light,
-            EquipmentTypeGroup.DO => BadgeStyle.Light,
-            EquipmentTypeGroup.VGA => BadgeStyle.Primary,
-            EquipmentTypeGroup.VGD => BadgeStyle.Secondary,
-            EquipmentTypeGroup.Equipment => BadgeStyle.Dark,
-            _ => BadgeStyle.Light
-        };
+        typeGroup = EquipmentTypeGroup.Unknown;
+        return false;
     }
 
     private static string GetNodeId(EquipmentDto equipment)

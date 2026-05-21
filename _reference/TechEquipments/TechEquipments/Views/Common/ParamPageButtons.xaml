@@ -1,0 +1,126 @@
+﻿<UserControl x:Class="TechEquipments.Views.Common.ParamPageButtons"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
+             xmlns:conv="clr-namespace:TechEquipments"
+             xmlns:local="clr-namespace:TechEquipments"
+             xmlns:param="clr-namespace:TechEquipments.Views.Param">
+
+    <UserControl.Resources>
+        <conv:ParamModelSupportsPageToVisibilityConverter x:Key="ParamModelPageToVis"/>
+    </UserControl.Resources>
+
+    <StackPanel Orientation="Vertical"
+                VerticalAlignment="Top"
+                DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType={x:Type param:ParamTabHost}}}">
+
+        <!-- Chart -->
+        <dx:SimpleButton Width="60"
+                         Height="60"
+                         Padding="0"
+                         GlyphWidth="40"
+                         GlyphHeight="40"
+                         Tag="{x:Static local:ParamSettingsPage.None}"
+                         Click="PageButton_Click"
+                         ToolTip="Chart"
+                         Glyph="{dx:DXImage 'SvgImages/Spreadsheet/CreateScatterChartLinesAndMarkers.svg'}"
+                         Style="{StaticResource AppButtonStyle}" />
+
+        <!-- PLC -->
+        <dx:SimpleButton Width="60"
+                         Height="60"
+                         Margin="0,8,0,0"
+                         Padding="0"
+                         GlyphWidth="40"
+                         GlyphHeight="40"
+                         Tag="{x:Static local:ParamSettingsPage.Plc}"
+                         Click="PageButton_Click"
+                         ToolTip="PLC settings"
+                         Glyph="{dx:DXImage 'SvgImages/Outlook Inspired/TaskList.svg'}"
+                         Style="{StaticResource AppButtonStyle}"
+                         Visibility="{Binding CurrentParamModel,
+                                              Converter={StaticResource ParamModelPageToVis},
+                                              ConverterParameter=Plc}" />
+
+        <!-- ATV -->
+        <dx:SimpleButton Width="60"
+                         Height="60"
+                         Margin="0,8,0,0"
+                         Padding="0"
+                         GlyphWidth="40"
+                         GlyphHeight="40"
+                         Tag="{x:Static local:ParamSettingsPage.Atv}"
+                         Click="PageButton_Click"
+                         ToolTip="ATV settings"
+                         Glyph="{dx:DXImage 'SvgImages/Dashboards/Gauges.svg'}"
+                         Style="{StaticResource AppButtonStyle}"
+                         Visibility="{Binding CurrentParamModel,
+                                              Converter={StaticResource ParamModelPageToVis},
+                                              ConverterParameter=Atv}" />
+
+        <!-- DI/DO -->
+        <dx:SimpleButton Width="60"
+                         Height="60"
+                         Margin="0,8,0,0"
+                         Padding="0"
+                         GlyphWidth="40"
+                         GlyphHeight="40"
+                         Tag="{x:Static local:ParamSettingsPage.DiDo}"
+                         Click="PageButton_Click"
+                         ToolTip="DI/DO settings"
+                         Glyph="{dx:DXImage 'SvgImages/DiagramIcons/ChangeConnectorType.svg'}"
+                         Style="{StaticResource AppButtonStyle}"
+                         Visibility="{Binding CurrentParamModel,
+                                              Converter={StaticResource ParamModelPageToVis},
+                                              ConverterParameter=DiDo}" />
+
+        <!-- Alarm -->
+        <dx:SimpleButton Width="60"
+                         Height="60"
+                         Margin="0,8,0,0"
+                         Padding="0"
+                         GlyphWidth="40"
+                         GlyphHeight="40"
+                         Tag="{x:Static local:ParamSettingsPage.Alarm}"
+                         Click="PageButton_Click"
+                         ToolTip="Alarm settings"
+                         Glyph="{dx:DXImage 'SvgImages/XAF/State_Validation_Warning.svg'}"
+                         Style="{StaticResource AppButtonStyle}"
+                         Visibility="{Binding CurrentParamModel,
+                                              Converter={StaticResource ParamModelPageToVis},
+                                              ConverterParameter=Alarm}" />
+
+        <!-- TimeWork -->
+        <dx:SimpleButton Width="60"
+                         Height="60"
+                         Margin="0,8,0,0"
+                         Padding="0"
+                         GlyphWidth="40"
+                         GlyphHeight="40"
+                         Tag="{x:Static local:ParamSettingsPage.TimeWork}"
+                         Click="PageButton_Click"
+                         ToolTip="Time work settings"
+                         Glyph="{dx:DXImage 'SvgImages/Scheduling/SwitchTimeScalesTo.svg'}"
+                         Style="{StaticResource AppButtonStyle}"
+                         Visibility="{Binding CurrentParamModel,
+                                              Converter={StaticResource ParamModelPageToVis},
+                                              ConverterParameter=TimeWork}" />
+
+        <!-- DryRun -->
+        <dx:SimpleButton Width="60"
+                         Height="60"
+                         Margin="0,8,0,0"
+                         Padding="0"
+                         GlyphWidth="40"
+                         GlyphHeight="40"
+                         Tag="{x:Static local:ParamSettingsPage.DryRun}"
+                         Click="PageButton_Click"
+                         ToolTip="DryRun settings"
+                         Glyph="{dx:DXImage 'SvgImages/Icon Builder/Travel_Walk.svg'}"
+                         Style="{StaticResource AppButtonStyle}"
+                         Visibility="{Binding CurrentParamModel,
+                                              Converter={StaticResource ParamModelPageToVis},
+                                              ConverterParameter=DryRun}" />
+
+    </StackPanel>
+</UserControl>

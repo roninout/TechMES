@@ -1,55 +1,60 @@
 @inherits LayoutComponentBase
 
 <RadzenLayout>
-    <RadzenHeader>
-        <RadzenStack Orientation="Orientation.Horizontal"
-                     AlignItems="AlignItems.Center"
-                     Gap="12px"
-                     Style="height: 56px; padding: 0 16px;">
-            <RadzenText Text="TechMES WEB" TextStyle="TextStyle.H6" />
-            <RadzenText Text="Blazor + Runtime Service" TextStyle="TextStyle.Caption" Style="color: gray;" />
-
-            <!--
-            SelectedEquipmentBlock показывает выбранное оборудование глобально.
-            Позже Info/Param/Trends будут использовать это выбранное оборудование.
-            -->
-            <SelectedEquipmentBlock />
-
-            <!--
-            RuntimeStatusBlock показывает состояние Runtime.Service:
-            - сервис онлайн/оффлайн;
-            - доступна ли БД;
-            - какой adapter используется;
-            - сколько активных сообщений.
-            -->
-            <div style="margin-left: auto;">
-                <RuntimeStatusBlock />
+    <RadzenHeader class="app-header">
+        <div class="app-header-bar">
+            <div class="app-brand">
+                <RadzenText Text="TechMES WEB" TextStyle="TextStyle.H6" />
+                <RadzenText Text="Blazor + Runtime Service"
+                            TextStyle="TextStyle.Caption"
+                            Style="color: gray;" />
             </div>
-        </RadzenStack>
-    </RadzenHeader>
 
-    <RadzenSidebar Style="width: 240px;">
-        <RadzenPanelMenu>
-            <RadzenPanelMenuItem Text="Home" Path="/" Icon="home" />
-            <RadzenPanelMenuItem Text="Equipment" Path="/equipment" Icon="precision_manufacturing" />
-            <RadzenPanelMenuItem Text="Info" Path="/info" Icon="info" />
-            <RadzenPanelMenuItem Text="Param" Path="/param" Icon="tune" />
-            <RadzenPanelMenuItem Text="Messages" Path="/messages" Icon="mail" />
-        </RadzenPanelMenu>
-    </RadzenSidebar>
+            <nav class="top-nav" aria-label="Main navigation">
+                <NavLink class="top-nav-link" href="/" Match="NavLinkMatch.All">
+                    <RadzenIcon Icon="home" />
+                    <span>Home</span>
+                </NavLink>
+
+                <NavLink class="top-nav-link" href="/equipment">
+                    <RadzenIcon Icon="precision_manufacturing" />
+                    <span>Equipment</span>
+                </NavLink>
+
+                <NavLink class="top-nav-link" href="/info">
+                    <RadzenIcon Icon="info" />
+                    <span>Info</span>
+                </NavLink>
+
+                <NavLink class="top-nav-link" href="/param">
+                    <RadzenIcon Icon="tune" />
+                    <span>Param</span>
+                </NavLink>
+
+                <NavLink class="top-nav-link" href="/messages">
+                    <RadzenIcon Icon="mail" />
+                    <span>Messages</span>
+                </NavLink>
+            </nav>
+        </div>
+    </RadzenHeader>
 
     <RadzenBody>
         <div class="page-content">
             @Body
         </div>
     </RadzenBody>
+
+    <RadzenFooter class="app-footer">
+        <div class="app-footer-bar">
+            <SelectedEquipmentBlock />
+
+            <div class="footer-spacer"></div>
+
+            <RuntimeStatusBlock />
+        </div>
+    </RadzenFooter>
 </RadzenLayout>
 
-<!--
-    Эти компоненты визуально почти не занимают место,
-    но они нужны сервисам Radzen:
-    - DialogService показывает Confirm/Alert окна;
-    - NotificationService показывает всплывающие уведомления.
--->
 <RadzenDialog />
 <RadzenNotification />

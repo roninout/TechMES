@@ -1,0 +1,40 @@
+<RadzenBadge Text="@BadgeText"
+             BadgeStyle="@BadgeStyle"
+             Style="@CombinedStyle" />
+
+@code {
+    [Parameter]
+    public EquipmentTypeGroup TypeGroup { get; set; } = EquipmentTypeGroup.Unknown;
+
+    [Parameter]
+    public string? Style { get; set; }
+
+    private const string BaseStyle =
+        "display: inline-flex; align-items: center; justify-content: center; width: 33px; min-width: 33px; height: 20px; padding: 0; font-size: 11px; line-height: 20px;";
+
+    private string CombinedStyle => string.IsNullOrWhiteSpace(Style)
+        ? BaseStyle
+        : $"{BaseStyle} {Style}";
+
+    private string BadgeText => TypeGroup switch
+    {
+        EquipmentTypeGroup.Motor => "M",
+        EquipmentTypeGroup.VGA_EL => "EL",
+        EquipmentTypeGroup.Equipment => "EQ",
+        EquipmentTypeGroup.Unknown => "?",
+        _ => TypeGroup.ToString()
+    };
+
+    private BadgeStyle BadgeStyle => TypeGroup switch
+    {
+        EquipmentTypeGroup.Motor => BadgeStyle.Success,
+        EquipmentTypeGroup.ATV => BadgeStyle.Warning,
+        EquipmentTypeGroup.AI => BadgeStyle.Info,
+        EquipmentTypeGroup.DI => BadgeStyle.Light,
+        EquipmentTypeGroup.DO => BadgeStyle.Light,
+        EquipmentTypeGroup.VGA => BadgeStyle.Primary,
+        EquipmentTypeGroup.VGD => BadgeStyle.Secondary,
+        EquipmentTypeGroup.Equipment => BadgeStyle.Dark,
+        _ => BadgeStyle.Light
+    };
+}

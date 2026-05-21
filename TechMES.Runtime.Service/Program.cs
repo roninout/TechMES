@@ -1,22 +1,21 @@
-﻿using Microsoft.AspNetCore.SignalR;
 using TechMES.Application.Equipment;
 using TechMES.Application.Messages;
 using TechMES.Application.Scada;
-using TechMES.Contracts.Messages;
-using TechMES.Contracts.Runtime;
-using TechMES.Contracts.Scada;
 using TechMES.Infrastructure.CtApi;
 using TechMES.Infrastructure.CtApi.Gateways;
 using TechMES.Infrastructure.PostgreSql;
+using TechMES.Runtime.Service.Endpoints;
 using TechMES.Runtime.Service.Equipment;
-using TechMES.Runtime.Service.Hubs;
 using TechMES.Runtime.Service.Messages;
 using TechMES.Runtime.Service.Runtime;
 using TechMES.Runtime.Service.Settings;
 using TechMES.Runtime.Service.Workers;
 
-
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
 
 // Runtime Service — будущий Windows Service.
 // Сейчас запускаем его как обычный Web API, чтобы удобно тестировать WEB ↔ Service.
@@ -72,7 +71,9 @@ else if (string.Equals(messageStorageProvider, "PostgreSql", StringComparison.Or
 }
 else
 {
-    throw new InvalidOperationException($"Неизвестный MessageStorage:Provider = '{messageStorageProvider}'. " + "Поддерживаются значения: InMemory, PostgreSql.");
+    throw new InvalidOperationException(
+        $"Неизвестный MessageStorage:Provider = '{messageStorageProvider}'. " +
+        "Поддерживаются значения: InMemory, PostgreSql.");
 }
 
 // Каталог оборудования тоже подключаем через adapter-подход.
@@ -132,258 +133,6 @@ using (var scope = app.Services.CreateScope())
     await equipmentCatalog.InitializeAsync();
 }
 
-// SignalR endpoint.
-// WEB будет подключаться сюда для live-уведомлений.
-app.MapHub<MessagesHub>("/hubs/messages");
-
-app.MapGet("/api/health", async (IConfiguration configuration, IAppRuntimeContext runtime, IMessageStore messageStore, CancellationToken ct) =>
-{
-    // Health endpoint нужен не только для проверки "процесс жив",
-    // но и для WEB-интерфейса и будущего WPF Configurator.
-    //
-    // Здесь мы проверяем:
-    // - Runtime.Service запущен;
-    // - IMessageStore отвечает;
-    // - PostgreSQL/adapter доступен;
-    // - можно получить количество активных сообщений.
-    try
-    {
-        var activeCount = await messageStore.GetActiveMessageCountAsync(ct);
-
-        return Results.Ok(new RuntimeHealthResponse
-        {
-            Status = "OK",
-            Service = "TechMES.Runtime.Service",
-            DeviceName = runtime.DeviceName,
-            UserName = runtime.UserName,
-            MachineName = runtime.MachineName,
-            AppVersion = runtime.AppVersion,
-            MessageStorageProvider = configuration["MessageStorage:Provider"] ?? "InMemory",
-            Database = "OK",
-            ActiveMessageCount = activeCount,
-            Time = DateTime.Now
-        });
-    }
-    catch (Exception ex)
-    {
-        return Results.Json(
-            new RuntimeHealthResponse
-            {
-                Status = "ERROR",
-                Service = "TechMES.Runtime.Service",
-                DeviceName = runtime.DeviceName,
-                UserName = runtime.UserName,
-                MachineName = runtime.MachineName,
-                AppVersion = runtime.AppVersion,
-                MessageStorageProvider = configuration["MessageStorage:Provider"] ?? "InMemory",
-                Database = "ERROR",
-                ActiveMessageCount = 0,
-                Time = DateTime.Now,
-                Error = ex.Message
-            },
-            statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
-});
-
-app.MapGet("/api/messages", async (bool includeInactive, string? deviceName, IMessageStore messageStore, IAppRuntimeContext runtime, CancellationToken ct) =>
-{
-    // WEB вызывает этот endpoint при загрузке страницы Messages.
-    // Runtime Service получает данные через IMessageStore,
-    // не зная, какой adapter подключён физически.
-    var actorName = ResolveActorName(deviceName, runtime);
-
-    var messages = await messageStore.GetMessagesAsync(
-        includeInactive,
-        actorName,
-        ct);
-
-    var activeCount = await messageStore.GetActiveMessageCountAsync(ct);
-
-    return Results.Ok(new MessageListResponse
-    {
-        Messages = messages,
-        ActiveMessageCount = activeCount
-    });
-});
-
-app.MapPost("/api/messages", async (SaveMessageRequest request, string? deviceName, IMessageStore messageStore, IAppRuntimeContext runtime, IHubContext<MessagesHub> hubContext, CancellationToken ct) =>
-{
-    // WEB отправляет сюда SaveMessageRequest.
-    // Runtime Service сам определяет служебные поля: CreatedBy, CreatedAt, UpdatedBy.
-    var actorName = ResolveActorName(deviceName, runtime);
-
-    if (string.IsNullOrWhiteSpace(request.MessageSubject))
-        return Results.BadRequest("Message subject is required.");
-
-    if (string.IsNullOrWhiteSpace(request.MessageText))
-        return Results.BadRequest("Message text is required.");
-
-    var isNew = request.Id <= 0;
-
-    var saved = await messageStore.SaveMessageAsync(
-        request,
-        userName: actorName,
-        deviceName: actorName,
-        ct);
-
-    // После сохранения отправляем SignalR-событие всем открытым WEB-клиентам.
-    await NotifyMessagesChangedAsync(
-        hubContext,
-        isNew ? MessageChangedEventType.Created : MessageChangedEventType.Updated,
-        saved.Id,
-        actorName,
-        ct);
-
-    return Results.Ok(saved);
-});
-
-app.MapPost("/api/messages/{id:long}/viewed", async (long id, string? deviceName, IMessageStore messageStore, IAppRuntimeContext runtime, IHubContext<MessagesHub> hubContext, CancellationToken ct) =>
-{
-    // WEB вызывает этот endpoint после того, как пользователь удержал сообщение выбранным.
-    var actorName = ResolveActorName(deviceName, runtime);
-
-    await messageStore.MarkViewedAsync(
-        id,
-        actorName,
-        ct);
-
-    // Viewed тоже отправляем через SignalR,
-    // чтобы у других клиентов обновилось поле ViewedBy.
-    await NotifyMessagesChangedAsync(
-        hubContext,
-        MessageChangedEventType.Viewed,
-        id,
-        actorName,
-        ct);
-
-    return Results.Ok();
-});
-
-app.MapPost("/api/messages/{id:long}/toggle-active", async (long id, string? deviceName, IMessageStore messageStore, IAppRuntimeContext runtime, IHubContext<MessagesHub> hubContext, CancellationToken ct) =>
-{
-    // Переключаем Active / Inactive.
-    // Сейчас бизнес-правило простое: менять активность может только автор.
-    var actorName = ResolveActorName(deviceName, runtime);
-
-    var ok = await messageStore.ToggleActivityAsync(
-        id,
-        actorName,
-        ct);
-
-    if (!ok)
-        return Results.BadRequest("Only message author can change activity.");
-
-    await NotifyMessagesChangedAsync(
-        hubContext,
-        MessageChangedEventType.ActivityChanged,
-        id,
-        actorName,
-        ct);
-
-    return Results.Ok();
-});
-
-app.MapDelete("/api/messages/{id:long}", async (long id, string? deviceName, IMessageStore messageStore, IAppRuntimeContext runtime, IHubContext<MessagesHub> hubContext, CancellationToken ct) =>
-{
-    var actorName = ResolveActorName(deviceName, runtime);
-
-    await messageStore.DeleteMessageAsync(id, ct);
-
-    await NotifyMessagesChangedAsync(
-        hubContext,
-        MessageChangedEventType.Deleted,
-        id,
-        actorName,
-        ct);
-
-    return Results.Ok();
-});
-
-app.MapGet("/api/equipment", async (IEquipmentCatalogProvider equipmentCatalog, CancellationToken ct) =>
-{
-    // WEB вызывает этот endpoint, чтобы получить каталог оборудования.
-    // Сейчас данные приходят из InMemory provider-а.
-    // Позже этот же endpoint будет получать данные из CtApi provider-а.
-    var response = await equipmentCatalog.GetEquipmentListAsync(ct);
-
-    return Results.Ok(response);
-});
-
-app.MapGet("/api/equipment/{name}", async (string name, IEquipmentCatalogProvider equipmentCatalog, CancellationToken ct) =>
-{
-    // Получить одно оборудование по имени.
-    // Имя может содержать точки: S01.H01.P01.
-    var equipment = await equipmentCatalog.GetEquipmentByNameAsync(name, ct);
-
-    return equipment is null
-        ? Results.NotFound()
-        : Results.Ok(equipment);
-});
-
-app.MapGet("/api/scada/health", async (
-    IPlantScadaGateway plantScadaGateway,
-    CancellationToken ct) =>
-{
-    // Проверка состояния Plant SCADA adapter-а.
-    // WEB/Configurator будут использовать этот endpoint для диагностики.
-    var health = await plantScadaGateway.GetHealthAsync(ct);
-
-    return Results.Ok(health);
-});
-
-app.MapGet("/api/scada/tags/{tagName}", async (
-    string tagName,
-    IPlantScadaGateway plantScadaGateway,
-    CancellationToken ct) =>
-{
-    // Чтение одного tag.
-    // Работает через выбранный Plant SCADA adapter: Mock, Disabled или CtApi.
-    var result = await plantScadaGateway.ReadTagAsync(tagName, ct);
-
-    return result.Success
-        ? Results.Ok(result)
-        : Results.BadRequest(result);
-});
-
-app.MapPost("/api/scada/tags/write", async (
-    ScadaTagWriteRequest request,
-    IPlantScadaGateway plantScadaGateway,
-    CancellationToken ct) =>
-{
-    // Запись одного tag.
-    // В реальном CtApi adapter-е здесь позже добавим:
-    // - проверку AllowWrites;
-    // - проверку прав;
-    // - operator action log;
-    // - нормализацию bool/int/string значений.
-    var result = await plantScadaGateway.WriteTagAsync(request, ct);
-
-    return result.Success
-        ? Results.Ok(result)
-        : Results.BadRequest(result);
-});
+app.MapRuntimeEndpoints();
 
 app.Run();
-
-static string ResolveActorName(string? deviceName, IAppRuntimeContext runtime)
-{
-    // Если WEB передал deviceName — используем его.
-    // Если не передал — используем имя Runtime.Service.
-    return string.IsNullOrWhiteSpace(deviceName)
-        ? runtime.DeviceName
-        : deviceName.Trim();
-}
-
-static Task NotifyMessagesChangedAsync(IHubContext<MessagesHub> hubContext, MessageChangedEventType eventType, long? messageId, string changedBy, CancellationToken ct)
-{
-    var notification = new MessageChangedNotification
-    {
-        EventType = eventType,
-        MessageId = messageId,
-        ChangedBy = changedBy,
-        ChangedAt = DateTime.Now
-    };
-
-    // Имя события "MessagesChanged" должен знать WEB-клиент.
-    return hubContext.Clients.All.SendAsync("MessagesChanged", notification, ct);
-}

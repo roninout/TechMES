@@ -1,0 +1,98 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>TechEquipments</AssemblyName>
+    <Product>TechEquipments</Product>
+    <Title>TechEquipments</Title>
+    <AssemblyTitle>TechEquipments</AssemblyTitle>
+    <ApplicationIcon>Resources\Icons\app.ico</ApplicationIcon>
+
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>1.0.0-build-$([System.DateTime]::Now.ToString('yyyyMMdd-HHmm'))</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Platforms>AnyCPU;x64;x86</Platforms>
+    
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DevExpress.Images" Version="21.2.3" />
+    <PackageReference Include="devexpress.wpf.charts" Version="21.2.3" />
+    <PackageReference Include="DevExpress.Wpf.Core" Version="21.2.*-*" />
+    <PackageReference Include="DevExpress.Wpf.PdfViewer" Version="21.2.3" />
+    <PackageReference Include="devexpress.wpf.gauges" Version="21.2.3" />
+    <PackageReference Include="devexpress.wpf.grid.core" Version="21.2.3" />
+    <PackageReference Include="devexpress.wpf.layoutcontrol" Version="21.2.3" />
+    <PackageReference Include="devexpress.wpf.richedit" Version="21.2.3" />
+    <PackageReference Include="DevExpress.Wpf.Themes.All" Version="21.2.*-*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="6.0.36" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.FileExtensions" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.1" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="6.0.29" />
+    <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260222" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260222" />
+    <PackageReference Include="QRCoder" Version="1.7.0" />
+    <PackageReference Include="ZXing.Net" Version="0.16.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Properties\Settings.Designer.cs">
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+    </Compile>
+    
+    <Compile Update="Views\Param\ATVParamView.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
+
+    <Compile Update="Views\Common\ParamPlcRowsView.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    
+    <Compile Update="Views\Param\VGA_ELParamView.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
+
+    <Compile Update="Views\Common\AtvSettingsSectionView.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
+
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Page Update="Styles\PlcTemplateStyles.xaml">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Page>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\Icons\app.ico">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Resources\Icons\scan_qr.svg">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="TIS_logo_intellegence_g.png" />
+  </ItemGroup>
+
+</Project>

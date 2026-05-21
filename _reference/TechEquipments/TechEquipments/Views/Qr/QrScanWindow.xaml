@@ -1,0 +1,67 @@
+﻿<dx:ThemedWindow x:Class="TechEquipments.Views.Qr.QrScanWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
+                 Title="Scan QR"
+                 Width="780" Height="560"
+                 WindowStartupLocation="CenterOwner"
+                 ResizeMode="CanResize"
+                 Background="#FF1E1E1E">
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Preview -->
+        <Border Grid.Row="0" CornerRadius="10" BorderBrush="#33FFFFFF" BorderThickness="1">
+            <Grid>
+                <Image x:Name="PreviewImage" Stretch="Uniform" />
+
+                <Border VerticalAlignment="Top"
+                        HorizontalAlignment="Left"
+                        Margin="10"
+                        Padding="8"
+                        Background="#66000000"
+                        CornerRadius="8">
+                    <TextBlock x:Name="StatusText"
+                               Foreground="White"
+                               FontSize="14"
+                               Text="Camera: starting..." />
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Bottom bar -->
+        <Grid Grid.Row="1" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="140"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Camera selector -->
+            <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,12,0">
+                <TextBlock Text="Camera"
+                           Foreground="White"
+                           Margin="0,0,0,4"/>
+                <ComboBox x:Name="CameraCombo"
+                          DisplayMemberPath="DisplayName"
+                          SelectedValuePath="Index"
+                          SelectionChanged="CameraCombo_SelectionChanged"/>
+            </StackPanel>
+
+            <!-- Spacer -->
+            <Border Grid.Column="1" Background="Transparent"/>
+
+            <!-- Cancel -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                <dx:SimpleButton Width="120"
+                                 Content="Cancel"
+                                 Style="{DynamicResource AppButtonStyle}"
+                                 Click="Cancel_Click"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</dx:ThemedWindow>

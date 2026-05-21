@@ -1,0 +1,432 @@
+﻿<ResourceDictionary x:Class="TechEquipments.Styles.PlcTemplateStyles"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
+                    xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
+                    xmlns:local="clr-namespace:TechEquipments">
+
+    <local:PlcOnOffTextConverter x:Key="PlcOnOffText"/>
+    <local:PlcValveStatusToTextConverter x:Key="PlcValveStatusToText"/>
+    <local:PlcMotorStatusToTextConverter x:Key="PlcMotorStatusToText"/>
+    <local:PlcValueToCodeStringConverter x:Key="PlcValueToCodeString"/>
+    <local:PlcDouble01ToBoolConverter x:Key="PlcDouble01ToBool"/>
+    <local:DiDoValueToBrushConverter x:Key="PlcDigitalValueToBrush"/>
+    <local:DiDoValueToTextConverter x:Key="PlcDigitalValueToText"/>
+    <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+    <!-- ====== templates ====== -->
+
+    <!-- EqCheck / EqCheckRW / EqCheckDisplay -> ToggleSwitchEdit -->
+    <DataTemplate x:Key="PlcToggleTemplate">
+        <dxe:ToggleSwitchEdit Tag="{Binding}"
+                              Width="80"
+                              HorizontalAlignment="Right"
+                              EditValue="{Binding Value, Mode=TwoWay, Converter={StaticResource PlcDouble01ToBool}, UpdateSourceTrigger=PropertyChanged}"
+                              EditValueChanged="ParamEditable_EditValueChanged">
+
+            <dxe:ToggleSwitchEdit.Style>
+                <Style TargetType="{x:Type dxe:ToggleSwitchEdit}"
+                       BasedOn="{StaticResource AppBaseEditStyle}">
+                    <Style.Triggers>
+                        <!-- EqCheckDisplay: read-only + серый -->
+                        <DataTrigger Binding="{Binding Type}" Value="{x:Static local:PlcTypeCustom.EqCheckDisplay}">
+                            <Setter Property="IsReadOnly" Value="True"/>
+                            <Setter Property="IsEnabled" Value="False"/>
+                            <Setter Property="Background" Value="#FFE6E6E6"/>
+                            <Setter Property="Opacity" Value="0.75"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </dxe:ToggleSwitchEdit.Style>
+
+        </dxe:ToggleSwitchEdit>
+    </DataTemplate>
+
+    <!-- EqEnum / EqEnumDisplay / EqNumR / EqNumW -> TextEdit -->
+    <DataTemplate x:Key="PlcTextTemplate">
+        <dxe:TextEdit Tag="{Binding}"
+                      Width="80"
+                      HorizontalAlignment="Right"
+                      HorizontalContentAlignment="Center"
+                      EditValue="{Binding Value, Mode=OneWay}"
+                      PreviewKeyDown="ParamEditable_EditValueChanged">
+
+            <dxe:TextEdit.Style>
+                <Style TargetType="{x:Type dxe:TextEdit}"
+                       BasedOn="{StaticResource AppBaseEditStyle}">
+                    <Setter Property="IsReadOnly" Value="False"/>
+
+                    <Style.Triggers>
+                        <!-- read-only: серый фон -->
+                        <DataTrigger Binding="{Binding Type}" Value="{x:Static local:PlcTypeCustom.EqNumR}">
+                            <Setter Property="IsReadOnly" Value="True"/>
+                            <Setter Property="Background" Value="#FFE6E6E6"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </dxe:TextEdit.Style>
+
+        </dxe:TextEdit>
+    </DataTemplate>
+
+    <!-- EqButton* -> ToggleButton (0/1) -->
+    <DataTemplate x:Key="PlcButtonTemplate">
+        <ToggleButton Tag="{Binding}"
+                  Width="80"
+                  Height="40"
+                  HorizontalAlignment="Right"
+                  FontWeight="Bold"
+                  IsEnabled="{Binding IsWritable}"
+                  IsChecked="{Binding Value, Mode=OneWay,Converter={StaticResource PlcDouble01ToBool}, UpdateSourceTrigger=PropertyChanged}"
+                  Click="Plc_ToggleClick">
+
+            <ToggleButton.Style>
+                <Style TargetType="{x:Type ToggleButton}">
+                    <Setter Property="Content" Value="Off"/>
+
+                    <Style.Triggers>
+                        <!-- Default: Off/On -->
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter Property="Content" Value="On"/>
+                        </Trigger>
+
+                        <!-- EqButtonUp / EqButtonDown -->
+                        <DataTrigger Binding="{Binding Type}" Value="{x:Static local:PlcTypeCustom.EqButtonUp}">
+                            <Setter Property="Content" Value="▲"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Type}" Value="{x:Static local:PlcTypeCustom.EqButtonDown}">
+                            <Setter Property="Content" Value="▼"/>
+                        </DataTrigger>
+
+                        <!-- EqButtonMode: Manual/Auto -->
+                        <DataTrigger Binding="{Binding Type}" Value="{x:Static local:PlcTypeCustom.EqButtonMode}">
+                            <Setter Property="Content" Value="Manual"/>
+                        </DataTrigger>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding Type}" Value="{x:Static local:PlcTypeCustom.EqButtonMode}"/>
+                                <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsChecked}" Value="True"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="Content" Value="Auto"/>
+                        </MultiDataTrigger>
+
+                        <!-- EqButtonStartStop: Stop/Start -->
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding Type}" Value="{x:Static local:PlcTypeCustom.EqButtonStartStop}"/>
+                                <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsChecked}" Value="False"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="Content" Value="Stop"/>
+                        </MultiDataTrigger>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding Type}" Value="{x:Static local:PlcTypeCustom.EqButtonStartStop}"/>
+                                <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsChecked}" Value="True"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="Content" Value="Start"/>
+                        </MultiDataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ToggleButton.Style>
+
+        </ToggleButton>
+    </DataTemplate>
+
+    <!-- EqDigital / EqDigitalInOut -> зелёный квадрат (как DI/DO) -->
+    <DataTemplate x:Key="PlcDigitalTemplate">
+        <StackPanel Orientation="Horizontal"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center">
+
+            <!-- Forced label -->
+            <TextBlock Margin="0,0,6,0"
+                       VerticalAlignment="Center"
+                       Style="{StaticResource DIDOForcedBlinkTextStyle}"/>
+
+            <!-- сам квадрат -->
+            <Border Width="54" Height="24" Margin="0,2,0,0"
+                BorderBrush="Black" BorderThickness="1"
+                Background="{Binding Value, Converter={StaticResource PlcDigitalValueToBrush}}"
+                Cursor="Hand"
+                ToolTip="Go to this equipment"
+                MouseLeftButtonUp="PlcDigital_GoToEquip_MouseLeftButtonUp">
+                <TextBlock Text="{Binding Value, Converter={StaticResource PlcOnOffText}}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       FontWeight="SemiBold"/>
+            </Border>
+
+        </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="PlcEmptyTemplate"/>
+
+    <!-- Valve status style (по Value) -->
+    <Style x:Key="PlcValveStatusTextEditStyle"
+       TargetType="{x:Type dxe:TextEdit}"
+       BasedOn="{StaticResource AppBaseEditStyle}">
+        <Setter Property="IsReadOnly" Value="True"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="BorderBrush" Value="Black"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="Black"/>
+        <Setter Property="Background">
+            <Setter.Value>
+                <SolidColorBrush Color="#FFE6E6E6"/>
+            </Setter.Value>
+        </Setter>
+
+        <Style.Triggers>
+            <!-- 0 closed -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="0">
+                <Setter Property="Background" Value="#FFD6D6D6"/>
+                <Setter Property="BorderBrush" Value="Black"/>
+            </DataTrigger>
+
+            <!-- 1 opened -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="1">
+                <Setter Property="Background" Value="#FFB7F2B7"/>
+                <Setter Property="BorderBrush" Value="Black"/>
+            </DataTrigger>
+
+            <!-- 2 alarm opening (blink red) -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="2">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFFFD0D0"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FFB00000"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcValveBlink2">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFFFD0D0" To="#FFFF4D4D" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcValveBlink2"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <!-- 3 alarm closure (blink red) -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="3">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFFFD0D0"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FFB00000"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcValveBlink3">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFFFD0D0" To="#FFFF4D4D" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcValveBlink3"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <!-- 4 opening (blink green) -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="4">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFD6FFD6"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FF007A00"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcValveBlink4">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFD6FFD6" To="#FF2ECC71" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcValveBlink4"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <!-- 5 closing (blink gray) -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="5">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFEDEDED"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FF606060"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcValveBlink5">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFEDEDED" To="#FFB0B0B0" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcValveBlink5"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <DataTemplate x:Key="PlcValveStatusTemplate">
+        <dxe:TextEdit Width="80" Height="40" HorizontalAlignment="Right"
+                  EditValue="{Binding Value, Converter={StaticResource PlcValveStatusToText}}"
+                  Style="{StaticResource PlcValveStatusTextEditStyle}"/>
+    </DataTemplate>
+
+    <!--EqMotorStatus-->
+    <Style x:Key="PlcMotorStatusTextEditStyle"
+       TargetType="{x:Type dxe:TextEdit}"
+       BasedOn="{StaticResource AppBaseEditStyle}">
+        <Setter Property="IsReadOnly" Value="True"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="BorderBrush" Value="Black"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="Black"/>
+        <Setter Property="Background">
+            <Setter.Value>
+                <SolidColorBrush Color="#FFE6E6E6"/>
+            </Setter.Value>
+        </Setter>
+
+        <Style.Triggers>
+            <!-- 0 stop (solid gray) -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="0">
+                <Setter Property="Background" Value="#FFD6D6D6"/>
+            </DataTrigger>
+
+            <!-- 1 run (solid green) -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="1">
+                <Setter Property="Background" Value="#FFB7F2B7"/>
+            </DataTrigger>
+
+            <!-- 2 alarm (blink red) -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="2">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFFFD0D0"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FFB00000"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcMotorBlink2">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFFFD0D0" To="#FFFF4D4D" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcMotorBlink2"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <!-- 3 alarm (blink red) -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="3">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFFFD0D0"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FFB00000"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcMotorBlink3">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFFFD0D0" To="#FFFF4D4D" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcMotorBlink3"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <!-- 4 starting (blink green) -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="4">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFD6FFD6"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FF007A00"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcMotorBlink4">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFD6FFD6" To="#FF2ECC71" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcMotorBlink4"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <!-- 5 stopping (blink gray) -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="5">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFEDEDED"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FF606060"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcMotorBlink5">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFEDEDED" To="#FFB0B0B0" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcMotorBlink5"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <!-- 6 waiting (blink green) -->
+            <DataTrigger Binding="{Binding Value, Converter={StaticResource PlcValueToCodeString}}" Value="6">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFD6FFD6"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FF007A00"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcMotorBlink6">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFD6FFD6" To="#FF2ECC71" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcMotorBlink6"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <DataTemplate x:Key="PlcMotorStatusTemplate">
+        <dxe:TextEdit Width="80" Height="40" HorizontalAlignment="Right"
+                  EditValue="{Binding Value, Converter={StaticResource PlcMotorStatusToText}}"
+                  Style="{StaticResource PlcMotorStatusTextEditStyle}"/>
+    </DataTemplate>
+
+    <!-- selector -->
+    <local:PlcTypeTemplateSelector x:Key="PlcTypeTemplateSelector"
+                                  ToggleTemplate="{StaticResource PlcToggleTemplate}"
+                                  TextTemplate="{StaticResource PlcTextTemplate}"
+                                  ButtonTemplate="{StaticResource PlcButtonTemplate}"
+                                  DigitalTemplate="{StaticResource PlcDigitalTemplate}"
+                                  ValveStatusTemplate="{StaticResource PlcValveStatusTemplate}"
+                                  MotorStatusTemplate="{StaticResource PlcMotorStatusTemplate}" 
+                                  EmptyTemplate="{StaticResource PlcEmptyTemplate}"/>
+</ResourceDictionary>
