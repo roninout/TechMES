@@ -11,50 +11,59 @@
 <RadzenStack Gap="12px">
     <div class="equipment-filter-layout">
         <div class="equipment-tree-filters">
+            <RadzenDropDown TValue="string"
+                            Data="@_stationItems"
+                            @bind-Value="_selectedStation"
+                            Change="@(_ => ApplyFilters())"
+                            Style="width: 100%;" />
 
-        <RadzenDropDown TValue="string"
-                        Data="@_stationItems"
-                        @bind-Value="_selectedStation"
-                        Change="@(_ => ApplyFilters())"
-                        Style="width: 100%;" />
-
-        <RadzenDropDown TValue="string"
-                        Data="@_typeItems"
-                        @bind-Value="_selectedType"
-                        Change="@(_ => ApplyFilters())"
-                        Style="width: 100%;">
-            <Template Context="typeItem">
-                <div style="display: flex; align-items: center;">
-                    @if (TryGetTypeGroup(typeItem, out EquipmentTypeGroup typeGroup))
-                    {
-                        <EquipmentTypeBadge TypeGroup="@typeGroup" Style="margin-right: 8px;" />
-                    }
-                    <span>@typeItem</span>
-                </div>
-            </Template>
-            <ValueTemplate Context="typeItem">
-                <div style="display: flex; align-items: center;">
-                    @if (TryGetTypeGroup(typeItem, out EquipmentTypeGroup typeGroup))
-                    {
-                        <EquipmentTypeBadge TypeGroup="@typeGroup" Style="margin-right: 8px;" />
-                    }
-                    <span>@typeItem</span>
-                </div>
-            </ValueTemplate>
-        </RadzenDropDown>
+            <RadzenDropDown TValue="string"
+                            Data="@_typeItems"
+                            @bind-Value="_selectedType"
+                            Change="@(_ => ApplyFilters())"
+                            Style="width: 100%;">
+                <Template Context="typeItem">
+                    <div class="type-filter-item">
+                        @if (IsFavoritesType(typeItem))
+                        {
+                            <RadzenIcon Icon="star" class="favorite-filter-icon is-favorite" />
+                        }
+                        else if (TryGetTypeGroup(typeItem, out EquipmentTypeGroup typeGroup))
+                        {
+                            <EquipmentTypeBadge TypeGroup="@typeGroup" Style="margin-right: 8px;" />
+                        }
+                        <span>@typeItem</span>
+                    </div>
+                </Template>
+                <ValueTemplate Context="typeItem">
+                    <div class="type-filter-item">
+                        @if (IsFavoritesType(typeItem))
+                        {
+                            <RadzenIcon Icon="star" class="favorite-filter-icon is-favorite" />
+                        }
+                        else if (TryGetTypeGroup(typeItem, out EquipmentTypeGroup typeGroup))
+                        {
+                            <EquipmentTypeBadge TypeGroup="@typeGroup" Style="margin-right: 8px;" />
+                        }
+                        <span>@typeItem</span>
+                    </div>
+                </ValueTemplate>
+            </RadzenDropDown>
         </div>
 
         <div class="equipment-search-actions">
-        <RadzenTextBox Placeholder="Search equipment..."
-                       @bind-Value="_searchText"
-                       Change="@(_ => ApplyFilters())"
-                       Style="width: 260px;" />
+            <RadzenTextBox Placeholder="Search equipment..."
+                           @bind-Value="_searchText"
+                           Change="@(_ => ApplyFilters())"
+                           class="equipment-search-box"
+                           Style="width: 260px;" />
 
-        <RadzenButton Text="Refresh"
-                      Icon="refresh"
-                      ButtonStyle="ButtonStyle.Light"
-                      Disabled="@_isLoading"
-                      Click="@LoadAsync" />
+            <RadzenButton Text="Refresh"
+                          Icon="refresh"
+                          ButtonStyle="ButtonStyle.Light"
+                          Disabled="@_isLoading"
+                          class="equipment-refresh-button"
+                          Click="@LoadAsync" />
         </div>
     </div>
 
@@ -137,41 +146,36 @@
             }
             else
             {
-                <RadzenCard>
-                    <RadzenStack Gap="12px">
-                        <RadzenStack Orientation="Orientation.Horizontal"
-                                     AlignItems="AlignItems.Center"
-                                     JustifyContent="JustifyContent.SpaceBetween">
-                            <RadzenStack Gap="4px">
-                                <RadzenText Text="@_selectedEquipment.Name" TextStyle="TextStyle.H6" />
-                                <RadzenText Text="@_selectedEquipment.DisplayName"
-                                            TextStyle="TextStyle.Caption"
-                                            Style="color: gray;" />
-                            </RadzenStack>
+                <RadzenCard class="equipment-details-card">
+                    <div class="equipment-selected-header">
+                        <EquipmentTypeBadge TypeGroup="@_selectedEquipment.TypeGroup" />
 
-                            <EquipmentTypeBadge TypeGroup="@_selectedEquipment.TypeGroup" />
-                        </RadzenStack>
+                        <div class="equipment-selected-title">
+                            <RadzenText Text="@_selectedEquipment.Name" TextStyle="TextStyle.H6" />
+                        </div>
 
-                        <RadzenFieldset Text="General">
-                            <RadzenStack Gap="6px">
-                                <div><b>Station:</b> @_selectedEquipment.Station</div>
-                                <div><b>Type:</b> @_selectedEquipment.TypeName</div>
-                                <div><b>Type group:</b> @_selectedEquipment.TypeGroup</div>
-                                <div><b>Description:</b> @_selectedEquipment.Description</div>
-                                <div><b>Is group:</b> @_selectedEquipment.IsGroup</div>
-                                <div><b>Is child node:</b> @_selectedEquipment.IsEquipmentChildNode</div>
-                                <div><b>Parent:</b> @_selectedEquipment.ParentName</div>
-                                <div><b>NodeId:</b> @_selectedEquipment.NodeId</div>
-                                <div><b>ParentNodeId:</b> @_selectedEquipment.ParentNodeId</div>
-                            </RadzenStack>
-                        </RadzenFieldset>
+                        <RadzenButton Icon="@GetFavoriteIcon(_selectedEquipment)"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Size="ButtonSize.Small"
+                                      Disabled="@(_isFavoriteSaving || _selectedEquipment.IsGroup)"
+                                      class="@GetFavoriteButtonClass(_selectedEquipment)"
+                                      title="Favorite"
+                                      Click="@ToggleSelectedFavoriteAsync" />
+                    </div>
 
-                        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                            Теперь страница показывает дерево оборудования: обычные root-ноды,
-                            group-ноды Equipment и child-ноды внутри групп. Выбранный узел сохраняется
-                            в общем SelectedEquipmentState для будущих страниц Info, Param, Trends и SOE.
-                        </RadzenAlert>
-                    </RadzenStack>
+                    <div class="equipment-selected-fields">
+                        <span class="equipment-field-label">Type:</span>
+                        <span>@_selectedEquipment.TypeName</span>
+
+                        @if (ShouldShowLocation(_selectedEquipment))
+                        {
+                            <span class="equipment-field-label">Location:</span>
+                            <span>@FormatLocation(_selectedEquipment.Location)</span>
+                        }
+
+                        <span class="equipment-field-label">Desc:</span>
+                        <span>@GetDescriptionText(_selectedEquipment)</span>
+                    </div>
                 </RadzenCard>
             }
         </RadzenSplitterPane>
@@ -181,6 +185,7 @@
 @code {
     private const string AllStationsText = "All stations";
     private const string AllTypesText = "All types";
+    private const string FavoritesTypeText = "Favorites";
     private const string RootParentNodeId = "0";
     private const int TreeDescriptionBaseIndent = 73;
 
@@ -199,6 +204,7 @@
     private string _searchText = "";
 
     private bool _isLoading;
+    private bool _isFavoriteSaving;
     private int _matchedCount;
 
     private string _statusText = "";
@@ -229,7 +235,7 @@
             _stationItems = [AllStationsText];
             _stationItems.AddRange(response.Stations);
 
-            _typeItems = [AllTypesText];
+            _typeItems = [AllTypesText, FavoritesTypeText];
             _typeItems.AddRange(response.TypeGroups.Select(x => x.ToString()));
 
             // При первой загрузке раскрываем группы, чтобы пользователь сразу увидел,
@@ -275,7 +281,11 @@
             .Where(MatchesFilters)
             .ToList();
 
-        _matchedCount = directlyMatched.Count;
+        _matchedCount = directlyMatched
+            .Where(IsPhysicalEquipment)
+            .Select(x => x.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
 
         var includedNodeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var isEquipmentTypeFilter = IsEquipmentTypeFilterActive();
@@ -324,7 +334,14 @@
             return false;
         }
 
-        if (!string.Equals(_selectedType, AllTypesText, StringComparison.OrdinalIgnoreCase)
+        if (IsFavoritesTypeFilterActive())
+        {
+            if (!IsPhysicalEquipment(equipment) || !equipment.IsFavorite)
+            {
+                return false;
+            }
+        }
+        else if (!string.Equals(_selectedType, AllTypesText, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(equipment.TypeGroup.ToString(), _selectedType, StringComparison.OrdinalIgnoreCase))
         {
             return false;
@@ -337,6 +354,7 @@
             return equipment.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
                 || equipment.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase)
                 || equipment.Description.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || equipment.Location.Contains(search, StringComparison.OrdinalIgnoreCase)
                 || equipment.TypeName.Contains(search, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -401,6 +419,21 @@
             _selectedType,
             EquipmentTypeGroup.Equipment.ToString(),
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsFavoritesTypeFilterActive()
+    {
+        return IsFavoritesType(_selectedType);
+    }
+
+    private static bool IsFavoritesType(string? typeText)
+    {
+        return string.Equals(typeText, FavoritesTypeText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPhysicalEquipment(EquipmentDto equipment)
+    {
+        return !equipment.IsGroup && !equipment.IsEquipmentChildNode;
     }
 
     private void ExpandParents(EquipmentDto equipment)
@@ -507,6 +540,69 @@
         SelectedEquipmentState.SetSelectedEquipment(equipment);
     }
 
+    private async Task ToggleSelectedFavoriteAsync()
+    {
+        if (_selectedEquipment is null || _selectedEquipment.IsGroup || _isFavoriteSaving)
+            return;
+
+        var equipmentName = _selectedEquipment.Name;
+        var preferredNodeId = _selectedEquipment.NodeId;
+        var oldValue = _selectedEquipment.IsFavorite;
+        var newValue = !oldValue;
+
+        _isFavoriteSaving = true;
+        SetFavoriteFlagInLoadedEquipments(equipmentName, newValue);
+
+        try
+        {
+            var updated = await EquipmentApi.SetFavoriteAsync(equipmentName, newValue);
+
+            if (updated is null)
+                throw new InvalidOperationException("Equipment was not found in Runtime Service.");
+
+            SetFavoriteFlagInLoadedEquipments(equipmentName, updated.IsFavorite);
+            ApplyFilters(equipmentName, preferredNodeId);
+        }
+        catch (Exception ex)
+        {
+            SetFavoriteFlagInLoadedEquipments(equipmentName, oldValue);
+            ApplyFilters(equipmentName, preferredNodeId);
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Favorite",
+                Detail = ex.Message,
+                Duration = 3500
+            });
+        }
+        finally
+        {
+            _isFavoriteSaving = false;
+        }
+    }
+
+    private void SetFavoriteFlagInLoadedEquipments(string equipmentName, bool isFavorite)
+    {
+        foreach (var equipment in _allEquipments)
+        {
+            if (equipment.IsGroup)
+                continue;
+
+            if (string.Equals(equipment.Name, equipmentName, StringComparison.OrdinalIgnoreCase))
+            {
+                equipment.IsFavorite = isFavorite;
+            }
+        }
+
+        if (_selectedEquipment is not null
+            && !_selectedEquipment.IsGroup
+            && string.Equals(_selectedEquipment.Name, equipmentName, StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedEquipment.IsFavorite = isFavorite;
+        }
+    }
+
     private void ToggleNode(EquipmentDto equipment)
     {
         var nodeId = GetNodeId(equipment);
@@ -552,6 +648,49 @@
 
         typeGroup = EquipmentTypeGroup.Unknown;
         return false;
+    }
+
+    private static string GetFavoriteIcon(EquipmentDto equipment)
+    {
+        return equipment.IsFavorite ? "star" : "star_border";
+    }
+
+    private static string GetFavoriteButtonClass(EquipmentDto equipment)
+    {
+        return equipment.IsFavorite
+            ? "equipment-favorite-button is-favorite"
+            : "equipment-favorite-button";
+    }
+
+    private static bool ShouldShowLocation(EquipmentDto equipment)
+    {
+        return !string.IsNullOrWhiteSpace(equipment.Location)
+            && !string.Equals(equipment.Location, "Unknown", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatLocation(string? raw)
+    {
+        raw = (raw ?? "").Trim();
+
+        if (string.IsNullOrWhiteSpace(raw))
+            return "";
+
+        if (raw.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+            return raw;
+
+        var parts = raw.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (parts.Length >= 2)
+            return $"module: {parts[0]}, chanel: {parts[1]}";
+
+        return raw;
+    }
+
+    private static string GetDescriptionText(EquipmentDto equipment)
+    {
+        return string.IsNullOrWhiteSpace(equipment.Description)
+            ? "-"
+            : equipment.Description;
     }
 
     private static string GetNodeId(EquipmentDto equipment)

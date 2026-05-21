@@ -8,6 +8,7 @@ public static class EquipmentEndpoints
     {
         app.MapGet("/api/equipment", GetEquipmentListAsync);
         app.MapGet("/api/equipment/{name}", GetEquipmentByNameAsync);
+        app.MapPut("/api/equipment/{name}/favorite", SetEquipmentFavoriteAsync);
 
         return app;
     }
@@ -35,4 +36,19 @@ public static class EquipmentEndpoints
             ? Results.NotFound()
             : Results.Ok(equipment);
     }
+
+    private static async Task<IResult> SetEquipmentFavoriteAsync(
+        string name,
+        EquipmentFavoriteRequest request,
+        IEquipmentCatalogProvider equipmentCatalog,
+        CancellationToken ct)
+    {
+        var equipment = await equipmentCatalog.SetFavoriteAsync(name, request.IsFavorite, ct);
+
+        return equipment is null
+            ? Results.NotFound()
+            : Results.Ok(equipment);
+    }
+
+    private sealed record EquipmentFavoriteRequest(bool IsFavorite);
 }

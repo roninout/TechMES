@@ -117,6 +117,30 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
             string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
+    public async Task<EquipmentDto?> SetFavoriteAsync(string name, bool isFavorite, CancellationToken ct = default)
+    {
+        if (_cache.Count == 0)
+        {
+            await ReloadAsync(ct);
+        }
+
+        var items = _cache
+            .Where(x => !x.IsGroup && string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var item in items)
+        {
+            item.IsFavorite = isFavorite;
+        }
+
+        _logger.LogInformation(
+            "Favorite flag changed in Runtime cache. Equipment={Equipment}, IsFavorite={IsFavorite}",
+            name,
+            isFavorite);
+
+        return items.FirstOrDefault();
+    }
+
     private async Task ReloadAsync(CancellationToken ct)
     {
         await _loadGate.WaitAsync(ct);
@@ -195,11 +219,14 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
                     continue;
                 }
 
+                var location = await GetEquipmentLocationAsync(source.Equipment, ct);
+
                 plainEquipments.Add(new EquipmentDto
                 {
                     Name = source.Equipment,
                     DisplayName = string.IsNullOrWhiteSpace(source.Description) ? source.Equipment : source.Description,
                     Description = source.Description,
+                    Location = location,
                     Station = ExtractStation(source.Equipment),
                     TypeName = scadaTypeName,
                     TypeGroup = typeGroup,
@@ -232,6 +259,7 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
                     Name = sourceGroup.Equipment,
                     DisplayName = string.IsNullOrWhiteSpace(sourceGroup.Description) ? sourceGroup.Equipment : sourceGroup.Description,
                     Description = sourceGroup.Description,
+                    Location = "",
                     Station = ExtractStation(sourceGroup.Equipment),
                     TypeName = "Equipment",
                     TypeGroup = EquipmentTypeGroup.Equipment,
@@ -266,6 +294,7 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
                         Name = childSource.Name,
                         DisplayName = childSource.DisplayName,
                         Description = childSource.Description,
+                        Location = childSource.Location,
                         Station = childSource.Station,
                         TypeName = childSource.TypeName,
                         TypeGroup = childSource.TypeGroup,
@@ -323,6 +352,23 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
             ct);
 
         return (value ?? "").Trim();
+    }
+
+    private async Task<string> GetEquipmentLocationAsync(string equipmentName, CancellationToken ct)
+    {
+        try
+        {
+            var escapedEquipmentName = EscapeCicodeString(equipmentName);
+            var value = await _nativeClient.CicodeAsync(
+                $"EquipGetProperty(\"{escapedEquipmentName}\",\"Custom1\", 3)",
+                ct);
+
+            return (value ?? "").Trim();
+        }
+        catch
+        {
+            return "";
+        }
     }
 
     private async Task<List<string>> GetEquipmentGroupRefsAsync(string equipmentName, CancellationToken ct)

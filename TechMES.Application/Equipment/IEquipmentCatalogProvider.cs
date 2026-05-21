@@ -31,4 +31,11 @@ public interface IEquipmentCatalogProvider
     /// Получить одно оборудование по имени.
     /// </summary>
     Task<EquipmentDto?> GetEquipmentByNameAsync(string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// Установить признак favorite для оборудования.
+    /// Сейчас provider может хранить это в своём runtime-cache;
+    /// позже реализация будет писать в Info/Favorites DB, как в WPF.
+    /// </summary>
+    Task<EquipmentDto?> SetFavoriteAsync(string name, bool isFavorite, CancellationToken ct = default);
 }

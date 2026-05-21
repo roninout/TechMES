@@ -30,6 +30,17 @@
     overflow-x: auto;
 }
 
+.header-spacer {
+    flex: 1 1 auto;
+}
+
+.app-logo {
+    flex: 0 0 auto;
+    width: 152px;
+    height: 40px;
+    object-fit: contain;
+}
+
 ::deep .top-nav-link {
     display: inline-flex;
     align-items: center;
@@ -78,6 +89,14 @@
 
     .top-nav {
         width: 100%;
+    }
+
+    .header-spacer {
+        display: none;
+    }
+
+    .app-logo {
+        align-self: flex-end;
     }
 
     .app-footer-bar {

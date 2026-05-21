@@ -41,4 +41,22 @@ public sealed class EquipmentApiClient
 
         return await client.GetFromJsonAsync<EquipmentDto>($"api/equipment/{encodedName}", ct);
     }
+
+    public async Task<EquipmentDto?> SetFavoriteAsync(string name, bool isFavorite, CancellationToken ct = default)
+    {
+        var client = CreateClient();
+        var encodedName = Uri.EscapeDataString(name);
+
+        var response = await client.PutAsJsonAsync(
+            $"api/equipment/{encodedName}/favorite",
+            new { IsFavorite = isFavorite },
+            ct);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<EquipmentDto>(cancellationToken: ct);
+    }
 }

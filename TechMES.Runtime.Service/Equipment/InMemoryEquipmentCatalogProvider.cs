@@ -22,14 +22,14 @@ public sealed class InMemoryEquipmentCatalogProvider : IEquipmentCatalogProvider
             if (_equipments.Count > 0)
                 return Task.CompletedTask;
 
-            Add("S01.H01.P01", "Pump 01", "Main product pump", "S01", "Motor", EquipmentTypeGroup.Motor);
-            Add("S01.H01.P02", "Pump 02", "Reserve product pump", "S01", "Motor", EquipmentTypeGroup.Motor);
-            Add("S01.H01.ATV01", "ATV 01", "Frequency drive for Pump 01", "S01", "ATV", EquipmentTypeGroup.ATV);
+            Add("S01.H01.P01", "Pump 01", "Main product pump", "S01", "Motor", EquipmentTypeGroup.Motor, location: "26.1", isFavorite: true);
+            Add("S01.H01.P02", "Pump 02", "Reserve product pump", "S01", "Motor", EquipmentTypeGroup.Motor, location: "26.2");
+            Add("S01.H01.ATV01", "ATV 01", "Frequency drive for Pump 01", "S01", "ATV", EquipmentTypeGroup.ATV, location: "26.3");
 
-            Add("S01.H01.LT01", "Level transmitter", "Tank level analog input", "S01", "AI", EquipmentTypeGroup.AI);
-            Add("S01.H01.LSH01", "High level switch", "Digital input", "S01", "DI", EquipmentTypeGroup.DI);
-            Add("S01.H01.V01", "Valve 01", "Inlet valve", "S01", "VGA", EquipmentTypeGroup.VGA);
-            Add("S01.H01.VD01", "Diverter 01", "Diverter valve", "S01", "VGD", EquipmentTypeGroup.VGD);
+            Add("S01.H01.LT01", "Level transmitter", "Tank level analog input", "S01", "AI", EquipmentTypeGroup.AI, location: "27.1");
+            Add("S01.H01.LSH01", "High level switch", "Digital input", "S01", "DI", EquipmentTypeGroup.DI, location: "27.2");
+            Add("S01.H01.V01", "Valve 01", "Inlet valve", "S01", "VGA", EquipmentTypeGroup.VGA, location: "28.1");
+            Add("S01.H01.VD01", "Diverter 01", "Diverter valve", "S01", "VGD", EquipmentTypeGroup.VGD, location: "28.2");
 
             Add("S02.H01.P01", "Pump 01", "Station S02 pump", "S02", "Motor", EquipmentTypeGroup.Motor);
             Add("S02.H01.LT01", "Level transmitter", "Station S02 level", "S02", "AI", EquipmentTypeGroup.AI);
@@ -87,7 +87,34 @@ public sealed class InMemoryEquipmentCatalogProvider : IEquipmentCatalogProvider
         }
     }
 
-    private void Add(string name, string displayName, string description, string station, string typeName, EquipmentTypeGroup typeGroup, bool isGroup = false, string? parentName = null)
+    public Task<EquipmentDto?> SetFavoriteAsync(string name, bool isFavorite, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            var items = _equipments
+                .Where(x => !x.IsGroup && string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var item in items)
+            {
+                item.IsFavorite = isFavorite;
+            }
+
+            return Task.FromResult(items.FirstOrDefault());
+        }
+    }
+
+    private void Add(
+        string name,
+        string displayName,
+        string description,
+        string station,
+        string typeName,
+        EquipmentTypeGroup typeGroup,
+        bool isGroup = false,
+        string? parentName = null,
+        string location = "",
+        bool isFavorite = false)
     {
         // Даже InMemory provider теперь отдаёт поля дерева.
         // Это помогает проверять WEB-страницу без подключения к CtApi.
@@ -106,12 +133,13 @@ public sealed class InMemoryEquipmentCatalogProvider : IEquipmentCatalogProvider
             Name = name,
             DisplayName = displayName,
             Description = description,
+            Location = location,
             Station = station,
             TypeName = typeName,
             TypeGroup = typeGroup,
             IsGroup = isGroup,
             ParentName = parentName,
-            IsFavorite = false,
+            IsFavorite = isFavorite,
             NodeId = nodeId,
             ParentNodeId = parentNodeId,
             IsEquipmentChildNode = !string.IsNullOrWhiteSpace(parentName)

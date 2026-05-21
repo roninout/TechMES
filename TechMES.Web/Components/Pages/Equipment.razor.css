@@ -1,7 +1,7 @@
 .equipment-filter-layout {
     display: grid;
     grid-template-columns: 420px minmax(0, 1fr);
-    gap: 12px;
+    gap: 8px;
     align-items: center;
 }
 
@@ -17,6 +17,77 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
+}
+
+.type-filter-item {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.favorite-filter-icon {
+    width: 33px;
+    min-width: 33px;
+    margin-right: 8px;
+    color: #7f7f7f;
+    font-size: 18px;
+    text-align: center;
+}
+
+.favorite-filter-icon.is-favorite {
+    color: #c79a00;
+}
+
+::deep .equipment-search-box {
+    height: 36px;
+}
+
+::deep .equipment-refresh-button {
+    height: 36px;
+}
+
+::deep .equipment-details-card {
+    min-height: 160px;
+}
+
+.equipment-selected-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.equipment-selected-title {
+    min-width: 0;
+}
+
+::deep .equipment-favorite-button {
+    margin-left: 4px;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    padding: 0;
+}
+
+::deep .equipment-favorite-button .rz-button-icon-left {
+    margin: 0;
+    color: #7f7f7f;
+    font-size: 20px;
+}
+
+::deep .equipment-favorite-button.is-favorite .rz-button-icon-left {
+    color: #c79a00;
+}
+
+.equipment-selected-fields {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    column-gap: 8px;
+    row-gap: 6px;
+    margin-top: 14px;
+}
+
+.equipment-field-label {
+    font-weight: 600;
 }
 
 @media (max-width: 900px) {

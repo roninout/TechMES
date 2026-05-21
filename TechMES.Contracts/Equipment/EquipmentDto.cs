@@ -8,6 +8,10 @@
 /// </summary>
 public sealed class EquipmentDto
 {
+    private string _displayName = "";
+    private string _description = "";
+    private string _location = "";
+
     /// <summary>
     /// Полное имя оборудования.
     /// Пример: S01.H01.P01
@@ -18,12 +22,30 @@ public sealed class EquipmentDto
     /// Текст для отображения в WEB.
     /// Обычно может совпадать с Name или быть COMMENT/DESCRIPTION из CtApi.
     /// </summary>
-    public string DisplayName { get; set; } = "";
+    public string DisplayName
+    {
+        get => _displayName;
+        set => _displayName = CleanScadaText(value);
+    }
 
     /// <summary>
     /// Описание оборудования.
     /// </summary>
-    public string Description { get; set; } = "";
+    public string Description
+    {
+        get => _description;
+        set => _description = CleanScadaText(value);
+    }
+
+    /// <summary>
+    /// SCADA location/channel metadata.
+    /// In the WPF project this was read from EquipGetProperty(equipment, "Custom1", 3).
+    /// </summary>
+    public string Location
+    {
+        get => _location;
+        set => _location = CleanScadaText(value);
+    }
 
     /// <summary>
     /// Станция.
@@ -83,4 +105,28 @@ public sealed class EquipmentDto
     /// Физически это то же оборудование, но в дереве оно находится под group node.
     /// </summary>
     public bool IsEquipmentChildNode { get; set; }
+
+    private static string CleanScadaText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var text = value.Trim();
+
+        if (text.StartsWith("@(", StringComparison.Ordinal)
+            && text.EndsWith(")", StringComparison.Ordinal)
+            && text.Length >= 3)
+        {
+            text = text[2..^1].Trim();
+
+            if (text.Length >= 2
+                && ((text[0] == '"' && text[^1] == '"')
+                    || (text[0] == '\'' && text[^1] == '\'')))
+            {
+                text = text[1..^1].Trim();
+            }
+        }
+
+        return text;
+    }
 }
