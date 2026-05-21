@@ -48,6 +48,7 @@ builder.Services.AddScoped<RuntimeStatusApiClient>();
 // Состояние выбранного оборудования для текущего WEB-клиента.
 // Это scoped-сервис: у каждой вкладки/сессии Blazor Server будет свой выбор.
 builder.Services.AddScoped<SelectedEquipmentState>();
+builder.Services.AddScoped<EquipmentFooterState>();
 
 var app = builder.Build();
 

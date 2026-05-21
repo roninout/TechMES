@@ -1,33 +1,28 @@
+@page "/"
 @page "/equipment"
 @inject EquipmentApiClient EquipmentApi
 @inject NotificationService NotificationService
 @inject SelectedEquipmentState SelectedEquipmentState
+@inject EquipmentFooterState EquipmentFooterState
+@implements IDisposable
 
 <PageTitle>Equipment</PageTitle>
 
 <RadzenStack Gap="12px">
-    <RadzenStack Gap="2px">
-        <RadzenText Text="Equipment Catalog" TextStyle="TextStyle.H5" />
-        <RadzenText Text="Каталог приходит из Runtime.Service. Источник выбирается в настройках: InMemory или CtApi."
-                    TextStyle="TextStyle.Caption"
-                    Style="color: gray;" />
-    </RadzenStack>
-
-    <RadzenStack Orientation="Orientation.Horizontal"
-                 AlignItems="AlignItems.Center"
-                 Gap="8px">
+    <div class="equipment-filter-layout">
+        <div class="equipment-tree-filters">
 
         <RadzenDropDown TValue="string"
                         Data="@_stationItems"
                         @bind-Value="_selectedStation"
                         Change="@(_ => ApplyFilters())"
-                        Style="width: 160px;" />
+                        Style="width: 100%;" />
 
         <RadzenDropDown TValue="string"
                         Data="@_typeItems"
                         @bind-Value="_selectedType"
                         Change="@(_ => ApplyFilters())"
-                        Style="width: 180px;">
+                        Style="width: 100%;">
             <Template Context="typeItem">
                 <div style="display: flex; align-items: center;">
                     @if (TryGetTypeGroup(typeItem, out EquipmentTypeGroup typeGroup))
@@ -47,7 +42,9 @@
                 </div>
             </ValueTemplate>
         </RadzenDropDown>
+        </div>
 
+        <div class="equipment-search-actions">
         <RadzenTextBox Placeholder="Search equipment..."
                        @bind-Value="_searchText"
                        Change="@(_ => ApplyFilters())"
@@ -58,13 +55,8 @@
                       ButtonStyle="ButtonStyle.Light"
                       Disabled="@_isLoading"
                       Click="@LoadAsync" />
-
-        <RadzenBadge Text="@($"Nodes: {_treeRows.Count}")"
-                     BadgeStyle="BadgeStyle.Info" />
-
-        <RadzenBadge Text="@($"Matches: {_matchedCount}")"
-                     BadgeStyle="BadgeStyle.Light" />
-    </RadzenStack>
+        </div>
+    </div>
 
     @if (!string.IsNullOrWhiteSpace(_statusText))
     {
@@ -253,6 +245,8 @@
         }
         catch (Exception ex)
         {
+            EquipmentFooterState.SetCounts(0, 0);
+
             _statusStyle = AlertStyle.Danger;
             _statusText = "Cannot load equipment catalog from Runtime Service: " + ex.Message;
 
@@ -317,6 +311,7 @@
         }
 
         _treeRows = BuildTreeRows(includedNodeIds);
+        EquipmentFooterState.SetCounts(_treeRows.Count, _matchedCount);
 
         ApplySelectionAfterFilter(preferredName, preferredNodeId);
     }
@@ -610,4 +605,9 @@
         int Level,
         bool HasChildren,
         bool IsExpanded);
+
+    public void Dispose()
+    {
+        EquipmentFooterState.Clear();
+    }
 }

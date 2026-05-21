@@ -5,17 +5,9 @@
         <div class="app-header-bar">
             <div class="app-brand">
                 <RadzenText Text="TechMES WEB" TextStyle="TextStyle.H6" />
-                <RadzenText Text="Blazor + Runtime Service"
-                            TextStyle="TextStyle.Caption"
-                            Style="color: gray;" />
             </div>
 
             <nav class="top-nav" aria-label="Main navigation">
-                <NavLink class="top-nav-link" href="/" Match="NavLinkMatch.All">
-                    <RadzenIcon Icon="home" />
-                    <span>Home</span>
-                </NavLink>
-
                 <NavLink class="top-nav-link" href="/equipment">
                     <RadzenIcon Icon="precision_manufacturing" />
                     <span>Equipment</span>
@@ -47,7 +39,7 @@
 
     <RadzenFooter class="app-footer">
         <div class="app-footer-bar">
-            <SelectedEquipmentBlock />
+            <EquipmentFooterCountsBlock />
 
             <div class="footer-spacer"></div>
 
