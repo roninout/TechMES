@@ -538,6 +538,9 @@
         if (message.IsViewedByCurrentDevice)
             return;
 
+        if (string.Equals(message.CreatedBy, MessageApi.DeviceName, StringComparison.OrdinalIgnoreCase))
+            return;
+
         _viewDelayCts = new CancellationTokenSource();
 
         // Fire-and-forget осознанно:

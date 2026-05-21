@@ -7,6 +7,7 @@ public static class RuntimeEndpointRouteBuilderExtensions
         app.MapHealthEndpoints();
         app.MapMessageEndpoints();
         app.MapEquipmentEndpoints();
+        app.MapInfoEndpoints();
         app.MapScadaEndpoints();
 
         return app;

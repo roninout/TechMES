@@ -156,13 +156,17 @@ public sealed class PostgreSqlMessageStore : IMessageStore
                     FROM public.equip_message_view v
                     WHERE v.message_id = m.id
                       AND v.device_name = @device_name
+                      AND lower(v.device_name) <> lower(COALESCE(m.created_by, ''))
                 ) AS is_viewed_by_current_device,
-                EXISTS
                 (
-                    SELECT 1
-                    FROM public.equip_message_view v
-                    WHERE v.message_id = m.id
-                      AND v.device_name <> @device_name
+                    lower(COALESCE(m.created_by, '')) = lower(@device_name)
+                    AND EXISTS
+                    (
+                        SELECT 1
+                        FROM public.equip_message_view v
+                        WHERE v.message_id = m.id
+                          AND lower(v.device_name) <> lower(COALESCE(m.created_by, ''))
+                    )
                 ) AS is_viewed_by_other_device,
                 COALESCE
                 (
@@ -173,6 +177,8 @@ public sealed class PostgreSqlMessageStore : IMessageStore
                             SELECT DISTINCT v.device_name
                             FROM public.equip_message_view v
                             WHERE v.message_id = m.id
+                              AND btrim(COALESCE(v.device_name, '')) <> ''
+                              AND lower(v.device_name) <> lower(COALESCE(m.created_by, ''))
                         ) x
                     ),
                     ''
@@ -277,9 +283,6 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         {
             var newId = await InsertMessageAsync(request, normalizedUserName, ct);
 
-            // Автор сообщения сразу считается просмотревшим это сообщение.
-            await MarkViewedAsync(newId, normalizedDeviceName, ct);
-
             return await GetMessageByIdAsync(newId, normalizedDeviceName, ct)
                    ?? throw new InvalidOperationException("Сообщение было создано, но не найдено при повторном чтении.");
         }
@@ -305,7 +308,7 @@ public sealed class PostgreSqlMessageStore : IMessageStore
                 updated_by = @updated_by,
                 updated_at = @updated_at
             WHERE id = @id
-              AND created_by = @updated_by;
+              AND lower(created_by) = lower(@updated_by);
             """,
             conn);
 
@@ -346,7 +349,14 @@ public sealed class PostgreSqlMessageStore : IMessageStore
             UPDATE public.equip_message_view
             SET viewed_at = @viewed_at
             WHERE message_id = @message_id
-              AND device_name = @device_name;
+              AND device_name = @device_name
+              AND EXISTS
+              (
+                  SELECT 1
+                  FROM public.equip_message m
+                  WHERE m.id = @message_id
+                    AND lower(COALESCE(m.created_by, '')) <> lower(@device_name)
+              );
             """,
             conn))
         {
@@ -379,6 +389,7 @@ public sealed class PostgreSqlMessageStore : IMessageStore
                 SELECT 1
                 FROM public.equip_message
                 WHERE id = @message_id
+                  AND lower(COALESCE(created_by, '')) <> lower(@device_name)
             );
             """,
             conn))
@@ -487,13 +498,17 @@ public sealed class PostgreSqlMessageStore : IMessageStore
                     FROM public.equip_message_view v
                     WHERE v.message_id = m.id
                       AND v.device_name = @device_name
+                      AND lower(v.device_name) <> lower(COALESCE(m.created_by, ''))
                 ) AS is_viewed_by_current_device,
-                EXISTS
                 (
-                    SELECT 1
-                    FROM public.equip_message_view v
-                    WHERE v.message_id = m.id
-                      AND v.device_name <> @device_name
+                    lower(COALESCE(m.created_by, '')) = lower(@device_name)
+                    AND EXISTS
+                    (
+                        SELECT 1
+                        FROM public.equip_message_view v
+                        WHERE v.message_id = m.id
+                          AND lower(v.device_name) <> lower(COALESCE(m.created_by, ''))
+                    )
                 ) AS is_viewed_by_other_device,
                 COALESCE
                 (
@@ -504,6 +519,8 @@ public sealed class PostgreSqlMessageStore : IMessageStore
                             SELECT DISTINCT v.device_name
                             FROM public.equip_message_view v
                             WHERE v.message_id = m.id
+                              AND btrim(COALESCE(v.device_name, '')) <> ''
+                              AND lower(v.device_name) <> lower(COALESCE(m.created_by, ''))
                         ) x
                     ),
                     ''

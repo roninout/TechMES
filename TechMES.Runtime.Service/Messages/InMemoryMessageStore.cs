@@ -159,6 +159,10 @@ public sealed class InMemoryMessageStore : IMessageStore
             if (!_messages.Any(x => x.Id == messageId))
                 return Task.CompletedTask;
 
+            var message = _messages.First(x => x.Id == messageId);
+            if (string.Equals(message.CreatedBy, normalizedDeviceName, StringComparison.OrdinalIgnoreCase))
+                return Task.CompletedTask;
+
             if (!_viewsByMessageId.TryGetValue(messageId, out var viewers))
             {
                 viewers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -197,6 +201,13 @@ public sealed class InMemoryMessageStore : IMessageStore
             ? set
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        var visibleViewers = viewers
+            .Where(x => !string.Equals(x, source.CreatedBy, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var isAuthor = string.Equals(source.CreatedBy, deviceName, StringComparison.OrdinalIgnoreCase);
+
         return new EquipmentMessageDto
         {
             Id = source.Id,
@@ -208,9 +219,9 @@ public sealed class InMemoryMessageStore : IMessageStore
             CreatedAt = source.CreatedAt,
             UpdatedBy = source.UpdatedBy,
             UpdatedAt = source.UpdatedAt,
-            IsViewedByCurrentDevice = viewers.Contains(deviceName),
-            IsViewedByOtherDevice = viewers.Any(x => !string.Equals(x, deviceName, StringComparison.OrdinalIgnoreCase)),
-            ViewedByText = string.Join(", ", viewers.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+            IsViewedByCurrentDevice = !isAuthor && visibleViewers.Contains(deviceName, StringComparer.OrdinalIgnoreCase),
+            IsViewedByOtherDevice = isAuthor && visibleViewers.Count > 0,
+            ViewedByText = string.Join(", ", visibleViewers)
         };
     }
 

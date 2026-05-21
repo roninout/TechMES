@@ -76,6 +76,9 @@ else
         "Поддерживаются значения: InMemory, PostgreSql.");
 }
 
+// Info module uses the existing PostgreSQL tables from the WPF database.
+builder.Services.AddPostgreSqlInfoInfrastructure(builder.Configuration);
+
 // Каталог оборудования тоже подключаем через adapter-подход.
 // Runtime.Service работает с IEquipmentCatalogProvider,
 // а конкретный provider выбирается из appsettings.json.

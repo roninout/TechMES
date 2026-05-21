@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using TechMES.Application.Info;
 using TechMES.Application.Messages;
+using TechMES.Infrastructure.PostgreSql.Info;
 using TechMES.Infrastructure.PostgreSql.Messages;
 
 namespace TechMES.Infrastructure.PostgreSql;
@@ -20,6 +23,14 @@ public static class PostgreSqlServiceCollectionExtensions
         // Runtime.Service продолжает работать только с интерфейсом IMessageStore
         // и не зависит от Npgsql или SQL-запросов напрямую.
         services.AddScoped<IMessageStore, PostgreSqlMessageStore>();
+        services.TryAddScoped<IEquipmentInfoStore, PostgreSqlEquipmentInfoStore>();
+
+        return services;
+    }
+
+    public static IServiceCollection AddPostgreSqlInfoInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.TryAddScoped<IEquipmentInfoStore, PostgreSqlEquipmentInfoStore>();
 
         return services;
     }

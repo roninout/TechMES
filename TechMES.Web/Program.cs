@@ -42,6 +42,9 @@ builder.Services.AddScoped<MessageApiClient>();
 // Клиент для получения каталога оборудования из Runtime.Service.
 builder.Services.AddScoped<EquipmentApiClient>();
 
+// Клиент Info-модуля: карточка оборудования, описание и notes.
+builder.Services.AddScoped<InfoApiClient>();
+
 // Клиент для отображения состояния Runtime.Service в верхней панели WEB.
 builder.Services.AddScoped<RuntimeStatusApiClient>();
 
