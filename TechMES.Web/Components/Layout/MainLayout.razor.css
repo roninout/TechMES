@@ -34,6 +34,10 @@
     flex: 1 1 auto;
 }
 
+::deep .header-qr-button {
+    flex: 0 0 auto;
+}
+
 .app-logo {
     flex: 0 0 auto;
     width: 152px;
@@ -93,6 +97,10 @@
 
     .header-spacer {
         display: none;
+    }
+
+    ::deep .header-qr-button {
+        align-self: flex-end;
     }
 
     .app-logo {

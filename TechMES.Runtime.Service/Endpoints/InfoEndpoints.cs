@@ -9,6 +9,9 @@ public static class InfoEndpoints
     public static IEndpointRouteBuilder MapInfoEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/info/{equipName}", GetInfoAsync);
+        app.MapGet("/api/info/files/{kind}/{id:long}", GetInfoFileAsync);
+        app.MapGet("/api/info/{equipName}/document-view/{kind}/{fileId:long}", GetDocumentViewStateAsync);
+        app.MapPost("/api/info/{equipName}/document-view", SaveDocumentViewStateAsync);
         app.MapPut("/api/info/{equipName}/description", SaveDescriptionAsync);
         app.MapPost("/api/info/{equipName}/notes", AddNoteAsync);
         app.MapPut("/api/info/{equipName}/notes/{noteId:long}", UpdateNoteAsync);
@@ -17,6 +20,8 @@ public static class InfoEndpoints
         return app;
     }
 
+    // Returns one normalized Info-module snapshot: card fields, file metadata,
+    // counters, notes, and supplier logo. Heavy binary data is loaded separately.
     private static async Task<IResult> GetInfoAsync(
         string equipName,
         IEquipmentInfoStore infoStore,
@@ -26,6 +31,80 @@ public static class InfoEndpoints
         return Results.Ok(info);
     }
 
+    // Streams image/PDF bytes by file id. Browser caching is enabled through
+    // ETag/Last-Modified, and range processing lets embedded PDF viewers seek.
+    private static async Task<IResult> GetInfoFileAsync(
+        string kind,
+        long id,
+        IEquipmentInfoStore infoStore,
+        HttpContext httpContext,
+        CancellationToken ct)
+    {
+        if (!TryParseFileKind(kind, out var fileKind))
+            return Results.BadRequest("Unknown file kind.");
+
+        var file = await infoStore.GetFileAsync(fileKind, id, ct);
+        if (file is null || file.FileData.Length == 0)
+            return Results.NotFound();
+
+        var etag = BuildEntityTag(file);
+        var lastModified = file.UpdatedAt?.ToUniversalTime();
+
+        SetCacheHeaders(httpContext, file, etag, lastModified);
+
+        if (ClientCacheIsFresh(httpContext, etag, lastModified))
+            return Results.StatusCode(StatusCodes.Status304NotModified);
+
+        return Results.File(
+            file.FileData,
+            file.ContentType,
+            enableRangeProcessing: true);
+    }
+
+    // Reads the remembered PDF position that replaces WPF's saved document view.
+    private static async Task<IResult> GetDocumentViewStateAsync(
+        string equipName,
+        string kind,
+        long fileId,
+        IEquipmentInfoStore infoStore,
+        CancellationToken ct)
+    {
+        if (!TryParseFileKind(kind, out var fileKind))
+            return Results.BadRequest("Unknown file kind.");
+
+        var state = await infoStore.GetDocumentViewStateAsync(
+            equipName,
+            fileKind,
+            fileId,
+            ct);
+
+        return state is null
+            ? Results.NotFound()
+            : Results.Ok(state);
+    }
+
+    // Saves remembered page/zoom for PDF-like files. Photos are intentionally
+    // rejected because image viewing has no page position.
+    private static async Task<IResult> SaveDocumentViewStateAsync(
+        string equipName,
+        SaveEquipmentInfoDocumentViewStateRequest request,
+        IEquipmentInfoStore infoStore,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(equipName))
+            return Results.BadRequest("Equipment name is required.");
+
+        if (request.Kind == EquipmentInfoFileKind.Photo)
+            return Results.BadRequest("Photo does not support PDF view state.");
+
+        if (request.FileId <= 0)
+            return Results.BadRequest("File id is required.");
+
+        var state = await infoStore.SaveDocumentViewStateAsync(equipName, request, ct);
+        return Results.Ok(state);
+    }
+
+    // Persists the editable long description and returns the refreshed Info DTO.
     private static async Task<IResult> SaveDescriptionAsync(
         string equipName,
         SaveEquipmentInfoDescriptionRequest request,
@@ -43,6 +122,7 @@ public static class InfoEndpoints
         return Results.Ok(info);
     }
 
+    // Adds a note using the current client device/runtime name as the author.
     private static async Task<IResult> AddNoteAsync(
         string equipName,
         SaveEquipmentInfoNoteRequest request,
@@ -66,6 +146,7 @@ public static class InfoEndpoints
         return Results.Ok(note);
     }
 
+    // Updates one note and keeps author/audit data on the backend side.
     private static async Task<IResult> UpdateNoteAsync(
         string equipName,
         long noteId,
@@ -93,6 +174,7 @@ public static class InfoEndpoints
             : Results.Ok(note);
     }
 
+    // Deletes one note by id. The UI owns selecting the next visible note.
     private static async Task<IResult> DeleteNoteAsync(
         string equipName,
         long noteId,
@@ -108,5 +190,69 @@ public static class InfoEndpoints
         return string.IsNullOrWhiteSpace(deviceName)
             ? runtime.DeviceName
             : deviceName.Trim();
+    }
+
+    private static bool TryParseFileKind(string? value, out EquipmentInfoFileKind kind)
+    {
+        return Enum.TryParse(value, ignoreCase: true, out kind)
+               && Enum.IsDefined(kind);
+    }
+
+    private static string BuildEntityTag(EquipmentInfoFileContentDto file)
+    {
+        var value = string.IsNullOrWhiteSpace(file.FileHash)
+            ? $"{file.Kind}-{file.Id}-{file.UpdatedAt:O}"
+            : file.FileHash.Trim();
+
+        return $"\"{value.Replace("\"", string.Empty)}\"";
+    }
+
+    private static void SetCacheHeaders(
+        HttpContext httpContext,
+        EquipmentInfoFileContentDto file,
+        string etag,
+        DateTime? lastModified)
+    {
+        var headers = httpContext.Response.Headers;
+
+        headers.CacheControl = "public, max-age=86400";
+        headers.ETag = etag;
+        headers.ContentDisposition =
+            $"inline; filename=\"{NormalizeHeaderFileName(file.FileName)}\"";
+
+        if (lastModified is not null)
+            headers.LastModified = lastModified.Value.ToString("R");
+    }
+
+    private static bool ClientCacheIsFresh(
+        HttpContext httpContext,
+        string etag,
+        DateTime? lastModified)
+    {
+        var requestHeaders = httpContext.Request.Headers;
+
+        if (requestHeaders.IfNoneMatch.Any(x =>
+                x?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                    .Any(tag => string.Equals(tag, etag, StringComparison.Ordinal)) == true))
+        {
+            return true;
+        }
+
+        if (lastModified is null)
+            return false;
+
+        if (!DateTimeOffset.TryParse(requestHeaders.IfModifiedSince, out var ifModifiedSince))
+            return false;
+
+        return lastModified.Value <= ifModifiedSince.UtcDateTime;
+    }
+
+    private static string NormalizeHeaderFileName(string? fileName)
+    {
+        fileName = string.IsNullOrWhiteSpace(fileName)
+            ? "file"
+            : fileName.Trim();
+
+        return fileName.Replace("\\", "_").Replace("/", "_").Replace("\"", "'");
     }
 }

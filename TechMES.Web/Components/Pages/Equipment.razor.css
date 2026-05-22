@@ -42,8 +42,80 @@
     height: 36px;
 }
 
+::deep .equipment-search-box input {
+    height: 36px;
+}
+
 ::deep .equipment-refresh-button {
     height: 36px;
+}
+
+.equipment-tree-main-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.equipment-tree-indent,
+.equipment-tree-expand,
+.equipment-tree-expand-placeholder {
+    flex: 0 0 auto;
+}
+
+.equipment-tree-expand {
+    display: inline-flex;
+    margin-right: 4px;
+}
+
+.equipment-tree-expand-placeholder {
+    display: inline-block;
+    width: 32px;
+}
+
+.equipment-tree-name {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.equipment-tree-spacer {
+    flex: 1 1 auto;
+    min-width: 8px;
+}
+
+.equipment-tree-indicators {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 3px;
+    padding-left: 8px;
+    color: #7a7a7a;
+}
+
+::deep .equipment-tree-indicator {
+    font-size: 15px;
+    line-height: 1;
+}
+
+::deep .equipment-tree-favorite {
+    flex: 0 0 auto;
+    margin-left: 6px;
+    color: #c79a00;
+    font-size: 17px;
+    line-height: 1;
+}
+
+.equipment-tree-description {
+    display: -webkit-box;
+    overflow: hidden;
+    color: gray;
+    font-size: 12px;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
 ::deep .equipment-details-card {

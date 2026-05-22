@@ -10,12 +10,14 @@
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="TechMES.Web.styles.css" />
 
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
 
+    <script src="techmesPdfViewer.js"></script>
+    <script src="techmesQrScanner.js"></script>
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
 </body>

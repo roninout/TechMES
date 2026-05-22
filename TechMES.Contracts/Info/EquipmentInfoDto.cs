@@ -22,5 +22,11 @@ public sealed class EquipmentInfoDto
 
     public int SchemeCount { get; set; }
 
+    public List<EquipmentInfoFileDto> Photos { get; set; } = [];
+
+    public List<EquipmentInfoFileDto> Instructions { get; set; } = [];
+
+    public List<EquipmentInfoFileDto> Schemes { get; set; } = [];
+
     public List<EquipmentInfoNoteDto> Notes { get; set; } = [];
 }

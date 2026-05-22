@@ -106,6 +106,14 @@ public sealed class EquipmentDto
     /// </summary>
     public bool IsEquipmentChildNode { get; set; }
 
+    public int PhotoCount { get; set; }
+
+    public int InstructionCount { get; set; }
+
+    public int SchemeCount { get; set; }
+
+    public int NoteCount { get; set; }
+
     private static string CleanScadaText(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))

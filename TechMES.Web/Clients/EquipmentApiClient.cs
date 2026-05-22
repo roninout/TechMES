@@ -13,11 +13,15 @@ namespace TechMES.Web.Clients;
 public sealed class EquipmentApiClient
 {
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IConfiguration _configuration;
 
-    public EquipmentApiClient(IHttpClientFactory httpClientFactory)
+    public EquipmentApiClient(IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
         _httpClientFactory = httpClientFactory;
+        _configuration = configuration;
     }
+
+    public string DeviceName => _configuration["App:DeviceName"] ?? Environment.MachineName;
 
     private HttpClient CreateClient()
     {
@@ -28,7 +32,9 @@ public sealed class EquipmentApiClient
     {
         var client = CreateClient();
 
-        var response = await client.GetFromJsonAsync<EquipmentListResponse>("api/equipment", ct);
+        var response = await client.GetFromJsonAsync<EquipmentListResponse>(
+            $"api/equipment?deviceName={Uri.EscapeDataString(DeviceName)}",
+            ct);
 
         return response ?? new EquipmentListResponse();
     }
@@ -39,7 +45,9 @@ public sealed class EquipmentApiClient
 
         var encodedName = Uri.EscapeDataString(name);
 
-        return await client.GetFromJsonAsync<EquipmentDto>($"api/equipment/{encodedName}", ct);
+        return await client.GetFromJsonAsync<EquipmentDto>(
+            $"api/equipment/{encodedName}?deviceName={Uri.EscapeDataString(DeviceName)}",
+            ct);
     }
 
     public async Task<EquipmentDto?> SetFavoriteAsync(string name, bool isFavorite, CancellationToken ct = default)
@@ -48,7 +56,7 @@ public sealed class EquipmentApiClient
         var encodedName = Uri.EscapeDataString(name);
 
         var response = await client.PutAsJsonAsync(
-            $"api/equipment/{encodedName}/favorite",
+            $"api/equipment/{encodedName}/favorite?deviceName={Uri.EscapeDataString(DeviceName)}",
             new { IsFavorite = isFavorite },
             ct);
 

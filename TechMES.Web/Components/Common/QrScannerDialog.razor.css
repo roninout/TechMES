@@ -1,0 +1,43 @@
+.qr-scan-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.qr-scan-dialog {
+    display: grid;
+    gap: 12px;
+    width: min(620px, 100%);
+    min-width: 0;
+    border: 1px solid var(--rz-border-color);
+    border-radius: 8px;
+    background: var(--rz-base-background-color);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+    padding: 14px;
+}
+
+.qr-scan-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+::deep .qr-camera-selector {
+    width: 100%;
+}
+
+.qr-camera-video {
+    width: 100%;
+    max-height: 460px;
+    aspect-ratio: 16 / 9;
+    border: 1px solid var(--rz-border-color);
+    border-radius: 6px;
+    background: #111;
+    object-fit: cover;
+}

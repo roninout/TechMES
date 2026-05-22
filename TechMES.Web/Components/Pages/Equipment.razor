@@ -4,6 +4,7 @@
 @inject NotificationService NotificationService
 @inject SelectedEquipmentState SelectedEquipmentState
 @inject EquipmentFooterState EquipmentFooterState
+@inject QrScannerState QrScannerState
 @implements IDisposable
 
 <PageTitle>Equipment</PageTitle>
@@ -52,11 +53,15 @@
         </div>
 
         <div class="equipment-search-actions">
-            <RadzenTextBox Placeholder="Search equipment..."
-                           @bind-Value="_searchText"
-                           Change="@(_ => ApplyFilters())"
-                           class="equipment-search-box"
-                           Style="width: 260px;" />
+            <RadzenAutoComplete Data="@_searchSuggestions"
+                                @bind-Value="_searchText"
+                                Change="@OnSearchChanged"
+                                Placeholder="Search equipment..."
+                                MinLength="0"
+                                FilterDelay="150"
+                                OpenOnFocus="true"
+                                class="equipment-search-box"
+                                Style="width: 260px;" />
 
             <RadzenButton Text="Refresh"
                           Icon="refresh"
@@ -96,31 +101,65 @@
                     <div style="height: 100%; overflow: auto; padding: 8px;">
                         @foreach (var row in _treeRows)
                         {
-                            <div style="@GetTreeRowStyle(row)"
+                            <div class="equipment-tree-row"
+                                 style="@GetTreeRowStyle(row)"
                                  @onclick="() => SelectEquipment(row.Node)">
 
-                                <span style="display:inline-block; width:@(row.Level * 22)px;"></span>
+                                <div class="equipment-tree-main-row">
+                                    <span class="equipment-tree-indent" style="width:@(row.Level * 22)px;"></span>
 
-                                @if (row.HasChildren)
-                                {
-                                    <span @onclick:stopPropagation="true">
-                                        <RadzenButton Icon="@(row.IsExpanded ? "expand_more" : "chevron_right")"
-                                                      ButtonStyle="ButtonStyle.Light"
-                                                      Size="ButtonSize.Small"
-                                                      Click="@(() => ToggleNode(row.Node))"
-                                                      Style="width: 28px; height: 28px; min-width: 28px; padding: 0; margin-right: 4px;" />
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span style="display:inline-block; width:32px;"></span>
-                                }
+                                    @if (row.HasChildren)
+                                    {
+                                        <span class="equipment-tree-expand" @onclick:stopPropagation="true">
+                                            <RadzenButton Icon="@(row.IsExpanded ? "expand_more" : "chevron_right")"
+                                                          ButtonStyle="ButtonStyle.Light"
+                                                          Size="ButtonSize.Small"
+                                                          Click="@(() => ToggleNode(row.Node))"
+                                                          Style="width: 28px; height: 28px; min-width: 28px; padding: 0;" />
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="equipment-tree-expand-placeholder"></span>
+                                    }
 
-                                <EquipmentTypeBadge TypeGroup="@row.Node.TypeGroup" Style="margin-right: 8px;" />
+                                    <EquipmentTypeBadge TypeGroup="@row.Node.TypeGroup" Style="margin-right: 8px;" />
 
-                                <span style="font-weight: 600;">@row.Node.Name</span>
+                                    <span class="equipment-tree-name">@row.Node.Name</span>
+                                    <span class="equipment-tree-spacer"></span>
 
-                                <div style="margin-left:@(row.Level * 22 + TreeDescriptionBaseIndent)px; color: gray; font-size: 12px; line-height: 1.3;">
+                                    @if (HasInfoIndicators(row.Node))
+                                    {
+                                        <div class="equipment-tree-indicators">
+                                            @if (row.Node.PhotoCount > 0)
+                                            {
+                                                <RadzenIcon Icon="image" class="equipment-tree-indicator" title="Images" />
+                                            }
+
+                                            @if (row.Node.InstructionCount > 0)
+                                            {
+                                                <RadzenIcon Icon="picture_as_pdf" class="equipment-tree-indicator" title="PDF" />
+                                            }
+
+                                            @if (row.Node.SchemeCount > 0)
+                                            {
+                                                <RadzenIcon Icon="account_tree" class="equipment-tree-indicator" title="Schemes" />
+                                            }
+
+                                            @if (row.Node.NoteCount > 0)
+                                            {
+                                                <RadzenIcon Icon="sticky_note_2" class="equipment-tree-indicator" title="Notes" />
+                                            }
+                                        </div>
+                                    }
+
+                                    @if (row.Node.IsFavorite)
+                                    {
+                                        <RadzenIcon Icon="star" class="equipment-tree-favorite" title="Favorite" />
+                                    }
+                                </div>
+
+                                <div class="equipment-tree-description" style="margin-left:@(row.Level * 22 + TreeDescriptionBaseIndent)px;">
                                     @row.Node.DisplayName
                                     @if (!string.IsNullOrWhiteSpace(row.Node.Description)
                                         && !string.Equals(row.Node.Description, row.Node.DisplayName, StringComparison.OrdinalIgnoreCase))
@@ -136,48 +175,10 @@
         </RadzenSplitterPane>
 
         <RadzenSplitterPane>
-            @if (_selectedEquipment is null)
-            {
-                <RadzenCard>
-                    <RadzenText Text="No selected equipment"
-                                TextStyle="TextStyle.Subtitle1"
-                                Style="color: gray;" />
-                </RadzenCard>
-            }
-            else
-            {
-                <RadzenCard class="equipment-details-card">
-                    <div class="equipment-selected-header">
-                        <EquipmentTypeBadge TypeGroup="@_selectedEquipment.TypeGroup" />
-
-                        <div class="equipment-selected-title">
-                            <RadzenText Text="@_selectedEquipment.Name" TextStyle="TextStyle.H6" />
-                        </div>
-
-                        <RadzenButton Icon="@GetFavoriteIcon(_selectedEquipment)"
-                                      ButtonStyle="ButtonStyle.Light"
-                                      Size="ButtonSize.Small"
-                                      Disabled="@(_isFavoriteSaving || _selectedEquipment.IsGroup)"
-                                      class="@GetFavoriteButtonClass(_selectedEquipment)"
-                                      title="Favorite"
-                                      Click="@ToggleSelectedFavoriteAsync" />
-                    </div>
-
-                    <div class="equipment-selected-fields">
-                        <span class="equipment-field-label">Type:</span>
-                        <span>@_selectedEquipment.TypeName</span>
-
-                        @if (ShouldShowLocation(_selectedEquipment))
-                        {
-                            <span class="equipment-field-label">Location:</span>
-                            <span>@FormatLocation(_selectedEquipment.Location)</span>
-                        }
-
-                        <span class="equipment-field-label">Desc:</span>
-                        <span>@GetDescriptionText(_selectedEquipment)</span>
-                    </div>
-                </RadzenCard>
-            }
+            <EquipmentInfoPanel Equipment="@_selectedEquipment"
+                                IsFavoriteSaving="@_isFavoriteSaving"
+                                OnToggleFavorite="@ToggleSelectedFavoriteAsync"
+                                OnInfoCountsChanged="@OnInfoCountsChanged" />
         </RadzenSplitterPane>
     </RadzenSplitter>
 </RadzenStack>
@@ -191,6 +192,7 @@
 
     private List<EquipmentDto> _allEquipments = [];
     private List<TreeRow> _treeRows = [];
+    private List<string> _searchSuggestions = [];
 
     private EquipmentDto? _selectedEquipment;
 
@@ -205,13 +207,13 @@
 
     private bool _isLoading;
     private bool _isFavoriteSaving;
-    private int _matchedCount;
 
     private string _statusText = "";
     private AlertStyle _statusStyle = AlertStyle.Info;
 
     protected override async Task OnInitializedAsync()
     {
+        QrScannerState.Scanned += SelectEquipmentFromQrAsync;
         await LoadAsync();
     }
 
@@ -231,6 +233,7 @@
 
             _allEquipments = response.Equipments.ToList();
             NormalizeTreeFields(_allEquipments);
+            _searchSuggestions = BuildSearchSuggestions(_allEquipments);
 
             _stationItems = [AllStationsText];
             _stationItems.AddRange(response.Stations);
@@ -251,7 +254,8 @@
         }
         catch (Exception ex)
         {
-            EquipmentFooterState.SetCounts(0, 0);
+            EquipmentFooterState.SetTreeCount(0);
+            EquipmentFooterState.ClearInfoCounts();
 
             _statusStyle = AlertStyle.Danger;
             _statusText = "Cannot load equipment catalog from Runtime Service: " + ex.Message;
@@ -275,17 +279,17 @@
         ApplyFilters(_selectedEquipment?.Name, _selectedEquipment?.NodeId);
     }
 
+    private void OnSearchChanged(object? value)
+    {
+        _searchText = Convert.ToString(value) ?? string.Empty;
+        ApplyFilters();
+    }
+
     private void ApplyFilters(string? preferredName, string? preferredNodeId)
     {
         var directlyMatched = _allEquipments
             .Where(MatchesFilters)
             .ToList();
-
-        _matchedCount = directlyMatched
-            .Where(IsPhysicalEquipment)
-            .Select(x => x.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
 
         var includedNodeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var isEquipmentTypeFilter = IsEquipmentTypeFilterActive();
@@ -321,7 +325,7 @@
         }
 
         _treeRows = BuildTreeRows(includedNodeIds);
-        EquipmentFooterState.SetCounts(_treeRows.Count, _matchedCount);
+        EquipmentFooterState.SetTreeCount(_treeRows.Count);
 
         ApplySelectionAfterFilter(preferredName, preferredNodeId);
     }
@@ -739,6 +743,102 @@
         }
     }
 
+    private static List<string> BuildSearchSuggestions(IEnumerable<EquipmentDto> equipments)
+    {
+        return equipments
+            .Select(x => x.Name)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool HasInfoIndicators(EquipmentDto equipment)
+    {
+        return equipment.PhotoCount > 0
+            || equipment.InstructionCount > 0
+            || equipment.SchemeCount > 0
+            || equipment.NoteCount > 0;
+    }
+
+    private void OnInfoCountsChanged()
+    {
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Handles QR text published by the global header scanner and converts it into
+    /// the normal equipment selection flow: choose station/type filters, expand
+    /// parents, select the node, and refresh the details panel.
+    /// </summary>
+    private Task SelectEquipmentFromQrAsync(string qrText)
+    {
+        qrText = (qrText ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(qrText))
+            return Task.CompletedTask;
+
+        var match = FindEquipmentForQrText(qrText);
+        if (match is null)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Warning,
+                Summary = "QR",
+                Detail = $"Equipment was not found: {qrText}",
+                Duration = 3500
+            });
+
+            return Task.CompletedTask;
+        }
+
+        if (!string.IsNullOrWhiteSpace(match.Station)
+            && _stationItems.Contains(match.Station, StringComparer.OrdinalIgnoreCase))
+        {
+            _selectedStation = match.Station;
+        }
+        else
+        {
+            _selectedStation = AllStationsText;
+        }
+
+        _selectedType = _typeItems.Contains(match.TypeGroup.ToString(), StringComparer.OrdinalIgnoreCase)
+            ? match.TypeGroup.ToString()
+            : AllTypesText;
+
+        _searchText = match.Name;
+        ExpandParents(match);
+        ApplyFilters(match.Name, match.NodeId);
+
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Success,
+            Summary = "QR",
+            Detail = $"Selected: {match.Name}",
+            Duration = 2500
+        });
+
+        return Task.CompletedTask;
+    }
+
+    private EquipmentDto? FindEquipmentForQrText(string qrText)
+    {
+        qrText = (qrText ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(qrText))
+            return null;
+
+        var items = _allEquipments
+            .Where(x => !x.IsGroup)
+            .ToList();
+
+        return items.FirstOrDefault(x => string.Equals(x.Name, qrText, StringComparison.OrdinalIgnoreCase))
+            ?? items.FirstOrDefault(x => string.Equals(x.DisplayName, qrText, StringComparison.OrdinalIgnoreCase))
+            ?? items.FirstOrDefault(x => x.Name.StartsWith(qrText, StringComparison.OrdinalIgnoreCase))
+            ?? items.FirstOrDefault(x => x.DisplayName.StartsWith(qrText, StringComparison.OrdinalIgnoreCase))
+            ?? items.FirstOrDefault(x => x.Name.Contains(qrText, StringComparison.OrdinalIgnoreCase))
+            ?? items.FirstOrDefault(x => x.DisplayName.Contains(qrText, StringComparison.OrdinalIgnoreCase));
+    }
+
     private sealed record TreeRow(
         EquipmentDto Node,
         int Level,
@@ -747,6 +847,7 @@
 
     public void Dispose()
     {
+        QrScannerState.Scanned -= SelectEquipmentFromQrAsync;
         EquipmentFooterState.Clear();
     }
 }

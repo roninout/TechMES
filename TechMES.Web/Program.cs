@@ -14,7 +14,11 @@ builder.Logging.AddDebug();
 // Компоненты выполняются на сервере, а браузер общается с ними через SignalR-соединение.
 builder.Services
     .AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    .AddHubOptions(options =>
+    {
+        options.MaximumReceiveMessageSize = 1024 * 1024;
+    });
 
 builder.Services.AddAntiforgery();
 
@@ -52,6 +56,7 @@ builder.Services.AddScoped<RuntimeStatusApiClient>();
 // Это scoped-сервис: у каждой вкладки/сессии Blazor Server будет свой выбор.
 builder.Services.AddScoped<SelectedEquipmentState>();
 builder.Services.AddScoped<EquipmentFooterState>();
+builder.Services.AddScoped<QrScannerState>();
 
 var app = builder.Build();
 

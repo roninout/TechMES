@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@inject QrScannerState QrScannerState
 
 <RadzenLayout>
     <RadzenHeader class="app-header">
@@ -13,11 +14,6 @@
                     <span>Equipment</span>
                 </NavLink>
 
-                <NavLink class="top-nav-link" href="/info">
-                    <RadzenIcon Icon="info" />
-                    <span>Info</span>
-                </NavLink>
-
                 <NavLink class="top-nav-link" href="/param">
                     <RadzenIcon Icon="tune" />
                     <span>Param</span>
@@ -30,6 +26,12 @@
             </nav>
 
             <div class="header-spacer"></div>
+
+            <RadzenButton Icon="photo_camera"
+                          Text="Scan QR"
+                          ButtonStyle="ButtonStyle.Light"
+                          class="header-qr-button"
+                          Click="@OpenQrScannerAsync" />
 
             <img class="app-logo"
                  src="images/TIS_logo_intellegence_g.png"
@@ -56,3 +58,26 @@
 
 <RadzenDialog />
 <RadzenNotification />
+<QrScannerDialog @ref="_qrScannerDialog" OnScanned="@OnQrScannedAsync" />
+
+@code {
+    private QrScannerDialog? _qrScannerDialog;
+
+    /// <summary>
+    /// Opens the global QR scanner from the header bar. The dialog component owns
+    /// camera lifecycle; the layout only places the command near the app logo.
+    /// </summary>
+    private Task OpenQrScannerAsync()
+    {
+        return _qrScannerDialog?.OpenAsync() ?? Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Publishes scanned QR text to whichever page is currently interested in it.
+    /// Equipment.razor subscribes and selects the matching equipment node.
+    /// </summary>
+    private Task OnQrScannedAsync(string qrText)
+    {
+        return QrScannerState.NotifyScannedAsync(qrText);
+    }
+}

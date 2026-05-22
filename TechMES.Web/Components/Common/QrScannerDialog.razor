@@ -1,0 +1,278 @@
+@using ZXing
+@using ZXing.Common
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+@if (_isOpen)
+{
+    <div class="qr-scan-overlay">
+        <div class="qr-scan-dialog">
+            <div class="qr-scan-title-row">
+                <RadzenText Text="Scan QR" TextStyle="TextStyle.H6" />
+
+                <RadzenButton Icon="close"
+                              ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small"
+                              Click="@CloseAsync" />
+            </div>
+
+            <RadzenDropDown TValue="string"
+                            Data="@_cameraDevices"
+                            TextProperty="@nameof(QrCameraDevice.Label)"
+                            ValueProperty="@nameof(QrCameraDevice.DeviceId)"
+                            @bind-Value="_selectedCameraDeviceId"
+                            Change="@OnCameraChangedAsync"
+                            Disabled="@_isScannerStarting"
+                            class="qr-camera-selector" />
+
+            <video id="@VideoElementId"
+                   class="qr-camera-video"
+                   autoplay
+                   muted
+                   playsinline></video>
+
+            @if (!string.IsNullOrWhiteSpace(_statusText))
+            {
+                <RadzenAlert AlertStyle="@_statusStyle"
+                             ShowIcon="true"
+                             AllowClose="true"
+                             Close="@(() => _statusText = string.Empty)">
+                    @_statusText
+                </RadzenAlert>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private const string DefaultCameraDeviceId = "";
+
+    [Parameter]
+    public EventCallback<string> OnScanned { get; set; }
+
+    private readonly List<QrCameraDevice> _cameraDevices =
+    [
+        new(DefaultCameraDeviceId, "Default camera")
+    ];
+
+    private bool _isOpen;
+    private bool _isScannerStarting;
+    private bool _startScannerAfterRender;
+    private string _selectedCameraDeviceId = DefaultCameraDeviceId;
+    private string _statusText = string.Empty;
+    private AlertStyle _statusStyle = AlertStyle.Info;
+    private DotNetObjectReference<QrScannerDialog>? _dotNetReference;
+
+    private string VideoElementId => $"app-qr-video-{GetHashCode():x}";
+
+    /// <summary>
+    /// Opens the modal from the header button. Camera startup is deferred until
+    /// the next render because JS needs the video element to exist in the DOM.
+    /// </summary>
+    public async Task OpenAsync()
+    {
+        _statusText = string.Empty;
+        _isOpen = true;
+
+        await LoadCameraDevicesAsync();
+
+        _startScannerAfterRender = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Starts the camera immediately after Blazor renders the modal and video tag.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_startScannerAfterRender)
+            return;
+
+        _startScannerAfterRender = false;
+        await StartScannerAsync();
+    }
+
+    /// <summary>
+    /// Closes the modal and releases the active camera stream.
+    /// </summary>
+    private async Task CloseAsync()
+    {
+        _isOpen = false;
+        _startScannerAfterRender = false;
+        await StopScannerAsync();
+    }
+
+    /// <summary>
+    /// Reads video input devices from the browser. Before the user grants camera
+    /// permission, labels can be empty, so the UI keeps a stable Default camera item.
+    /// </summary>
+    private async Task LoadCameraDevicesAsync()
+    {
+        try
+        {
+            var devices = await JSRuntime.InvokeAsync<QrCameraDevice[]>(
+                "techMesQrScanner.listCameras");
+
+            _cameraDevices.Clear();
+            _cameraDevices.Add(new QrCameraDevice(DefaultCameraDeviceId, "Default camera"));
+
+            foreach (var device in devices
+                         .Where(x => !string.IsNullOrWhiteSpace(x.DeviceId))
+                         .DistinctBy(x => x.DeviceId))
+            {
+                _cameraDevices.Add(device);
+            }
+
+            if (_cameraDevices.All(x => x.DeviceId != _selectedCameraDeviceId))
+                _selectedCameraDeviceId = DefaultCameraDeviceId;
+        }
+        catch
+        {
+            _cameraDevices.Clear();
+            _cameraDevices.Add(new QrCameraDevice(DefaultCameraDeviceId, "Default camera"));
+            _selectedCameraDeviceId = DefaultCameraDeviceId;
+        }
+    }
+
+    /// <summary>
+    /// Restarts scanning with the selected physical camera.
+    /// </summary>
+    private async Task OnCameraChangedAsync(object? value)
+    {
+        _selectedCameraDeviceId = Convert.ToString(value) ?? DefaultCameraDeviceId;
+
+        if (_isOpen)
+            await StartScannerAsync();
+    }
+
+    /// <summary>
+    /// Starts JS camera capture. The JS side first tries the browser BarcodeDetector
+    /// API and falls back to DecodeQrFrame when native QR detection is missing.
+    /// </summary>
+    private async Task StartScannerAsync()
+    {
+        _isScannerStarting = true;
+
+        try
+        {
+            _dotNetReference ??= DotNetObjectReference.Create(this);
+
+            var result = await JSRuntime.InvokeAsync<QrScannerStartResult>(
+                "techMesQrScanner.start",
+                VideoElementId,
+                _dotNetReference,
+                _selectedCameraDeviceId);
+
+            if (result?.Success == true)
+            {
+                SetStatus(AlertStyle.Info, result.Message ?? "Camera started.");
+                await LoadCameraDevicesAsync();
+                return;
+            }
+
+            SetStatus(AlertStyle.Warning, result?.Message ?? "Cannot start camera.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(AlertStyle.Warning, "Cannot start camera: " + ex.Message);
+        }
+        finally
+        {
+            _isScannerStarting = false;
+        }
+    }
+
+    /// <summary>
+    /// Stops JS scanning and turns off the browser camera stream.
+    /// </summary>
+    private async Task StopScannerAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("techMesQrScanner.stop", VideoElementId);
+        }
+        catch
+        {
+        }
+    }
+
+    /// <summary>
+    /// Receives a decoded QR value from JS, closes the modal, and lets the parent
+    /// decide what the text means.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnQrCodeDetected(string qrText)
+    {
+        qrText = (qrText ?? string.Empty).Trim();
+        _isOpen = false;
+        _startScannerAfterRender = false;
+
+        if (string.IsNullOrWhiteSpace(qrText))
+            return;
+
+        if (OnScanned.HasDelegate)
+            await OnScanned.InvokeAsync(qrText);
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Server-side QR fallback. Browsers without native QR scanning send a small
+    /// grayscale frame through SignalR, and ZXing tries to decode it on the server.
+    /// </summary>
+    [JSInvokable]
+    public string? DecodeQrFrame(string luminanceBase64, int width, int height)
+    {
+        if (string.IsNullOrWhiteSpace(luminanceBase64) || width <= 0 || height <= 0)
+            return null;
+
+        try
+        {
+            var bytes = Convert.FromBase64String(luminanceBase64);
+            var reader = new BarcodeReaderGeneric
+            {
+                AutoRotate = true,
+                Options = new DecodingOptions
+                {
+                    TryHarder = true,
+                    PossibleFormats = new List<BarcodeFormat> { BarcodeFormat.QR_CODE }
+                }
+            };
+
+            var result = reader.Decode(
+                bytes,
+                width,
+                height,
+                RGBLuminanceSource.BitmapFormat.Gray8);
+
+            return string.IsNullOrWhiteSpace(result?.Text)
+                ? null
+                : result.Text.Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void SetStatus(AlertStyle style, string text)
+    {
+        _statusStyle = style;
+        _statusText = text;
+    }
+
+    public void Dispose()
+    {
+        _ = StopScannerAsync();
+        _dotNetReference?.Dispose();
+    }
+
+    private sealed record QrCameraDevice(string DeviceId, string Label);
+
+    private sealed class QrScannerStartResult
+    {
+        public bool Success { get; set; }
+
+        public string? Message { get; set; }
+    }
+}

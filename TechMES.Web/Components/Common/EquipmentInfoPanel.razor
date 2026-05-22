@@ -1,0 +1,1282 @@
+@using QRCoder
+@inject InfoApiClient InfoApi
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+@inject EquipmentFooterState EquipmentFooterState
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<div class="equipment-info-panel">
+    @if (Equipment is null)
+    {
+        <RadzenCard>
+            <RadzenText Text="No selected equipment"
+                        TextStyle="TextStyle.Subtitle1"
+                        Style="color: gray;" />
+        </RadzenCard>
+    }
+    else
+    {
+        <RadzenCard class="equipment-info-summary-card">
+            <div class="equipment-info-summary">
+                <div class="equipment-info-main">
+                    <div class="equipment-selected-header">
+                        <EquipmentTypeBadge TypeGroup="@Equipment.TypeGroup" />
+
+                        <div class="equipment-selected-title">
+                            <RadzenText Text="@Equipment.Name" TextStyle="TextStyle.H6" />
+                        </div>
+
+                        @if (!Equipment.IsGroup)
+                        {
+                            <RadzenButton Icon="@GetFavoriteIcon(Equipment)"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Size="ButtonSize.Small"
+                                          Disabled="@IsFavoriteSaving"
+                                          class="@GetFavoriteButtonClass(Equipment)"
+                                          title="Favorite"
+                                          Click="@ToggleFavoriteAsync" />
+                        }
+                    </div>
+
+                    <div class="equipment-selected-fields">
+                        <span class="equipment-field-label">Type:</span>
+                        <span>@DisplayValue(Equipment.TypeName)</span>
+
+                        @if (ShouldShowLocation(Equipment))
+                        {
+                            <span class="equipment-field-label">Location:</span>
+                            <span>@FormatLocation(Equipment.Location)</span>
+                        }
+
+                        <span class="equipment-field-label">Supplier:</span>
+                        <span>@DisplayValue(_info?.Supplier)</span>
+
+                        <span class="equipment-field-label">Product code:</span>
+                        <span>@DisplayValue(_info?.ProductCode)</span>
+
+                        <span class="equipment-field-label">Desc:</span>
+                        <span>@GetDescriptionText(Equipment)</span>
+                    </div>
+                </div>
+
+                <div class="equipment-info-side">
+                    @if (!string.IsNullOrWhiteSpace(_info?.SupplierLogoDataUrl))
+                    {
+                        <img class="supplier-logo"
+                             src="@_info.SupplierLogoDataUrl"
+                             alt="@DisplayValue(_info.Supplier)" />
+                    }
+
+                    @if (GetSummaryPhoto() is { } summaryPhoto)
+                    {
+                        <img class="summary-photo"
+                             src="@summaryPhoto.ContentUrl"
+                             alt="@summaryPhoto.DisplayName" />
+                    }
+                </div>
+            </div>
+        </RadzenCard>
+
+        @if (!string.IsNullOrWhiteSpace(_statusText))
+        {
+            <RadzenAlert AlertStyle="@_statusStyle"
+                         ShowIcon="true"
+                         AllowClose="true"
+                         Close="@(() => _statusText = string.Empty)">
+                @_statusText
+            </RadzenAlert>
+        }
+
+        <div class="equipment-info-tabs">
+            @if (_isLoading)
+            {
+                <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+            }
+            else if (_info is null)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                    Info data is not loaded.
+                </RadzenAlert>
+            }
+            else
+            {
+                <RadzenTabs>
+                    <Tabs>
+                        <RadzenTabsItem Text="Description">
+                            <div class="description-block">
+                                <div class="description-actions">
+                                    @if (_isDescriptionEditing)
+                                    {
+                                        <RadzenStack Orientation="Orientation.Horizontal" Gap="6px">
+                                            <RadzenButton Icon="save"
+                                                          Text="Save"
+                                                          ButtonStyle="ButtonStyle.Primary"
+                                                          Disabled="@_isBusy"
+                                                          Click="@SaveDescriptionAsync" />
+
+                                            <RadzenButton Icon="close"
+                                                          Text="Cancel"
+                                                          ButtonStyle="ButtonStyle.Light"
+                                                          Disabled="@_isBusy"
+                                                          Click="@CancelDescriptionEdit" />
+                                        </RadzenStack>
+                                    }
+                                    else
+                                    {
+                                        <RadzenButton Icon="edit"
+                                                      Text="Edit"
+                                                      ButtonStyle="ButtonStyle.Light"
+                                                      Disabled="@_isBusy"
+                                                      Click="@BeginDescriptionEdit" />
+                                    }
+                                </div>
+
+                                @if (_isDescriptionEditing)
+                                {
+                                    <RadzenTextArea @bind-Value="_editDescription"
+                                                    Rows="6"
+                                                    class="full-width"
+                                                    Disabled="@_isBusy" />
+                                }
+                                else
+                                {
+                                    <div class="description-text">@DisplayValue(_info.Description)</div>
+                                }
+                            </div>
+                        </RadzenTabsItem>
+
+                        <RadzenTabsItem Text="@ImagesTabText">
+                            @if (_info.Photos.Count == 0)
+                            {
+                                <RadzenText Text="No images"
+                                            TextStyle="TextStyle.Caption"
+                                            class="muted-text" />
+                            }
+                            else
+                            {
+                                <RadzenCarousel Auto="false"
+                                                AllowNavigation="@(_info.Photos.Count > 1)"
+                                                AllowPaging="@(_info.Photos.Count > 1)"
+                                                PagerPosition="PagerPosition.Bottom"
+                                                class="photo-carousel">
+                                    <Items>
+                                        @foreach (var file in _info.Photos)
+                                        {
+                                            <RadzenCarouselItem>
+                                                <div class="photo-carousel-item">
+                                                    <img class="photo-preview"
+                                                         src="@file.ContentUrl"
+                                                         alt="@file.DisplayName" />
+
+                                                    <div class="photo-caption">@file.DisplayName</div>
+                                                </div>
+                                            </RadzenCarouselItem>
+                                        }
+                                    </Items>
+                                </RadzenCarousel>
+                            }
+                        </RadzenTabsItem>
+
+                        <RadzenTabsItem Text="@PdfTabText">
+                            @RenderDocumentPanel(_info.Instructions, _selectedInstruction, SelectInstructionByIdAsync, "No PDF files", "Select PDF", "instruction-pdf-preview")
+                        </RadzenTabsItem>
+
+                        <RadzenTabsItem Text="@SchemesTabText">
+                            @RenderDocumentPanel(_info.Schemes, _selectedScheme, SelectSchemeByIdAsync, "No schemes", "Select scheme", "scheme-pdf-preview")
+                        </RadzenTabsItem>
+
+                        <RadzenTabsItem Text="@NotesTabText">
+                            @{
+                                var selectedNote = GetSelectedNote();
+                            }
+
+                            <div class="notes-tab">
+                                <div class="notes-layout">
+                                    <div class="notes-list">
+                                        @if (_info.Notes.Count == 0)
+                                        {
+                                            <RadzenText Text="No notes"
+                                                        TextStyle="TextStyle.Caption"
+                                                        class="muted-text" />
+                                        }
+                                        else
+                                        {
+                                            <div class="note-card-list">
+                                                @foreach (var note in _info.Notes)
+                                                {
+                                                    <article class="@GetNoteCardClass(note)"
+                                                             @onclick="@(() => SelectNote(note))">
+                                                        <div class="note-card-author">@DisplayValue(note.CreatedBy)</div>
+                                                        <div class="note-card-date">@FormatNoteDate(note.CreatedAt)</div>
+                                                        <div class="note-card-preview">@note.PreviewText</div>
+                                                    </article>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <div class="notes-editor">
+                                        <div class="notes-editor-actions">
+                                            @if (IsNoteEditorActive)
+                                            {
+                                                <RadzenButton Icon="save"
+                                                              Text="Save"
+                                                              ButtonStyle="ButtonStyle.Primary"
+                                                              Disabled="@(_isBusy || string.IsNullOrWhiteSpace(_editNoteText))"
+                                                              Click="@SaveNoteAsync" />
+
+                                                <RadzenButton Icon="close"
+                                                              Text="Cancel"
+                                                              ButtonStyle="ButtonStyle.Light"
+                                                              Disabled="@_isBusy"
+                                                              Click="@CancelNoteEdit" />
+                                            }
+                                            else
+                                            {
+                                                <RadzenButton Icon="add"
+                                                              Text="Add"
+                                                              ButtonStyle="ButtonStyle.Light"
+                                                              Disabled="@_isBusy"
+                                                              Click="@BeginNoteCreate" />
+
+                                                <RadzenButton Icon="edit"
+                                                              Text="Edit"
+                                                              ButtonStyle="ButtonStyle.Light"
+                                                              Disabled="@(_isBusy || selectedNote is null)"
+                                                              Click="@BeginSelectedNoteEdit" />
+
+                                                <RadzenButton Icon="delete"
+                                                              Text="Delete"
+                                                              ButtonStyle="ButtonStyle.Danger"
+                                                              Disabled="@(_isBusy || selectedNote is null)"
+                                                              Click="@DeleteSelectedNoteAsync" />
+                                            }
+                                        </div>
+
+                                        @if (IsNoteEditorActive)
+                                        {
+                                            <RadzenTextArea @bind-Value="_editNoteText"
+                                                            Placeholder="New note..."
+                                                            Rows="12"
+                                                            class="note-editor-text full-width"
+                                                            Disabled="@_isBusy" />
+                                        }
+                                        else if (selectedNote is null)
+                                        {
+                                            <div class="empty-note-view">
+                                                <RadzenText Text="No selected note"
+                                                            TextStyle="TextStyle.Caption"
+                                                            class="muted-text" />
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="note-view-text">@selectedNote.NoteText</div>
+
+                                            <div class="note-meta note-view-meta">
+                                                <span>Created: @FormatNoteDate(selectedNote.CreatedAt)</span>
+                                                <span>By: @DisplayValue(selectedNote.CreatedBy)</span>
+
+                                                @if (selectedNote.UpdatedAt is not null)
+                                                {
+                                                    <span>Updated: @FormatNoteDate(selectedNote.UpdatedAt.Value)</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </RadzenTabsItem>
+
+                        <RadzenTabsItem Text="QR">
+                            <div class="qr-tab">
+                                <div class="qr-code-block">
+                                    <div class="qr-caption">@Equipment.Name</div>
+
+                                    <img class="qr-image"
+                                         src="@QrPngDataUrl"
+                                         alt="@($"QR {Equipment.Name}")" />
+
+                                    <a class="qr-download-link"
+                                       href="@QrPngDataUrl"
+                                       download="@QrFileName">
+                                        Download PNG
+                                    </a>
+                                </div>
+
+                            </div>
+                        </RadzenTabsItem>
+                    </Tabs>
+                </RadzenTabs>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public EquipmentDto? Equipment { get; set; }
+
+    [Parameter]
+    public bool IsFavoriteSaving { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggleFavorite { get; set; }
+
+    [Parameter]
+    public EventCallback OnInfoCountsChanged { get; set; }
+
+    private EquipmentInfoDto? _info;
+    private EquipmentInfoFileDto? _selectedPhoto;
+    private EquipmentInfoFileDto? _selectedInstruction;
+    private EquipmentInfoFileDto? _selectedScheme;
+
+    private bool _isLoading;
+    private bool _isSaving;
+    private bool _isDescriptionEditing;
+    private bool _isNoteCreating;
+    private bool _isNoteEditing;
+    private long? _editingNoteId;
+    private long? _selectedNoteId;
+    private int _loadVersion;
+
+    private string? _loadedEquipmentName;
+    private string _editDescription = string.Empty;
+    private string _editNoteText = string.Empty;
+    private string _statusText = string.Empty;
+    private AlertStyle _statusStyle = AlertStyle.Info;
+    private int _pdfPage = 1;
+    private int _editPdfPage = 1;
+    private double _pdfZoom = 100;
+    private double _editPdfZoom = 100;
+    private bool _isDocumentPositionEditing;
+
+    private bool _isBusy => _isLoading || _isSaving;
+    private bool IsNoteEditorActive => _isNoteCreating || _isNoteEditing;
+    private int PhotoTabCount => _info is null ? 0 : Math.Max(_info.PhotoCount, _info.Photos.Count);
+    private int PdfTabCount => _info is null ? 0 : Math.Max(_info.InstructionCount, _info.Instructions.Count);
+    private int SchemeTabCount => _info is null ? 0 : Math.Max(_info.SchemeCount, _info.Schemes.Count);
+    private int NoteTabCount => _info?.Notes.Count ?? 0;
+    private string ImagesTabText => BuildTabText("Images", PhotoTabCount);
+    private string PdfTabText => BuildTabText("PDF", PdfTabCount);
+    private string SchemesTabText => BuildTabText("Schemes", SchemeTabCount);
+    private string NotesTabText => BuildTabText("Notes", NoteTabCount);
+    private string QrPngDataUrl => Equipment is null ? string.Empty : BuildQrPngDataUrl(Equipment.Name);
+    private string QrFileName => MakeSafeFileName(Equipment?.Name ?? "qr") + ".png";
+
+    private RenderFragment RenderDocumentPanel(
+        IReadOnlyList<EquipmentInfoFileDto> files,
+        EquipmentInfoFileDto? selectedFile,
+        Func<long?, Task> selectFileByIdAsync,
+        string emptyText,
+        string placeholderText,
+        string frameId) => @<div class="document-view">
+            @if (files.Count == 0)
+            {
+                <RadzenText Text="@emptyText"
+                            TextStyle="TextStyle.Caption"
+                            class="muted-text" />
+            }
+            else
+            {
+                <div class="document-toolbar">
+                    <RadzenDropDown TValue="long?"
+                                    Data="@files"
+                                    TextProperty="@nameof(EquipmentInfoFileDto.DisplayName)"
+                                    ValueProperty="@nameof(EquipmentInfoFileDto.Id)"
+                                    Value="@selectedFile?.Id"
+                                    Change="@((object? value) => selectFileByIdAsync(ToNullableLong(value)))"
+                                    Placeholder="@placeholderText"
+                                    class="document-file-selector" />
+
+                    <div class="document-toolbar-actions">
+                        <RadzenButton Icon="fullscreen"
+                                      Text="Full screen"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Disabled="@(selectedFile is null)"
+                                      Click="@(() => OpenDocumentFullScreenAsync(selectedFile))" />
+
+                        <RadzenButton Icon="my_location"
+                                      Text="Remember"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Disabled="@(_isBusy || selectedFile is null)"
+                                      Click="@(() => selectedFile is null ? Task.CompletedTask : BeginPdfPositionEditAsync(selectedFile, frameId))" />
+                    </div>
+                </div>
+
+                @if (_isDocumentPositionEditing && selectedFile is not null)
+                {
+                    <div class="document-position-editor">
+                        <RadzenNumeric TValue="int"
+                                       @bind-Value="_editPdfPage"
+                                       Min="1"
+                                       Placeholder="Page"
+                                       class="document-position-input" />
+
+                        <RadzenNumeric TValue="double"
+                                       @bind-Value="_editPdfZoom"
+                                       Min="25"
+                                       Max="400"
+                                       Step="5"
+                                       Placeholder="Zoom"
+                                       class="document-position-input" />
+
+                        <RadzenButton Icon="save"
+                                      Text="Save"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@_isBusy"
+                                      Click="@(() => SavePdfPositionEditAsync(selectedFile))" />
+
+                        <RadzenButton Icon="close"
+                                      Text="Cancel"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Disabled="@_isBusy"
+                                      Click="@CancelPdfPositionEdit" />
+                    </div>
+                }
+
+                @if (selectedFile is null)
+                {
+                    <RadzenText Text="@placeholderText"
+                                TextStyle="TextStyle.Caption"
+                                class="muted-text" />
+                }
+                else
+                {
+                    <iframe id="@frameId"
+                            class="pdf-preview"
+                            src="@BuildPdfUrl(selectedFile)"
+                            title="@selectedFile.DisplayName"></iframe>
+                }
+            }
+        </div>;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Equipment is null)
+        {
+            ClearInfoState();
+            return;
+        }
+
+        if (string.Equals(_loadedEquipmentName, Equipment.Name, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        await LoadInfoAsync(Equipment.Name);
+    }
+
+    /// <summary>
+    /// Loads the Info-module snapshot for the selected equipment and ignores
+    /// outdated responses when the user switches equipment quickly.
+    /// </summary>
+    private async Task LoadInfoAsync(string equipmentName)
+    {
+        equipmentName = (equipmentName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(equipmentName))
+            return;
+
+        var loadVersion = ++_loadVersion;
+
+        _isLoading = true;
+        _info = null;
+        _loadedEquipmentName = equipmentName;
+        EquipmentFooterState.ClearInfoCounts();
+        ClearEditState();
+        ResetPdfViewState();
+
+        try
+        {
+            var info = await InfoApi.GetInfoAsync(equipmentName);
+
+            if (loadVersion != _loadVersion)
+                return;
+
+            _info = info;
+            _editDescription = _info.Description ?? string.Empty;
+            EnsureSelectedNote();
+            UpdateFooterInfoCounts();
+            await ApplyDefaultFileSelectionAsync();
+            ClearStatus();
+        }
+        catch (Exception ex)
+        {
+            if (loadVersion != _loadVersion)
+                return;
+
+            SetStatus(AlertStyle.Warning, "Cannot load equipment info: " + ex.Message);
+        }
+        finally
+        {
+            if (loadVersion == _loadVersion)
+                _isLoading = false;
+        }
+    }
+
+    private void BeginDescriptionEdit()
+    {
+        if (_info is null)
+            return;
+
+        _editDescription = _info.Description ?? string.Empty;
+        _isDescriptionEditing = true;
+    }
+
+    private void CancelDescriptionEdit()
+    {
+        _editDescription = _info?.Description ?? string.Empty;
+        _isDescriptionEditing = false;
+    }
+
+    /// <summary>
+    /// Saves the editable description through Runtime.Service and re-applies the
+    /// current file/note selection because the backend returns a fresh Info DTO.
+    /// </summary>
+    private async Task SaveDescriptionAsync()
+    {
+        if (_info is null)
+            return;
+
+        _isSaving = true;
+
+        try
+        {
+            var photoId = _selectedPhoto?.Id;
+            var instructionId = _selectedInstruction?.Id;
+            var schemeId = _selectedScheme?.Id;
+            var selectedNoteId = _selectedNoteId;
+
+            _info = await InfoApi.SaveDescriptionAsync(
+                _info.EquipName,
+                _editDescription);
+
+            _editDescription = _info.Description ?? string.Empty;
+            _isDescriptionEditing = false;
+            _selectedNoteId = SelectPreferredNoteId(selectedNoteId);
+            UpdateFooterInfoCounts();
+            await ApplyFileSelectionAsync(photoId, instructionId, schemeId);
+
+            Notify(NotificationSeverity.Success, "Info", "Description saved.");
+            ClearStatus();
+        }
+        catch (Exception ex)
+        {
+            SetStatus(AlertStyle.Danger, "Cannot save description: " + ex.Message);
+            Notify(NotificationSeverity.Error, "Info", "Cannot save description.");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// Selects the first available image/PDF/scheme after data load, while trying
+    /// to preserve the user's previous file and note selection.
+    /// </summary>
+    private async Task ApplyDefaultFileSelectionAsync()
+    {
+        await ApplyFileSelectionAsync(
+            _selectedPhoto?.Id,
+            _selectedInstruction?.Id,
+            _selectedScheme?.Id);
+    }
+
+    private async Task ApplyFileSelectionAsync(
+        long? preferredPhotoId,
+        long? preferredInstructionId,
+        long? preferredSchemeId)
+    {
+        if (_info is null)
+        {
+            _selectedPhoto = null;
+            _selectedInstruction = null;
+            _selectedScheme = null;
+            return;
+        }
+
+        _selectedPhoto = SelectPreferredFile(_info.Photos, preferredPhotoId);
+        _selectedInstruction = SelectPreferredFile(_info.Instructions, preferredInstructionId);
+        _selectedScheme = SelectPreferredFile(_info.Schemes, preferredSchemeId);
+
+        if (_selectedInstruction is not null)
+            await LoadPdfViewStateAsync(_selectedInstruction);
+        else if (_selectedScheme is not null)
+            await LoadPdfViewStateAsync(_selectedScheme);
+        else
+            ResetPdfViewState();
+    }
+
+    private static EquipmentInfoFileDto? SelectPreferredFile(
+        IReadOnlyList<EquipmentInfoFileDto> files,
+        long? preferredId)
+    {
+        if (files.Count == 0)
+            return null;
+
+        if (preferredId is not null)
+        {
+            var preferred = files.FirstOrDefault(x => x.Id == preferredId.Value);
+            if (preferred is not null)
+                return preferred;
+        }
+
+        return files[0];
+    }
+
+    private Task SelectInstructionByIdAsync(long? fileId)
+    {
+        var file = FindFile(_info?.Instructions, fileId);
+        return file is null
+            ? Task.CompletedTask
+            : SelectInstructionAsync(file);
+    }
+
+    private Task SelectSchemeByIdAsync(long? fileId)
+    {
+        var file = FindFile(_info?.Schemes, fileId);
+        return file is null
+            ? Task.CompletedTask
+            : SelectSchemeAsync(file);
+    }
+
+    private async Task SelectInstructionAsync(EquipmentInfoFileDto file)
+    {
+        _selectedInstruction = file;
+        _isDocumentPositionEditing = false;
+        await LoadPdfViewStateAsync(file);
+    }
+
+    private async Task SelectSchemeAsync(EquipmentInfoFileDto file)
+    {
+        _selectedScheme = file;
+        _isDocumentPositionEditing = false;
+        await LoadPdfViewStateAsync(file);
+    }
+
+    private EquipmentInfoFileDto? GetSummaryPhoto()
+    {
+        return _info?.Photos.FirstOrDefault();
+    }
+
+    private static EquipmentInfoFileDto? FindFile(
+        IReadOnlyList<EquipmentInfoFileDto>? files,
+        long? fileId)
+    {
+        if (files is null || fileId is null)
+            return null;
+
+        return files.FirstOrDefault(x => x.Id == fileId.Value);
+    }
+
+    private static long? ToNullableLong(object? value)
+    {
+        if (value is null)
+            return null;
+
+        if (value is long longValue)
+            return longValue;
+
+        if (value is int intValue)
+            return intValue;
+
+        return long.TryParse(Convert.ToString(value), out var parsed)
+            ? parsed
+            : null;
+    }
+
+    /// <summary>
+    /// Restores saved PDF page/zoom state for the selected instruction or scheme.
+    /// The state is stored in the backend table that mirrors the WPF behavior.
+    /// </summary>
+    private async Task LoadPdfViewStateAsync(EquipmentInfoFileDto file)
+    {
+        if (_info is null)
+            return;
+
+        try
+        {
+            var state = await InfoApi.GetDocumentViewStateAsync(
+                _info.EquipName,
+                file.Kind,
+                file.Id);
+
+            if (state is null)
+            {
+                ResetPdfViewState();
+                return;
+            }
+
+            _pdfPage = Math.Max(1, state.PageNumber);
+            _pdfZoom = Math.Clamp(state.ZoomFactor, 25, 400);
+        }
+        catch (Exception ex)
+        {
+            ResetPdfViewState();
+            SetStatus(AlertStyle.Warning, "Cannot restore PDF position: " + ex.Message);
+        }
+    }
+
+    private async Task BeginPdfPositionEditAsync(EquipmentInfoFileDto file, string frameId)
+    {
+        await ReadDocumentViewStateFromViewerAsync(frameId);
+
+        _editPdfPage = Math.Max(1, _pdfPage);
+        _editPdfZoom = Math.Clamp(_pdfZoom, 25, 400);
+        _isDocumentPositionEditing = true;
+    }
+
+    private async Task SavePdfPositionEditAsync(EquipmentInfoFileDto file)
+    {
+        _pdfPage = Math.Max(1, _editPdfPage);
+        _pdfZoom = Math.Clamp(_editPdfZoom, 25, 400);
+        _isDocumentPositionEditing = false;
+
+        await SavePdfViewStateAsync(file);
+    }
+
+    private void CancelPdfPositionEdit()
+    {
+        _editPdfPage = Math.Max(1, _pdfPage);
+        _editPdfZoom = Math.Clamp(_pdfZoom, 25, 400);
+        _isDocumentPositionEditing = false;
+    }
+
+    /// <summary>
+    /// Persists the selected PDF page/zoom values. Browser PDF viewers do not
+    /// reliably expose their live scroll position, so the explicit editor is the
+    /// stable fallback for now.
+    /// </summary>
+    private async Task SavePdfViewStateAsync(EquipmentInfoFileDto file)
+    {
+        if (_info is null)
+            return;
+
+        _isSaving = true;
+
+        try
+        {
+            await InfoApi.SaveDocumentViewStateAsync(
+                _info.EquipName,
+                new SaveEquipmentInfoDocumentViewStateRequest
+                {
+                    Kind = file.Kind,
+                    FileId = file.Id,
+                    FileName = file.FileName,
+                    PageNumber = Math.Max(1, _pdfPage),
+                    ZoomFactor = Math.Clamp(_pdfZoom, 25, 400),
+                    AnchorX = 0,
+                    AnchorY = 0
+                });
+
+            Notify(NotificationSeverity.Success, "Info", "Document view saved.");
+            ClearStatus();
+        }
+        catch (Exception ex)
+        {
+            SetStatus(AlertStyle.Danger, "Cannot save document view: " + ex.Message);
+            Notify(NotificationSeverity.Error, "Info", "Cannot save document view.");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// Attempts to read native browser PDF page/zoom before showing the explicit
+    /// Remember editor. Not every embedded PDF viewer exposes this data.
+    /// </summary>
+    private async Task ReadDocumentViewStateFromViewerAsync(string frameId)
+    {
+        try
+        {
+            var state = await JSRuntime.InvokeAsync<BrowserDocumentViewState?>(
+                "techMesPdfViewer.getViewState",
+                frameId);
+
+            if (state?.PageNumber is int pageNumber && pageNumber > 0)
+                _pdfPage = pageNumber;
+
+            if (state?.ZoomFactor is double zoomFactor && zoomFactor > 0)
+                _pdfZoom = Math.Clamp(zoomFactor, 25, 400);
+        }
+        catch
+        {
+            // Browser-native PDF viewers don't always expose live page/zoom to the host page.
+        }
+    }
+
+    private async Task OpenDocumentFullScreenAsync(EquipmentInfoFileDto? file)
+    {
+        if (file is null)
+            return;
+
+        await JSRuntime.InvokeVoidAsync(
+            "window.open",
+            BuildPdfUrl(file),
+            "_blank",
+            "noopener,noreferrer");
+    }
+
+    private void ResetPdfViewState()
+    {
+        _pdfPage = 1;
+        _pdfZoom = 100;
+        _editPdfPage = 1;
+        _editPdfZoom = 100;
+        _isDocumentPositionEditing = false;
+    }
+
+    private void BeginNoteCreate()
+    {
+        if (_info is null || _isBusy)
+            return;
+
+        _isNoteCreating = true;
+        _isNoteEditing = false;
+        _editingNoteId = null;
+        _selectedNoteId = null;
+        _editNoteText = string.Empty;
+    }
+
+    private void BeginSelectedNoteEdit()
+    {
+        var note = GetSelectedNote();
+
+        if (note is null || _isBusy)
+            return;
+
+        _isNoteCreating = false;
+        _isNoteEditing = true;
+        _editingNoteId = note.Id;
+        _selectedNoteId = note.Id;
+        _editNoteText = note.NoteText;
+    }
+
+    private async Task SaveNoteAsync()
+    {
+        if (_isNoteCreating)
+        {
+            await AddNoteAsync();
+            return;
+        }
+
+        if (_isNoteEditing && GetSelectedNote() is { } note)
+            await SaveNoteEditAsync(note);
+    }
+
+    /// <summary>
+    /// Creates a note for the current equipment and updates tab/footer counters
+    /// without reloading the whole equipment catalog.
+    /// </summary>
+    private async Task AddNoteAsync()
+    {
+        if (_info is null || string.IsNullOrWhiteSpace(_editNoteText))
+            return;
+
+        _isSaving = true;
+
+        try
+        {
+            var note = await InfoApi.AddNoteAsync(
+                _info.EquipName,
+                _editNoteText);
+
+            _info.Notes.Insert(0, note);
+            _selectedNoteId = note.Id;
+            CancelNoteEdit();
+            UpdateFooterInfoCounts();
+
+            Notify(NotificationSeverity.Success, "Info", "Note added.");
+            ClearStatus();
+        }
+        catch (Exception ex)
+        {
+            SetStatus(AlertStyle.Danger, "Cannot add note: " + ex.Message);
+            Notify(NotificationSeverity.Error, "Info", "Cannot add note.");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// Updates the selected note in place and keeps the visible note list stable.
+    /// </summary>
+    private async Task SaveNoteEditAsync(EquipmentInfoNoteDto note)
+    {
+        if (_info is null || string.IsNullOrWhiteSpace(_editNoteText))
+            return;
+
+        _isSaving = true;
+
+        try
+        {
+            var updated = await InfoApi.UpdateNoteAsync(
+                _info.EquipName,
+                note.Id,
+                _editNoteText);
+
+            var index = _info.Notes.FindIndex(x => x.Id == updated.Id);
+            if (index >= 0)
+                _info.Notes[index] = updated;
+
+            _selectedNoteId = updated.Id;
+            CancelNoteEdit();
+            UpdateFooterInfoCounts();
+
+            Notify(NotificationSeverity.Success, "Info", "Note saved.");
+            ClearStatus();
+        }
+        catch (Exception ex)
+        {
+            SetStatus(AlertStyle.Danger, "Cannot save note: " + ex.Message);
+            Notify(NotificationSeverity.Error, "Info", "Cannot save note.");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private Task DeleteSelectedNoteAsync()
+    {
+        return GetSelectedNote() is { } note
+            ? DeleteNoteAsync(note)
+            : Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Deletes one note after user confirmation and selects the nearest remaining
+    /// note, matching the old WPF list behavior.
+    /// </summary>
+    private async Task DeleteNoteAsync(EquipmentInfoNoteDto note)
+    {
+        if (_info is null)
+            return;
+
+        var confirmed = await DialogService.Confirm(
+            "Delete selected note?",
+            "Delete note",
+            new ConfirmOptions
+            {
+                OkButtonText = "Delete",
+                CancelButtonText = "Cancel"
+            });
+
+        if (confirmed != true)
+            return;
+
+        _isSaving = true;
+
+        try
+        {
+            var removedIndex = _info.Notes.IndexOf(note);
+
+            await InfoApi.DeleteNoteAsync(_info.EquipName, note.Id);
+            _info.Notes.Remove(note);
+
+            _selectedNoteId = SelectNextNoteId(removedIndex);
+            CancelNoteEdit();
+            UpdateFooterInfoCounts();
+            Notify(NotificationSeverity.Success, "Info", "Note deleted.");
+            ClearStatus();
+        }
+        catch (Exception ex)
+        {
+            SetStatus(AlertStyle.Danger, "Cannot delete note: " + ex.Message);
+            Notify(NotificationSeverity.Error, "Info", "Cannot delete note.");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void SelectNote(EquipmentInfoNoteDto note)
+    {
+        if (IsNoteEditorActive || _isBusy)
+            return;
+
+        _selectedNoteId = note.Id;
+    }
+
+    private EquipmentInfoNoteDto? GetSelectedNote()
+    {
+        if (_info?.Notes.Count is not > 0)
+            return null;
+
+        if (_selectedNoteId is long selectedNoteId)
+        {
+            var selected = _info.Notes.FirstOrDefault(x => x.Id == selectedNoteId);
+            if (selected is not null)
+                return selected;
+        }
+
+        return _info.Notes.FirstOrDefault();
+    }
+
+    private void EnsureSelectedNote()
+    {
+        _selectedNoteId = SelectPreferredNoteId(_selectedNoteId);
+    }
+
+    private long? SelectPreferredNoteId(long? preferredNoteId)
+    {
+        if (_info?.Notes.Count is not > 0)
+            return null;
+
+        if (preferredNoteId is long noteId && _info.Notes.Any(x => x.Id == noteId))
+            return noteId;
+
+        return _info.Notes.First().Id;
+    }
+
+    private long? SelectNextNoteId(int removedIndex)
+    {
+        if (_info?.Notes.Count is not > 0)
+            return null;
+
+        var nextIndex = Math.Clamp(removedIndex, 0, _info.Notes.Count - 1);
+        return _info.Notes[nextIndex].Id;
+    }
+
+    private void CancelNoteEdit()
+    {
+        _isNoteCreating = false;
+        _isNoteEditing = false;
+        _editingNoteId = null;
+        _editNoteText = string.Empty;
+
+        if (_selectedNoteId is null)
+            EnsureSelectedNote();
+    }
+
+    private void ClearEditState()
+    {
+        _isDescriptionEditing = false;
+        _isNoteCreating = false;
+        _isNoteEditing = false;
+        _isDocumentPositionEditing = false;
+        _editingNoteId = null;
+        _selectedNoteId = null;
+        _editNoteText = string.Empty;
+    }
+
+    private void ClearInfoState()
+    {
+        ++_loadVersion;
+        _isLoading = false;
+        _isSaving = false;
+        _info = null;
+        _loadedEquipmentName = null;
+        _selectedPhoto = null;
+        _selectedInstruction = null;
+        _selectedScheme = null;
+        ClearEditState();
+        ClearStatus();
+        ResetPdfViewState();
+        EquipmentFooterState.ClearInfoCounts();
+    }
+
+    /// <summary>
+    /// Pushes Info counters both to the footer state and to the selected tree node,
+    /// so tabs, footer badges, and tree indicators stay synchronized.
+    /// </summary>
+    private void UpdateFooterInfoCounts()
+    {
+        if (_info is null)
+        {
+            EquipmentFooterState.ClearInfoCounts();
+            return;
+        }
+
+        var photoCount = PhotoTabCount;
+        var pdfCount = PdfTabCount;
+        var schemeCount = SchemeTabCount;
+        var noteCount = NoteTabCount;
+
+        EquipmentFooterState.SetInfoCounts(
+            photoCount,
+            pdfCount,
+            schemeCount,
+            noteCount);
+
+        if (Equipment is not null)
+        {
+            Equipment.PhotoCount = photoCount;
+            Equipment.InstructionCount = pdfCount;
+            Equipment.SchemeCount = schemeCount;
+            Equipment.NoteCount = noteCount;
+        }
+
+        if (OnInfoCountsChanged.HasDelegate)
+            _ = OnInfoCountsChanged.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Delegates favorite toggling to Equipment.razor because the tree and filters
+    /// also need to update after the backend write.
+    /// </summary>
+    private Task ToggleFavoriteAsync()
+    {
+        return OnToggleFavorite.HasDelegate
+            ? OnToggleFavorite.InvokeAsync()
+            : Task.CompletedTask;
+    }
+
+    private static bool ShouldShowLocation(EquipmentDto equipment)
+    {
+        return !string.IsNullOrWhiteSpace(equipment.Location)
+            && !string.Equals(equipment.Location, "Unknown", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatLocation(string? raw)
+    {
+        raw = (raw ?? "").Trim();
+
+        if (string.IsNullOrWhiteSpace(raw))
+            return "";
+
+        if (raw.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+            return raw;
+
+        var parts = raw.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (parts.Length >= 2)
+            return $"module: {parts[0]}, chanel: {parts[1]}";
+
+        return raw;
+    }
+
+    private static string GetDescriptionText(EquipmentDto equipment)
+    {
+        return string.IsNullOrWhiteSpace(equipment.Description)
+            ? "-"
+            : equipment.Description;
+    }
+
+    private static string DisplayValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? "-"
+            : value.Trim();
+    }
+
+    private static string BuildTabText(string text, int count)
+    {
+        return count > 0
+            ? $"{text} ({count})"
+            : text;
+    }
+
+    /// <summary>
+    /// Builds the iframe URL with the remembered page/zoom fragment understood by
+    /// common browser PDF viewers.
+    /// </summary>
+    private string BuildPdfUrl(EquipmentInfoFileDto file)
+    {
+        var zoom = Math.Clamp(_pdfZoom, 25, 400)
+            .ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+
+        return $"{file.ContentUrl}#page={Math.Max(1, _pdfPage)}&zoom={zoom}";
+    }
+
+    /// <summary>
+    /// Generates the downloadable QR image directly in Blazor, so the QR tab does
+    /// not need any backend endpoint for this simple equipment-name payload.
+    /// </summary>
+    private static string BuildQrPngDataUrl(string text)
+    {
+        text = (text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(text))
+            text = "qr";
+
+        using var generator = new QRCodeGenerator();
+        using var data = generator.CreateQrCode(text, QRCodeGenerator.ECCLevel.Q);
+        var png = new PngByteQRCode(data);
+        var bytes = png.GetGraphic(pixelsPerModule: 12);
+
+        return "data:image/png;base64," + Convert.ToBase64String(bytes);
+    }
+
+    private static string MakeSafeFileName(string text)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var safe = new string((text ?? "qr")
+            .Trim()
+            .Select(ch => invalid.Contains(ch) ? '_' : ch)
+            .ToArray());
+
+        return string.IsNullOrWhiteSpace(safe)
+            ? "qr"
+            : safe[..Math.Min(safe.Length, 80)];
+    }
+
+    private static string GetFavoriteIcon(EquipmentDto equipment)
+    {
+        return equipment.IsFavorite ? "star" : "star_border";
+    }
+
+    private static string GetFavoriteButtonClass(EquipmentDto equipment)
+    {
+        return equipment.IsFavorite
+            ? "equipment-favorite-button is-favorite"
+            : "equipment-favorite-button";
+    }
+
+    private string GetNoteCardClass(EquipmentInfoNoteDto note)
+    {
+        var className = "note-card";
+
+        if (_selectedNoteId == note.Id)
+            className += " is-selected";
+
+        if (IsNoteEditorActive || _isBusy)
+            className += " is-disabled";
+
+        return className;
+    }
+
+    private static string FormatNoteDate(DateTime value)
+    {
+        return value.ToString("dd.MM.yyyy HH:mm");
+    }
+
+    private void SetStatus(AlertStyle style, string text)
+    {
+        _statusStyle = style;
+        _statusText = text;
+    }
+
+    private void ClearStatus()
+    {
+        _statusText = string.Empty;
+    }
+
+    private void Notify(NotificationSeverity severity, string summary, string detail)
+    {
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = severity,
+            Summary = summary,
+            Detail = detail,
+            Duration = 3500
+        });
+    }
+
+    public void Dispose()
+    {
+        EquipmentFooterState.ClearInfoCounts();
+    }
+
+    private sealed class BrowserDocumentViewState
+    {
+        public int? PageNumber { get; set; }
+
+        public double? ZoomFactor { get; set; }
+    }
+
+}
