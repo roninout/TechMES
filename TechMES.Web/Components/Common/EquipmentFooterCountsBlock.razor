@@ -5,10 +5,10 @@
              AlignItems="AlignItems.Center"
              Gap="6px">
 
-    <RadzenBadge Text="@($"Nodes: {EquipmentFooterState.NodeCount}")"
+    <RadzenBadge Text="@($"Count: {EquipmentFooterState.NodeCount}")"
                  BadgeStyle="BadgeStyle.Light" />
 
-    <RadzenBadge Text="@($"Photos: {EquipmentFooterState.PhotoCount}")"
+@*     <RadzenBadge Text="@($"Photos: {EquipmentFooterState.PhotoCount}")"
                  BadgeStyle="BadgeStyle.Light" />
 
     <RadzenBadge Text="@($"PDF: {EquipmentFooterState.PdfCount}")"
@@ -18,7 +18,7 @@
                  BadgeStyle="BadgeStyle.Light" />
 
     <RadzenBadge Text="@($"Notes: {EquipmentFooterState.NoteCount}")"
-                 BadgeStyle="BadgeStyle.Light" />
+                 BadgeStyle="BadgeStyle.Light" /> *@
 </RadzenStack>
 
 @code {

@@ -16,8 +16,6 @@ public sealed class InfoApiClient
 
     public string DeviceName => _configuration["App:DeviceName"] ?? Environment.MachineName;
 
-    private Uri RuntimeBaseUri => new(_configuration["RuntimeService:BaseUrl"] ?? "https://localhost:7101/");
-
     /// <summary>
     /// Loads the complete Info snapshot for one equipment item. Binary files are
     /// not downloaded here; Runtime.Service returns metadata, and the client adds
@@ -194,8 +192,9 @@ public sealed class InfoApiClient
     }
 
     /// <summary>
-    /// Converts file metadata into browser-ready URLs. The hash query parameter
-    /// lets browser caching stay aggressive while still refreshing changed files.
+    /// Converts file metadata into same-origin Web URLs. This is important for
+    /// tablets and other devices: their browser must request files from TechMES.Web,
+    /// not from Runtime.Service's localhost address on the client device.
     /// </summary>
     private void ApplyContentUrls(EquipmentInfoDto info)
     {
@@ -220,11 +219,11 @@ public sealed class InfoApiClient
 
     private void ApplyContentUrl(EquipmentInfoFileDto file)
     {
-        var relative = $"api/info/files/{file.Kind}/{file.Id}";
+        var relative = $"/api/runtime/info/files/{file.Kind}/{file.Id}";
 
         if (!string.IsNullOrWhiteSpace(file.FileHash))
             relative += $"?v={Uri.EscapeDataString(file.FileHash)}";
 
-        file.ContentUrl = new Uri(RuntimeBaseUri, relative).ToString();
+        file.ContentUrl = relative;
     }
 }

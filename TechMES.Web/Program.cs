@@ -1,4 +1,5 @@
 using Radzen;
+using Microsoft.Net.Http.Headers;
 using TechMES.Web.Clients;
 using TechMES.Web.Components;
 using TechMES.Web.Settings;
@@ -70,7 +71,114 @@ app.UseHttpsRedirection();
 app.UseAntiforgery();
 app.MapStaticAssets();
 
+app.MapGet("/api/runtime/info/files/{kind}/{id:long}", ProxyRuntimeInfoFileAsync);
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+static async Task<IResult> ProxyRuntimeInfoFileAsync(
+    string kind,
+    long id,
+    IHttpClientFactory httpClientFactory,
+    HttpContext httpContext,
+    CancellationToken ct)
+{
+    if (id <= 0)
+        return Results.BadRequest();
+
+    var client = httpClientFactory.CreateClient("RuntimeService");
+    var runtimePath = $"api/info/files/{Uri.EscapeDataString(kind)}/{id}";
+
+    using var request = new HttpRequestMessage(HttpMethod.Get, runtimePath);
+    ForwardConditionalCacheHeaders(httpContext, request);
+
+    using var response = await client.SendAsync(
+        request,
+        HttpCompletionOption.ResponseHeadersRead,
+        ct);
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotModified)
+    {
+        CopyRuntimeFileHeaders(httpContext, response);
+        return Results.StatusCode(StatusCodes.Status304NotModified);
+    }
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        return Results.NotFound();
+
+    if (!response.IsSuccessStatusCode)
+        return Results.StatusCode((int)response.StatusCode);
+
+    CopyRuntimeFileHeaders(httpContext, response);
+
+    var contentType = response.Content.Headers.ContentType?.ToString()
+        ?? "application/octet-stream";
+    var fileBytes = await response.Content.ReadAsByteArrayAsync(ct);
+    var entityTag = TryReadEntityTag(response);
+    var lastModified = response.Content.Headers.LastModified;
+
+    return Results.File(
+        fileBytes,
+        contentType,
+        enableRangeProcessing: true,
+        lastModified: lastModified,
+        entityTag: entityTag);
+}
+
+static void ForwardConditionalCacheHeaders(
+    HttpContext httpContext,
+    HttpRequestMessage request)
+{
+    if (httpContext.Request.Headers.TryGetValue(HeaderNames.IfNoneMatch, out var ifNoneMatch))
+    {
+        request.Headers.TryAddWithoutValidation(
+            HeaderNames.IfNoneMatch,
+            ifNoneMatch.ToArray());
+    }
+
+    if (httpContext.Request.Headers.TryGetValue(HeaderNames.IfModifiedSince, out var ifModifiedSince))
+    {
+        request.Headers.TryAddWithoutValidation(
+            HeaderNames.IfModifiedSince,
+            ifModifiedSince.ToArray());
+    }
+}
+
+static void CopyRuntimeFileHeaders(
+    HttpContext httpContext,
+    HttpResponseMessage response)
+{
+    if (TryGetHeader(response, HeaderNames.CacheControl, out var cacheControl))
+        httpContext.Response.Headers.CacheControl = cacheControl;
+
+    if (TryGetHeader(response, HeaderNames.ContentDisposition, out var contentDisposition))
+        httpContext.Response.Headers.ContentDisposition = contentDisposition;
+}
+
+static EntityTagHeaderValue? TryReadEntityTag(HttpResponseMessage response)
+{
+    if (!TryGetHeader(response, HeaderNames.ETag, out var etag))
+        return null;
+
+    return EntityTagHeaderValue.TryParse(etag, out var parsed)
+        ? parsed
+        : null;
+}
+
+static bool TryGetHeader(
+    HttpResponseMessage response,
+    string headerName,
+    out string value)
+{
+    if (response.Headers.TryGetValues(headerName, out var responseValues)
+        || response.Content.Headers.TryGetValues(headerName, out responseValues))
+    {
+        value = string.Join(", ", responseValues);
+        return !string.IsNullOrWhiteSpace(value);
+    }
+
+    value = string.Empty;
+    return false;
+}
