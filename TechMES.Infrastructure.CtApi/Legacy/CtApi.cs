@@ -319,8 +319,8 @@ namespace CtApi
             if (hfind == IntPtr.Zero)
             {
                 var error = new Win32Exception(Marshal.GetLastWin32Error());
-                //_logger?.LogError($"Citect.CtApi > Find, tableName={tableName}, filter={filter}, cluster={cluster}, propertiesName={string.Join("|", propertiesName)}, error={error.Message}");
-                //throw error;
+                _logger?.LogWarning($"Citect.CtApi > Find, tableName={tableName}, filter={filter}, cluster={cluster}, propertiesName={string.Join("|", propertiesName)}, error={error.Message}");
+                return Enumerable.Empty<Dictionary<string, string>>();
             }
 
             var items = new List<Dictionary<string, string>>();

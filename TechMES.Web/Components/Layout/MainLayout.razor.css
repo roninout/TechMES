@@ -1,4 +1,8 @@
 .page-content {
+    box-sizing: border-box;
+    height: calc(100vh - 105px);
+    min-height: 0;
+    overflow: hidden;
     padding: 20px 24px 18px;
 }
 

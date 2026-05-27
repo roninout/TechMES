@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using TechMES.Application.Param;
 using TechMES.Application.Scada;
 using TechMES.Infrastructure.CtApi.Gateways;
 using TechMES.Infrastructure.CtApi.Native;
@@ -24,10 +25,14 @@ public static class CtApiServiceCollectionExtensions
         if (string.Equals(provider, "Mock", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IPlantScadaGateway, MockPlantScadaGateway>();
+            services.AddSingleton<IEquipmentParamProvider>(_ =>
+                new UnavailableEquipmentParamProvider("Param read-only is unavailable in Mock CtApi mode."));
         }
         else if (string.Equals(provider, "Disabled", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IPlantScadaGateway, DisabledPlantScadaGateway>();
+            services.AddSingleton<IEquipmentParamProvider>(_ =>
+                new UnavailableEquipmentParamProvider("Param read-only is unavailable because CtApi is disabled."));
         }
         else if (string.Equals(provider, "CtApi", StringComparison.OrdinalIgnoreCase))
         {
@@ -39,6 +44,7 @@ public static class CtApiServiceCollectionExtensions
             */
             services.AddSingleton<ICtApiNativeClient, CtApiNativeClient>();
             services.AddSingleton<IPlantScadaGateway, CtApiPlantScadaGateway>();
+            services.AddSingleton<IEquipmentParamProvider, CtApiEquipmentParamProvider>();
         }
         else
         {

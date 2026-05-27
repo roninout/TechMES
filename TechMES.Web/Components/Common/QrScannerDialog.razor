@@ -31,6 +31,21 @@
                    muted
                    playsinline></video>
 
+            @if (_diagnostics is not null)
+            {
+                <RadzenAlert AlertStyle="@GetDiagnosticsStyle()"
+                             ShowIcon="true"
+                             AllowClose="false">
+                    <div class="qr-diagnostics">
+                        <div><strong>Origin:</strong> @_diagnostics.Origin</div>
+                        <div><strong>Secure context:</strong> @FormatBoolean(_diagnostics.IsSecureContext)</div>
+                        <div><strong>Camera API:</strong> @FormatBoolean(_diagnostics.HasGetUserMedia)</div>
+                        <div><strong>Device list:</strong> @FormatBoolean(_diagnostics.HasEnumerateDevices)</div>
+                        <div><strong>BarcodeDetector:</strong> @FormatBoolean(_diagnostics.HasBarcodeDetector)</div>
+                    </div>
+                </RadzenAlert>
+            }
+
             @if (!string.IsNullOrWhiteSpace(_statusText))
             {
                 <RadzenAlert AlertStyle="@_statusStyle"
@@ -61,6 +76,7 @@
     private string _selectedCameraDeviceId = DefaultCameraDeviceId;
     private string _statusText = string.Empty;
     private AlertStyle _statusStyle = AlertStyle.Info;
+    private QrCameraDiagnostics? _diagnostics;
     private DotNetObjectReference<QrScannerDialog>? _dotNetReference;
 
     private string VideoElementId => $"app-qr-video-{GetHashCode():x}";
@@ -74,6 +90,7 @@
         _statusText = string.Empty;
         _isOpen = true;
 
+        _diagnostics = await LoadDiagnosticsAsync();
         await LoadCameraDevicesAsync();
 
         _startScannerAfterRender = true;
@@ -135,6 +152,23 @@
     }
 
     /// <summary>
+    /// Reads browser security and camera capabilities so the user can diagnose
+    /// tablet access directly from the QR modal.
+    /// </summary>
+    private async Task<QrCameraDiagnostics?> LoadDiagnosticsAsync()
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<QrCameraDiagnostics>(
+                "techMesQrScanner.getDiagnostics");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Restarts scanning with the selected physical camera.
     /// </summary>
     private async Task OnCameraChangedAsync(object? value)
@@ -166,6 +200,7 @@
             if (result?.Success == true)
             {
                 SetStatus(AlertStyle.Info, result.Message ?? "Camera started.");
+                _diagnostics = await LoadDiagnosticsAsync();
                 await LoadCameraDevicesAsync();
                 return;
             }
@@ -261,6 +296,18 @@
         _statusText = text;
     }
 
+    private AlertStyle GetDiagnosticsStyle()
+    {
+        if (_diagnostics is null)
+            return AlertStyle.Info;
+
+        return _diagnostics.IsSecureContext && _diagnostics.HasGetUserMedia
+            ? AlertStyle.Info
+            : AlertStyle.Warning;
+    }
+
+    private static string FormatBoolean(bool value) => value ? "OK" : "NO";
+
     public void Dispose()
     {
         _ = StopScannerAsync();
@@ -268,6 +315,27 @@
     }
 
     private sealed record QrCameraDevice(string DeviceId, string Label);
+
+    private sealed class QrCameraDiagnostics
+    {
+        public string Origin { get; set; } = string.Empty;
+
+        public string Protocol { get; set; } = string.Empty;
+
+        public string Host { get; set; } = string.Empty;
+
+        public bool IsSecureContext { get; set; }
+
+        public bool HasMediaDevices { get; set; }
+
+        public bool HasGetUserMedia { get; set; }
+
+        public bool HasEnumerateDevices { get; set; }
+
+        public bool HasBarcodeDetector { get; set; }
+
+        public string UserAgent { get; set; } = string.Empty;
+    }
 
     private sealed class QrScannerStartResult
     {

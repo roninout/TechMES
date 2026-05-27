@@ -10,8 +10,18 @@ window.techMesQrScanner = (() => {
             return { success: false, message: "Camera preview is not ready." };
         }
 
+        if (!window.isSecureContext) {
+            return {
+                success: false,
+                message: `Camera requires HTTPS or localhost. Current origin is not secure: ${window.location.origin}`
+            };
+        }
+
         if (!navigator.mediaDevices?.getUserMedia) {
-            return { success: false, message: "Camera API is not available in this browser." };
+            return {
+                success: false,
+                message: `Camera API is not available. SecureContext=${window.isSecureContext}; Origin=${window.location.origin}`
+            };
         }
 
         await stop(videoId);
@@ -42,11 +52,31 @@ window.techMesQrScanner = (() => {
 
             return { success: true, message: "Camera started." };
         } catch (error) {
+            const errorName = error?.name ? `${error.name}: ` : "";
+
             return {
                 success: false,
-                message: error?.message || "Cannot start camera."
+                message: `${errorName}${error?.message || "Cannot start camera."}`
             };
         }
+    }
+
+    // Collects browser capability details shown in the QR modal. This helps to
+    // diagnose tablet issues without opening DevTools on the device.
+    function getDiagnostics() {
+        const mediaDevices = navigator.mediaDevices;
+
+        return {
+            origin: window.location.origin,
+            protocol: window.location.protocol,
+            host: window.location.host,
+            isSecureContext: window.isSecureContext === true,
+            hasMediaDevices: !!mediaDevices,
+            hasGetUserMedia: !!mediaDevices?.getUserMedia,
+            hasEnumerateDevices: !!mediaDevices?.enumerateDevices,
+            hasBarcodeDetector: "BarcodeDetector" in window,
+            userAgent: navigator.userAgent || ""
+        };
     }
 
     // Lists available video inputs for the camera dropdown. Some browsers hide
@@ -243,6 +273,7 @@ window.techMesQrScanner = (() => {
     }
 
     return {
+        getDiagnostics,
         listCameras,
         start,
         stop

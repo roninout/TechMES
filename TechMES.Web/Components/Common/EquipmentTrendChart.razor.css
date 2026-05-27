@@ -1,0 +1,13 @@
+.param-echart {
+    width: 100%;
+    height: 460px;
+    min-height: 360px;
+    min-width: 0;
+    touch-action: none;
+}
+
+@media (max-height: 760px) {
+    .param-echart {
+        height: 380px;
+    }
+}

@@ -1,0 +1,53 @@
+@using TechMES.Contracts.Param
+
+@if (Items is null || Items.Count == 0)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+        No values available.
+    </RadzenAlert>
+}
+else
+{
+    <RadzenDataGrid Data="@Items"
+                    TItem="ParamItemDto"
+                    AllowPaging="false"
+                    AllowSorting="true"
+                    Density="Density.Compact"
+                    class="param-items-grid">
+        <Columns>
+            <RadzenDataGridColumn TItem="ParamItemDto" Property="Name" Title="Item" Width="180px" />
+            <RadzenDataGridColumn TItem="ParamItemDto" Title="Value">
+                <Template Context="item">
+                    <span class="@GetValueClass(item)">@FormatValue(item)</span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ParamItemDto" Property="Unit" Title="Unit" Width="90px" />
+        </Columns>
+    </RadzenDataGrid>
+}
+
+@code {
+    [Parameter]
+    public IReadOnlyList<ParamItemDto>? Items { get; set; }
+
+    private static string FormatValue(ParamItemDto item)
+    {
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(item.ValueText)
+            ? "-"
+            : item.ValueText;
+    }
+
+    private static string GetValueClass(ParamItemDto item)
+    {
+        if (item.BooleanValue == true)
+            return "param-value-bool-on";
+
+        if (item.BooleanValue == false)
+            return "param-value-bool-off";
+
+        return "";
+    }
+}

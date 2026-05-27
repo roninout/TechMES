@@ -11,3 +11,22 @@ html, body {
 .text-danger {
     color: #b00020;
 }
+
+.param-echart-tooltip-time {
+    margin-bottom: 6px;
+    color: #666;
+    font-size: 12px;
+}
+
+.param-echart-tooltip-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 6px;
+    min-width: 180px;
+}
+
+.param-echart-quality {
+    color: #888;
+    font-size: 11px;
+}

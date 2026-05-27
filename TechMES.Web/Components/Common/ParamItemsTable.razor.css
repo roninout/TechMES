@@ -1,0 +1,12 @@
+::deep .param-items-grid {
+    width: 100%;
+}
+
+.param-value-bool-on {
+    color: #178a3d;
+    font-weight: 600;
+}
+
+.param-value-bool-off {
+    color: #777;
+}

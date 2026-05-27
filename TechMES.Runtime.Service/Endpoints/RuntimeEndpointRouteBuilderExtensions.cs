@@ -8,6 +8,7 @@ public static class RuntimeEndpointRouteBuilderExtensions
         app.MapMessageEndpoints();
         app.MapEquipmentEndpoints();
         app.MapInfoEndpoints();
+        app.MapParamEndpoints();
         app.MapScadaEndpoints();
 
         return app;

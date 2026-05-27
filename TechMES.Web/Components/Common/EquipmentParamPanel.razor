@@ -1,0 +1,734 @@
+@using TechMES.Contracts.Equipment
+@using TechMES.Contracts.Info
+@using TechMES.Contracts.Param
+@using TechMES.Web.Settings
+@inject ParamApiClient ParamApi
+@inject InfoApiClient InfoApi
+@inject Microsoft.Extensions.Options.IOptions<ParamUiOptions> ParamOptions
+@inject NotificationService NotificationService
+@implements IDisposable
+
+<div class="equipment-param-panel">
+    @if (Equipment is null)
+    {
+        <RadzenCard>
+            <RadzenText Text="No selected equipment"
+                        TextStyle="TextStyle.Subtitle1"
+                        Style="color: gray;" />
+        </RadzenCard>
+    }
+    else
+    {
+        <RadzenCard class="equipment-param-summary-card">
+            <div class="equipment-param-summary">
+                <div class="equipment-param-main">
+                    <div class="equipment-selected-header">
+                        <EquipmentTypeBadge TypeGroup="@Equipment.TypeGroup" />
+
+                        <div class="equipment-selected-title">
+                            <RadzenText Text="@Equipment.Name" TextStyle="TextStyle.H6" />
+                        </div>
+
+                        @if (!Equipment.IsGroup)
+                        {
+                            <RadzenButton Icon="@GetFavoriteIcon(Equipment)"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Size="ButtonSize.Small"
+                                          Disabled="@IsFavoriteSaving"
+                                          class="@GetFavoriteButtonClass(Equipment)"
+                                          title="Favorite"
+                                          Click="@ToggleFavoriteAsync" />
+                        }
+                    </div>
+
+                    <div class="equipment-selected-fields">
+                        <span class="equipment-field-label">Type:</span>
+                        <span>@DisplayValue(Equipment.TypeName)</span>
+
+                        @if (ShouldShowLocation(Equipment))
+                        {
+                            <span class="equipment-field-label">Location:</span>
+                            <span>@FormatLocation(Equipment.Location)</span>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(_snapshot?.Location))
+                        {
+                            <span class="equipment-field-label">Location:</span>
+                            <span>@FormatLocation(_snapshot.Location)</span>
+                        }
+
+                        <span class="equipment-field-label">Supplier:</span>
+                        <span>@DisplayValue(_info?.Supplier)</span>
+
+                        <span class="equipment-field-label">Product code:</span>
+                        <span>@DisplayValue(_info?.ProductCode)</span>
+
+                        <span class="equipment-field-label">Desc:</span>
+                        <span>@GetDescriptionText(Equipment)</span>
+                    </div>
+                </div>
+
+                <div class="equipment-param-side">
+                    @if (!string.IsNullOrWhiteSpace(_info?.SupplierLogoDataUrl))
+                    {
+                        <img class="supplier-logo"
+                             src="@_info.SupplierLogoDataUrl"
+                             alt="@DisplayValue(_info.Supplier)" />
+                    }
+
+                    @if (GetSummaryPhoto() is { } summaryPhoto)
+                    {
+                        <img class="summary-photo"
+                             src="@summaryPhoto.ContentUrl"
+                             alt="@summaryPhoto.DisplayName" />
+                    }
+                </div>
+            </div>
+        </RadzenCard>
+
+        @if (!string.IsNullOrWhiteSpace(_statusText))
+        {
+            <RadzenAlert AlertStyle="@_statusStyle"
+                         ShowIcon="true"
+                         AllowClose="true"
+                         Close="@(() => _statusText = string.Empty)">
+                @_statusText
+            </RadzenAlert>
+        }
+
+        <div class="equipment-param-tabs">
+            @if (_isLoading)
+            {
+                <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+            }
+            else if (_snapshot is null)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                    Param data is not loaded.
+                </RadzenAlert>
+            }
+            else if (!_snapshot.Supported)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
+                    @DisplayValue(_snapshot.Message)
+                </RadzenAlert>
+            }
+            else
+            {
+                <RadzenTabs RenderMode="TabRenderMode.Server"
+                            @bind-SelectedIndex="_selectedTabIndex"
+                            Change="@OnTabChangedAsync">
+                    <Tabs>
+                        <RadzenTabsItem Text="Graph">
+                            <div class="param-graph-panel">
+                                <div class="param-toolbar">
+                                    <RadzenButton Icon="skip_next"
+                                                  ButtonStyle="ButtonStyle.Light"
+                                                  class="param-live-button"
+                                                  title="Go to latest"
+                                                  Click="@GoLiveAsync" />
+                                </div>
+
+                                @if (_trend is null || _trend.Points.Count == 0)
+                                {
+                                    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                                        @DisplayValue(_trend?.Message ?? "Trend points are not loaded yet.")
+                                    </RadzenAlert>
+                                }
+                                else
+                                {
+                                    <div class="param-chart-shell">
+                                        <EquipmentTrendChart Trend="@_trend"
+                                                             ViewKey="@ChartViewKey"
+                                                             Unit="@_snapshot.Unit"
+                                                             VisibleFromUtc="@GetVisibleFromUtc()"
+                                                             VisibleToUtc="@GetVisibleToUtc()"
+                                                             CanLoadOlder="@CanScrollGraphBackward"
+                                                             CanLoadNewer="@CanScrollGraphForward"
+                                                             OnHistoryRequested="@OnChartHistoryRequestedAsync" />
+                                    </div>
+                                }
+
+                                <div class="param-graph-footer">
+                                    <span class="param-status">@FormatGraphStatus()</span>
+                                </div>
+                            </div>
+                        </RadzenTabsItem>
+
+                        <RadzenTabsItem Text="Values">
+                            <ParamItemsTable Items="@_snapshot.Items" />
+                        </RadzenTabsItem>
+
+                        @if (HasAlarmItems)
+                        {
+                            <RadzenTabsItem Text="Alarm">
+                                <ParamItemsTable Items="@GetAlarmItems()" />
+                            </RadzenTabsItem>
+                        }
+
+                        @if (HasTimeItems)
+                        {
+                            <RadzenTabsItem Text="TimeWork">
+                                <ParamItemsTable Items="@GetTimeItems()" />
+                            </RadzenTabsItem>
+                        }
+
+                        @if (HasPage(ParamPageKind.Plc))
+                        {
+                            <RadzenTabsItem Text="PLC">
+                                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                                    PLC references will be connected in the next read-only step.
+                                </RadzenAlert>
+                            </RadzenTabsItem>
+                        }
+
+                        @if (HasPage(ParamPageKind.DiDo))
+                        {
+                            <RadzenTabsItem Text="DI/DO">
+                                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                                    DI/DO references will be connected in the next read-only step.
+                                </RadzenAlert>
+                            </RadzenTabsItem>
+                        }
+
+                        @if (HasPage(ParamPageKind.DryRun))
+                        {
+                            <RadzenTabsItem Text="DryRun">
+                                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                                    DryRun linked equipment will be connected in the next read-only step.
+                                </RadzenAlert>
+                            </RadzenTabsItem>
+                        }
+
+                        @if (HasPage(ParamPageKind.Atv))
+                        {
+                            <RadzenTabsItem Text="ATV">
+                                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                                    Linked ATV details will be connected in the next read-only step.
+                                </RadzenAlert>
+                            </RadzenTabsItem>
+                        }
+                    </Tabs>
+                </RadzenTabs>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private CancellationTokenSource _loadCts = new();
+    private CancellationTokenSource? _refreshCts;
+    private Task? _refreshTask;
+
+    private string? _loadedEquipmentName;
+    private EquipmentInfoDto? _info;
+    private ParamSnapshotResponse? _snapshot;
+    private ParamTrendResponse? _trend;
+
+    private int _selectedTabIndex;
+    private int _windowMinutes = 30;
+    private int _trendHistoryMinutes = 240;
+    private DateTime? _fixedTrendToUtc;
+    private int _chartViewVersion;
+    private bool _isLoading;
+    private bool _isRefreshing;
+    private bool _isDisposed;
+    private string _statusText = "";
+    private AlertStyle _statusStyle = AlertStyle.Info;
+
+    [Parameter]
+    public EquipmentDto? Equipment { get; set; }
+
+    [Parameter]
+    public bool IsActive { get; set; } = true;
+
+    [Parameter]
+    public bool IsFavoriteSaving { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggleFavorite { get; set; }
+
+    protected override void OnInitialized()
+    {
+        var options = ParamOptions.Value;
+
+        _windowMinutes = Math.Clamp(options.TrendWindowMinutes, 1, 240);
+        _trendHistoryMinutes = Math.Clamp(
+            Math.Max(options.TrendHistoryMinutes, _windowMinutes),
+            _windowMinutes,
+            24 * 60);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsActive)
+        {
+            StopRefreshLoop();
+            CancelActiveLoads();
+            return;
+        }
+
+        var currentName = Equipment?.Name;
+
+        if (string.Equals(_loadedEquipmentName, currentName, StringComparison.OrdinalIgnoreCase))
+        {
+            StartRefreshLoop();
+            return;
+        }
+
+        StopRefreshLoop();
+        CancelActiveLoads();
+
+        _loadedEquipmentName = currentName;
+        _info = null;
+        _snapshot = null;
+        _trend = null;
+        _fixedTrendToUtc = null;
+        _chartViewVersion++;
+        _statusText = "";
+
+        if (Equipment is null)
+            return;
+
+        await LoadAsync(showLoading: true, includeTrend: IsGraphTabVisible, ct: GetActiveLoadToken());
+        StartRefreshLoop();
+    }
+
+    private async Task RefreshNowAsync()
+    {
+        await LoadAsync(showLoading: false, includeTrend: IsGraphTabVisible, ct: GetActiveLoadToken());
+    }
+
+    private async Task OnTabChangedAsync(int index)
+    {
+        _selectedTabIndex = index;
+
+        if (IsGraphTabVisible && _snapshot?.Supported == true)
+        {
+            await LoadAsync(showLoading: false, includeTrend: true, ct: GetActiveLoadToken());
+        }
+    }
+
+    private async Task OnChartHistoryRequestedAsync(string direction)
+    {
+        if (_isRefreshing)
+            return;
+
+        if (direction.Equals("older", StringComparison.OrdinalIgnoreCase) && CanScrollGraphBackward)
+        {
+            await LoadHistorySegmentAsync(direction);
+            return;
+        }
+
+        if (direction.Equals("newer", StringComparison.OrdinalIgnoreCase) && CanScrollGraphForward)
+        {
+            await LoadHistorySegmentAsync(direction);
+        }
+    }
+
+    private async Task GoLiveAsync()
+    {
+        _fixedTrendToUtc = null;
+        _chartViewVersion++;
+
+        await RefreshNowAsync();
+    }
+
+    private async Task LoadAsync(
+        bool showLoading,
+        bool includeTrend,
+        CancellationToken ct)
+    {
+        if (!IsActive || Equipment is null || _isRefreshing || ct.IsCancellationRequested)
+            return;
+
+        _isRefreshing = true;
+
+        if (showLoading)
+            _isLoading = true;
+
+        try
+        {
+            var equipmentName = Equipment.Name;
+            var infoTask = InfoApi.GetInfoAsync(equipmentName, ct);
+
+            _snapshot = await ParamApi.GetSnapshotAsync(equipmentName, ct);
+
+            if (_snapshot.Supported && includeTrend)
+            {
+                if (IsGraphLive || _trend is null)
+                {
+                    var (fromUtc, toUtc) = GetTrendRequestBufferUtc();
+                    _trend = await ParamApi.GetTrendAsync(
+                        equipmentName,
+                        _trendHistoryMinutes,
+                        fromUtc,
+                        toUtc,
+                        ct);
+                }
+            }
+            else
+            {
+                _trend = _snapshot.Supported && !includeTrend ? _trend : null;
+            }
+
+            try
+            {
+                _info = await infoTask;
+            }
+            catch
+            {
+                _info = null;
+            }
+
+            _statusText = "";
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested || _isDisposed || !IsActive)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (_isDisposed || !IsActive)
+                return;
+
+            _statusStyle = AlertStyle.Danger;
+            _statusText = "Cannot load Param data: " + ex.Message;
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Param",
+                Detail = "Cannot load Param data.",
+                Duration = 3500
+            });
+        }
+        finally
+        {
+            if (!_isDisposed)
+            {
+                _isLoading = false;
+                _isRefreshing = false;
+            }
+        }
+    }
+
+    private async Task LoadHistorySegmentAsync(string direction)
+    {
+        if (Equipment is null || _trend is null)
+            return;
+
+        var existingTrend = _trend;
+        var chunkMinutes = Math.Max(_windowMinutes, _trendHistoryMinutes / 2);
+        DateTime fromUtc;
+        DateTime toUtc;
+
+        if (direction.Equals("older", StringComparison.OrdinalIgnoreCase))
+        {
+            toUtc = existingTrend.FromUtc;
+            fromUtc = toUtc.AddMinutes(-chunkMinutes);
+            _fixedTrendToUtc ??= existingTrend.ToUtc;
+        }
+        else
+        {
+            fromUtc = existingTrend.ToUtc;
+            toUtc = fromUtc.AddMinutes(chunkMinutes);
+
+            var nowUtc = DateTime.UtcNow;
+            if (toUtc >= nowUtc)
+            {
+                toUtc = nowUtc;
+                _fixedTrendToUtc = null;
+            }
+            else
+            {
+                _fixedTrendToUtc = toUtc;
+            }
+        }
+
+        if (toUtc <= fromUtc.AddSeconds(1))
+            return;
+
+        _isRefreshing = true;
+
+        try
+        {
+            var chunk = await ParamApi.GetTrendAsync(
+                Equipment.Name,
+                (int)Math.Ceiling((toUtc - fromUtc).TotalMinutes),
+                fromUtc,
+                toUtc,
+                GetActiveLoadToken());
+
+            if (chunk.Supported)
+            {
+                _trend = MergeTrends(existingTrend, chunk);
+            }
+        }
+        catch (OperationCanceledException) when (_isDisposed || !IsActive)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (_isDisposed || !IsActive)
+                return;
+
+            _statusStyle = AlertStyle.Warning;
+            _statusText = "Cannot load more trend history: " + ex.Message;
+        }
+        finally
+        {
+            if (!_isDisposed)
+                _isRefreshing = false;
+        }
+    }
+
+    private void StartRefreshLoop()
+    {
+        if (_refreshCts is not null || _isDisposed || !IsActive || Equipment is null)
+            return;
+
+        _refreshCts = new CancellationTokenSource();
+        _refreshTask = RefreshLoopAsync(_refreshCts.Token);
+    }
+
+    private async Task RefreshLoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadAsync(
+                        showLoading: false,
+                        includeTrend: IsGraphTabVisible,
+                        ct);
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void StopRefreshLoop()
+    {
+        var refreshCts = _refreshCts;
+        _refreshCts = null;
+        _refreshTask = null;
+
+        try
+        {
+            refreshCts?.Cancel();
+        }
+        catch
+        {
+        }
+
+        refreshCts?.Dispose();
+    }
+
+    private CancellationToken GetActiveLoadToken()
+    {
+        if (_loadCts.IsCancellationRequested)
+        {
+            _loadCts = new CancellationTokenSource();
+            _isRefreshing = false;
+        }
+
+        return _loadCts.Token;
+    }
+
+    private void CancelActiveLoads()
+    {
+        try
+        {
+            _loadCts.Cancel();
+        }
+        catch
+        {
+        }
+    }
+
+    private Task ToggleFavoriteAsync()
+    {
+        return OnToggleFavorite.InvokeAsync();
+    }
+
+    private (DateTime FromUtc, DateTime ToUtc) GetTrendRequestBufferUtc()
+    {
+        var toUtc = _fixedTrendToUtc ?? DateTime.UtcNow;
+        return (toUtc.AddMinutes(-_trendHistoryMinutes), toUtc);
+    }
+
+    private bool IsGraphLive => !_fixedTrendToUtc.HasValue;
+
+    private bool CanScrollGraphBackward => _trend?.Supported == true;
+
+    private bool CanScrollGraphForward =>
+        _trend?.Supported == true && _trend.ToUtc < DateTime.UtcNow.AddSeconds(-3);
+
+    private bool IsGraphTabVisible => _selectedTabIndex == 0;
+
+    private string ChartViewKey =>
+        $"{Equipment?.Name ?? ""}|{_windowMinutes}|{_chartViewVersion}";
+
+    private DateTime? GetVisibleFromUtc()
+    {
+        return _trend?.ToUtc.AddMinutes(-_windowMinutes);
+    }
+
+    private DateTime? GetVisibleToUtc()
+    {
+        return _trend?.ToUtc;
+    }
+
+    private static ParamTrendResponse MergeTrends(
+        ParamTrendResponse existing,
+        ParamTrendResponse chunk)
+    {
+        var series = existing.Series.Count > 0
+            ? existing.Series
+            : chunk.Series;
+
+        return new ParamTrendResponse
+        {
+            EquipmentName = existing.EquipmentName,
+            TypeGroup = existing.TypeGroup,
+            Supported = existing.Supported || chunk.Supported,
+            Message = existing.Message,
+            FromUtc = existing.FromUtc <= chunk.FromUtc ? existing.FromUtc : chunk.FromUtc,
+            ToUtc = existing.ToUtc >= chunk.ToUtc ? existing.ToUtc : chunk.ToUtc,
+            AxisYMin = existing.AxisYMin ?? chunk.AxisYMin,
+            AxisYMax = existing.AxisYMax ?? chunk.AxisYMax,
+            Series = series,
+            Points = existing.Points
+                .Concat(chunk.Points)
+                .GroupBy(
+                    point => new
+                    {
+                        Series = point.Series.ToUpperInvariant(),
+                        Time = point.Time.Ticks
+                    })
+                .Select(group => group.First())
+                .OrderBy(point => point.Time)
+                .ThenBy(point => point.Series, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+        };
+    }
+
+    private bool HasPage(ParamPageKind page)
+    {
+        return _snapshot?.Pages.Contains(page) == true;
+    }
+
+    private bool HasAlarmItems => _snapshot?.Items.Any(IsAlarmItem) == true;
+
+    private bool HasTimeItems => _snapshot?.Items.Any(IsTimeItem) == true;
+
+    private IReadOnlyList<ParamItemDto> GetAlarmItems()
+    {
+        return _snapshot?.Items.Where(IsAlarmItem).ToList() ?? [];
+    }
+
+    private IReadOnlyList<ParamItemDto> GetTimeItems()
+    {
+        return _snapshot?.Items.Where(IsTimeItem).ToList() ?? [];
+    }
+
+    private static bool IsAlarmItem(ParamItemDto item)
+    {
+        return item.Name.Contains("Alarm", StringComparison.OrdinalIgnoreCase)
+            || item.Name.StartsWith("SetL", StringComparison.OrdinalIgnoreCase)
+            || item.Name.StartsWith("SetH", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTimeItem(ParamItemDto item)
+    {
+        return item.Name.Contains("Time", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string FormatSnapshotTime()
+    {
+        return _snapshot is null
+            ? ""
+            : $"Last update: {_snapshot.Time:HH:mm:ss}";
+    }
+
+    private string FormatGraphStatus()
+    {
+        var status = FormatSnapshotTime();
+
+        if (_trend is null)
+            return status;
+
+        var from = _trend.FromUtc.ToLocalTime();
+        var to = _trend.ToUtc.ToLocalTime();
+
+        return $"{status} | {from:HH:mm:ss} - {to:HH:mm:ss}";
+    }
+
+    private EquipmentInfoFileDto? GetSummaryPhoto()
+    {
+        return _info?.Photos.FirstOrDefault();
+    }
+
+    private static string GetFavoriteIcon(EquipmentDto equipment)
+    {
+        return equipment.IsFavorite ? "star" : "star_border";
+    }
+
+    private static string GetFavoriteButtonClass(EquipmentDto equipment)
+    {
+        return equipment.IsFavorite
+            ? "equipment-favorite-button is-favorite"
+            : "equipment-favorite-button";
+    }
+
+    private static bool ShouldShowLocation(EquipmentDto equipment)
+    {
+        return !string.IsNullOrWhiteSpace(equipment.Location)
+            && !string.Equals(equipment.Location, "Unknown", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatLocation(string? raw)
+    {
+        raw = (raw ?? "").Trim();
+
+        if (string.IsNullOrWhiteSpace(raw))
+            return "";
+
+        if (raw.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+            return raw;
+
+        var parts = raw.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (parts.Length >= 2)
+            return $"module: {parts[0]}, chanel: {parts[1]}";
+
+        return raw;
+    }
+
+    private static string DisplayValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "-" : value;
+    }
+
+    private static string GetDescriptionText(EquipmentDto equipment)
+    {
+        return string.IsNullOrWhiteSpace(equipment.Description)
+            ? "-"
+            : equipment.Description;
+    }
+
+    public void Dispose()
+    {
+        _isDisposed = true;
+        StopRefreshLoop();
+        CancelActiveLoads();
+        _loadCts.Dispose();
+    }
+
+}

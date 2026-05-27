@@ -28,6 +28,7 @@ builder.Services.AddRadzenComponents();
 
 // Настройки адреса Runtime Service берём из appsettings.json.
 builder.Services.Configure<RuntimeServiceOptions>(builder.Configuration.GetSection("RuntimeService"));
+builder.Services.Configure<ParamUiOptions>(builder.Configuration.GetSection("Param"));
 
 // Именованный HttpClient для Runtime Service.
 // WEB не знает, где физически БД или CtApi — он вызывает Runtime Service по HTTP.
@@ -49,6 +50,9 @@ builder.Services.AddScoped<EquipmentApiClient>();
 
 // Клиент Info-модуля: карточка оборудования, описание и notes.
 builder.Services.AddScoped<InfoApiClient>();
+
+// Read-only Param client. WEB calls Runtime.Service; CtApi details stay behind the service boundary.
+builder.Services.AddScoped<ParamApiClient>();
 
 // Клиент для отображения состояния Runtime.Service в верхней панели WEB.
 builder.Services.AddScoped<RuntimeStatusApiClient>();

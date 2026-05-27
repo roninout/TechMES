@@ -41,3 +41,11 @@
     background: #111;
     object-fit: cover;
 }
+
+.qr-diagnostics {
+    display: grid;
+    gap: 2px;
+    font-size: 12px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}

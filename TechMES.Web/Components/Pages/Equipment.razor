@@ -1,15 +1,18 @@
 @page "/"
 @page "/equipment"
+@page "/equipment/param"
+@using Microsoft.AspNetCore.Components.Routing
 @inject EquipmentApiClient EquipmentApi
 @inject NotificationService NotificationService
 @inject SelectedEquipmentState SelectedEquipmentState
 @inject EquipmentFooterState EquipmentFooterState
 @inject QrScannerState QrScannerState
+@inject NavigationManager NavigationManager
 @implements IDisposable
 
-<PageTitle>Equipment</PageTitle>
+<PageTitle>@(IsParamMode ? "Param" : "Equipment")</PageTitle>
 
-<RadzenStack Gap="12px">
+<div class="equipment-page">
     <div class="equipment-filter-layout">
         <div class="equipment-tree-filters">
             <RadzenDropDown TValue="string"
@@ -53,15 +56,26 @@
         </div>
 
         <div class="equipment-search-actions">
-            <RadzenAutoComplete Data="@_searchSuggestions"
-                                @bind-Value="_searchText"
-                                Change="@OnSearchChanged"
-                                Placeholder="Search equipment..."
-                                MinLength="0"
-                                FilterDelay="150"
-                                OpenOnFocus="true"
-                                class="equipment-search-box"
-                                Style="width: 260px;" />
+            <div class="equipment-search-wrapper">
+                <RadzenAutoComplete Data="@_searchSuggestions"
+                                    @bind-Value="_searchText"
+                                    Change="@OnSearchChanged"
+                                    Placeholder="Search equipment..."
+                                    MinLength="0"
+                                    FilterDelay="150"
+                                    OpenOnFocus="true"
+                                    class="equipment-search-box"
+                                    Style="width: 100%;" />
+
+                @if (!string.IsNullOrWhiteSpace(_searchText))
+                {
+                    <RadzenButton Icon="close"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.Small"
+                                  class="equipment-search-clear-button"
+                                  Click="@ClearSearch" />
+                }
+            </div>
 
             <RadzenButton Text="Refresh"
                           Icon="refresh"
@@ -87,8 +101,8 @@
         <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
     }
 
-    <RadzenSplitter Style="height: calc(100vh - 240px); min-height: 480px;">
-        <RadzenSplitterPane Size="420px" Min="420px" Max="420px">
+    <RadzenSplitter class="equipment-main-splitter">
+        <RadzenSplitterPane Size="400px" Min="400px" Max="400px" class="equipment-left-pane">
             @if (_treeRows.Count == 0 && !_isLoading)
             {
                 <RadzenCard>
@@ -174,14 +188,26 @@
             }
         </RadzenSplitterPane>
 
-        <RadzenSplitterPane>
-            <EquipmentInfoPanel Equipment="@_selectedEquipment"
-                                IsFavoriteSaving="@_isFavoriteSaving"
-                                OnToggleFavorite="@ToggleSelectedFavoriteAsync"
-                                OnInfoCountsChanged="@OnInfoCountsChanged" />
+        <RadzenSplitterPane class="equipment-right-pane">
+            <div @key="IsParamMode" class="equipment-right-mode-host">
+                @if (IsParamMode)
+                {
+                    <EquipmentParamPanel Equipment="@_selectedEquipment"
+                                         IsActive="@IsParamMode"
+                                         IsFavoriteSaving="@_isFavoriteSaving"
+                                         OnToggleFavorite="@ToggleSelectedFavoriteAsync" />
+                }
+                else
+                {
+                    <EquipmentInfoPanel Equipment="@_selectedEquipment"
+                                        IsFavoriteSaving="@_isFavoriteSaving"
+                                        OnToggleFavorite="@ToggleSelectedFavoriteAsync"
+                                        OnInfoCountsChanged="@OnInfoCountsChanged" />
+                }
+            </div>
         </RadzenSplitterPane>
     </RadzenSplitter>
-</RadzenStack>
+</div>
 
 @code {
     private const string AllStationsText = "All stations";
@@ -211,10 +237,21 @@
     private string _statusText = "";
     private AlertStyle _statusStyle = AlertStyle.Info;
 
+    private bool IsParamMode =>
+        NavigationManager
+            .ToBaseRelativePath(NavigationManager.Uri)
+            .StartsWith("equipment/param", StringComparison.OrdinalIgnoreCase);
+
     protected override async Task OnInitializedAsync()
     {
+        NavigationManager.LocationChanged += OnLocationChanged;
         QrScannerState.Scanned += SelectEquipmentFromQrAsync;
         await LoadAsync();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadAsync()
@@ -282,6 +319,15 @@
     private void OnSearchChanged(object? value)
     {
         _searchText = Convert.ToString(value) ?? string.Empty;
+        ApplyFilters();
+    }
+
+    private void ClearSearch()
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+            return;
+
+        _searchText = string.Empty;
         ApplyFilters();
     }
 
@@ -774,51 +820,55 @@
     /// </summary>
     private Task SelectEquipmentFromQrAsync(string qrText)
     {
-        qrText = (qrText ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(qrText))
-            return Task.CompletedTask;
-
-        var match = FindEquipmentForQrText(qrText);
-        if (match is null)
+        return InvokeAsync(() =>
         {
+            qrText = (qrText ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(qrText))
+                return;
+
+            var match = FindEquipmentForQrText(qrText);
+            if (match is null)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Warning,
+                    Summary = "QR",
+                    Detail = $"Equipment was not found: {qrText}",
+                    Duration = 3500
+                });
+
+                StateHasChanged();
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(match.Station)
+                && _stationItems.Contains(match.Station, StringComparer.OrdinalIgnoreCase))
+            {
+                _selectedStation = match.Station;
+            }
+            else
+            {
+                _selectedStation = AllStationsText;
+            }
+
+            _selectedType = _typeItems.Contains(match.TypeGroup.ToString(), StringComparer.OrdinalIgnoreCase)
+                ? match.TypeGroup.ToString()
+                : AllTypesText;
+
+            _searchText = match.Name;
+            ExpandParents(match);
+            ApplyFilters(match.Name, match.NodeId);
+
             NotificationService.Notify(new NotificationMessage
             {
-                Severity = NotificationSeverity.Warning,
+                Severity = NotificationSeverity.Success,
                 Summary = "QR",
-                Detail = $"Equipment was not found: {qrText}",
-                Duration = 3500
+                Detail = $"Selected: {match.Name}",
+                Duration = 2500
             });
 
-            return Task.CompletedTask;
-        }
-
-        if (!string.IsNullOrWhiteSpace(match.Station)
-            && _stationItems.Contains(match.Station, StringComparer.OrdinalIgnoreCase))
-        {
-            _selectedStation = match.Station;
-        }
-        else
-        {
-            _selectedStation = AllStationsText;
-        }
-
-        _selectedType = _typeItems.Contains(match.TypeGroup.ToString(), StringComparer.OrdinalIgnoreCase)
-            ? match.TypeGroup.ToString()
-            : AllTypesText;
-
-        _searchText = match.Name;
-        ExpandParents(match);
-        ApplyFilters(match.Name, match.NodeId);
-
-        NotificationService.Notify(new NotificationMessage
-        {
-            Severity = NotificationSeverity.Success,
-            Summary = "QR",
-            Detail = $"Selected: {match.Name}",
-            Duration = 2500
+            StateHasChanged();
         });
-
-        return Task.CompletedTask;
     }
 
     private EquipmentDto? FindEquipmentForQrText(string qrText)
@@ -847,6 +897,7 @@
 
     public void Dispose()
     {
+        NavigationManager.LocationChanged -= OnLocationChanged;
         QrScannerState.Scanned -= SelectEquipmentFromQrAsync;
         EquipmentFooterState.Clear();
     }
