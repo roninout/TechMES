@@ -1,0 +1,115 @@
+@page "/alarm-history"
+@inject EventLogApiClient EventLogApi
+@inject SelectedEquipmentState SelectedEquipmentState
+@inject NotificationService NotificationService
+
+<PageTitle>Alarm history</PageTitle>
+
+<div class="event-log-page">
+    <div class="event-log-toolbar">
+        <RadzenDatePicker TValue="DateTime"
+                          @bind-Value="_selectedDate"
+                          DateFormat="dd.MM.yyyy"
+                          Style="width: 160px;" />
+
+        <RadzenTextBox @bind-Value="_equipmentFilter"
+                       Placeholder="Equipment filter..."
+                       Style="width: 260px;" />
+
+        <RadzenButton Text="Refresh"
+                      Icon="refresh"
+                      ButtonStyle="ButtonStyle.Light"
+                      Disabled="@_isLoading"
+                      Click="@LoadAsync" />
+
+        <RadzenBadge Text="@($"Count: {_rows.Count}")" BadgeStyle="BadgeStyle.Light" />
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_statusText))
+    {
+        <RadzenAlert AlertStyle="@_statusStyle"
+                     ShowIcon="true"
+                     AllowClose="true"
+                     Close="@(() => _statusText = string.Empty)">
+            @_statusText
+        </RadzenAlert>
+    }
+
+    @if (_isLoading)
+    {
+        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+    }
+
+    <RadzenDataGrid Data="@_rows"
+                    TItem="AlarmHistoryDto"
+                    AllowSorting="true"
+                    AllowPaging="true"
+                    PageSize="30"
+                    Density="Density.Compact"
+                    class="event-log-grid">
+        <Columns>
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Title="Time" Width="170px">
+                <Template Context="row">
+                    @row.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="State" Title="State" Width="110px" />
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Category" Title="Category" Width="180px" />
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Equipment" Title="Equipment" Width="160px" />
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Item" Title="Item" Width="160px" />
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="User" Title="User" Width="150px" />
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Location" Title="Location" Width="160px" />
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Comment" Title="Comment" />
+        </Columns>
+    </RadzenDataGrid>
+</div>
+
+@code {
+    private DateTime _selectedDate = DateTime.Today;
+    private string _equipmentFilter = "";
+    private List<AlarmHistoryDto> _rows = [];
+
+    private bool _isLoading;
+    private string _statusText = "";
+    private AlertStyle _statusStyle = AlertStyle.Info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _equipmentFilter = SelectedEquipmentState.SelectedEquipmentName ?? "";
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _statusText = "";
+
+        try
+        {
+            var response = await EventLogApi.GetAlarmHistoryAsync(
+                _selectedDate,
+                _equipmentFilter);
+
+            _rows = response.Rows;
+        }
+        catch (Exception ex)
+        {
+            _rows = [];
+            _statusStyle = AlertStyle.Danger;
+            _statusText = "Cannot load alarm history: " + ex.Message;
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Alarm history",
+                Detail = "Cannot load data.",
+                Duration = 3500
+            });
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

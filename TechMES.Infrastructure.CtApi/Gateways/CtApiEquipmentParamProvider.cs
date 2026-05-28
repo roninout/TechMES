@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TechMES.Application.Param;
 using TechMES.Contracts.Equipment;
 using TechMES.Contracts.Param;
 using TechMES.Infrastructure.CtApi.Native;
+using TechMES.Infrastructure.CtApi.Settings;
 
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
@@ -13,17 +15,29 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
     private static readonly CultureInfo CitectNumberFormat = CultureInfo.InvariantCulture;
 
     private readonly ICtApiNativeClient _nativeClient;
+    private readonly IOptions<CtApiOptions> _options;
     private readonly ILogger<CtApiEquipmentParamProvider> _logger;
 
     private readonly ConcurrentDictionary<string, string> _tagNameCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _tagUnitCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _trendNameCache = new(StringComparer.OrdinalIgnoreCase);
 
+    private static readonly IReadOnlyList<ParamItemDefinition> DryRunItems =
+    [
+        new("DryRunAEn", ParamValueKind.Boolean),
+        new("DryRunA", ParamValueKind.Boolean),
+        new("DryRunLimToOff", ParamValueKind.Number),
+        new("DryRunTimeToOn", ParamValueKind.Number),
+        new("DryRunTimeToOff", ParamValueKind.Number)
+    ];
+
     public CtApiEquipmentParamProvider(
         ICtApiNativeClient nativeClient,
+        IOptions<CtApiOptions> options,
         ILogger<CtApiEquipmentParamProvider> logger)
     {
         _nativeClient = nativeClient;
+        _options = options;
         _logger = logger;
     }
 
@@ -205,6 +219,741 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         }
 
         return response;
+    }
+
+    public async Task<ParamPlcRefsResponse> GetPlcRefsAsync(
+        EquipmentDto equipment,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(equipment);
+
+        var response = new ParamPlcRefsResponse
+        {
+            EquipmentName = equipment.Name,
+            Supported = true,
+            Time = DateTime.Now
+        };
+
+        var refs = await BrowseEquipmentRefsAsync(
+            equipment.Name,
+            category: "TabPLC",
+            equipmentItem: "State",
+            fields: ["REFEQUIP", "REFITEM", "CUSTOM1", "COMMENT"],
+            ct);
+
+        foreach (var row in refs)
+        {
+            var refEquipment = CleanRefValue(GetValue(row, "REFEQUIP"));
+            if (string.IsNullOrWhiteSpace(refEquipment))
+                continue;
+
+            var refItem = CleanRefValue(GetValue(row, "REFITEM"));
+            var type = ParsePlcType(GetValue(row, "CUSTOM1"));
+            var comment = CleanScadaText(GetValue(row, "COMMENT"));
+            var itemForTag = GetPlcEquipItemForTagInfo(refItem, type);
+
+            var tagName = await ResolveTagNameAsync(refEquipment, itemForTag, ct);
+            var unit = await ResolveUnitAsync(tagName, ct);
+            var forcedTagName = "";
+
+            if (type is ParamPlcType.EqDigital or ParamPlcType.EqDigitalInOut)
+            {
+                forcedTagName = await ResolveTagNameAsync(refEquipment, "ForceCmd", ct);
+            }
+
+            response.Rows.Add(new ParamPlcRefDto
+            {
+                EquipmentName = refEquipment,
+                RefItem = refItem,
+                Type = type,
+                Comment = comment,
+                TagName = tagName,
+                Unit = unit,
+                ForcedTagName = forcedTagName
+            });
+        }
+
+        if (response.Rows.Count == 0)
+        {
+            response.Supported = false;
+            response.Message = "No PLC references were found for this equipment.";
+            return response;
+        }
+
+        var tagsToRead = response.Rows
+            .SelectMany(row => new[] { row.TagName, row.ForcedTagName })
+            .Where(IsReadableTagName)
+            .Select(tag => tag!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var rawMap = await TagReadManyAsync(tagsToRead, ct);
+
+        foreach (var row in response.Rows)
+        {
+            if (IsReadableTagName(row.TagName)
+                && rawMap.TryGetValue(row.TagName!, out var raw)
+                && raw is not null)
+            {
+                ApplyValue(row, raw);
+            }
+
+            if (IsReadableTagName(row.ForcedTagName)
+                && rawMap.TryGetValue(row.ForcedTagName!, out var forcedRaw)
+                && forcedRaw is not null
+                && TryParseBoolean(forcedRaw, out var forceCmd))
+            {
+                row.ForceCmd = forceCmd;
+            }
+        }
+
+        response.Rows = response.Rows
+            .OrderBy(row => row.EquipmentName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(row => row.RefItem, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(row => row.Type.ToString(), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return response;
+    }
+
+    public async Task<ParamDiDoRefsResponse> GetDiDoRefsAsync(
+        EquipmentDto equipment,
+        IReadOnlyList<EquipmentDto> equipmentCatalog,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(equipment);
+
+        var response = new ParamDiDoRefsResponse
+        {
+            EquipmentName = equipment.Name,
+            Supported = true,
+            Time = DateTime.Now
+        };
+
+        var catalogLookup = BuildEquipmentLookup(equipmentCatalog);
+
+        var refs = await BrowseEquipmentRefsAsync(
+            equipment.Name,
+            category: "TabDIDO",
+            equipmentItem: "State",
+            fields: ["REFEQUIP"],
+            ct);
+
+        var refNames = refs
+            .Select(row => CleanRefValue(GetValue(row, "REFEQUIP")))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var refName in refNames)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (!catalogLookup.TryGetValue(refName, out var linkedEquipment))
+                continue;
+
+            if (linkedEquipment.TypeGroup is not (EquipmentTypeGroup.DI or EquipmentTypeGroup.DO))
+                continue;
+
+            var snapshot = await GetSnapshotAsync(linkedEquipment, ct);
+            if (!snapshot.Supported)
+                continue;
+
+            var dto = BuildDiDoRef(linkedEquipment, snapshot);
+
+            if (linkedEquipment.TypeGroup == EquipmentTypeGroup.DI)
+                response.DiRows.Add(dto);
+            else
+                response.DoRows.Add(dto);
+        }
+
+        response.DiRows = response.DiRows
+            .OrderBy(GetChanelSortKey)
+            .ThenBy(row => row.EquipmentName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        response.DoRows = response.DoRows
+            .OrderBy(GetChanelSortKey)
+            .ThenBy(row => row.EquipmentName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (response.DiRows.Count == 0 && response.DoRows.Count == 0)
+        {
+            response.Supported = false;
+            response.Message = "No DI/DO references were found for this equipment.";
+        }
+
+        return response;
+    }
+
+    public async Task<ParamDryRunResponse> GetDryRunAsync(
+        EquipmentDto equipment,
+        IReadOnlyList<EquipmentDto> equipmentCatalog,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(equipment);
+
+        var response = new ParamDryRunResponse
+        {
+            EquipmentName = equipment.Name,
+            Supported = true,
+            Time = DateTime.Now
+        };
+
+        if (equipment.TypeGroup != EquipmentTypeGroup.Motor)
+        {
+            response.Supported = false;
+            response.Message = "DryRun page is available only for Motor equipment.";
+            return response;
+        }
+
+        var catalogLookup = BuildEquipmentLookup(equipmentCatalog);
+        var dryRunRef = await GetWinOpenedRefAsync(
+            equipment.Name,
+            equipmentItem: "State",
+            assocExpected: "__EquipmentPump",
+            ct);
+
+        if (dryRunRef is null)
+        {
+            response.Supported = false;
+            response.Message = "No DryRun is configured for this equipment.";
+            return response;
+        }
+
+        var dryRunEquipmentName = dryRunRef.Value.RefEquipment;
+        var dryRunEquipment = FindEquipment(catalogLookup, dryRunEquipmentName);
+
+        response.DryRunEquipmentName = dryRunEquipmentName;
+        response.DryRunEquipment = await ReadLinkedItemsAsync(
+            dryRunEquipment,
+            dryRunEquipmentName,
+            DryRunItems,
+            ct);
+
+        response.LinkedDi = await TryResolveDryRunDiAsync(
+            dryRunEquipmentName,
+            catalogLookup,
+            ct);
+
+        response.LinkedAi = await TryResolveDryRunAiAsync(
+            dryRunEquipmentName,
+            catalogLookup,
+            ct);
+
+        return response;
+    }
+
+    public async Task<ParamAtvRefResponse> GetAtvRefAsync(
+        EquipmentDto equipment,
+        IReadOnlyList<EquipmentDto> equipmentCatalog,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(equipment);
+
+        var response = new ParamAtvRefResponse
+        {
+            EquipmentName = equipment.Name,
+            Supported = true,
+            Time = DateTime.Now
+        };
+
+        var catalogLookup = BuildEquipmentLookup(equipmentCatalog);
+        EquipmentDto? atvEquipment;
+
+        if (equipment.TypeGroup == EquipmentTypeGroup.ATV)
+        {
+            atvEquipment = equipment;
+            response.IsLinkedFromMotor = false;
+        }
+        else if (equipment.TypeGroup == EquipmentTypeGroup.Motor)
+        {
+            var atvRef = await GetWinOpenedRefAsync(
+                equipment.Name,
+                equipmentItem: "State",
+                assocExpected: "__EquipmentSic",
+                ct);
+
+            if (atvRef is null)
+            {
+                response.Supported = false;
+                response.Message = "No ATV is configured for this equipment.";
+                return response;
+            }
+
+            atvEquipment = FindEquipment(catalogLookup, atvRef.Value.RefEquipment);
+            response.IsLinkedFromMotor = true;
+        }
+        else
+        {
+            response.Supported = false;
+            response.Message = "ATV page is available only for Motor and ATV equipment.";
+            return response;
+        }
+
+        if (atvEquipment is null || atvEquipment.TypeGroup != EquipmentTypeGroup.ATV)
+        {
+            response.Supported = false;
+            response.Message = "Linked ATV equipment was not found in the catalog.";
+            return response;
+        }
+
+        var snapshot = await GetSnapshotAsync(atvEquipment, ct);
+        if (!snapshot.Supported)
+        {
+            response.Supported = false;
+            response.Message = snapshot.Message ?? "Linked ATV Param tags are not readable.";
+            response.AtvEquipmentName = atvEquipment.Name;
+            return response;
+        }
+
+        response.AtvEquipmentName = atvEquipment.Name;
+        response.AtvEquipment = BuildLinkedParam(atvEquipment, snapshot);
+        return response;
+    }
+
+    private async Task<ParamDiDoRefDto?> TryResolveDryRunDiAsync(
+        string dryRunEquipmentName,
+        IReadOnlyDictionary<string, EquipmentDto> catalogLookup,
+        CancellationToken ct)
+    {
+        var winRef = await GetWinOpenedRefAsync(
+            dryRunEquipmentName,
+            equipmentItem: "DryRunA",
+            assocExpected: "_dryRunDI",
+            ct);
+
+        if (winRef is null)
+            return null;
+
+        var linkedEquipment = FindEquipment(catalogLookup, winRef.Value.RefEquipment);
+        if (linkedEquipment is null || linkedEquipment.TypeGroup != EquipmentTypeGroup.DI)
+            return null;
+
+        var snapshot = await GetSnapshotAsync(linkedEquipment, ct);
+        return snapshot.Supported
+            ? BuildDiDoRef(linkedEquipment, snapshot)
+            : null;
+    }
+
+    private async Task<ParamLinkedParamDto?> TryResolveDryRunAiAsync(
+        string dryRunEquipmentName,
+        IReadOnlyDictionary<string, EquipmentDto> catalogLookup,
+        CancellationToken ct)
+    {
+        var winRef = await GetWinOpenedRefAsync(
+            dryRunEquipmentName,
+            equipmentItem: "DryRunA",
+            assocExpected: "_dryRunAI",
+            ct);
+
+        if (winRef is null)
+            return null;
+
+        var linkedEquipment = FindEquipment(catalogLookup, winRef.Value.RefEquipment);
+        if (linkedEquipment is null || linkedEquipment.TypeGroup != EquipmentTypeGroup.AI)
+            return null;
+
+        var snapshot = await GetSnapshotAsync(linkedEquipment, ct);
+        return snapshot.Supported
+            ? BuildLinkedParam(linkedEquipment, snapshot)
+            : null;
+    }
+
+    private async Task<EquipmentRef?> GetWinOpenedRefAsync(
+        string equipmentName,
+        string equipmentItem,
+        string assocExpected,
+        CancellationToken ct)
+    {
+        var refs = await BrowseEquipmentRefsAsync(
+            equipmentName,
+            category: "WinOpened",
+            equipmentItem: equipmentItem,
+            fields: ["REFEQUIP", "ASSOC", "REFITEM"],
+            ct);
+
+        foreach (var row in refs)
+        {
+            var refEquipment = CleanRefValue(GetValue(row, "REFEQUIP"));
+            if (string.IsNullOrWhiteSpace(refEquipment))
+                continue;
+
+            var assoc = CleanRefValue(GetValue(row, "ASSOC"));
+            if (!string.Equals(assoc, assocExpected, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var refItem = CleanRefValue(GetValue(row, "REFITEM"));
+            return new EquipmentRef(refEquipment, assoc, refItem);
+        }
+
+        return null;
+    }
+
+    private async Task<ParamLinkedParamDto> ReadLinkedItemsAsync(
+        EquipmentDto? equipment,
+        string equipmentName,
+        IReadOnlyList<ParamItemDefinition> definitions,
+        CancellationToken ct)
+    {
+        var dto = new ParamLinkedParamDto
+        {
+            EquipmentName = equipmentName,
+            TypeName = equipment?.TypeName ?? "",
+            TypeGroup = equipment?.TypeGroup ?? EquipmentTypeGroup.Unknown,
+            Description = equipment?.Description,
+            Location = equipment?.Location
+        };
+
+        var tags = new List<(ParamItemDefinition Definition, string TagName)>();
+
+        foreach (var definition in definitions)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var tagName = await ResolveTagNameAsync(equipmentName, definition.Name, ct);
+            if (IsReadableTagName(tagName))
+                tags.Add((definition, tagName));
+        }
+
+        var rawMap = await TagReadManyAsync(
+            tags
+                .Select(x => x.TagName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            ct);
+
+        foreach (var (definition, tagName) in tags)
+        {
+            if (!rawMap.TryGetValue(tagName, out var raw) || raw is null)
+                continue;
+
+            var item = BuildItemDto(definition, tagName, raw);
+
+            if (definition.Kind == ParamValueKind.Number)
+            {
+                var unit = await ResolveUnitAsync(tagName, ct);
+                item.Unit = unit;
+
+                if (string.IsNullOrWhiteSpace(dto.Unit) && !string.IsNullOrWhiteSpace(unit))
+                    dto.Unit = unit;
+            }
+
+            dto.Items.Add(item);
+        }
+
+        return dto;
+    }
+
+    private async Task<List<Dictionary<string, string>>> BrowseEquipmentRefsAsync(
+        string equipmentName,
+        string category,
+        string equipmentItem,
+        IReadOnlyList<string> fields,
+        CancellationToken ct)
+    {
+        var result = new List<Dictionary<string, string>>();
+        var cluster = await ResolveClusterWithFallbackAsync(equipmentName, equipmentItem, ct);
+
+        if (string.IsNullOrWhiteSpace(cluster)
+            || cluster.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            return result;
+        }
+
+        var connect = $"CLUSTER={cluster};EQUIP={equipmentName};REFCAT={category}";
+        var escapedConnect = EscapeCicodeString(connect);
+
+        var handleText = (await _nativeClient.CicodeAsync(
+            $"EquipRefBrowseOpen(\"{escapedConnect}\",\"\")",
+            ct) ?? "").Trim();
+
+        if (!int.TryParse(handleText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var handle)
+            || handle == -1)
+        {
+            return result;
+        }
+
+        try
+        {
+            var countText = (await _nativeClient.CicodeAsync(
+                $"EquipRefBrowseNumRecords({handle})",
+                ct) ?? "").Trim();
+
+            if (!int.TryParse(countText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var count)
+                || count <= 0)
+            {
+                return result;
+            }
+
+            var nextText = (await _nativeClient.CicodeAsync(
+                $"EquipRefBrowseFirst({handle})",
+                ct) ?? "").Trim();
+
+            while (int.TryParse(nextText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var next)
+                && next == 0)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var field in fields)
+                {
+                    var escapedField = EscapeCicodeString(field);
+                    row[field] = (await _nativeClient.CicodeAsync(
+                        $"EquipRefBrowseGetField(\"{handle}\", \"{escapedField}\")",
+                        ct) ?? "").Trim();
+                }
+
+                result.Add(row);
+
+                nextText = (await _nativeClient.CicodeAsync(
+                    $"EquipRefBrowseNext({handle})",
+                    ct) ?? "").Trim();
+            }
+        }
+        finally
+        {
+            try
+            {
+                await _nativeClient.CicodeAsync($"EquipRefBrowseClose({handle})", ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(
+                    ex,
+                    "EquipRefBrowseClose failed. Equipment={Equipment}, Category={Category}",
+                    equipmentName,
+                    category);
+            }
+        }
+
+        return result;
+    }
+
+    private async Task<string> ResolveClusterWithFallbackAsync(
+        string equipmentName,
+        string preferredItem,
+        CancellationToken ct)
+    {
+        foreach (var item in new[] { preferredItem, "STW", "State", "Value", "R" }
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var cluster = await ResolveClusterAsync(equipmentName, item, ct);
+
+            if (!string.IsNullOrWhiteSpace(cluster)
+                && !cluster.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                return cluster;
+            }
+        }
+
+        return "";
+    }
+
+    private async Task<Dictionary<string, string?>> TagReadManyAsync(
+        IReadOnlyList<string> tagNames,
+        CancellationToken ct)
+    {
+        var maxConcurrency = Math.Max(1, _options.Value.TagReadParallelism);
+        var result = new ConcurrentDictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        using var gate = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+
+        var tasks = tagNames.Select(async tagName =>
+        {
+            await gate.WaitAsync(ct);
+            try
+            {
+                result[tagName] = await _nativeClient.TagReadAsync(tagName, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Param reference TagRead failed. Tag={Tag}", tagName);
+                result[tagName] = null;
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+
+        return new Dictionary<string, string?>(result, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static ParamDiDoRefDto BuildDiDoRef(
+        EquipmentDto equipment,
+        ParamSnapshotResponse snapshot)
+    {
+        var value = FindItem(snapshot, "Value");
+        var valueForced = FindItem(snapshot, "ValueForced");
+        var forceCmd = FindItem(snapshot, "ForceCmd");
+
+        return new ParamDiDoRefDto
+        {
+            EquipmentName = equipment.Name,
+            TypeName = equipment.TypeName,
+            TypeGroup = equipment.TypeGroup,
+            Description = equipment.Description,
+            Location = equipment.Location,
+            Chanel = string.IsNullOrWhiteSpace(equipment.Location)
+                ? snapshot.Location
+                : equipment.Location,
+            ValueText = value?.ValueText,
+            NumericValue = value?.NumericValue,
+            BooleanValue = value?.BooleanValue,
+            ValueForced = valueForced?.BooleanValue == true,
+            ForceCmd = forceCmd?.BooleanValue == true
+        };
+    }
+
+    private static ParamLinkedParamDto BuildLinkedParam(
+        EquipmentDto equipment,
+        ParamSnapshotResponse snapshot)
+    {
+        return new ParamLinkedParamDto
+        {
+            EquipmentName = equipment.Name,
+            TypeName = equipment.TypeName,
+            TypeGroup = equipment.TypeGroup,
+            Description = equipment.Description,
+            Location = string.IsNullOrWhiteSpace(equipment.Location)
+                ? snapshot.Location
+                : equipment.Location,
+            Unit = snapshot.Unit,
+            Items = snapshot.Items.ToList()
+        };
+    }
+
+    private static Dictionary<string, EquipmentDto> BuildEquipmentLookup(
+        IReadOnlyList<EquipmentDto> equipmentCatalog)
+    {
+        return equipmentCatalog
+            .Where(item => !item.IsGroup)
+            .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(item => item.IsEquipmentChildNode ? 1 : 0)
+                    .First(),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static EquipmentDto? FindEquipment(
+        IReadOnlyDictionary<string, EquipmentDto> equipmentCatalog,
+        string equipmentName)
+    {
+        return equipmentCatalog.TryGetValue(equipmentName, out var equipment)
+            ? equipment
+            : null;
+    }
+
+    private static ParamItemDto? FindItem(
+        ParamSnapshotResponse snapshot,
+        string name)
+    {
+        return snapshot.Items.FirstOrDefault(item =>
+            string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void ApplyValue(ParamPlcRefDto row, string raw)
+    {
+        raw = (raw ?? "").Trim();
+        row.ValueText = raw;
+
+        if (IsBooleanPlcType(row.Type) && TryParseBoolean(raw, out var boolValue))
+        {
+            row.BooleanValue = boolValue;
+            row.NumericValue = boolValue ? 1 : 0;
+            row.ValueText = boolValue ? "true" : "false";
+            return;
+        }
+
+        if (TryParseDouble(raw, out var number))
+        {
+            row.NumericValue = number;
+            row.ValueText = FormatNumber(number);
+        }
+    }
+
+    private static bool IsBooleanPlcType(ParamPlcType type)
+    {
+        return type is ParamPlcType.EqCheck
+            or ParamPlcType.EqCheckRW
+            or ParamPlcType.EqCheckDisplay
+            or ParamPlcType.EqButton
+            or ParamPlcType.EqButtonUp
+            or ParamPlcType.EqButtonDown
+            or ParamPlcType.EqButtonMode
+            or ParamPlcType.EqButtonStartStop
+            or ParamPlcType.EqDigital
+            or ParamPlcType.EqDigitalInOut
+            or ParamPlcType.EqMotorStatus
+            or ParamPlcType.EqValveStatus;
+    }
+
+    private static ParamPlcType ParsePlcType(string? value)
+    {
+        value = (value ?? "").Trim();
+
+        return Enum.TryParse(value, ignoreCase: true, out ParamPlcType type)
+            ? type
+            : ParamPlcType.Unknown;
+    }
+
+    private static string GetPlcEquipItemForTagInfo(string? refItem, ParamPlcType type)
+    {
+        refItem = CleanRefValue(refItem);
+
+        if (!string.IsNullOrWhiteSpace(refItem))
+            return refItem;
+
+        if (type is ParamPlcType.EqMotorStatus or ParamPlcType.EqValveStatus)
+            return "State";
+
+        return "Value";
+    }
+
+    private static bool IsReadableTagName(string? tagName)
+    {
+        return !string.IsNullOrWhiteSpace(tagName)
+            && !tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string CleanRefValue(string? value)
+    {
+        value = (value ?? "").Trim();
+
+        return value.Equals("Unknown", StringComparison.OrdinalIgnoreCase)
+            ? ""
+            : value;
+    }
+
+    private static long GetChanelSortKey(ParamDiDoRefDto row)
+    {
+        var raw = (row.ChanelShort ?? "").Trim();
+
+        if (raw.Length == 0)
+            return long.MaxValue;
+
+        var parts = raw.Split(
+            '.',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        static int ParsePart(string? value)
+        {
+            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result)
+                ? result
+                : int.MaxValue;
+        }
+
+        var a = parts.Length > 0 ? ParsePart(parts[0]) : int.MaxValue;
+        var b = parts.Length > 1 ? ParsePart(parts[1]) : int.MaxValue;
+        var c = parts.Length > 2 ? ParsePart(parts[2]) : 0;
+
+        return (long)a * 1_000_000L + (long)b * 1_000L + c;
     }
 
     private static DateTime? NormalizeUtc(DateTime? value)
@@ -556,6 +1305,8 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
     private readonly record struct TrendRef(string TrendName, string Cluster);
 
     private readonly record struct TrendRow(DateTime TimeUtc, double Value, int Quality);
+
+    private readonly record struct EquipmentRef(string RefEquipment, string Assoc, string RefItem);
 }
 
 internal sealed record ParamDefinition(

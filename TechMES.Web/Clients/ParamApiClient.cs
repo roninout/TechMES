@@ -60,6 +60,82 @@ public sealed class ParamApiClient
         };
     }
 
+    public async Task<ParamPlcRefsResponse> GetPlcRefsAsync(
+        string equipmentName,
+        CancellationToken ct = default)
+    {
+        var client = CreateClient();
+        var encodedName = Uri.EscapeDataString(equipmentName);
+
+        var result = await client.GetFromJsonAsync<ParamPlcRefsResponse>(
+            $"api/param/{encodedName}/refs/plc",
+            ct);
+
+        return result ?? new ParamPlcRefsResponse
+        {
+            EquipmentName = equipmentName,
+            Supported = false,
+            Message = "Runtime Service returned empty PLC references."
+        };
+    }
+
+    public async Task<ParamDiDoRefsResponse> GetDiDoRefsAsync(
+        string equipmentName,
+        CancellationToken ct = default)
+    {
+        var client = CreateClient();
+        var encodedName = Uri.EscapeDataString(equipmentName);
+
+        var result = await client.GetFromJsonAsync<ParamDiDoRefsResponse>(
+            $"api/param/{encodedName}/refs/dido",
+            ct);
+
+        return result ?? new ParamDiDoRefsResponse
+        {
+            EquipmentName = equipmentName,
+            Supported = false,
+            Message = "Runtime Service returned empty DI/DO references."
+        };
+    }
+
+    public async Task<ParamDryRunResponse> GetDryRunAsync(
+        string equipmentName,
+        CancellationToken ct = default)
+    {
+        var client = CreateClient();
+        var encodedName = Uri.EscapeDataString(equipmentName);
+
+        var result = await client.GetFromJsonAsync<ParamDryRunResponse>(
+            $"api/param/{encodedName}/refs/dryrun",
+            ct);
+
+        return result ?? new ParamDryRunResponse
+        {
+            EquipmentName = equipmentName,
+            Supported = false,
+            Message = "Runtime Service returned empty DryRun data."
+        };
+    }
+
+    public async Task<ParamAtvRefResponse> GetAtvRefAsync(
+        string equipmentName,
+        CancellationToken ct = default)
+    {
+        var client = CreateClient();
+        var encodedName = Uri.EscapeDataString(equipmentName);
+
+        var result = await client.GetFromJsonAsync<ParamAtvRefResponse>(
+            $"api/param/{encodedName}/refs/atv",
+            ct);
+
+        return result ?? new ParamAtvRefResponse
+        {
+            EquipmentName = equipmentName,
+            Supported = false,
+            Message = "Runtime Service returned empty ATV data."
+        };
+    }
+
     private HttpClient CreateClient()
     {
         return _httpClientFactory.CreateClient("RuntimeService");

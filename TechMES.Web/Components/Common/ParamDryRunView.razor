@@ -1,0 +1,138 @@
+@using TechMES.Contracts.Param
+
+@if (Response is null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+        DryRun data is not loaded yet.
+    </RadzenAlert>
+}
+else if (!Response.Supported)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+        @DisplayValue(Response.Message)
+    </RadzenAlert>
+}
+else
+{
+    <div class="param-dryrun-layout">
+        <section class="param-ref-card">
+            <div class="param-ref-card-header">
+                <span>DryRun settings</span>
+                @if (!string.IsNullOrWhiteSpace(Response.DryRunEquipmentName))
+                {
+                    <RadzenButton Text="@Response.DryRunEquipmentName"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.Small"
+                                  class="param-ref-link"
+                                  Click="@(() => SelectEquipmentAsync(Response.DryRunEquipmentName!))" />
+                }
+            </div>
+
+            <ParamItemsTable Items="@Response.DryRunEquipment?.Items" />
+        </section>
+
+        <section class="param-ref-card">
+            <div class="param-ref-card-header">
+                <span>DryRun DI</span>
+            </div>
+
+            @if (Response.LinkedDi is null)
+            {
+                <div class="param-ref-empty">No linked DI.</div>
+            }
+            else
+            {
+                <button type="button"
+                        class="param-linked-row"
+                        @onclick="() => SelectEquipmentAsync(Response.LinkedDi.EquipmentName)">
+                    <EquipmentTypeBadge TypeGroup="@Response.LinkedDi.TypeGroup" />
+                    <div class="param-linked-title">
+                        <strong>@Response.LinkedDi.EquipmentName</strong>
+                        <span>@DisplayValue(Response.LinkedDi.Description)</span>
+                    </div>
+                    <span class="@GetDiValueClass(Response.LinkedDi)">@FormatDiValue(Response.LinkedDi)</span>
+                </button>
+
+                <div class="param-linked-meta">
+                    Channel: @DisplayValue(Response.LinkedDi.ChanelShort)
+                    @if (Response.LinkedDi.ForceCmd)
+                    {
+                        <span class="param-ref-forced-on">Forced</span>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="param-ref-card param-ref-card-wide">
+            <div class="param-ref-card-header">
+                <span>DryRun AI</span>
+                @if (Response.LinkedAi is not null)
+                {
+                    <RadzenButton Text="@Response.LinkedAi.EquipmentName"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.Small"
+                                  class="param-ref-link"
+                                  Click="@(() => SelectEquipmentAsync(Response.LinkedAi.EquipmentName))" />
+                }
+            </div>
+
+            @if (Response.LinkedAi is null)
+            {
+                <div class="param-ref-empty">No linked AI.</div>
+            }
+            else
+            {
+                <div class="param-linked-heading">
+                    <EquipmentTypeBadge TypeGroup="@Response.LinkedAi.TypeGroup" />
+                    <div>
+                        <strong>@Response.LinkedAi.EquipmentName</strong>
+                        <span>@DisplayValue(Response.LinkedAi.Description)</span>
+                    </div>
+                </div>
+
+                <ParamItemsTable Items="@Response.LinkedAi.Items" />
+            }
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public ParamDryRunResponse? Response { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSelectEquipment { get; set; }
+
+    private Task SelectEquipmentAsync(string equipmentName)
+    {
+        return OnSelectEquipment.HasDelegate
+            ? OnSelectEquipment.InvokeAsync(equipmentName)
+            : Task.CompletedTask;
+    }
+
+    private static string FormatDiValue(ParamDiDoRefDto row)
+    {
+        if (row.BooleanValue.HasValue)
+            return row.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(row.ValueText)
+            ? "-"
+            : row.ValueText;
+    }
+
+    private static string GetDiValueClass(ParamDiDoRefDto row)
+    {
+        if (row.BooleanValue == true)
+            return "param-ref-value-on";
+
+        if (row.BooleanValue == false)
+            return "param-ref-value-off";
+
+        return "";
+    }
+
+    private static string DisplayValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "-" : value;
+    }
+}

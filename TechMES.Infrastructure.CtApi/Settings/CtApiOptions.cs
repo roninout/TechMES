@@ -65,4 +65,9 @@ public sealed class CtApiOptions
     /// Если задан — monitor будет периодически выполнять TagRead этого tag-а.
     /// </summary>
     public string HealthCheckTag { get; set; } = "";
+
+    /// <summary>
+    /// Maximum parallel TagRead calls for Param reference pages.
+    /// </summary>
+    public int TagReadParallelism { get; set; } = 4;
 }

@@ -1,0 +1,115 @@
+@using TechMES.Contracts.Param
+
+@if (Response is null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+        PLC references are not loaded yet.
+    </RadzenAlert>
+}
+else if (!Response.Supported)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+        @DisplayValue(Response.Message)
+    </RadzenAlert>
+}
+else
+{
+    <RadzenDataGrid Data="@Response.Rows"
+                    TItem="ParamPlcRefDto"
+                    AllowPaging="false"
+                    AllowSorting="true"
+                    Density="Density.Compact"
+                    class="param-refs-grid">
+        <Columns>
+            <RadzenDataGridColumn TItem="ParamPlcRefDto" Title="Equipment" Width="260px">
+                <Template Context="row">
+                    <RadzenButton Text="@row.EquipmentName"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.Small"
+                                  class="param-ref-link"
+                                  Click="@(() => SelectEquipmentAsync(row.EquipmentName))" />
+                    @if (!string.IsNullOrWhiteSpace(row.Comment))
+                    {
+                        <div class="param-ref-comment">@row.Comment</div>
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="ParamPlcRefDto" Property="RefItem" Title="Item" Width="120px" />
+            <RadzenDataGridColumn TItem="ParamPlcRefDto" Property="Type" Title="Type" Width="150px" />
+
+            <RadzenDataGridColumn TItem="ParamPlcRefDto" Title="Value" Width="120px">
+                <Template Context="row">
+                    <span class="@GetValueClass(row)">@FormatValue(row)</span>
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="ParamPlcRefDto" Property="Unit" Title="Unit" Width="90px" />
+
+            <RadzenDataGridColumn TItem="ParamPlcRefDto" Title="Forced" Width="90px">
+                <Template Context="row">
+                    @if (row.ForceCmd.HasValue)
+                    {
+                        <span class="@GetForcedClass(row)">
+                            @(row.ForceCmd.Value ? "yes" : "no")
+                        </span>
+                    }
+                    else
+                    {
+                        <span>-</span>
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="ParamPlcRefDto" Property="TagName" Title="Tag" />
+        </Columns>
+    </RadzenDataGrid>
+}
+
+@code {
+    [Parameter]
+    public ParamPlcRefsResponse? Response { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSelectEquipment { get; set; }
+
+    private Task SelectEquipmentAsync(string equipmentName)
+    {
+        return OnSelectEquipment.HasDelegate
+            ? OnSelectEquipment.InvokeAsync(equipmentName)
+            : Task.CompletedTask;
+    }
+
+    private static string FormatValue(ParamPlcRefDto row)
+    {
+        if (row.BooleanValue.HasValue)
+            return row.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(row.ValueText)
+            ? "-"
+            : row.ValueText;
+    }
+
+    private static string GetValueClass(ParamPlcRefDto row)
+    {
+        if (row.BooleanValue == true)
+            return "param-ref-value-on";
+
+        if (row.BooleanValue == false)
+            return "param-ref-value-off";
+
+        return "";
+    }
+
+    private static string GetForcedClass(ParamPlcRefDto row)
+    {
+        return row.ForceCmd == true
+            ? "param-ref-forced-on"
+            : "param-ref-value-off";
+    }
+
+    private static string DisplayValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "-" : value;
+    }
+}

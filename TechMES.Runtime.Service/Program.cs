@@ -26,6 +26,7 @@ builder.Services.Configure<RuntimeOptions>(builder.Configuration.GetSection("Run
 // Настройки модуля Messages.
 // Здесь задаётся период фоновой проверки БД на внешние изменения.
 builder.Services.Configure<MessagesOptions>(builder.Configuration.GetSection("Messages"));
+builder.Services.Configure<SoeOptions>(builder.Configuration.GetSection("Soe"));
 
 // Настройки каталога оборудования.
 // Provider выбирается из appsettings.json: InMemory или CtApi.
@@ -78,6 +79,9 @@ else
 
 // Info module uses the existing PostgreSQL tables from the WPF database.
 builder.Services.AddPostgreSqlInfoInfrastructure(builder.Configuration);
+
+// Operation actions / Alarm history use the existing EventPicker PostgreSQL DB.
+builder.Services.AddPostgreSqlEventLogInfrastructure(builder.Configuration);
 
 // Каталог оборудования тоже подключаем через adapter-подход.
 // Runtime.Service работает с IEquipmentCatalogProvider,

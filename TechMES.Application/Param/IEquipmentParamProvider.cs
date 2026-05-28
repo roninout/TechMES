@@ -15,4 +15,23 @@ public interface IEquipmentParamProvider
         DateTime? fromUtc = null,
         DateTime? toUtc = null,
         CancellationToken ct = default);
+
+    Task<ParamPlcRefsResponse> GetPlcRefsAsync(
+        EquipmentDto equipment,
+        CancellationToken ct = default);
+
+    Task<ParamDiDoRefsResponse> GetDiDoRefsAsync(
+        EquipmentDto equipment,
+        IReadOnlyList<EquipmentDto> equipmentCatalog,
+        CancellationToken ct = default);
+
+    Task<ParamDryRunResponse> GetDryRunAsync(
+        EquipmentDto equipment,
+        IReadOnlyList<EquipmentDto> equipmentCatalog,
+        CancellationToken ct = default);
+
+    Task<ParamAtvRefResponse> GetAtvRefAsync(
+        EquipmentDto equipment,
+        IReadOnlyList<EquipmentDto> equipmentCatalog,
+        CancellationToken ct = default);
 }

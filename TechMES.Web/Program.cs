@@ -53,6 +53,8 @@ builder.Services.AddScoped<InfoApiClient>();
 
 // Read-only Param client. WEB calls Runtime.Service; CtApi details stay behind the service boundary.
 builder.Services.AddScoped<ParamApiClient>();
+builder.Services.AddScoped<EventLogApiClient>();
+builder.Services.AddScoped<SoeApiClient>();
 
 // Клиент для отображения состояния Runtime.Service в верхней панели WEB.
 builder.Services.AddScoped<RuntimeStatusApiClient>();

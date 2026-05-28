@@ -1,0 +1,35 @@
+::deep .param-refs-grid {
+    width: 100%;
+}
+
+::deep .param-ref-link {
+    height: 24px;
+    min-height: 24px;
+    padding: 0;
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    color: var(--rz-primary) !important;
+    font-weight: 600;
+}
+
+.param-ref-comment {
+    color: #777;
+    font-size: 12px;
+    line-height: 1.25;
+    margin-top: 2px;
+}
+
+.param-ref-value-on {
+    color: #178a3d;
+    font-weight: 600;
+}
+
+.param-ref-value-off {
+    color: #777;
+}
+
+.param-ref-forced-on {
+    color: #c47b00;
+    font-weight: 600;
+}

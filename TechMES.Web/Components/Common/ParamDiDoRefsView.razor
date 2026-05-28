@@ -1,0 +1,141 @@
+@using TechMES.Contracts.Param
+
+@if (Response is null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+        DI/DO references are not loaded yet.
+    </RadzenAlert>
+}
+else if (!Response.Supported)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+        @DisplayValue(Response.Message)
+    </RadzenAlert>
+}
+else
+{
+    <div class="param-dido-layout">
+        <section class="param-dido-section">
+            <div class="param-dido-title">DI</div>
+            @if (Response.DiRows.Count == 0)
+            {
+                <div class="param-ref-empty">No DI references.</div>
+            }
+            else
+            {
+                @foreach (var row in Response.DiRows)
+                {
+                    @RenderRow(row)
+                }
+            }
+        </section>
+
+        <section class="param-dido-section">
+            <div class="param-dido-title">DO</div>
+            @if (Response.DoRows.Count == 0)
+            {
+                <div class="param-ref-empty">No DO references.</div>
+            }
+            else
+            {
+                @foreach (var row in Response.DoRows)
+                {
+                    @RenderRow(row)
+                }
+            }
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public ParamDiDoRefsResponse? Response { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSelectEquipment { get; set; }
+
+    private RenderFragment<ParamDiDoRefDto> RenderRow => row => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "class", "param-dido-row");
+        builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => SelectEquipmentAsync(row.EquipmentName)));
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "param-dido-row-main");
+
+        builder.OpenComponent<EquipmentTypeBadge>(sequence++);
+        builder.AddAttribute(sequence++, "TypeGroup", row.TypeGroup);
+        builder.CloseComponent();
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "param-dido-row-title");
+        builder.AddContent(sequence++, row.EquipmentName);
+
+        if (!string.IsNullOrWhiteSpace(row.Description))
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddContent(sequence++, row.Description);
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", GetValueClass(row));
+        builder.AddContent(sequence++, FormatValue(row));
+        builder.CloseElement();
+
+        builder.CloseElement();
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "param-dido-row-meta");
+        builder.AddContent(sequence++, $"Channel: {DisplayValue(row.ChanelShort)}");
+
+        if (row.ForceCmd)
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "param-ref-forced-on");
+            builder.AddContent(sequence++, "Forced");
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+
+        builder.CloseElement();
+    };
+
+    private Task SelectEquipmentAsync(string equipmentName)
+    {
+        return OnSelectEquipment.HasDelegate
+            ? OnSelectEquipment.InvokeAsync(equipmentName)
+            : Task.CompletedTask;
+    }
+
+    private static string FormatValue(ParamDiDoRefDto row)
+    {
+        if (row.BooleanValue.HasValue)
+            return row.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(row.ValueText)
+            ? "-"
+            : row.ValueText;
+    }
+
+    private static string GetValueClass(ParamDiDoRefDto row)
+    {
+        if (row.BooleanValue == true)
+            return "param-ref-value-on";
+
+        if (row.BooleanValue == false)
+            return "param-ref-value-off";
+
+        return "";
+    }
+
+    private static string DisplayValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "-" : value;
+    }
+}

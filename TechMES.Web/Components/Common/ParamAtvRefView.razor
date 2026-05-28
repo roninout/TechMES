@@ -1,0 +1,65 @@
+@using TechMES.Contracts.Param
+
+@if (Response is null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+        ATV data is not loaded yet.
+    </RadzenAlert>
+}
+else if (!Response.Supported)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+        @DisplayValue(Response.Message)
+    </RadzenAlert>
+}
+else if (Response.AtvEquipment is null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+        No ATV data available.
+    </RadzenAlert>
+}
+else
+{
+    <section class="param-atv-card">
+        <div class="param-atv-header">
+            <div class="param-atv-title">
+                <EquipmentTypeBadge TypeGroup="@Response.AtvEquipment.TypeGroup" />
+                <div>
+                    <strong>@Response.AtvEquipment.EquipmentName</strong>
+                    <span>@DisplayValue(Response.AtvEquipment.Description)</span>
+                </div>
+            </div>
+
+            @if (Response.IsLinkedFromMotor)
+            {
+                <RadzenButton Text="Open ATV"
+                              ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small"
+                              class="param-ref-link"
+                              Click="@(() => SelectEquipmentAsync(Response.AtvEquipment.EquipmentName))" />
+            }
+        </div>
+
+        <ParamItemsTable Items="@Response.AtvEquipment.Items" />
+    </section>
+}
+
+@code {
+    [Parameter]
+    public ParamAtvRefResponse? Response { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSelectEquipment { get; set; }
+
+    private Task SelectEquipmentAsync(string equipmentName)
+    {
+        return OnSelectEquipment.HasDelegate
+            ? OnSelectEquipment.InvokeAsync(equipmentName)
+            : Task.CompletedTask;
+    }
+
+    private static string DisplayValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "-" : value;
+    }
+}

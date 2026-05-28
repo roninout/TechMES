@@ -175,36 +175,60 @@
                         @if (HasPage(ParamPageKind.Plc))
                         {
                             <RadzenTabsItem Text="PLC">
-                                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                                    PLC references will be connected in the next read-only step.
-                                </RadzenAlert>
+                                @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.Plc)
+                                {
+                                    <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                }
+                                else
+                                {
+                                    <ParamPlcRefsView Response="@_plcRefs"
+                                                      OnSelectEquipment="@SelectEquipmentByNameAsync" />
+                                }
                             </RadzenTabsItem>
                         }
 
                         @if (HasPage(ParamPageKind.DiDo))
                         {
                             <RadzenTabsItem Text="DI/DO">
-                                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                                    DI/DO references will be connected in the next read-only step.
-                                </RadzenAlert>
+                                @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.DiDo)
+                                {
+                                    <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                }
+                                else
+                                {
+                                    <ParamDiDoRefsView Response="@_diDoRefs"
+                                                       OnSelectEquipment="@SelectEquipmentByNameAsync" />
+                                }
                             </RadzenTabsItem>
                         }
 
                         @if (HasPage(ParamPageKind.DryRun))
                         {
                             <RadzenTabsItem Text="DryRun">
-                                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                                    DryRun linked equipment will be connected in the next read-only step.
-                                </RadzenAlert>
+                                @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.DryRun)
+                                {
+                                    <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                }
+                                else
+                                {
+                                    <ParamDryRunView Response="@_dryRun"
+                                                     OnSelectEquipment="@SelectEquipmentByNameAsync" />
+                                }
                             </RadzenTabsItem>
                         }
 
                         @if (HasPage(ParamPageKind.Atv))
                         {
                             <RadzenTabsItem Text="ATV">
-                                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                                    Linked ATV details will be connected in the next read-only step.
-                                </RadzenAlert>
+                                @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.Atv)
+                                {
+                                    <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                }
+                                else
+                                {
+                                    <ParamAtvRefView Response="@_atvRef"
+                                                     OnSelectEquipment="@SelectEquipmentByNameAsync" />
+                                }
                             </RadzenTabsItem>
                         }
                     </Tabs>
@@ -223,6 +247,10 @@
     private EquipmentInfoDto? _info;
     private ParamSnapshotResponse? _snapshot;
     private ParamTrendResponse? _trend;
+    private ParamPlcRefsResponse? _plcRefs;
+    private ParamDiDoRefsResponse? _diDoRefs;
+    private ParamDryRunResponse? _dryRun;
+    private ParamAtvRefResponse? _atvRef;
 
     private int _selectedTabIndex;
     private int _windowMinutes = 30;
@@ -231,6 +259,7 @@
     private int _chartViewVersion;
     private bool _isLoading;
     private bool _isRefreshing;
+    private bool _isRefsLoading;
     private bool _isDisposed;
     private string _statusText = "";
     private AlertStyle _statusStyle = AlertStyle.Info;
@@ -246,6 +275,9 @@
 
     [Parameter]
     public EventCallback OnToggleFavorite { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSelectEquipment { get; set; }
 
     protected override void OnInitialized()
     {
@@ -282,6 +314,10 @@
         _info = null;
         _snapshot = null;
         _trend = null;
+        _plcRefs = null;
+        _diDoRefs = null;
+        _dryRun = null;
+        _atvRef = null;
         _fixedTrendToUtc = null;
         _chartViewVersion++;
         _statusText = "";
@@ -305,7 +341,11 @@
         if (IsGraphTabVisible && _snapshot?.Supported == true)
         {
             await LoadAsync(showLoading: false, includeTrend: true, ct: GetActiveLoadToken());
+            return;
         }
+
+        if (_snapshot?.Supported == true)
+            await LoadSelectedReferencePageAsync(GetActiveLoadToken());
     }
 
     private async Task OnChartHistoryRequestedAsync(string direction)
@@ -348,6 +388,8 @@
 
         try
         {
+            _statusText = "";
+
             var equipmentName = Equipment.Name;
             var infoTask = InfoApi.GetInfoAsync(equipmentName, ct);
 
@@ -371,6 +413,9 @@
                 _trend = _snapshot.Supported && !includeTrend ? _trend : null;
             }
 
+            if (_snapshot.Supported)
+                await LoadSelectedReferencePageAsync(ct);
+
             try
             {
                 _info = await infoTask;
@@ -380,7 +425,6 @@
                 _info = null;
             }
 
-            _statusText = "";
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested || _isDisposed || !IsActive)
         {
@@ -557,6 +601,75 @@
         return OnToggleFavorite.InvokeAsync();
     }
 
+    private Task SelectEquipmentByNameAsync(string equipmentName)
+    {
+        return OnSelectEquipment.HasDelegate
+            ? OnSelectEquipment.InvokeAsync(equipmentName)
+            : Task.CompletedTask;
+    }
+
+    private async Task LoadSelectedReferencePageAsync(CancellationToken ct)
+    {
+        if (Equipment is null || !IsActive || ct.IsCancellationRequested)
+            return;
+
+        var selectedTab = SelectedTabKind;
+
+        if (selectedTab is not (
+            ParamPanelTabKind.Plc
+            or ParamPanelTabKind.DiDo
+            or ParamPanelTabKind.DryRun
+            or ParamPanelTabKind.Atv))
+        {
+            return;
+        }
+
+        _isRefsLoading = selectedTab switch
+        {
+            ParamPanelTabKind.Plc => _plcRefs is null,
+            ParamPanelTabKind.DiDo => _diDoRefs is null,
+            ParamPanelTabKind.DryRun => _dryRun is null,
+            ParamPanelTabKind.Atv => _atvRef is null,
+            _ => false
+        };
+
+        try
+        {
+            if (selectedTab == ParamPanelTabKind.Plc)
+            {
+                _plcRefs = await ParamApi.GetPlcRefsAsync(Equipment.Name, ct);
+            }
+            else if (selectedTab == ParamPanelTabKind.DiDo)
+            {
+                _diDoRefs = await ParamApi.GetDiDoRefsAsync(Equipment.Name, ct);
+            }
+            else if (selectedTab == ParamPanelTabKind.DryRun)
+            {
+                _dryRun = await ParamApi.GetDryRunAsync(Equipment.Name, ct);
+            }
+            else if (selectedTab == ParamPanelTabKind.Atv)
+            {
+                _atvRef = await ParamApi.GetAtvRefAsync(Equipment.Name, ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested || _isDisposed || !IsActive)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (_isDisposed || !IsActive)
+                return;
+
+            _statusStyle = AlertStyle.Warning;
+            _statusText = $"Cannot load {GetReferencePageTitle(selectedTab)} references: {ex.Message}";
+        }
+        finally
+        {
+            if (!_isDisposed)
+                _isRefsLoading = false;
+        }
+    }
+
     private (DateTime FromUtc, DateTime ToUtc) GetTrendRequestBufferUtc()
     {
         var toUtc = _fixedTrendToUtc ?? DateTime.UtcNow;
@@ -570,7 +683,50 @@
     private bool CanScrollGraphForward =>
         _trend?.Supported == true && _trend.ToUtc < DateTime.UtcNow.AddSeconds(-3);
 
-    private bool IsGraphTabVisible => _selectedTabIndex == 0;
+    private bool IsGraphTabVisible => SelectedTabKind == ParamPanelTabKind.Graph;
+
+    private ParamPanelTabKind SelectedTabKind => GetTabKindByIndex(_selectedTabIndex);
+
+    private ParamPanelTabKind GetTabKindByIndex(int index)
+    {
+        if (index-- == 0)
+            return ParamPanelTabKind.Graph;
+
+        if (index-- == 0)
+            return ParamPanelTabKind.Values;
+
+        if (HasAlarmItems && index-- == 0)
+            return ParamPanelTabKind.Alarm;
+
+        if (HasTimeItems && index-- == 0)
+            return ParamPanelTabKind.TimeWork;
+
+        if (HasPage(ParamPageKind.Plc) && index-- == 0)
+            return ParamPanelTabKind.Plc;
+
+        if (HasPage(ParamPageKind.DiDo) && index-- == 0)
+            return ParamPanelTabKind.DiDo;
+
+        if (HasPage(ParamPageKind.DryRun) && index-- == 0)
+            return ParamPanelTabKind.DryRun;
+
+        if (HasPage(ParamPageKind.Atv) && index-- == 0)
+            return ParamPanelTabKind.Atv;
+
+        return ParamPanelTabKind.None;
+    }
+
+    private static string GetReferencePageTitle(ParamPanelTabKind tab)
+    {
+        return tab switch
+        {
+            ParamPanelTabKind.Plc => "PLC",
+            ParamPanelTabKind.DiDo => "DI/DO",
+            ParamPanelTabKind.DryRun => "DryRun",
+            ParamPanelTabKind.Atv => "ATV",
+            _ => "Param"
+        };
+    }
 
     private string ChartViewKey =>
         $"{Equipment?.Name ?? ""}|{_windowMinutes}|{_chartViewVersion}";
@@ -731,4 +887,16 @@
         _loadCts.Dispose();
     }
 
+    private enum ParamPanelTabKind
+    {
+        None,
+        Graph,
+        Values,
+        Alarm,
+        TimeWork,
+        Plc,
+        DiDo,
+        DryRun,
+        Atv
+    }
 }

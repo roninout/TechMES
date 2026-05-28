@@ -10,7 +10,7 @@
 @inject NavigationManager NavigationManager
 @implements IDisposable
 
-<PageTitle>@(IsParamMode ? "Param" : "Equipment")</PageTitle>
+<PageTitle>@(IsParamMode ? "Param" : "Info")</PageTitle>
 
 <div class="equipment-page">
     <div class="equipment-filter-layout">
@@ -195,7 +195,8 @@
                     <EquipmentParamPanel Equipment="@_selectedEquipment"
                                          IsActive="@IsParamMode"
                                          IsFavoriteSaving="@_isFavoriteSaving"
-                                         OnToggleFavorite="@ToggleSelectedFavoriteAsync" />
+                                         OnToggleFavorite="@ToggleSelectedFavoriteAsync"
+                                         OnSelectEquipment="@SelectEquipmentByNameAsync" />
                 }
                 else
                 {
@@ -579,6 +580,46 @@
     private void SelectEquipment(EquipmentDto equipment)
     {
         SetSelectedEquipment(equipment);
+    }
+
+    private Task SelectEquipmentByNameAsync(string equipmentName)
+    {
+        equipmentName = (equipmentName ?? string.Empty).Trim();
+        if (equipmentName.Length == 0)
+            return Task.CompletedTask;
+
+        var match = _allEquipments
+            .Where(x => !x.IsGroup)
+            .OrderBy(x => x.IsEquipmentChildNode ? 1 : 0)
+            .FirstOrDefault(x => string.Equals(x.Name, equipmentName, StringComparison.OrdinalIgnoreCase));
+
+        if (match is null)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Warning,
+                Summary = "Param",
+                Detail = $"Equipment was not found: {equipmentName}",
+                Duration = 3000
+            });
+
+            return Task.CompletedTask;
+        }
+
+        _selectedStation = !string.IsNullOrWhiteSpace(match.Station)
+            && _stationItems.Contains(match.Station, StringComparer.OrdinalIgnoreCase)
+                ? match.Station
+                : AllStationsText;
+
+        _selectedType = _typeItems.Contains(match.TypeGroup.ToString(), StringComparer.OrdinalIgnoreCase)
+            ? match.TypeGroup.ToString()
+            : AllTypesText;
+
+        _searchText = match.Name;
+        ExpandParents(match);
+        ApplyFilters(match.Name, match.NodeId);
+
+        return Task.CompletedTask;
     }
 
     private void SetSelectedEquipment(EquipmentDto? equipment)

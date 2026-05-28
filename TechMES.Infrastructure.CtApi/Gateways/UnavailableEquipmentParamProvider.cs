@@ -49,6 +49,61 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
+    public Task<ParamPlcRefsResponse> GetPlcRefsAsync(
+        EquipmentDto equipment,
+        CancellationToken ct = default)
+    {
+        return Task.FromResult(new ParamPlcRefsResponse
+        {
+            EquipmentName = equipment.Name,
+            Supported = false,
+            Message = _message,
+            Time = DateTime.Now
+        });
+    }
+
+    public Task<ParamDiDoRefsResponse> GetDiDoRefsAsync(
+        EquipmentDto equipment,
+        IReadOnlyList<EquipmentDto> equipmentCatalog,
+        CancellationToken ct = default)
+    {
+        return Task.FromResult(new ParamDiDoRefsResponse
+        {
+            EquipmentName = equipment.Name,
+            Supported = false,
+            Message = _message,
+            Time = DateTime.Now
+        });
+    }
+
+    public Task<ParamDryRunResponse> GetDryRunAsync(
+        EquipmentDto equipment,
+        IReadOnlyList<EquipmentDto> equipmentCatalog,
+        CancellationToken ct = default)
+    {
+        return Task.FromResult(new ParamDryRunResponse
+        {
+            EquipmentName = equipment.Name,
+            Supported = false,
+            Message = _message,
+            Time = DateTime.Now
+        });
+    }
+
+    public Task<ParamAtvRefResponse> GetAtvRefAsync(
+        EquipmentDto equipment,
+        IReadOnlyList<EquipmentDto> equipmentCatalog,
+        CancellationToken ct = default)
+    {
+        return Task.FromResult(new ParamAtvRefResponse
+        {
+            EquipmentName = equipment.Name,
+            Supported = false,
+            Message = _message,
+            Time = DateTime.Now
+        });
+    }
+
     private static DateTime? NormalizeUtc(DateTime? value)
     {
         if (!value.HasValue)

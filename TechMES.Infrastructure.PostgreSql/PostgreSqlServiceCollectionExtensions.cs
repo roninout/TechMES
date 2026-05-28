@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using TechMES.Application.EventLog;
 using TechMES.Application.Info;
 using TechMES.Application.Messages;
+using TechMES.Infrastructure.PostgreSql.EventLog;
 using TechMES.Infrastructure.PostgreSql.Info;
 using TechMES.Infrastructure.PostgreSql.Messages;
 
@@ -31,6 +33,13 @@ public static class PostgreSqlServiceCollectionExtensions
     public static IServiceCollection AddPostgreSqlInfoInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.TryAddScoped<IEquipmentInfoStore, PostgreSqlEquipmentInfoStore>();
+
+        return services;
+    }
+
+    public static IServiceCollection AddPostgreSqlEventLogInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.TryAddScoped<IEventLogStore, PostgreSqlEventLogStore>();
 
         return services;
     }
