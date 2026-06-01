@@ -8,6 +8,9 @@
 /// </summary>
 public enum PlantScadaConnectionStatus
 {
+    /// <summary>
+    /// Статус еще не определен.
+    /// </summary>
     Unknown = 0,
 
     /// <summary>

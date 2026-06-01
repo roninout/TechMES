@@ -9,13 +9,30 @@ using TechMES.Infrastructure.CtApi.Native;
 
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
+/// <summary>
+/// SOE-провайдер через CtApi.
+/// Читает trend tags оборудования, ищет изменения битового слова STW/STW01 и переводит bit code в текст события.
+/// </summary>
 public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
 {
+    /// <summary>
+    /// Размер одного запроса истории тренда. Несколько окон читаются назад до начала текущего дня.
+    /// </summary>
     private const int WindowMinutes = 30;
 
+    /// <summary>
+    /// Низкоуровневый CtApi-клиент для Cicode и TRNQUERY/ctFind.
+    /// </summary>
     private readonly ICtApiNativeClient _nativeClient;
+
+    /// <summary>
+    /// Логгер диагностики SOE-запросов.
+    /// </summary>
     private readonly ILogger<CtApiEquipmentSoeProvider> _logger;
 
+    /// <summary>
+    /// Создает SOE-провайдер поверх CtApi.
+    /// </summary>
     public CtApiEquipmentSoeProvider(
         ICtApiNativeClient nativeClient,
         ILogger<CtApiEquipmentSoeProvider> logger)
@@ -24,6 +41,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         _logger = logger;
     }
 
+    /// <summary>
+    /// Загружает SOE для выбранного оборудования и связанных DI/DO reference-узлов.
+    /// </summary>
     public async Task<SoeResponse> GetSoeAsync(
         EquipmentDto equipment,
         IReadOnlyList<EquipmentDto> equipmentCatalog,
@@ -86,6 +106,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         return response;
     }
 
+    /// <summary>
+    /// Строит список trend-моделей: основное оборудование плюс ref-equipment из TabDIDO.
+    /// </summary>
     private async Task<List<SoeTrendModel>> BuildTrendModelsAsync(
         EquipmentDto equipment,
         IReadOnlyList<EquipmentDto> equipmentCatalog,
@@ -123,6 +146,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         return result;
     }
 
+    /// <summary>
+    /// Создает описание одного SOE trend tag-а для конкретного оборудования/item.
+    /// </summary>
     private async Task<SoeTrendModel> BuildTrendModelAsync(
         EquipmentDto equipment,
         string itemName,
@@ -139,6 +165,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
             trendRef?.Cluster ?? "");
     }
 
+    /// <summary>
+    /// Читает trend-историю назад от текущего момента и превращает изменения битов в события SOE.
+    /// </summary>
     private async Task<List<SoeEventDto>> ReadTrendEventsAsync(
         SoeTrendModel model,
         int maxRows,
@@ -209,6 +238,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         return result;
     }
 
+    /// <summary>
+    /// Выбирает item для SOE: для ATV предпочитает STW01, для остальных использует STW.
+    /// </summary>
     private async Task<string> ResolveSoeItemAsync(
         EquipmentDto equipment,
         CancellationToken ct)
@@ -223,6 +255,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         return "STW";
     }
 
+    /// <summary>
+    /// Читает имена связанного оборудования из EquipRefBrowse.
+    /// </summary>
     private async Task<List<string>> BrowseRefEquipmentNamesAsync(
         string equipmentName,
         string category,
@@ -242,6 +277,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
             .ToList();
     }
 
+    /// <summary>
+    /// Общий helper для EquipRefBrowseOpen/First/Next/GetField/Close.
+    /// </summary>
     private async Task<List<Dictionary<string, string>>> BrowseEquipmentRefsAsync(
         string equipmentName,
         string category,
@@ -318,6 +356,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         return result;
     }
 
+    /// <summary>
+    /// Находит имя trend tag-а через Cicode helper _SATrend_GetTrendTag.
+    /// </summary>
     private async Task<TrendRef?> ResolveTrendNameAsync(
         string equipmentName,
         string itemName,
@@ -336,6 +377,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
             : null;
     }
 
+    /// <summary>
+    /// Читает реальное имя tag-а через TagInfo(..., 0).
+    /// </summary>
     private async Task<string> ResolveTagNameAsync(
         string equipmentName,
         string itemName,
@@ -345,6 +389,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         return (await _nativeClient.CicodeAsync($"TagInfo(\"{key}\", 0)", ct) ?? "").Trim();
     }
 
+    /// <summary>
+    /// Читает cluster tag-а через TagInfo(..., 17).
+    /// </summary>
     private async Task<string> ResolveClusterAsync(
         string equipmentName,
         string itemName,
@@ -354,6 +401,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         return (await _nativeClient.CicodeAsync($"TagInfo(\"{key}\", 17)", ct) ?? "").Trim();
     }
 
+    /// <summary>
+    /// Подбирает первый доступный cluster по нескольким типовым item-ам оборудования.
+    /// </summary>
     private async Task<string> ResolveClusterWithFallbackAsync(
         string equipmentName,
         string preferredItem,
@@ -371,6 +421,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         return "";
     }
 
+    /// <summary>
+    /// Выполняет TRNQUERY через ctFind и мапит строки DATETIME/MSECONDS/VALUE/QUALITY.
+    /// </summary>
     private async Task<List<TrendRow>> QueryTrendRowsAsync(
         TrendRef trendRef,
         DateTime fromUtc,
@@ -452,6 +505,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         return result;
     }
 
+    /// <summary>
+    /// Возвращает порядок перебора cluster-ов для trend-запроса: сначала Cluster1, затем cluster самого tag-а.
+    /// </summary>
     private static IReadOnlyList<string> GetTrendQueryClusters(string? tagCluster)
     {
         var clusters = new List<string> { "Cluster1" };
@@ -466,6 +522,9 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         return clusters;
     }
 
+    /// <summary>
+    /// Определяет код изменившегося бита: 1..16 для включения, 17..32 для выключения.
+    /// </summary>
     private static int GetChangedBitCode(ushort last, ushort current)
     {
         var diff = (ushort)(current ^ last);
@@ -486,39 +545,60 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         return nowSet ? bitPos : bitPos + 16;
     }
 
+    /// <summary>
+    /// Преобразует double-значение trend-а в целое битовое слово.
+    /// </summary>
     private static long ToLongWord(double value)
     {
         return Convert.ToInt64(Math.Truncate(value), CultureInfo.InvariantCulture);
     }
 
+    /// <summary>
+    /// Проверяет, что Cicode/TagInfo вернул полезное значение, а не пусто/Unknown.
+    /// </summary>
     private static bool IsReadableValue(string? value)
     {
         return !string.IsNullOrWhiteSpace(value)
             && !value.Equals("Unknown", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Очищает reference-значение из EquipRefBrowse.
+    /// </summary>
     private static string CleanRefValue(string? value)
     {
         value = (value ?? "").Trim();
         return value.Equals("Unknown", StringComparison.OrdinalIgnoreCase) ? "" : value;
     }
 
+    /// <summary>
+    /// Парсит число из CtApi, учитывая возможную запятую как десятичный разделитель.
+    /// </summary>
     private static bool TryParseDouble(string raw, out double value)
     {
         raw = (raw ?? "").Trim().Replace(',', '.');
         return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 
+    /// <summary>
+    /// Экранирует строку перед подстановкой в Cicode-команду.
+    /// </summary>
     private static string EscapeCicodeString(string value)
     {
         return (value ?? "").Replace("\"", "\"\"");
     }
 
+    /// <summary>
+    /// Безопасно достает поле из строки ctFind.
+    /// </summary>
     private static string GetValue(Dictionary<string, string> row, string name)
     {
         return row.TryGetValue(name, out var value) ? value : "";
     }
 
+    /// <summary>
+    /// Описание одного SOE trend tag-а и связанного оборудования.
+    /// </summary>
     private readonly record struct SoeTrendModel(
         string EquipmentName,
         string TypeName,
@@ -527,13 +607,26 @@ public sealed class CtApiEquipmentSoeProvider : IEquipmentSoeProvider
         string TrendName,
         string Cluster);
 
+    /// <summary>
+    /// Имя trend tag-а вместе с cluster-ом, через который его надо читать.
+    /// </summary>
     private readonly record struct TrendRef(string TrendName, string Cluster);
 
+    /// <summary>
+    /// Одна точка trend-истории, полученная через TRNQUERY.
+    /// </summary>
     private readonly record struct TrendRow(DateTime TimeUtc, double Value, string QualityText);
 }
 
+/// <summary>
+/// Переводит SOE bit code в ключ и текст события для разных типов оборудования.
+/// Описания взяты из WPF-логики и оставлены через DescriptionAttribute.
+/// </summary>
 internal static class SoeEventMapper
 {
+    /// <summary>
+    /// Возвращает человекочитаемый текст события.
+    /// </summary>
     public static string GetEventText(EquipmentTypeGroup typeGroup, int bitCode)
     {
         var field = GetEnumField(typeGroup, bitCode);
@@ -541,12 +634,18 @@ internal static class SoeEventMapper
         return attr?.Description ?? GetEventKey(typeGroup, bitCode);
     }
 
+    /// <summary>
+    /// Возвращает enum key события, если описание не задано.
+    /// </summary>
     public static string GetEventKey(EquipmentTypeGroup typeGroup, int bitCode)
     {
         var field = GetEnumField(typeGroup, bitCode);
         return field?.Name ?? "";
     }
 
+    /// <summary>
+    /// Находит enum-field по типу оборудования и bit code.
+    /// </summary>
     private static FieldInfo? GetEnumField(EquipmentTypeGroup typeGroup, int bitCode)
     {
         if (bitCode <= 0)

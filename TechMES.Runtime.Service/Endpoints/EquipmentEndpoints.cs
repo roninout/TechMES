@@ -5,8 +5,16 @@ using TechMES.Runtime.Service.Runtime;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
+/// <summary>
+/// HTTP API каталога оборудования.
+/// Данные оборудования берутся из IEquipmentCatalogProvider, а пользовательские признаки
+/// вроде favorites и счетчиков Info накладываются из IEquipmentInfoStore.
+/// </summary>
 public static class EquipmentEndpoints
 {
+    /// <summary>
+    /// Подключает endpoints списка, карточки оборудования и favorite-флага.
+    /// </summary>
     public static IEndpointRouteBuilder MapEquipmentEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/equipment", GetEquipmentListAsync);
@@ -16,6 +24,10 @@ public static class EquipmentEndpoints
         return app;
     }
 
+    /// <summary>
+    /// Возвращает полный каталог оборудования для дерева/списка WEB.
+    /// Перед ответом добавляет favorite-флаги текущего устройства и счетчики Info-модуля.
+    /// </summary>
     private static async Task<IResult> GetEquipmentListAsync(
         IEquipmentCatalogProvider equipmentCatalog,
         IEquipmentInfoStore infoStore,
@@ -30,6 +42,9 @@ public static class EquipmentEndpoints
         return Results.Ok(response);
     }
 
+    /// <summary>
+    /// Возвращает один equipment node по имени и добавляет его favorite-флаг.
+    /// </summary>
     private static async Task<IResult> GetEquipmentByNameAsync(
         string name,
         IEquipmentCatalogProvider equipmentCatalog,
@@ -47,6 +62,10 @@ public static class EquipmentEndpoints
             : Results.Ok(equipment);
     }
 
+    /// <summary>
+    /// Сохраняет favorite в пользовательском PostgreSQL-хранилище и синхронизирует
+    /// in-memory/CtApi представление, чтобы текущий ответ сразу отразил новое состояние.
+    /// </summary>
     private static async Task<IResult> SetEquipmentFavoriteAsync(
         string name,
         EquipmentFavoriteRequest request,
@@ -68,6 +87,10 @@ public static class EquipmentEndpoints
             : Results.Ok(equipment);
     }
 
+    /// <summary>
+    /// Создает копию ответа каталога, чтобы endpoint мог безопасно добавить UI-поля
+    /// и не мутировать внутренний cache provider-а.
+    /// </summary>
     private static EquipmentListResponse CloneResponse(EquipmentListResponse response)
     {
         return new EquipmentListResponse
@@ -79,6 +102,9 @@ public static class EquipmentEndpoints
         };
     }
 
+    /// <summary>
+    /// Копирует один equipment node без ссылок на объект из внутреннего кэша каталога.
+    /// </summary>
     private static EquipmentDto? CloneEquipment(EquipmentDto? equipment)
     {
         if (equipment is null)
@@ -106,6 +132,10 @@ public static class EquipmentEndpoints
         };
     }
 
+    /// <summary>
+    /// Проставляет IsFavorite для всех негрупповых элементов каталога.
+    /// Favorites хранятся по имени устройства/клиента.
+    /// </summary>
     private static async Task ApplyFavoriteFlagsAsync(
         EquipmentListResponse response,
         IEquipmentInfoStore infoStore,
@@ -124,6 +154,10 @@ public static class EquipmentEndpoints
         }
     }
 
+    /// <summary>
+    /// Добавляет к equipment node счетчики Info-модуля: фото, PDF, схемы и notes.
+    /// Эти счетчики используются в списке оборудования и footer.
+    /// </summary>
     private static async Task ApplyInfoSummariesAsync(
         EquipmentListResponse response,
         IEquipmentInfoStore infoStore,
@@ -149,6 +183,9 @@ public static class EquipmentEndpoints
         }
     }
 
+    /// <summary>
+    /// Проставляет favorite-флаг для одного оборудования.
+    /// </summary>
     private static async Task ApplyFavoriteFlagAsync(
         EquipmentDto equipment,
         IEquipmentInfoStore infoStore,
@@ -162,6 +199,9 @@ public static class EquipmentEndpoints
         equipment.IsFavorite = favorites.Contains(equipment.Name, StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Определяет имя клиента. Если WEB не передал deviceName, используем DeviceName Runtime.Service.
+    /// </summary>
     private static string ResolveDeviceName(string? deviceName, IAppRuntimeContext runtime)
     {
         return string.IsNullOrWhiteSpace(deviceName)

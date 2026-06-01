@@ -4,6 +4,10 @@
 <PageTitle>Info</PageTitle>
 
 @code {
+    /// <summary>
+    /// Страница /info оставлена как совместимый redirect.
+    /// Реальный Info UI находится на /equipment, где доступно дерево оборудования.
+    /// </summary>
     protected override void OnInitialized()
     {
         NavigationManager.NavigateTo("/equipment", replace: true);

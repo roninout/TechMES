@@ -60,30 +60,74 @@
 }
 
 @code {
+    /// <summary>
+    /// Пустой deviceId означает, что браузер сам выберет камеру по умолчанию.
+    /// </summary>
     private const string DefaultCameraDeviceId = "";
 
+    /// <summary>
+    /// Событие успешного считывания QR-кода.
+    /// Родительский layout передает текст дальше через QrScannerState.
+    /// </summary>
     [Parameter]
     public EventCallback<string> OnScanned { get; set; }
 
+    /// <summary>
+    /// Список камер для выпадающего списка. Первый пункт всегда остается default-вариантом.
+    /// </summary>
     private readonly List<QrCameraDevice> _cameraDevices =
     [
         new(DefaultCameraDeviceId, "Default camera")
     ];
 
+    /// <summary>
+    /// Показывать ли модальное окно сканера.
+    /// </summary>
     private bool _isOpen;
+
+    /// <summary>
+    /// Флаг запуска камеры, чтобы временно блокировать выбор устройства.
+    /// </summary>
     private bool _isScannerStarting;
+
+    /// <summary>
+    /// Отложенный старт: video element появляется только после render-а modal-разметки.
+    /// </summary>
     private bool _startScannerAfterRender;
+
+    /// <summary>
+    /// DeviceId выбранной камеры из navigator.mediaDevices.enumerateDevices().
+    /// </summary>
     private string _selectedCameraDeviceId = DefaultCameraDeviceId;
+
+    /// <summary>
+    /// Текст диагностического/ошибочного сообщения внутри модального окна.
+    /// </summary>
     private string _statusText = string.Empty;
+
+    /// <summary>
+    /// Визуальный стиль текущего status alert.
+    /// </summary>
     private AlertStyle _statusStyle = AlertStyle.Info;
+
+    /// <summary>
+    /// Диагностика браузера: secure context, наличие camera API и BarcodeDetector.
+    /// </summary>
     private QrCameraDiagnostics? _diagnostics;
+
+    /// <summary>
+    /// Ссылка на .NET объект, через которую JS вызывает OnQrCodeDetected/DecodeQrFrame.
+    /// </summary>
     private DotNetObjectReference<QrScannerDialog>? _dotNetReference;
 
+    /// <summary>
+    /// Уникальный id video element, чтобы несколько render-циклов не конфликтовали.
+    /// </summary>
     private string VideoElementId => $"app-qr-video-{GetHashCode():x}";
 
     /// <summary>
-    /// Opens the modal from the header button. Camera startup is deferred until
-    /// the next render because JS needs the video element to exist in the DOM.
+    /// Открывает модальное окно из header button.
+    /// Запуск камеры откладывается до следующего render-а, потому что JS нужен video element в DOM.
     /// </summary>
     public async Task OpenAsync()
     {
@@ -98,7 +142,7 @@
     }
 
     /// <summary>
-    /// Starts the camera immediately after Blazor renders the modal and video tag.
+    /// Запускает камеру сразу после того, как Blazor отрисовал modal и video tag.
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -110,7 +154,7 @@
     }
 
     /// <summary>
-    /// Closes the modal and releases the active camera stream.
+    /// Закрывает модальное окно и освобождает активный camera stream.
     /// </summary>
     private async Task CloseAsync()
     {
@@ -120,8 +164,8 @@
     }
 
     /// <summary>
-    /// Reads video input devices from the browser. Before the user grants camera
-    /// permission, labels can be empty, so the UI keeps a stable Default camera item.
+    /// Читает список video input устройств из браузера.
+    /// До выдачи разрешения Chrome может скрывать названия камер, поэтому default-пункт остается всегда.
     /// </summary>
     private async Task LoadCameraDevicesAsync()
     {
@@ -152,8 +196,7 @@
     }
 
     /// <summary>
-    /// Reads browser security and camera capabilities so the user can diagnose
-    /// tablet access directly from the QR modal.
+    /// Читает security/camera capability браузера, чтобы диагностировать проблемы планшета прямо из QR modal.
     /// </summary>
     private async Task<QrCameraDiagnostics?> LoadDiagnosticsAsync()
     {
@@ -169,7 +212,7 @@
     }
 
     /// <summary>
-    /// Restarts scanning with the selected physical camera.
+    /// Перезапускает сканирование с выбранной физической камерой.
     /// </summary>
     private async Task OnCameraChangedAsync(object? value)
     {
@@ -180,8 +223,8 @@
     }
 
     /// <summary>
-    /// Starts JS camera capture. The JS side first tries the browser BarcodeDetector
-    /// API and falls back to DecodeQrFrame when native QR detection is missing.
+    /// Запускает JS camera capture.
+    /// JS сначала пробует BarcodeDetector, а если его нет — отправляет кадры в DecodeQrFrame.
     /// </summary>
     private async Task StartScannerAsync()
     {
@@ -218,7 +261,7 @@
     }
 
     /// <summary>
-    /// Stops JS scanning and turns off the browser camera stream.
+    /// Останавливает JS scanner и выключает stream камеры.
     /// </summary>
     private async Task StopScannerAsync()
     {
@@ -232,8 +275,7 @@
     }
 
     /// <summary>
-    /// Receives a decoded QR value from JS, closes the modal, and lets the parent
-    /// decide what the text means.
+    /// Получает считанный QR-текст из JS, закрывает modal и передает значение родителю.
     /// </summary>
     [JSInvokable]
     public async Task OnQrCodeDetected(string qrText)
@@ -252,8 +294,9 @@
     }
 
     /// <summary>
-    /// Server-side QR fallback. Browsers without native QR scanning send a small
-    /// grayscale frame through SignalR, and ZXing tries to decode it on the server.
+    /// Серверный fallback для QR.
+    /// Браузеры без native QR detection отправляют небольшой grayscale кадр через SignalR,
+    /// а ZXing пытается декодировать его на сервере Blazor.
     /// </summary>
     [JSInvokable]
     public string? DecodeQrFrame(string luminanceBase64, int width, int height)
@@ -290,12 +333,18 @@
         }
     }
 
+    /// <summary>
+    /// Обновляет status alert модального окна.
+    /// </summary>
     private void SetStatus(AlertStyle style, string text)
     {
         _statusStyle = style;
         _statusText = text;
     }
 
+    /// <summary>
+    /// Диагностику подсвечиваем warning-ом, если страница не secure или нет getUserMedia.
+    /// </summary>
     private AlertStyle GetDiagnosticsStyle()
     {
         if (_diagnostics is null)
@@ -306,41 +355,89 @@
             : AlertStyle.Warning;
     }
 
+    /// <summary>
+    /// Короткий человекочитаемый вывод bool-диагностики.
+    /// </summary>
     private static string FormatBoolean(bool value) => value ? "OK" : "NO";
 
+    /// <summary>
+    /// При уничтожении компонента гарантированно отпускает камеру и .NET reference.
+    /// </summary>
     public void Dispose()
     {
         _ = StopScannerAsync();
         _dotNetReference?.Dispose();
     }
 
+    /// <summary>
+    /// Одна камера браузера для выпадающего списка.
+    /// </summary>
     private sealed record QrCameraDevice(string DeviceId, string Label);
 
+    /// <summary>
+    /// Диагностическая модель, которую возвращает JS из window/navigator.
+    /// </summary>
     private sealed class QrCameraDiagnostics
     {
+        /// <summary>
+        /// Полный origin страницы, например http://localhost:5163.
+        /// </summary>
         public string Origin { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Протокол страницы: http: или https:.
+        /// </summary>
         public string Protocol { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Host, на котором открыт WEB.
+        /// </summary>
         public string Host { get; set; } = string.Empty;
 
+        /// <summary>
+        /// true для HTTPS и localhost; без этого Chrome не отдаст камеру.
+        /// </summary>
         public bool IsSecureContext { get; set; }
 
+        /// <summary>
+        /// Доступен ли navigator.mediaDevices.
+        /// </summary>
         public bool HasMediaDevices { get; set; }
 
+        /// <summary>
+        /// Доступен ли navigator.mediaDevices.getUserMedia.
+        /// </summary>
         public bool HasGetUserMedia { get; set; }
 
+        /// <summary>
+        /// Доступен ли enumerateDevices для списка камер.
+        /// </summary>
         public bool HasEnumerateDevices { get; set; }
 
+        /// <summary>
+        /// Есть ли native BarcodeDetector для QR.
+        /// </summary>
         public bool HasBarcodeDetector { get; set; }
 
+        /// <summary>
+        /// User-Agent браузера, полезный при диагностике планшета.
+        /// </summary>
         public string UserAgent { get; set; } = string.Empty;
     }
 
+    /// <summary>
+    /// Результат JS-запуска камеры.
+    /// </summary>
     private sealed class QrScannerStartResult
     {
+        /// <summary>
+        /// true, если камера стартовала и scanner loop запущен.
+        /// </summary>
         public bool Success { get; set; }
 
+        /// <summary>
+        /// Сообщение для пользователя или диагностики.
+        /// </summary>
         public string? Message { get; set; }
     }
 }

@@ -8,7 +8,13 @@ namespace TechMES.Contracts.Messages;
 /// </summary>
 public sealed class MessageListResponse
 {
+    /// <summary>
+    /// Сообщения для отображения.
+    /// </summary>
     public IReadOnlyList<EquipmentMessageDto> Messages { get; set; } = [];
 
+    /// <summary>
+    /// Количество активных сообщений.
+    /// </summary>
     public int ActiveMessageCount { get; set; }
 }

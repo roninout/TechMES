@@ -44,16 +44,34 @@
 </RadzenStack>
 
 @code {
+    /// <summary>
+    /// Последний health response Runtime.Service.
+    /// </summary>
     private RuntimeHealthResponse? _health;
 
+    /// <summary>
+    /// true, пока выполняется health request.
+    /// </summary>
     private bool _isLoading;
 
+    /// <summary>
+    /// Текст ошибки подключения к Runtime.Service.
+    /// </summary>
     private string _errorText = "";
 
+    /// <summary>
+    /// Таймер легкого heartbeat-а footer status.
+    /// </summary>
     private PeriodicTimer? _timer;
 
+    /// <summary>
+    /// CancellationTokenSource для остановки heartbeat-а.
+    /// </summary>
     private CancellationTokenSource? _timerCts;
 
+    /// <summary>
+    /// Выполняет первую health-проверку и запускает фоновый heartbeat.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         // Первая проверка запускается сразу при открытии WEB.
@@ -67,6 +85,9 @@
         _ = RunHealthLoopAsync(_timerCts.Token);
     }
 
+    /// <summary>
+    /// Читает /api/health Runtime.Service и обновляет footer badges.
+    /// </summary>
     private async Task RefreshAsync()
     {
         _isLoading = true;
@@ -95,6 +116,9 @@
         }
     }
 
+    /// <summary>
+    /// Периодически обновляет health status без polling-а производственных данных.
+    /// </summary>
     private async Task RunHealthLoopAsync(CancellationToken ct)
     {
         if (_timer is null)
@@ -117,6 +141,9 @@
         }
     }
 
+    /// <summary>
+    /// Останавливает heartbeat timer при закрытии layout/component.
+    /// </summary>
     public ValueTask DisposeAsync()
     {
         _timerCts?.Cancel();

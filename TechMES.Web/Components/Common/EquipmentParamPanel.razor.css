@@ -108,6 +108,10 @@
     min-width: 0;
 }
 
+::deep .param-write-card {
+    border-left: 4px solid var(--rz-warning);
+}
+
 .param-toolbar {
     display: flex;
     align-items: center;

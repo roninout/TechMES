@@ -6,35 +6,77 @@
 <div class="param-echart" @ref="_chartElement"></div>
 
 @code {
+    /// <summary>
+    /// DOM-ссылка на контейнер, внутри которого Apache ECharts рисует график.
+    /// </summary>
     private ElementReference _chartElement;
+
+    /// <summary>
+    /// Ссылка на Blazor-компонент для обратных вызовов из JavaScript.
+    /// </summary>
     private DotNetObjectReference<EquipmentTrendChart>? _selfReference;
+
+    /// <summary>
+    /// Флаг первого render-а: JS interop можно вызывать только после появления DOM-элемента.
+    /// </summary>
     private bool _hasRendered;
+
+    /// <summary>
+    /// Защита от JS interop после уничтожения компонента.
+    /// </summary>
     private bool _isDisposed;
 
+    /// <summary>
+    /// Буфер тренда, полученный от Runtime.Service.
+    /// </summary>
     [Parameter]
     public ParamTrendResponse? Trend { get; set; }
 
+    /// <summary>
+    /// Ключ состояния графика. При смене оборудования/версии JS сбрасывает старый zoom.
+    /// </summary>
     [Parameter]
     public string? ViewKey { get; set; }
 
+    /// <summary>
+    /// Единица измерения, которая выводится в tooltip.
+    /// </summary>
     [Parameter]
     public string? Unit { get; set; }
 
+    /// <summary>
+    /// Левая граница видимого окна тренда.
+    /// </summary>
     [Parameter]
     public DateTime? VisibleFromUtc { get; set; }
 
+    /// <summary>
+    /// Правая граница видимого окна тренда.
+    /// </summary>
     [Parameter]
     public DateTime? VisibleToUtc { get; set; }
 
+    /// <summary>
+    /// Можно ли запросить более старый исторический сегмент.
+    /// </summary>
     [Parameter]
     public bool CanLoadOlder { get; set; }
 
+    /// <summary>
+    /// Можно ли вернуться ближе к текущему времени историческим сегментом.
+    /// </summary>
     [Parameter]
     public bool CanLoadNewer { get; set; }
 
+    /// <summary>
+    /// Событие, через которое JS просит родительскую Param-панель подгрузить историю.
+    /// </summary>
     [Parameter]
     public EventCallback<string> OnHistoryRequested { get; set; }
 
+    /// <summary>
+    /// После первого render-а передает график в JS.
+    /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -45,6 +87,9 @@
         await RenderChartAsync();
     }
 
+    /// <summary>
+    /// Повторно отправляет данные в ECharts при изменении входных параметров.
+    /// </summary>
     protected override async Task OnParametersSetAsync()
     {
         if (_hasRendered)
@@ -53,6 +98,9 @@
         }
     }
 
+    /// <summary>
+    /// Рендерит или обновляет Apache ECharts-график через JS interop.
+    /// </summary>
     private async Task RenderChartAsync()
     {
         var trend = Trend;
@@ -64,7 +112,7 @@
         {
             _selfReference ??= DotNetObjectReference.Create(this);
 
-            // The chart itself is owned by Apache ECharts; Blazor only sends a compact DTO.
+            // Сам график принадлежит Apache ECharts; Blazor передает только компактный DTO.
             await JSRuntime.InvokeVoidAsync(
                 "techMesParamTrendChart.render",
                 _chartElement,
@@ -73,8 +121,8 @@
         }
         catch (OperationCanceledException)
         {
-            // Normal during navigation/tab changes: Blazor can cancel an in-flight JS interop call
-            // after the chart component has already started leaving the render tree.
+            // Нормально при навигации/смене вкладок: Blazor может отменить JS-вызов,
+            // когда компонент уже начал уходить из render tree.
         }
         catch (JSDisconnectedException)
         {
@@ -84,6 +132,9 @@
         }
     }
 
+    /// <summary>
+    /// Преобразует backend DTO в структуру, удобную для JavaScript/ECharts.
+    /// </summary>
     private object BuildPayload(ParamTrendResponse trend)
     {
         var series = GetSeries(trend)
@@ -126,6 +177,9 @@
         };
     }
 
+    /// <summary>
+    /// JS вызывает этот метод, когда пользователь дотянул график к краю доступного буфера.
+    /// </summary>
     [JSInvokable]
     public async Task RequestHistoryAsync(string direction)
     {
@@ -138,6 +192,10 @@
         await OnHistoryRequested.InvokeAsync(direction);
     }
 
+    /// <summary>
+    /// Возвращает список серий. Если backend не прислал метаданные серий,
+    /// восстанавливает их из самих точек тренда.
+    /// </summary>
     private static IEnumerable<ParamTrendItemDto> GetSeries(ParamTrendResponse trend)
     {
         if (trend.Series.Count > 0)
@@ -150,6 +208,9 @@
             .ToList();
     }
 
+    /// <summary>
+    /// Переводит DateTime в Unix milliseconds для оси времени ECharts.
+    /// </summary>
     private static long ToUnixMilliseconds(DateTime value)
     {
         var utc = value.Kind switch
@@ -162,6 +223,9 @@
         return new DateTimeOffset(utc).ToUnixTimeMilliseconds();
     }
 
+    /// <summary>
+    /// Делает полупрозрачную заливку area-графика из основного цвета линии.
+    /// </summary>
     private static string ToAreaFill(string color)
     {
         color = (color ?? "").Trim();
@@ -178,6 +242,9 @@
         return color;
     }
 
+    /// <summary>
+    /// Освобождает ECharts instance и DotNetObjectReference при закрытии вкладки/страницы.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         _isDisposed = true;

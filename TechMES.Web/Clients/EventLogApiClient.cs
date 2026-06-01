@@ -3,15 +3,29 @@ using TechMES.Contracts.EventLog;
 
 namespace TechMES.Web.Clients;
 
+/// <summary>
+/// HTTP-клиент WEB-слоя для Operation actions и Alarm history.
+/// Данные читает Runtime.Service из EventPicker/PostgreSQL.
+/// </summary>
 public sealed class EventLogApiClient
 {
+    /// <summary>
+    /// Фабрика именованного клиента RuntimeService.
+    /// </summary>
     private readonly IHttpClientFactory _httpClientFactory;
 
+    /// <summary>
+    /// Создает клиент журналов событий.
+    /// </summary>
     public EventLogApiClient(IHttpClientFactory httpClientFactory)
     {
         _httpClientFactory = httpClientFactory;
     }
 
+    /// <summary>
+    /// Загружает действия операторов за выбранную дату.
+    /// Фильтр оборудования передается как query string только если он заполнен.
+    /// </summary>
     public async Task<OperatorActionsResponse> GetOperatorActionsAsync(
         DateTime date,
         string? equipmentFilter,
@@ -27,6 +41,9 @@ public sealed class EventLogApiClient
                ?? new OperatorActionsResponse { Date = date.Date, EquipmentFilter = equipmentFilter };
     }
 
+    /// <summary>
+    /// Загружает историю тревог за выбранную дату.
+    /// </summary>
     public async Task<AlarmHistoryResponse> GetAlarmHistoryAsync(
         DateTime date,
         string? equipmentFilter,
@@ -42,6 +59,9 @@ public sealed class EventLogApiClient
                ?? new AlarmHistoryResponse { Date = date.Date, EquipmentFilter = equipmentFilter };
     }
 
+    /// <summary>
+    /// Возвращает HttpClient, настроенный на Runtime.Service.
+    /// </summary>
     private HttpClient CreateClient()
     {
         return _httpClientFactory.CreateClient("RuntimeService");

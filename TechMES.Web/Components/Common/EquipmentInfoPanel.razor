@@ -315,56 +315,204 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Оборудование, выбранное в дереве слева.
+    /// </summary>
     [Parameter]
     public EquipmentDto? Equipment { get; set; }
 
+    /// <summary>
+    /// true, пока родительская Equipment.razor сохраняет favorite-флаг.
+    /// </summary>
     [Parameter]
     public bool IsFavoriteSaving { get; set; }
 
+    /// <summary>
+    /// Команда переключения favorite, реализованная на уровне Equipment.razor.
+    /// </summary>
     [Parameter]
     public EventCallback OnToggleFavorite { get; set; }
 
+    /// <summary>
+    /// Событие изменения счетчиков фото/PDF/схем/notes для обновления дерева и footer.
+    /// </summary>
     [Parameter]
     public EventCallback OnInfoCountsChanged { get; set; }
 
+    /// <summary>
+    /// Текущий snapshot Info-модуля для выбранного оборудования.
+    /// </summary>
     private EquipmentInfoDto? _info;
+
+    /// <summary>
+    /// Выбранное фото в Images carousel.
+    /// </summary>
     private EquipmentInfoFileDto? _selectedPhoto;
+
+    /// <summary>
+    /// Выбранный PDF instruction.
+    /// </summary>
     private EquipmentInfoFileDto? _selectedInstruction;
+
+    /// <summary>
+    /// Выбранная PDF scheme.
+    /// </summary>
     private EquipmentInfoFileDto? _selectedScheme;
 
+    /// <summary>
+    /// true, пока идет загрузка Info DTO.
+    /// </summary>
     private bool _isLoading;
+
+    /// <summary>
+    /// true, пока идет сохранение description/note/document position.
+    /// </summary>
     private bool _isSaving;
+
+    /// <summary>
+    /// Режим редактирования вкладки Description.
+    /// </summary>
     private bool _isDescriptionEditing;
+
+    /// <summary>
+    /// Режим создания новой note.
+    /// </summary>
     private bool _isNoteCreating;
+
+    /// <summary>
+    /// Режим редактирования существующей note.
+    /// </summary>
     private bool _isNoteEditing;
+
+    /// <summary>
+    /// Id note, которая сейчас редактируется.
+    /// </summary>
     private long? _editingNoteId;
+
+    /// <summary>
+    /// Id note, выбранной в списке cards слева.
+    /// </summary>
     private long? _selectedNoteId;
+
+    /// <summary>
+    /// Версия загрузки. Помогает отбросить устаревшие HTTP-ответы.
+    /// </summary>
     private int _loadVersion;
 
+    /// <summary>
+    /// Имя оборудования, для которого сейчас загружен _info.
+    /// </summary>
     private string? _loadedEquipmentName;
+
+    /// <summary>
+    /// Текст description во время редактирования.
+    /// </summary>
     private string _editDescription = string.Empty;
+
+    /// <summary>
+    /// Текст note во время создания или редактирования.
+    /// </summary>
     private string _editNoteText = string.Empty;
+
+    /// <summary>
+    /// Status message панели Info.
+    /// </summary>
     private string _statusText = string.Empty;
+
+    /// <summary>
+    /// Стиль status alert панели Info.
+    /// </summary>
     private AlertStyle _statusStyle = AlertStyle.Info;
+
+    /// <summary>
+    /// Сохраненная/текущая PDF page для iframe fragment.
+    /// </summary>
     private int _pdfPage = 1;
+
+    /// <summary>
+    /// Редактируемое значение PDF page в Remember editor.
+    /// </summary>
     private int _editPdfPage = 1;
+
+    /// <summary>
+    /// Сохраненный/текущий PDF zoom в процентах.
+    /// </summary>
     private double _pdfZoom = 100;
+
+    /// <summary>
+    /// Редактируемое значение PDF zoom в Remember editor.
+    /// </summary>
     private double _editPdfZoom = 100;
+
+    /// <summary>
+    /// true, когда открыт встроенный editor позиции PDF.
+    /// </summary>
     private bool _isDocumentPositionEditing;
 
+    /// <summary>
+    /// Общий busy-флаг для отключения кнопок во время загрузки/сохранения.
+    /// </summary>
     private bool _isBusy => _isLoading || _isSaving;
+
+    /// <summary>
+    /// true, когда textarea note должна быть видимой.
+    /// </summary>
     private bool IsNoteEditorActive => _isNoteCreating || _isNoteEditing;
+
+    /// <summary>
+    /// Количество фото для вкладки Images и footer.
+    /// </summary>
     private int PhotoTabCount => _info is null ? 0 : Math.Max(_info.PhotoCount, _info.Photos.Count);
+
+    /// <summary>
+    /// Количество PDF-инструкций для вкладки PDF и footer.
+    /// </summary>
     private int PdfTabCount => _info is null ? 0 : Math.Max(_info.InstructionCount, _info.Instructions.Count);
+
+    /// <summary>
+    /// Количество схем для вкладки Schemes и footer.
+    /// </summary>
     private int SchemeTabCount => _info is null ? 0 : Math.Max(_info.SchemeCount, _info.Schemes.Count);
+
+    /// <summary>
+    /// Количество notes для вкладки Notes и footer.
+    /// </summary>
     private int NoteTabCount => _info?.Notes.Count ?? 0;
+
+    /// <summary>
+    /// Заголовок вкладки Images со счетчиком, если он больше нуля.
+    /// </summary>
     private string ImagesTabText => BuildTabText("Images", PhotoTabCount);
+
+    /// <summary>
+    /// Заголовок вкладки PDF со счетчиком, если он больше нуля.
+    /// </summary>
     private string PdfTabText => BuildTabText("PDF", PdfTabCount);
+
+    /// <summary>
+    /// Заголовок вкладки Schemes со счетчиком, если он больше нуля.
+    /// </summary>
     private string SchemesTabText => BuildTabText("Schemes", SchemeTabCount);
+
+    /// <summary>
+    /// Заголовок вкладки Notes со счетчиком, если он больше нуля.
+    /// </summary>
     private string NotesTabText => BuildTabText("Notes", NoteTabCount);
+
+    /// <summary>
+    /// Data URL QR-кода для текущего оборудования.
+    /// </summary>
     private string QrPngDataUrl => Equipment is null ? string.Empty : BuildQrPngDataUrl(Equipment.Name);
+
+    /// <summary>
+    /// Безопасное имя файла для скачивания QR PNG.
+    /// </summary>
     private string QrFileName => MakeSafeFileName(Equipment?.Name ?? "qr") + ".png";
 
+    /// <summary>
+    /// Общий RenderFragment для вкладок PDF и Schemes:
+    /// selector файла, fullscreen, Remember editor и iframe preview.
+    /// </summary>
     private RenderFragment RenderDocumentPanel(
         IReadOnlyList<EquipmentInfoFileDto> files,
         EquipmentInfoFileDto? selectedFile,
@@ -467,8 +615,8 @@
     }
 
     /// <summary>
-    /// Loads the Info-module snapshot for the selected equipment and ignores
-    /// outdated responses when the user switches equipment quickly.
+    /// Загружает snapshot Info-модуля для выбранного оборудования.
+    /// Если пользователь быстро переключил оборудование, устаревший ответ игнорируется.
     /// </summary>
     private async Task LoadInfoAsync(string equipmentName)
     {
@@ -529,8 +677,8 @@
     }
 
     /// <summary>
-    /// Saves the editable description through Runtime.Service and re-applies the
-    /// current file/note selection because the backend returns a fresh Info DTO.
+    /// Сохраняет редактируемое описание через Runtime.Service и восстанавливает
+    /// текущий выбор file/note, потому что backend возвращает свежий Info DTO.
     /// </summary>
     private async Task SaveDescriptionAsync()
     {
@@ -571,8 +719,8 @@
     }
 
     /// <summary>
-    /// Selects the first available image/PDF/scheme after data load, while trying
-    /// to preserve the user's previous file and note selection.
+    /// Выбирает первый доступный image/PDF/scheme после загрузки данных,
+    /// но старается сохранить прежний выбор file/note пользователя.
     /// </summary>
     private async Task ApplyDefaultFileSelectionAsync()
     {
@@ -686,8 +834,8 @@
     }
 
     /// <summary>
-    /// Restores saved PDF page/zoom state for the selected instruction or scheme.
-    /// The state is stored in the backend table that mirrors the WPF behavior.
+    /// Восстанавливает сохраненную страницу/zoom для выбранной инструкции или схемы.
+    /// Состояние хранится в backend-таблице, повторяющей поведение WPF-приложения.
     /// </summary>
     private async Task LoadPdfViewStateAsync(EquipmentInfoFileDto file)
     {
@@ -743,9 +891,9 @@
     }
 
     /// <summary>
-    /// Persists the selected PDF page/zoom values. Browser PDF viewers do not
-    /// reliably expose their live scroll position, so the explicit editor is the
-    /// stable fallback for now.
+    /// Сохраняет выбранные page/zoom значения PDF.
+    /// Встроенные browser PDF viewers не всегда надежно отдают текущую позицию,
+    /// поэтому явный editor остается стабильным fallback-вариантом.
     /// </summary>
     private async Task SavePdfViewStateAsync(EquipmentInfoFileDto file)
     {
@@ -784,8 +932,8 @@
     }
 
     /// <summary>
-    /// Attempts to read native browser PDF page/zoom before showing the explicit
-    /// Remember editor. Not every embedded PDF viewer exposes this data.
+    /// Пытается прочитать native browser PDF page/zoom перед показом Remember editor.
+    /// Не каждый встроенный PDF viewer отдает эти данные наружу.
     /// </summary>
     private async Task ReadDocumentViewStateFromViewerAsync(string frameId)
     {
@@ -803,7 +951,7 @@
         }
         catch
         {
-            // Browser-native PDF viewers don't always expose live page/zoom to the host page.
+            // Встроенные PDF-viewer-ы браузера не всегда отдают live page/zoom host-странице.
         }
     }
 
@@ -867,8 +1015,8 @@
     }
 
     /// <summary>
-    /// Creates a note for the current equipment and updates tab/footer counters
-    /// without reloading the whole equipment catalog.
+    /// Создает note для текущего оборудования и обновляет tab/footer счетчики
+    /// без перезагрузки всего каталога оборудования.
     /// </summary>
     private async Task AddNoteAsync()
     {
@@ -903,7 +1051,7 @@
     }
 
     /// <summary>
-    /// Updates the selected note in place and keeps the visible note list stable.
+    /// Обновляет выбранную note на месте и сохраняет стабильным видимый список notes.
     /// </summary>
     private async Task SaveNoteEditAsync(EquipmentInfoNoteDto note)
     {
@@ -949,8 +1097,8 @@
     }
 
     /// <summary>
-    /// Deletes one note after user confirmation and selects the nearest remaining
-    /// note, matching the old WPF list behavior.
+    /// Удаляет note после подтверждения пользователя и выбирает ближайшую оставшуюся note,
+    /// как это делал список в WPF.
     /// </summary>
     private async Task DeleteNoteAsync(EquipmentInfoNoteDto note)
     {
@@ -1082,8 +1230,8 @@
     }
 
     /// <summary>
-    /// Pushes Info counters both to the footer state and to the selected tree node,
-    /// so tabs, footer badges, and tree indicators stay synchronized.
+    /// Передает Info-счетчики одновременно в footer state и выбранный tree node,
+    /// чтобы tabs, footer badges и tree indicators оставались синхронизированными.
     /// </summary>
     private void UpdateFooterInfoCounts()
     {
@@ -1117,8 +1265,8 @@
     }
 
     /// <summary>
-    /// Delegates favorite toggling to Equipment.razor because the tree and filters
-    /// also need to update after the backend write.
+    /// Делегирует переключение favorite в Equipment.razor, потому что после backend write
+    /// нужно обновить дерево и фильтры.
     /// </summary>
     private Task ToggleFavoriteAsync()
     {
@@ -1173,8 +1321,8 @@
     }
 
     /// <summary>
-    /// Builds the iframe URL with the remembered page/zoom fragment understood by
-    /// common browser PDF viewers.
+    /// Формирует iframe URL с сохраненным page/zoom fragment,
+    /// который понимают типовые browser PDF viewers.
     /// </summary>
     private string BuildPdfUrl(EquipmentInfoFileDto file)
     {
@@ -1185,8 +1333,8 @@
     }
 
     /// <summary>
-    /// Generates the downloadable QR image directly in Blazor, so the QR tab does
-    /// not need any backend endpoint for this simple equipment-name payload.
+    /// Генерирует скачиваемую QR-картинку прямо в Blazor.
+    /// Для простого payload с именем оборудования отдельный backend endpoint не нужен.
     /// </summary>
     private static string BuildQrPngDataUrl(string text)
     {
@@ -1274,8 +1422,14 @@
 
     private sealed class BrowserDocumentViewState
     {
+        /// <summary>
+        /// Номер страницы, который удалось прочитать из fragment PDF viewer-а.
+        /// </summary>
         public int? PageNumber { get; set; }
 
+        /// <summary>
+        /// Zoom в процентах, который удалось прочитать из fragment PDF viewer-а.
+        /// </summary>
         public double? ZoomFactor { get; set; }
     }
 

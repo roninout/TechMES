@@ -66,20 +66,48 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Дата, за которую читается alarm history.
+    /// </summary>
     private DateTime _selectedDate = DateTime.Today;
+
+    /// <summary>
+    /// Фильтр по оборудованию/alarm item.
+    /// </summary>
     private string _equipmentFilter = "";
+
+    /// <summary>
+    /// Строки истории аварий.
+    /// </summary>
     private List<AlarmHistoryDto> _rows = [];
 
+    /// <summary>
+    /// true, пока идет HTTP-загрузка alarm history.
+    /// </summary>
     private bool _isLoading;
+
+    /// <summary>
+    /// Status message страницы.
+    /// </summary>
     private string _statusText = "";
+
+    /// <summary>
+    /// Стиль status alert.
+    /// </summary>
     private AlertStyle _statusStyle = AlertStyle.Info;
 
+    /// <summary>
+    /// Подставляет выбранное оборудование и загружает первый набор данных.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         _equipmentFilter = SelectedEquipmentState.SelectedEquipmentName ?? "";
         await LoadAsync();
     }
 
+    /// <summary>
+    /// Загружает alarm history из существующей EventPicker/PostgreSQL БД через Runtime.Service.
+    /// </summary>
     private async Task LoadAsync()
     {
         _isLoading = true;

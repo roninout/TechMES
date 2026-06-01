@@ -3,6 +3,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Extensions.Logging;
 
+#nullable disable
+
 namespace CtApi
 {
     /// <summary>
@@ -210,12 +212,12 @@ namespace CtApi
         /// В TechMES используем общий механизм Microsoft.Extensions.Logging,
         /// чтобы все сообщения Runtime.Service попадали в один pipeline логирования.
         /// </summary>
-        private readonly ILogger? _logger;
+        private readonly ILogger _logger;
 
         /// <summary>
         /// Create a new Citect ctapi wrapper.
         /// </summary>
-        public CtApi(ILogger? logger = null)
+        public CtApi(ILogger logger = null)
         {
             _logger = logger;
         }
@@ -816,7 +818,7 @@ namespace CtApi
 
                 return !string.IsNullOrWhiteSpace(value.ToString());
             }
-            catch (Exception ex)
+            catch
             {
                 //_logger?.LogWarning($"Citect.CtApi > TryProbeConnection exception, cmd={cmd}, win={win}, error={ex.Message}");
                 return false;

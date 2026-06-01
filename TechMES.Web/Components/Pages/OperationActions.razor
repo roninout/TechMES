@@ -68,20 +68,48 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Дата, за которую читается журнал действий операторов.
+    /// </summary>
     private DateTime _selectedDate = DateTime.Today;
+
+    /// <summary>
+    /// Фильтр по оборудованию/tag/comment. По умолчанию берется выбранное equipment.
+    /// </summary>
     private string _equipmentFilter = "";
+
+    /// <summary>
+    /// Строки журнала Operation actions.
+    /// </summary>
     private List<OperatorActionDto> _rows = [];
 
+    /// <summary>
+    /// true, пока идет HTTP-загрузка журнала.
+    /// </summary>
     private bool _isLoading;
+
+    /// <summary>
+    /// Status message страницы.
+    /// </summary>
     private string _statusText = "";
+
+    /// <summary>
+    /// Стиль status alert.
+    /// </summary>
     private AlertStyle _statusStyle = AlertStyle.Info;
 
+    /// <summary>
+    /// Подставляет выбранное оборудование и загружает первый набор данных.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         _equipmentFilter = SelectedEquipmentState.SelectedEquipmentName ?? "";
         await LoadAsync();
     }
 
+    /// <summary>
+    /// Загружает действия операторов из существующей EventPicker/PostgreSQL БД через Runtime.Service.
+    /// </summary>
     private async Task LoadAsync()
     {
         _isLoading = true;

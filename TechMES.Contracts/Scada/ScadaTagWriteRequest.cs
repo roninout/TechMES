@@ -9,8 +9,14 @@
 /// </summary>
 public sealed class ScadaTagWriteRequest
 {
+    /// <summary>
+    /// Имя tag-а для записи.
+    /// </summary>
     public string TagName { get; set; } = "";
 
+    /// <summary>
+    /// Значение, которое нужно записать.
+    /// </summary>
     public string? Value { get; set; }
 
     /// <summary>

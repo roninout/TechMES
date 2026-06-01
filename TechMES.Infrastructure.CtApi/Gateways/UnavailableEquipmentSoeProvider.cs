@@ -4,15 +4,28 @@ using TechMES.Contracts.Soe;
 
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
+/// <summary>
+/// Заглушка SOE-провайдера для режима, когда SOE через CtApi недоступен.
+/// Нужна, чтобы endpoint возвращал контролируемый ответ, а не ошибку DI/старта сервиса.
+/// </summary>
 public sealed class UnavailableEquipmentSoeProvider : IEquipmentSoeProvider
 {
+    /// <summary>
+    /// Текст причины недоступности, который будет показан в SOE-вкладке.
+    /// </summary>
     private readonly string _message;
 
+    /// <summary>
+    /// Создает заглушку с общей диагностической причиной недоступности.
+    /// </summary>
     public UnavailableEquipmentSoeProvider(string message)
     {
         _message = message;
     }
 
+    /// <summary>
+    /// Возвращает пустой SOE-ответ без обращения к Plant SCADA.
+    /// </summary>
     public Task<SoeResponse> GetSoeAsync(
         EquipmentDto equipment,
         IReadOnlyList<EquipmentDto> equipmentCatalog,

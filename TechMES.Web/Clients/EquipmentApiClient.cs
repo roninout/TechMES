@@ -12,22 +12,41 @@ namespace TechMES.Web.Clients;
 /// </summary>
 public sealed class EquipmentApiClient
 {
+    /// <summary>
+    /// Фабрика именованного клиента RuntimeService.
+    /// </summary>
     private readonly IHttpClientFactory _httpClientFactory;
+
+    /// <summary>
+    /// Конфигурация WEB-проекта. Отсюда берется имя текущего клиента/устройства.
+    /// </summary>
     private readonly IConfiguration _configuration;
 
+    /// <summary>
+    /// Создает API-клиент каталога оборудования.
+    /// </summary>
     public EquipmentApiClient(IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
     }
 
+    /// <summary>
+    /// Имя WEB-клиента для favorite-флагов. Если в appsettings не задано, используем имя машины.
+    /// </summary>
     public string DeviceName => _configuration["App:DeviceName"] ?? Environment.MachineName;
 
+    /// <summary>
+    /// Возвращает HttpClient, настроенный на Runtime.Service.
+    /// </summary>
     private HttpClient CreateClient()
     {
         return _httpClientFactory.CreateClient("RuntimeService");
     }
 
+    /// <summary>
+    /// Загружает каталог оборудования вместе с favorite-флагами и Info-счетчиками.
+    /// </summary>
     public async Task<EquipmentListResponse> GetEquipmentListAsync(CancellationToken ct = default)
     {
         var client = CreateClient();
@@ -39,6 +58,9 @@ public sealed class EquipmentApiClient
         return response ?? new EquipmentListResponse();
     }
 
+    /// <summary>
+    /// Загружает один equipment node по имени.
+    /// </summary>
     public async Task<EquipmentDto?> GetEquipmentByNameAsync(string name, CancellationToken ct = default)
     {
         var client = CreateClient();
@@ -50,6 +72,9 @@ public sealed class EquipmentApiClient
             ct);
     }
 
+    /// <summary>
+    /// Сохраняет favorite-флаг для текущего WEB-клиента.
+    /// </summary>
     public async Task<EquipmentDto?> SetFavoriteAsync(string name, bool isFavorite, CancellationToken ct = default)
     {
         var client = CreateClient();

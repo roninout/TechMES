@@ -10,11 +10,17 @@ namespace TechMES.Infrastructure.CtApi.Gateways;
 /// </summary>
 public sealed class DisabledPlantScadaGateway : IPlantScadaGateway
 {
+    /// <summary>
+    /// В Disabled-режиме инициализация ничего не делает.
+    /// </summary>
     public Task InitializeAsync(CancellationToken ct = default)
     {
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Возвращает health-ответ о том, что Plant SCADA отключена настройкой.
+    /// </summary>
     public Task<PlantScadaHealthResponse> GetHealthAsync(CancellationToken ct = default)
     {
         return Task.FromResult(new PlantScadaHealthResponse
@@ -27,6 +33,9 @@ public sealed class DisabledPlantScadaGateway : IPlantScadaGateway
         });
     }
 
+    /// <summary>
+    /// Запрещает чтение tag-а, потому что CtApi provider выключен.
+    /// </summary>
     public Task<ScadaTagReadResponse> ReadTagAsync(string tagName, CancellationToken ct = default)
     {
         return Task.FromResult(new ScadaTagReadResponse
@@ -38,6 +47,9 @@ public sealed class DisabledPlantScadaGateway : IPlantScadaGateway
         });
     }
 
+    /// <summary>
+    /// Запрещает запись tag-а, потому что CtApi provider выключен.
+    /// </summary>
     public Task<ScadaTagWriteResponse> WriteTagAsync(ScadaTagWriteRequest request, CancellationToken ct = default)
     {
         return Task.FromResult(new ScadaTagWriteResponse

@@ -4,8 +4,16 @@ using TechMES.Runtime.Service.Runtime;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
+/// <summary>
+/// Runtime health API.
+/// WEB использует этот endpoint для footer-диагностики, а будущий configurator сможет
+/// по нему быстро понять состояние сервиса и подключенного хранилища.
+/// </summary>
 public static class HealthEndpoints
 {
+    /// <summary>
+    /// Подключает endpoint общей диагностики Runtime.Service.
+    /// </summary>
     public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/health", GetHealthAsync);
@@ -13,14 +21,16 @@ public static class HealthEndpoints
         return app;
     }
 
+    /// <summary>
+    /// Возвращает статус процесса, имя устройства, версию приложения и состояние message-хранилища.
+    /// При ошибке возвращается 503, но с тем же DTO, чтобы WEB мог показать подробность.
+    /// </summary>
     private static async Task<IResult> GetHealthAsync(
         IConfiguration configuration,
         IAppRuntimeContext runtime,
         IMessageStore messageStore,
         CancellationToken ct)
     {
-        // Health endpoint нужен не только для проверки "процесс жив",
-        // но и для WEB-интерфейса и будущего WPF Configurator.
         try
         {
             var activeCount = await messageStore.GetActiveMessageCountAsync(ct);

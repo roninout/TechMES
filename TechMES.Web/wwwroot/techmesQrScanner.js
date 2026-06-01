@@ -1,8 +1,9 @@
 window.techMesQrScanner = (() => {
+    // Активные scanner-сессии по id video element.
     const scanners = new Map();
 
-    // Starts camera preview and QR scanning for a specific <video> element.
-    // deviceId is optional: an empty value means "browser/default camera".
+    // Запускает preview камеры и QR-сканирование для конкретного <video>.
+    // Пустой deviceId означает "камера по умолчанию".
     async function start(videoId, dotNetRef, deviceId) {
         const video = document.getElementById(videoId);
 
@@ -61,8 +62,8 @@ window.techMesQrScanner = (() => {
         }
     }
 
-    // Collects browser capability details shown in the QR modal. This helps to
-    // diagnose tablet issues without opening DevTools on the device.
+    // Собирает возможности браузера для диагностики прямо в QR modal.
+    // Это помогает разбираться с планшетом без DevTools на устройстве.
     function getDiagnostics() {
         const mediaDevices = navigator.mediaDevices;
 
@@ -79,8 +80,8 @@ window.techMesQrScanner = (() => {
         };
     }
 
-    // Lists available video inputs for the camera dropdown. Some browsers hide
-    // friendly labels until the user grants camera permission.
+    // Возвращает video input устройства для dropdown камер.
+    // Некоторые браузеры скрывают названия до выдачи разрешения на камеру.
     async function listCameras() {
         if (!navigator.mediaDevices?.enumerateDevices) {
             return [];
@@ -101,6 +102,7 @@ window.techMesQrScanner = (() => {
         }
     }
 
+    // Формирует camera constraints: выбранная камера по deviceId или задняя камера по умолчанию.
     function buildVideoConstraints(deviceId) {
         const video = {
             width: { ideal: 1280 },
@@ -116,6 +118,7 @@ window.techMesQrScanner = (() => {
         return video;
     }
 
+    // Создает native BarcodeDetector, если браузер умеет читать QR сам.
     async function createBarcodeDetector() {
         if (!("BarcodeDetector" in window)) {
             return null;
@@ -136,6 +139,7 @@ window.techMesQrScanner = (() => {
         }
     }
 
+    // Один цикл сканирования: сначала native detector, затем серверный fallback через ZXing.
     async function scan(videoId) {
         const state = scanners.get(videoId);
         const video = document.getElementById(videoId);
@@ -170,12 +174,13 @@ window.techMesQrScanner = (() => {
                 await finish(videoId, decodedText);
             }
         } catch {
-            // Keep scanning; transient frame decode errors are expected.
+            // Продолжаем сканирование: одиночные ошибки декодирования кадра нормальны.
         } finally {
             state.isBusy = false;
         }
     }
 
+    // Пробует считать QR через browser BarcodeDetector.
     async function detectNative(state, video) {
         if (!state.detector) {
             return "";
@@ -189,6 +194,7 @@ window.techMesQrScanner = (() => {
         }
     }
 
+    // Берет центральный квадрат кадра, уменьшает его и переводит RGBA в Gray8 для ZXing.
     function captureLuminanceFrame(canvas, video) {
         const sourceWidth = video.videoWidth || 0;
         const sourceHeight = video.videoHeight || 0;
@@ -227,6 +233,7 @@ window.techMesQrScanner = (() => {
         };
     }
 
+    // Завершает сканирование: сообщает QR-текст в Blazor и освобождает камеру.
     async function finish(videoId, text) {
         const state = scanners.get(videoId);
 
@@ -238,6 +245,7 @@ window.techMesQrScanner = (() => {
         await stop(videoId);
     }
 
+    // Кодирует byte array в base64 без переполнения call stack на больших массивах.
     function bytesToBase64(bytes) {
         let binary = "";
         const chunkSize = 0x8000;
@@ -250,6 +258,7 @@ window.techMesQrScanner = (() => {
         return btoa(binary);
     }
 
+    // Останавливает scanner loop и закрывает все track-и MediaStream.
     async function stop(videoId) {
         const state = scanners.get(videoId);
         const video = document.getElementById(videoId);

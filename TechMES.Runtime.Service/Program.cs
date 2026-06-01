@@ -1,5 +1,6 @@
 using TechMES.Application.Equipment;
 using TechMES.Application.Messages;
+using TechMES.Application.Param;
 using TechMES.Application.Scada;
 using TechMES.Infrastructure.CtApi;
 using TechMES.Infrastructure.CtApi.Gateways;
@@ -27,6 +28,7 @@ builder.Services.Configure<RuntimeOptions>(builder.Configuration.GetSection("Run
 // Здесь задаётся период фоновой проверки БД на внешние изменения.
 builder.Services.Configure<MessagesOptions>(builder.Configuration.GetSection("Messages"));
 builder.Services.Configure<SoeOptions>(builder.Configuration.GetSection("Soe"));
+builder.Services.Configure<ParamWriteOptions>(builder.Configuration.GetSection("ParamWrites"));
 
 // Настройки каталога оборудования.
 // Provider выбирается из appsettings.json: InMemory или CtApi.
@@ -77,10 +79,10 @@ else
         "Поддерживаются значения: InMemory, PostgreSql.");
 }
 
-// Info module uses the existing PostgreSQL tables from the WPF database.
+// Info-модуль использует существующие PostgreSQL-таблицы из WPF БД.
 builder.Services.AddPostgreSqlInfoInfrastructure(builder.Configuration);
 
-// Operation actions / Alarm history use the existing EventPicker PostgreSQL DB.
+// Operation actions и Alarm history читают существующую EventPicker/PostgreSQL БД.
 builder.Services.AddPostgreSqlEventLogInfrastructure(builder.Configuration);
 
 // Каталог оборудования тоже подключаем через adapter-подход.

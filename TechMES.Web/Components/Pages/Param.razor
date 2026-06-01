@@ -8,6 +8,10 @@
 </RadzenStack>
 
 @code {
+    /// <summary>
+    /// Страница /param оставлена как redirect-wrapper.
+    /// Реальный Param UI живет на /equipment/param, чтобы использовать общее дерево оборудования.
+    /// </summary>
     protected override void OnAfterRender(bool firstRender)
     {
         if (firstRender)

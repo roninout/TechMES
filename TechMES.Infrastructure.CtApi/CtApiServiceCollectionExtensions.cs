@@ -17,6 +17,10 @@ namespace TechMES.Infrastructure.CtApi;
 /// </summary>
 public static class CtApiServiceCollectionExtensions
 {
+    /// <summary>
+    /// Регистрирует выбранный CtApi-провайдер и связанные провайдеры Param/SOE.
+    /// Провайдер выбирается настройкой CtApi:Provider: Disabled, Mock или CtApi.
+    /// </summary>
     public static IServiceCollection AddCtApiInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<CtApiOptions>(configuration.GetSection("CtApi"));
@@ -42,7 +46,7 @@ public static class CtApiServiceCollectionExtensions
         else if (string.Equals(provider, "CtApi", StringComparison.OrdinalIgnoreCase))
         {
             /*
-                Реальный CtApi provider.
+                Реальный CtApi-провайдер.
 
                 Runtime.Service всё равно работает только через IPlantScadaGateway.
                 Детали реального CtApi.dll спрятаны в ICtApiNativeClient.

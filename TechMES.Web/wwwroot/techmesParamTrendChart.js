@@ -1,15 +1,35 @@
 (function () {
+    // ECharts instance по DOM element. WeakMap освобождает записи после удаления element.
     const charts = new WeakMap();
+
+    // ResizeObserver или window resize handler для каждого графика.
     const resizeObservers = new WeakMap();
+
+    // Последний zoom/dataZoom state, чтобы не сбрасывать окно при live-обновлении данных.
     const zoomStates = new WeakMap();
+
+    // Полный диапазон данных текущего payload-а.
     const dataRanges = new WeakMap();
+
+    // Ключ текущего представления: оборудование + версия окна.
     const viewKeys = new WeakMap();
+
+    // Набор графиков, на которые уже подписан обработчик datazoom.
     const zoomHandlers = new WeakSet();
+
+    // Pointer handlers для touch/pan/pinch, чтобы потом корректно снять подписки.
     const touchHandlers = new WeakMap();
+
+    // DotNet callbacks для запроса истории при достижении края буфера.
     const historyCallbacks = new WeakMap();
+
+    // Флаги возможности подгружать older/newer сегменты истории.
     const historyLimits = new WeakMap();
+
+    // Debounce времени последнего запроса истории по каждому направлению.
     const historyRequestTimes = new WeakMap();
 
+    // Возвращает существующий ECharts instance или создает новый.
     function getChart(element) {
         if (!element) {
             return null;
@@ -37,6 +57,7 @@
         return chart;
     }
 
+    // Настраивает touch surface, чтобы браузер не перехватывал pan/pinch у графика.
     function prepareTouchSurface(element, chart) {
         const candidates = [
             element,
@@ -57,6 +78,7 @@
         }
     }
 
+    // Подписывает график на изменение размера контейнера.
     function bindResize(element, chart) {
         if (resizeObservers.has(element)) {
             return;
@@ -74,6 +96,7 @@
         resizeObservers.set(element, { disconnect: () => window.removeEventListener("resize", handler) });
     }
 
+    // Сохраняет dataZoom state после колесика, drag/pan или touch-жеста.
     function bindZoomState(element, chart) {
         if (zoomHandlers.has(element)) {
             return;
@@ -91,6 +114,7 @@
         zoomHandlers.add(element);
     }
 
+    // Реализует touch pan/pinch поверх ECharts для планшетов.
     function bindTouchPanZoom(element, chart) {
         if (touchHandlers.has(element) || !window.PointerEvent) {
             return;
@@ -159,6 +183,7 @@
         });
     }
 
+    // Определяет, подходит ли pointer event для pan/zoom жеста.
     function isPanPointer(event) {
         if (event.pointerType === "mouse") {
             return event.button === 0;
@@ -167,6 +192,7 @@
         return event.pointerType === "touch" || event.pointerType === "pen";
     }
 
+    // Показывает axisPointer/tooltip в точке касания.
     function showTouchPointer(element, chart, event) {
         const point = getElementPoint(element, event);
 
@@ -195,6 +221,7 @@
         });
     }
 
+    // Переводит client координаты pointer-а в координаты внутри DOM element.
     function getElementPoint(element, event) {
         const rect = element.getBoundingClientRect();
 
@@ -204,6 +231,7 @@
         };
     }
 
+    // Ищет ближайшую точку данных к текущей позиции pointer-а.
     function findNearestPoint(chart, point) {
         let axisValue;
 
@@ -247,6 +275,7 @@
         return nearest;
     }
 
+    // Фиксирует стартовое состояние touch-жеста: pointers, zoom и plot width.
     function createGesture(element, chart, activePointers) {
         const pointers = [...activePointers.values()];
         const zoom = getCurrentZoom(element, chart);
@@ -272,6 +301,7 @@
         };
     }
 
+    // Маршрутизирует touch-жест: один pointer = pan, два pointer-а = pinch zoom.
     function updateTouchZoom(element, chart, activePointers, gesture) {
         const pointers = [...activePointers.values()];
 
@@ -285,6 +315,7 @@
         }
     }
 
+    // Сдвигает видимое окно графика вслед за одним пальцем/пером.
     function updatePanZoom(element, chart, pointer, gesture) {
         const plot = getPlotRect(element);
         const start = gesture.startZoom.start;
@@ -311,6 +342,7 @@
         applyZoom(chart, element, clampZoom(nextStart, nextEnd));
     }
 
+    // Масштабирует видимое окно двумя пальцами относительно центра pinch-жеста.
     function updatePinchZoom(element, chart, first, second, gesture) {
         const distance = getDistance(first, second);
 
@@ -330,6 +362,7 @@
         applyZoom(chart, element, clampZoom(nextStart, nextStart + newSpan));
     }
 
+    // Возвращает актуальный zoom state из ECharts option или локального cache.
     function getCurrentZoom(element, chart) {
         const range = dataRanges.get(element);
         const state = readZoomStateFromOption(element, chart) || zoomStates.get(element);
@@ -341,6 +374,7 @@
         return { start: 0, end: 100 };
     }
 
+    // Применяет zoom к ECharts и сохраняет его локально.
     function applyZoom(chart, element, zoom) {
         const range = dataRanges.get(element);
         const valueZoom = percentToValues(zoom, range);
@@ -358,6 +392,7 @@
         });
     }
 
+    // Читает dataZoom из текущего option ECharts.
     function readZoomStateFromOption(element, chart) {
         const range = dataRanges.get(element);
         const zoom = chart.getOption?.()?.dataZoom?.[0];
@@ -377,6 +412,7 @@
         return null;
     }
 
+    // Вычисляет zoom state для нового render-а, сохраняя пользовательское окно при live update.
     function getRenderZoomState(element, payload, range) {
         const stored = normalizeValueZoom(
             zoomStates.get(element)?.startValue,
@@ -402,6 +438,7 @@
         };
     }
 
+    // Переводит проценты dataZoom в абсолютные timestamp значения.
     function percentToValues(zoom, range) {
         if (!range || !Number.isFinite(zoom?.start) || !Number.isFinite(zoom?.end)) {
             return null;
@@ -419,6 +456,7 @@
             range);
     }
 
+    // Переводит абсолютное окно timestamp-ов обратно в проценты dataZoom.
     function valuesToPercent(state, range) {
         if (!range || !state) {
             return { start: 0, end: 100 };
@@ -436,6 +474,7 @@
         };
     }
 
+    // Нормализует absolute zoom: ограничивает окно диапазоном данных и минимальной шириной.
     function normalizeValueZoom(startValue, endValue, range) {
         if (!range || !Number.isFinite(startValue) || !Number.isFinite(endValue)) {
             return null;
@@ -467,6 +506,7 @@
         };
     }
 
+    // Возвращает размеры области построения, чтобы touch delta считать от ширины графика.
     function getPlotRect(element) {
         const rect = element.getBoundingClientRect();
         const left = rect.left + 54;
@@ -478,12 +518,14 @@
         };
     }
 
+    // Расстояние между двумя pointer-ами для pinch zoom.
     function getDistance(first, second) {
         return Math.hypot(
             first.clientX - second.clientX,
             first.clientY - second.clientY);
     }
 
+    // Ограничивает dataZoom проценты диапазоном 0..100 и минимальной шириной окна.
     function clampZoom(start, end) {
         const span = end - start;
 
@@ -507,6 +549,7 @@
         };
     }
 
+    // Запрашивает у Blazor дополнительный исторический сегмент, если график дошел до края.
     function requestHistory(element, direction) {
         const limits = historyLimits.get(element) || {};
 
@@ -537,6 +580,7 @@
         return true;
     }
 
+    // Проверяет proximity к левому/правому краю и заранее просит older/newer историю.
     function requestHistoryNearEdge(element, zoomState) {
         const range = dataRanges.get(element);
 
@@ -562,6 +606,7 @@
         }
     }
 
+    // Главная точка входа из Blazor: строит ECharts option и применяет его к canvas.
     function render(element, payload, dotNetCallback) {
         const chart = getChart(element);
 
@@ -694,6 +739,7 @@
         });
     }
 
+    // Преобразует компактные series DTO в формат series ECharts.
     function toSeries(source) {
         const color = source.color || "#2f80ed";
 
@@ -721,6 +767,7 @@
         };
     }
 
+    // Формирует HTML tooltip без служебных полей quality/raw в пользовательском тексте.
     function formatTooltip(params, unit) {
         const items = Array.isArray(params) ? params : [params];
         const first = items[0];
@@ -741,6 +788,7 @@
         return lines.join("");
     }
 
+    // Форматирует подпись времени для нижней оси.
     function formatTime(value, showSeconds) {
         const date = new Date(value);
 
@@ -754,6 +802,7 @@
             : result;
     }
 
+    // Форматирует дату/время для расширенных подписей оси.
     function formatDateTime(value, showSeconds) {
         const date = new Date(value);
 
@@ -765,6 +814,7 @@
         return `${datePart} ${formatTime(value, showSeconds)}`;
     }
 
+    // Формат tooltip-а: yyyy-MM-dd HH:mm:ss.
     function formatDateTimeCompact(value) {
         const date = new Date(value);
 
@@ -775,6 +825,7 @@
         return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${formatTime(value, true)}`;
     }
 
+    // Короткое числовое представление без хвостов double.
     function formatNumber(value) {
         const number = Number(value);
 
@@ -785,6 +836,7 @@
         return number.toLocaleString(undefined, { maximumFractionDigits: 3 });
     }
 
+    // Подбирает число делений X-оси так, чтобы подписи времени не наползали друг на друга.
     function getTimeSplitNumber(rangeMs) {
         const minutes = rangeMs / 60000;
 
@@ -803,14 +855,17 @@
         return 10;
     }
 
+    // Дополняет число ведущим нулем для времени/даты.
     function pad2(value) {
         return String(value).padStart(2, "0");
     }
 
+    // Ограничивает value диапазоном min..max.
     function clamp(value, min, max) {
         return Math.min(Math.max(value, min), max);
     }
 
+    // Преобразует #rrggbb в rgba() с заданной прозрачностью.
     function toRgba(color, alpha) {
         if (!/^#[0-9a-f]{6}$/i.test(color || "")) {
             return color || `rgba(47, 128, 237, ${alpha})`;
@@ -823,6 +878,7 @@
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 
+    // Экранирует пользовательские значения перед вставкой в HTML tooltip.
     function escapeHtml(value) {
         return String(value)
             .replaceAll("&", "&amp;")
@@ -832,6 +888,7 @@
             .replaceAll("'", "&#039;");
     }
 
+    // Освобождает ECharts instance и все DOM/resize/touch подписки для компонента.
     function dispose(element) {
         const touchHandler = touchHandlers.get(element);
 

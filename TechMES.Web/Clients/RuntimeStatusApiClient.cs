@@ -11,18 +11,31 @@ namespace TechMES.Web.Clients;
 /// </summary>
 public sealed class RuntimeStatusApiClient
 {
+    /// <summary>
+    /// Фабрика именованного клиента RuntimeService.
+    /// </summary>
     private readonly IHttpClientFactory _httpClientFactory;
 
+    /// <summary>
+    /// Создает клиент диагностики Runtime.Service.
+    /// </summary>
     public RuntimeStatusApiClient(IHttpClientFactory httpClientFactory)
     {
         _httpClientFactory = httpClientFactory;
     }
 
+    /// <summary>
+    /// Возвращает HttpClient, настроенный на Runtime.Service.
+    /// </summary>
     private HttpClient CreateClient()
     {
         return _httpClientFactory.CreateClient("RuntimeService");
     }
 
+    /// <summary>
+    /// Читает /api/health. Даже при 503 пытается разобрать DTO,
+    /// потому что backend возвращает полезное описание ошибки.
+    /// </summary>
     public async Task<RuntimeHealthResponse> GetHealthAsync(
         CancellationToken ct = default)
     {

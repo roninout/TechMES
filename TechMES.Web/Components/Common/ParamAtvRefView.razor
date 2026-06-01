@@ -45,12 +45,21 @@ else
 }
 
 @code {
+    /// <summary>
+    /// Ответ Runtime.Service с ATV reference page.
+    /// </summary>
     [Parameter]
     public ParamAtvRefResponse? Response { get; set; }
 
+    /// <summary>
+    /// Событие выбора ATV из Motor reference page.
+    /// </summary>
     [Parameter]
     public EventCallback<string> OnSelectEquipment { get; set; }
 
+    /// <summary>
+    /// Передает выбранное ATV equipment name родительской Param-панели.
+    /// </summary>
     private Task SelectEquipmentAsync(string equipmentName)
     {
         return OnSelectEquipment.HasDelegate
@@ -58,6 +67,9 @@ else
             : Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Нормализует пустые значения для UI.
+    /// </summary>
     private static string DisplayValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? "-" : value;

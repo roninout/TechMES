@@ -4,8 +4,16 @@ using TechMES.Runtime.Service.Runtime;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
+/// <summary>
+/// HTTP API Info-модуля.
+/// Здесь отдаются карточка оборудования, файлы, PDF view state, описание и notes.
+/// Бинарные данные грузятся отдельным endpoint-ом, чтобы не раздувать основной DTO.
+/// </summary>
 public static class InfoEndpoints
 {
+    /// <summary>
+    /// Подключает endpoints Info-модуля.
+    /// </summary>
     public static IEndpointRouteBuilder MapInfoEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/info/{equipName}", GetInfoAsync);
@@ -20,8 +28,10 @@ public static class InfoEndpoints
         return app;
     }
 
-    // Returns one normalized Info-module snapshot: card fields, file metadata,
-    // counters, notes, and supplier logo. Heavy binary data is loaded separately.
+    /// <summary>
+    /// Возвращает один нормализованный snapshot Info-модуля:
+    /// поля карточки, metadata файлов, счетчики, notes и логотип supplier.
+    /// </summary>
     private static async Task<IResult> GetInfoAsync(
         string equipName,
         IEquipmentInfoStore infoStore,
@@ -31,8 +41,10 @@ public static class InfoEndpoints
         return Results.Ok(info);
     }
 
-    // Streams image/PDF bytes by file id. Browser caching is enabled through
-    // ETag/Last-Modified, and range processing lets embedded PDF viewers seek.
+    /// <summary>
+    /// Отдает image/PDF bytes по id файла.
+    /// ETag/Last-Modified включают browser cache, а range processing нужен PDF viewer-у.
+    /// </summary>
     private static async Task<IResult> GetInfoFileAsync(
         string kind,
         long id,
@@ -61,7 +73,9 @@ public static class InfoEndpoints
             enableRangeProcessing: true);
     }
 
-    // Reads the remembered PDF position that replaces WPF's saved document view.
+    /// <summary>
+    /// Читает сохраненную позицию PDF/документа, аналог WPF remembered document view.
+    /// </summary>
     private static async Task<IResult> GetDocumentViewStateAsync(
         string equipName,
         string kind,
@@ -83,8 +97,10 @@ public static class InfoEndpoints
             : Results.Ok(state);
     }
 
-    // Saves remembered page/zoom for PDF-like files. Photos are intentionally
-    // rejected because image viewing has no page position.
+    /// <summary>
+    /// Сохраняет page/zoom для PDF-подобных файлов.
+    /// Photo отклоняется, потому что у изображения нет page position.
+    /// </summary>
     private static async Task<IResult> SaveDocumentViewStateAsync(
         string equipName,
         SaveEquipmentInfoDocumentViewStateRequest request,
@@ -104,7 +120,9 @@ public static class InfoEndpoints
         return Results.Ok(state);
     }
 
-    // Persists the editable long description and returns the refreshed Info DTO.
+    /// <summary>
+    /// Сохраняет редактируемое long description и возвращает обновленный Info DTO.
+    /// </summary>
     private static async Task<IResult> SaveDescriptionAsync(
         string equipName,
         SaveEquipmentInfoDescriptionRequest request,
@@ -122,7 +140,9 @@ public static class InfoEndpoints
         return Results.Ok(info);
     }
 
-    // Adds a note using the current client device/runtime name as the author.
+    /// <summary>
+    /// Добавляет note. Автор определяется по deviceName WEB-клиента или Runtime.DeviceName.
+    /// </summary>
     private static async Task<IResult> AddNoteAsync(
         string equipName,
         SaveEquipmentInfoNoteRequest request,
@@ -146,7 +166,9 @@ public static class InfoEndpoints
         return Results.Ok(note);
     }
 
-    // Updates one note and keeps author/audit data on the backend side.
+    /// <summary>
+    /// Обновляет одну note и оставляет служебные поля author/audit на backend стороне.
+    /// </summary>
     private static async Task<IResult> UpdateNoteAsync(
         string equipName,
         long noteId,
@@ -174,7 +196,9 @@ public static class InfoEndpoints
             : Results.Ok(note);
     }
 
-    // Deletes one note by id. The UI owns selecting the next visible note.
+    /// <summary>
+    /// Удаляет одну note по id. Выбор следующей видимой note остается задачей UI.
+    /// </summary>
     private static async Task<IResult> DeleteNoteAsync(
         string equipName,
         long noteId,
@@ -185,6 +209,9 @@ public static class InfoEndpoints
         return Results.Ok();
     }
 
+    /// <summary>
+    /// Определяет имя автора для операций notes.
+    /// </summary>
     private static string ResolveActorName(string? deviceName, IAppRuntimeContext runtime)
     {
         return string.IsNullOrWhiteSpace(deviceName)
@@ -192,12 +219,18 @@ public static class InfoEndpoints
             : deviceName.Trim();
     }
 
+    /// <summary>
+    /// Безопасно разбирает строковый kind из URL в enum EquipmentInfoFileKind.
+    /// </summary>
     private static bool TryParseFileKind(string? value, out EquipmentInfoFileKind kind)
     {
         return Enum.TryParse(value, ignoreCase: true, out kind)
                && Enum.IsDefined(kind);
     }
 
+    /// <summary>
+    /// Строит ETag для file endpoint. Если БД не дала hash, используем kind/id/updatedAt.
+    /// </summary>
     private static string BuildEntityTag(EquipmentInfoFileContentDto file)
     {
         var value = string.IsNullOrWhiteSpace(file.FileHash)
@@ -207,6 +240,9 @@ public static class InfoEndpoints
         return $"\"{value.Replace("\"", string.Empty)}\"";
     }
 
+    /// <summary>
+    /// Выставляет cache и content-disposition headers для браузера/PDF viewer.
+    /// </summary>
     private static void SetCacheHeaders(
         HttpContext httpContext,
         EquipmentInfoFileContentDto file,
@@ -224,6 +260,9 @@ public static class InfoEndpoints
             headers.LastModified = lastModified.Value.ToString("R");
     }
 
+    /// <summary>
+    /// Проверяет conditional request headers и возвращает true, если можно отдать 304.
+    /// </summary>
     private static bool ClientCacheIsFresh(
         HttpContext httpContext,
         string etag,
@@ -247,6 +286,9 @@ public static class InfoEndpoints
         return lastModified.Value <= ifModifiedSince.UtcDateTime;
     }
 
+    /// <summary>
+    /// Нормализует имя файла для HTTP header Content-Disposition.
+    /// </summary>
     private static string NormalizeHeaderFileName(string? fileName)
     {
         fileName = string.IsNullOrWhiteSpace(fileName)

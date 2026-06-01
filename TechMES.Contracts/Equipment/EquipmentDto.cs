@@ -39,7 +39,7 @@ public sealed class EquipmentDto
 
     /// <summary>
     /// SCADA location/channel metadata.
-    /// In the WPF project this was read from EquipGetProperty(equipment, "Custom1", 3).
+    /// В WPF-проекте это поле читалось через EquipGetProperty(equipment, "Custom1", 3).
     /// </summary>
     public string Location
     {
@@ -106,14 +106,29 @@ public sealed class EquipmentDto
     /// </summary>
     public bool IsEquipmentChildNode { get; set; }
 
+    /// <summary>
+    /// Количество фото в Info-модуле.
+    /// </summary>
     public int PhotoCount { get; set; }
 
+    /// <summary>
+    /// Количество PDF-инструкций в Info-модуле.
+    /// </summary>
     public int InstructionCount { get; set; }
 
+    /// <summary>
+    /// Количество схем в Info-модуле.
+    /// </summary>
     public int SchemeCount { get; set; }
 
+    /// <summary>
+    /// Количество заметок в Info-модуле.
+    /// </summary>
     public int NoteCount { get; set; }
 
+    /// <summary>
+    /// Очищает SCADA-localized текст вида @(...) перед отображением в WEB.
+    /// </summary>
     private static string CleanScadaText(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))

@@ -16,20 +16,55 @@ else
                     class="param-items-grid">
         <Columns>
             <RadzenDataGridColumn TItem="ParamItemDto" Property="Name" Title="Item" Width="180px" />
+            <RadzenDataGridColumn TItem="ParamItemDto" Title="Access" Width="90px">
+                <Template Context="item">
+                    <RadzenBadge Text="@(item.CanWrite ? "R/W" : "R")"
+                                 BadgeStyle="@(item.CanWrite ? BadgeStyle.Warning : BadgeStyle.Light)"
+                                 class="param-access-badge" />
+                </Template>
+            </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="ParamItemDto" Title="Value">
                 <Template Context="item">
                     <span class="@GetValueClass(item)">@FormatValue(item)</span>
                 </Template>
             </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="ParamItemDto" Property="Unit" Title="Unit" Width="90px" />
+            @if (OnWriteRequested.HasDelegate)
+            {
+                <RadzenDataGridColumn TItem="ParamItemDto" Title="" Width="56px" Sortable="false">
+                    <Template Context="item">
+                        @if (item.CanWrite)
+                        {
+                            <RadzenButton Icon="edit"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Size="ButtonSize.Small"
+                                          class="param-write-button"
+                                          title="Write value"
+                                          Click="@(() => OnWriteRequested.InvokeAsync(item))" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            }
         </Columns>
     </RadzenDataGrid>
 }
 
 @code {
+    /// <summary>
+    /// Items snapshot-а, которые нужно вывести в таблицу Values/Alarm/TimeWork.
+    /// </summary>
     [Parameter]
     public IReadOnlyList<ParamItemDto>? Items { get; set; }
 
+    /// <summary>
+    /// Событие открытия write editor. Если callback не задан, колонка Write не рисуется.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Форматирует значение Param item для таблицы.
+    /// </summary>
     private static string FormatValue(ParamItemDto item)
     {
         if (item.BooleanValue.HasValue)
@@ -40,6 +75,9 @@ else
             : item.ValueText;
     }
 
+    /// <summary>
+    /// CSS-класс для bool-значений: on/off подсвечиваются разными цветами.
+    /// </summary>
     private static string GetValueClass(ParamItemDto item)
     {
         if (item.BooleanValue == true)

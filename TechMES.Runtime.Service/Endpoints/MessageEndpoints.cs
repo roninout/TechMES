@@ -6,11 +6,18 @@ using TechMES.Runtime.Service.Runtime;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
+/// <summary>
+/// HTTP и SignalR API модуля Messages.
+/// Runtime.Service инкапсулирует IMessageStore, поэтому WEB не знает,
+/// используется InMemory-адаптер или PostgreSQL.
+/// </summary>
 public static class MessageEndpoints
 {
+    /// <summary>
+    /// Подключает REST endpoints сообщений и SignalR hub live-уведомлений.
+    /// </summary>
     public static IEndpointRouteBuilder MapMessageEndpoints(this IEndpointRouteBuilder app)
     {
-        // SignalR endpoint. WEB подключается сюда для live-уведомлений.
         app.MapHub<MessagesHub>("/hubs/messages");
 
         app.MapGet("/api/messages", GetMessagesAsync);
@@ -22,6 +29,10 @@ public static class MessageEndpoints
         return app;
     }
 
+    /// <summary>
+    /// Возвращает список сообщений и счетчик активных сообщений для footer/menu.
+    /// deviceName определяет, какие сообщения уже просмотрены текущим клиентом.
+    /// </summary>
     private static async Task<IResult> GetMessagesAsync(
         bool includeInactive,
         string? deviceName,
@@ -29,9 +40,6 @@ public static class MessageEndpoints
         IAppRuntimeContext runtime,
         CancellationToken ct)
     {
-        // WEB вызывает этот endpoint при загрузке страницы Messages.
-        // Runtime Service получает данные через IMessageStore,
-        // не зная, какой adapter подключён физически.
         var actorName = ResolveActorName(deviceName, runtime);
 
         var messages = await messageStore.GetMessagesAsync(
@@ -48,6 +56,10 @@ public static class MessageEndpoints
         });
     }
 
+    /// <summary>
+    /// Создает или обновляет сообщение.
+    /// Runtime.Service сам заполняет служебные поля автора/обновления через IMessageStore.
+    /// </summary>
     private static async Task<IResult> SaveMessageAsync(
         SaveMessageRequest request,
         string? deviceName,
@@ -56,8 +68,6 @@ public static class MessageEndpoints
         IHubContext<MessagesHub> hubContext,
         CancellationToken ct)
     {
-        // WEB отправляет сюда SaveMessageRequest.
-        // Runtime Service сам определяет служебные поля: CreatedBy, CreatedAt, UpdatedBy.
         var actorName = ResolveActorName(deviceName, runtime);
 
         if (string.IsNullOrWhiteSpace(request.MessageSubject))
@@ -84,6 +94,10 @@ public static class MessageEndpoints
         return Results.Ok(saved);
     }
 
+    /// <summary>
+    /// Отмечает сообщение просмотренным для текущего устройства/клиента.
+    /// После изменения рассылается SignalR-уведомление всем WEB-сессиям.
+    /// </summary>
     private static async Task<IResult> MarkViewedAsync(
         long id,
         string? deviceName,
@@ -92,7 +106,6 @@ public static class MessageEndpoints
         IHubContext<MessagesHub> hubContext,
         CancellationToken ct)
     {
-        // WEB вызывает этот endpoint после того, как пользователь удержал сообщение выбранным.
         var actorName = ResolveActorName(deviceName, runtime);
 
         await messageStore.MarkViewedAsync(
@@ -110,6 +123,10 @@ public static class MessageEndpoints
         return Results.Ok();
     }
 
+    /// <summary>
+    /// Переключает active/inactive. Правило хранится в IMessageStore:
+    /// сейчас менять активность может только автор сообщения.
+    /// </summary>
     private static async Task<IResult> ToggleActiveAsync(
         long id,
         string? deviceName,
@@ -118,8 +135,6 @@ public static class MessageEndpoints
         IHubContext<MessagesHub> hubContext,
         CancellationToken ct)
     {
-        // Переключаем Active / Inactive.
-        // Сейчас бизнес-правило простое: менять активность может только автор.
         var actorName = ResolveActorName(deviceName, runtime);
 
         var ok = await messageStore.ToggleActivityAsync(
@@ -140,6 +155,9 @@ public static class MessageEndpoints
         return Results.Ok();
     }
 
+    /// <summary>
+    /// Удаляет сообщение и рассылает событие обновления.
+    /// </summary>
     private static async Task<IResult> DeleteMessageAsync(
         long id,
         string? deviceName,
@@ -162,15 +180,21 @@ public static class MessageEndpoints
         return Results.Ok();
     }
 
+    /// <summary>
+    /// Определяет имя клиента для user/device полей.
+    /// Если WEB не передал deviceName, используем Runtime.DeviceName.
+    /// </summary>
     private static string ResolveActorName(string? deviceName, IAppRuntimeContext runtime)
     {
-        // Если WEB передал deviceName — используем его.
-        // Если не передал — используем имя Runtime.Service.
         return string.IsNullOrWhiteSpace(deviceName)
             ? runtime.DeviceName
             : deviceName.Trim();
     }
 
+    /// <summary>
+    /// Рассылает всем WEB-клиентам событие изменения сообщений.
+    /// Клиенты после события сами перечитывают актуальное состояние.
+    /// </summary>
     private static Task NotifyMessagesChangedAsync(
         IHubContext<MessagesHub> hubContext,
         MessageChangedEventType eventType,

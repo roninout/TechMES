@@ -264,29 +264,94 @@
 </RadzenStack>
 
 @code {
+    /// <summary>
+    /// Набор типов сообщений для dropdown editor-а.
+    /// </summary>
     private readonly MessageType[] _messageTypes = Enum.GetValues<MessageType>();
 
+    /// <summary>
+    /// Текущий список сообщений, загруженный через HTTP API.
+    /// </summary>
     private List<EquipmentMessageDto> _messages = [];
+
+    /// <summary>
+    /// Выбранное сообщение в списке слева.
+    /// </summary>
     private EquipmentMessageDto? _selectedMessage;
 
+    /// <summary>
+    /// Показывать ли inactive сообщения.
+    /// </summary>
     private bool _includeInactive;
+
+    /// <summary>
+    /// true, пока идет загрузка списка сообщений.
+    /// </summary>
     private bool _isLoading;
+
+    /// <summary>
+    /// true, когда открыта форма create/edit.
+    /// </summary>
     private bool _isEditMode;
+
+    /// <summary>
+    /// Состояние SignalR-подключения к Runtime.Service.
+    /// </summary>
     private bool _isRealtimeConnected;
+
+    /// <summary>
+    /// true, если во время редактирования пришли live-изменения и после выхода нужно перечитать список.
+    /// </summary>
     private bool _pendingRealtimeChanges;
+
+    /// <summary>
+    /// true, пока выполняется save/toggle/delete команда.
+    /// </summary>
     private bool _isCommandRunning;
 
+    /// <summary>
+    /// Количество active messages для badge.
+    /// </summary>
     private int _activeMessageCount;
 
+    /// <summary>
+    /// Status message страницы Messages.
+    /// </summary>
     private string _statusText = string.Empty;
+
+    /// <summary>
+    /// Стиль status alert.
+    /// </summary>
     private AlertStyle _statusStyle = AlertStyle.Info;
 
+    /// <summary>
+    /// Id сообщения, которое редактируется; 0 означает создание.
+    /// </summary>
     private long _editId;
+
+    /// <summary>
+    /// Тип сообщения в editor-е.
+    /// </summary>
     private MessageType _editType = MessageType.Info;
+
+    /// <summary>
+    /// Тема сообщения в editor-е.
+    /// </summary>
     private string _editSubject = string.Empty;
+
+    /// <summary>
+    /// Текст сообщения в editor-е.
+    /// </summary>
     private string _editText = string.Empty;
 
+    /// <summary>
+    /// SignalR connection к MessagesHub Runtime.Service.
+    /// </summary>
     private HubConnection? _hubConnection;
+
+    /// <summary>
+    /// Таймер отложенной отметки "viewed" для выбранного сообщения.
+    /// </summary>
     private CancellationTokenSource? _viewDelayCts;
 
     // Диагностика live-обновлений.
@@ -294,6 +359,9 @@
     private int _realtimeEventCount;
     private string _lastRealtimeEventText = "Live event: none";
 
+    /// <summary>
+    /// Загружает сообщения и подключается к live-событиям Runtime.Service.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         // Первичная загрузка всё равно остаётся HTTP-запросом.
@@ -304,6 +372,9 @@
         await StartMessagesHubAsync();
     }
 
+    /// <summary>
+    /// Создает SignalR connection к Runtime.Service и подписывается на MessagesChanged.
+    /// </summary>
     private async Task StartMessagesHubAsync()
     {
         try
@@ -416,6 +487,9 @@
         }
     }
 
+    /// <summary>
+    /// Обрабатывает SignalR-событие изменения Messages-хранилища.
+    /// </summary>
     private async Task OnMessagesChangedAsync(MessageChangedNotification notification)
     {
         _realtimeEventCount++;
@@ -435,11 +509,17 @@
         await LoadAsync();
     }
 
+    /// <summary>
+    /// Ручное обновление списка сообщений.
+    /// </summary>
     private async Task RefreshAsync()
     {
         await LoadAsync();
     }
 
+    /// <summary>
+    /// Переключает фильтр inactive сообщений и перечитывает список.
+    /// </summary>
     private async Task OnIncludeInactiveChangedAsync(bool value)
     {
         _includeInactive = value;
@@ -450,6 +530,9 @@
         await LoadAsync();
     }
 
+    /// <summary>
+    /// Загружает сообщения через HTTP API. SignalR только сообщает, что данные изменились.
+    /// </summary>
     private async Task LoadAsync()
     {
         _isLoading = true;
@@ -478,6 +561,9 @@
         }
     }
 
+    /// <summary>
+    /// После загрузки сохраняет прежний выбор или выбирает первое доступное сообщение.
+    /// </summary>
     private void ApplySelectionAfterLoad(long? preferredSelectedId)
     {
         // Если пользователь редактирует сообщение, автоматический выбор не трогаем.
@@ -510,6 +596,9 @@
         SetSelectedMessage(selected, startViewedTimer: true);
     }
 
+    /// <summary>
+    /// Выбирает сообщение в списке и запускает delayed viewed timer.
+    /// </summary>
     private Task SelectMessageAsync(EquipmentMessageDto message)
     {
         if (_isCommandRunning)
@@ -521,6 +610,9 @@
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Устанавливает выбранное сообщение и управляет таймером отметки просмотра.
+    /// </summary>
     private void SetSelectedMessage(EquipmentMessageDto? message, bool startViewedTimer)
     {
         _selectedMessage = message;
@@ -548,6 +640,9 @@
         _ = MarkViewedAfterDelayAsync(message.Id, _viewDelayCts.Token);
     }
 
+    /// <summary>
+    /// Помечает сообщение просмотренным только если пользователь удержал выбор несколько секунд.
+    /// </summary>
     private async Task MarkViewedAfterDelayAsync(long messageId, CancellationToken ct)
     {
         try
@@ -584,6 +679,9 @@
         }
     }
 
+    /// <summary>
+    /// Открывает editor в режиме создания нового сообщения.
+    /// </summary>
     private void AddNew()
     {
         if (_isCommandRunning)
@@ -597,6 +695,9 @@
         _editText = string.Empty;
     }
 
+    /// <summary>
+    /// Открывает editor для выбранного сообщения.
+    /// </summary>
     private void BeginEdit()
     {
         if (_selectedMessage is null)
@@ -609,6 +710,9 @@
         _editText = _selectedMessage.MessageText;
     }
 
+    /// <summary>
+    /// Закрывает editor без сохранения и при необходимости перечитывает live-изменения.
+    /// </summary>
     private async Task CancelEdit()
     {
         _isEditMode = false;
@@ -629,6 +733,9 @@
         }
     }
 
+    /// <summary>
+    /// Создает или обновляет сообщение через Runtime.Service.
+    /// </summary>
     private async Task SaveAsync()
     {
         if (!CanSaveMessage())
@@ -673,6 +780,9 @@
         }
     }
 
+    /// <summary>
+    /// Переключает активность сообщения, если backend разрешил это текущему автору.
+    /// </summary>
     private async Task ToggleActiveAsync()
     {
         if (_selectedMessage is null)
@@ -726,6 +836,9 @@
         }
     }
 
+    /// <summary>
+    /// Удаляет выбранное сообщение после подтверждения пользователя.
+    /// </summary>
     private async Task DeleteAsync()
     {
         if (_selectedMessage is null)
@@ -769,23 +882,35 @@
         }
     }
 
+    /// <summary>
+    /// UX-проверка доступности кнопки Save.
+    /// </summary>
     private bool CanSaveMessage()
     {
         return !string.IsNullOrWhiteSpace(_editSubject)
                && !string.IsNullOrWhiteSpace(_editText);
     }
 
+    /// <summary>
+    /// Устанавливает status alert страницы Messages.
+    /// </summary>
     private void SetStatus(AlertStyle style, string text)
     {
         _statusStyle = style;
         _statusText = text;
     }
 
+    /// <summary>
+    /// Очищает status alert.
+    /// </summary>
     private void ClearStatus()
     {
         _statusText = string.Empty;
     }
 
+    /// <summary>
+    /// Показывает Radzen toast notification.
+    /// </summary>
     private void Notify(NotificationSeverity severity, string summary, string detail)
     {
         NotificationService.Notify(new NotificationMessage
@@ -797,6 +922,9 @@
         });
     }
 
+    /// <summary>
+    /// Возвращает style card-а сообщения с учетом selected/active/viewed состояния.
+    /// </summary>
     private string GetCardStyle(EquipmentMessageDto message)
     {
         var selected = _selectedMessage?.Id == message.Id;
@@ -807,6 +935,9 @@
             : $"margin-bottom:8px; cursor:pointer; opacity:{opacity};";
     }
 
+    /// <summary>
+    /// Цвет badge по типу сообщения.
+    /// </summary>
     private static BadgeStyle GetBadgeStyle(MessageType type)
     {
         return type switch
@@ -817,6 +948,9 @@
         };
     }
 
+    /// <summary>
+    /// Останавливает SignalR connection и delayed viewed timer при уходе со страницы.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         _viewDelayCts?.Cancel();

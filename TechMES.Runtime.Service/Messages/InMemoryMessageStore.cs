@@ -12,11 +12,29 @@ namespace TechMES.Runtime.Service.Messages;
 /// </summary>
 public sealed class InMemoryMessageStore : IMessageStore
 {
+    /// <summary>
+    /// Защита коллекций от параллельного доступа нескольких HTTP-запросов.
+    /// </summary>
     private readonly object _gate = new();
+
+    /// <summary>
+    /// Сообщения, хранящиеся только в памяти процесса Runtime.Service.
+    /// </summary>
     private readonly List<EquipmentMessageDto> _messages = [];
+
+    /// <summary>
+    /// Отметки просмотра: message id -> набор устройств, которые прочитали сообщение.
+    /// </summary>
     private readonly Dictionary<long, HashSet<string>> _viewsByMessageId = [];
+
+    /// <summary>
+    /// Следующий in-memory идентификатор сообщения.
+    /// </summary>
     private long _nextId = 1;
 
+    /// <summary>
+    /// Добавляет стартовые тестовые сообщения.
+    /// </summary>
     public Task InitializeAsync(CancellationToken ct = default)
     {
         lock (_gate)
@@ -42,6 +60,9 @@ public sealed class InMemoryMessageStore : IMessageStore
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Возвращает сообщения, дополненные view-флагами относительно текущего устройства.
+    /// </summary>
     public Task<IReadOnlyList<EquipmentMessageDto>> GetMessagesAsync(
         bool includeInactive,
         string deviceName,
@@ -61,6 +82,9 @@ public sealed class InMemoryMessageStore : IMessageStore
         }
     }
 
+    /// <summary>
+    /// Считает активные сообщения без создания полного DTO-списка.
+    /// </summary>
     public Task<int> GetActiveMessageCountAsync(CancellationToken ct = default)
     {
         lock (_gate)
@@ -70,6 +94,9 @@ public sealed class InMemoryMessageStore : IMessageStore
         }
     }
 
+    /// <summary>
+    /// Создает новое сообщение или обновляет существующее.
+    /// </summary>
     public Task<EquipmentMessageDto> SaveMessageAsync(
         SaveMessageRequest request,
         string userName,
@@ -113,6 +140,9 @@ public sealed class InMemoryMessageStore : IMessageStore
         }
     }
 
+    /// <summary>
+    /// Переключает активность сообщения, если текущий пользователь является автором.
+    /// </summary>
     public Task<bool> ToggleActivityAsync(
         long messageId,
         string userName,
@@ -139,6 +169,9 @@ public sealed class InMemoryMessageStore : IMessageStore
         }
     }
 
+    /// <summary>
+    /// Удаляет сообщение и его отметки просмотра.
+    /// </summary>
     public Task DeleteMessageAsync(long messageId, CancellationToken ct = default)
     {
         lock (_gate)
@@ -150,6 +183,9 @@ public sealed class InMemoryMessageStore : IMessageStore
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Помечает сообщение просмотренным для текущего устройства.
+    /// </summary>
     public Task MarkViewedAsync(long messageId, string deviceName, CancellationToken ct = default)
     {
         lock (_gate)
@@ -175,6 +211,9 @@ public sealed class InMemoryMessageStore : IMessageStore
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Добавляет стартовое сообщение без прохода через публичный SaveMessageAsync.
+    /// </summary>
     private void AddSeedMessage(
         MessageType type,
         string subject,
@@ -193,6 +232,9 @@ public sealed class InMemoryMessageStore : IMessageStore
         });
     }
 
+    /// <summary>
+    /// Клонирует сообщение и вычисляет поля просмотра для конкретного устройства.
+    /// </summary>
     private EquipmentMessageDto CloneForDevice(
         EquipmentMessageDto source,
         string deviceName)
@@ -225,6 +267,9 @@ public sealed class InMemoryMessageStore : IMessageStore
         };
     }
 
+    /// <summary>
+    /// Нормализует имя устройства; пустое значение заменяет именем машины.
+    /// </summary>
     private static string NormalizeDeviceName(string? value)
     {
         return string.IsNullOrWhiteSpace(value)
@@ -232,8 +277,11 @@ public sealed class InMemoryMessageStore : IMessageStore
             : value.Trim();
     }
 
+    /// <summary>
+    /// Возвращает компактный snapshot для MessageStorageWatcher.
+    /// </summary>
     public Task<MessageStorageSnapshot> GetStorageSnapshotAsync(
-    CancellationToken ct = default)
+        CancellationToken ct = default)
     {
         lock (_gate)
         {

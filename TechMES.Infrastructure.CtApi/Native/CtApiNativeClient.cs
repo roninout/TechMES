@@ -17,11 +17,25 @@ namespace TechMES.Infrastructure.CtApi.Native;
 /// </summary>
 public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
 {
+    /// <summary>
+    /// Настройки расположения CtApi.dll, сервера, пользователя и tag-а проверки связи.
+    /// </summary>
     private readonly IOptions<CtApiOptions> _options;
+
+    /// <summary>
+    /// Логгер низкоуровневых операций CtApi.
+    /// </summary>
     private readonly ILogger<CtApiNativeClient> _logger;
 
+    /// <summary>
+    /// Legacy wrapper, перенесенный из WPF-проекта.
+    /// Все P/Invoke вызовы остаются внутри него.
+    /// </summary>
     private readonly LegacyCtApiClient _ctApi;
 
+    /// <summary>
+    /// Флаг открытого соединения, чтобы не выполнять TagRead/TagWrite до успешного Open.
+    /// </summary>
     private bool _isOpen;
 
     /// <summary>
@@ -33,6 +47,9 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
     /// </summary>
     private readonly SemaphoreSlim _apiGate = new(1, 1);
 
+    /// <summary>
+    /// Создает native-клиент и подготавливает legacy CtApi wrapper.
+    /// </summary>
     public CtApiNativeClient(IOptions<CtApiOptions> options, ILogger<CtApiNativeClient> logger)
     {
         _options = options;
@@ -43,6 +60,9 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
         _ctApi = new LegacyCtApiClient(logger);
     }
 
+    /// <summary>
+    /// Настраивает DLL search path и открывает соединение CtApi.
+    /// </summary>
     public async Task OpenAsync(CancellationToken ct = default)
     {
         await _apiGate.WaitAsync(ct);
@@ -105,6 +125,9 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Закрывает CtApi-соединение. Метод идемпотентен и не пробрасывает ошибку закрытия наружу.
+    /// </summary>
     public async Task CloseAsync(CancellationToken ct = default)
     {
         await _apiGate.WaitAsync(ct);
@@ -128,6 +151,9 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Читает значение одного tag-а через legacy CtApi wrapper.
+    /// </summary>
     public async Task<string?> TagReadAsync(string tagName, CancellationToken ct = default)
     {
         await _apiGate.WaitAsync(ct);
@@ -149,6 +175,9 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Записывает значение одного tag-а через legacy CtApi wrapper.
+    /// </summary>
     public async Task TagWriteAsync(string tagName, string? value, CancellationToken ct = default)
     {
         await _apiGate.WaitAsync(ct);
@@ -172,6 +201,9 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Выполняет Cicode-команду. Используется для EquipGetProperty, TagInfo, audit и browse helpers.
+    /// </summary>
     public async Task<string?> CicodeAsync(string command, CancellationToken ct = default)
     {
         await _apiGate.WaitAsync(ct);
@@ -191,6 +223,9 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Выполняет ctFind по таблице Plant SCADA и возвращает строки как словари поле-значение.
+    /// </summary>
     public async Task<IReadOnlyList<Dictionary<string, string>>> FindAsync(string tableName, string? filter, string? cluster, IReadOnlyList<string> properties, CancellationToken ct = default)
     {
         await _apiGate.WaitAsync(ct);
@@ -219,6 +254,9 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Проверяет живость соединения без выбрасывания исключения наружу.
+    /// </summary>
     public async Task<bool> TryProbeConnectionAsync(CancellationToken ct = default)
     {
         await _apiGate.WaitAsync(ct);
@@ -243,18 +281,27 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Закрывает соединение и освобождает gate при уничтожении клиента.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         await CloseAsync();
         _apiGate.Dispose();
     }
 
+    /// <summary>
+    /// Защищает все операции чтения/записи от вызова до успешного OpenAsync.
+    /// </summary>
     private void EnsureOpen()
     {
         if (!_isOpen)
             throw new InvalidOperationException("CtApi connection is not open.");
     }
 
+    /// <summary>
+    /// Формирует команду проверки: либо TagRead(sWndTitle), либо пользовательская команда/tag из настроек.
+    /// </summary>
     private static string BuildProbeCommand(string? healthCheckTag)
     {
         if (string.IsNullOrWhiteSpace(healthCheckTag))
@@ -267,6 +314,9 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
             : $"TagRead({value})";
     }
 
+    /// <summary>
+    /// Windows API для добавления папки Plant SCADA Bin x64 в путь поиска native DLL.
+    /// </summary>
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool SetDllDirectory(string lpPathName);
 }

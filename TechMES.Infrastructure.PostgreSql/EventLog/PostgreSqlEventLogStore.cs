@@ -7,10 +7,22 @@ using TechMES.Contracts.EventLog;
 
 namespace TechMES.Infrastructure.PostgreSql.EventLog;
 
+/// <summary>
+/// PostgreSQL-хранилище журналов EventPicker:
+/// Operation actions читаются из public."OperatorAct",
+/// Alarm history читается из public.alarm_history.
+/// Эти таблицы уже существуют и заполняются SCADA/WPF-логикой, WEB их только читает.
+/// </summary>
 public sealed class PostgreSqlEventLogStore : IEventLogStore
 {
+    /// <summary>
+    /// Connection string к EventPicker PostgreSQL базе.
+    /// </summary>
     private readonly string _connectionString;
 
+    /// <summary>
+    /// Создает хранилище EventLog и читает строку подключения из Runtime.Service appsettings.
+    /// </summary>
     public PostgreSqlEventLogStore(IConfiguration configuration)
     {
         _connectionString =
@@ -21,6 +33,10 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
                 "Set ConnectionStrings:EventPicker or EventDatabase:ConnectionString in Runtime.Service appsettings.json.");
     }
 
+    /// <summary>
+    /// Проверяет, можно ли открыть соединение с EventPicker БД.
+    /// Используется health endpoint-ом.
+    /// </summary>
     public async Task<bool> CanConnectAsync(CancellationToken ct = default)
     {
         try
@@ -34,6 +50,10 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
         }
     }
 
+    /// <summary>
+    /// Читает действия операторов за локальный календарный день.
+    /// Фильтр применяется к Equip и Tag, чтобы можно было быстро найти события оборудования.
+    /// </summary>
     public async Task<IReadOnlyList<OperatorActionDto>> GetOperatorActionsAsync(
         DateTime date,
         string? equipmentFilter,
@@ -94,6 +114,10 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
         return result;
     }
 
+    /// <summary>
+    /// Читает историю тревог за локальный календарный день.
+    /// Фильтр применяется к equipment.
+    /// </summary>
     public async Task<IReadOnlyList<AlarmHistoryDto>> GetAlarmHistoryAsync(
         DateTime date,
         string? equipmentFilter,
@@ -151,6 +175,9 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
         return result;
     }
 
+    /// <summary>
+    /// Открывает новое Npgsql-соединение. Каждый метод сам владеет своим connection lifetime.
+    /// </summary>
     private async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
     {
         var conn = new NpgsqlConnection(_connectionString);
@@ -158,6 +185,9 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
         return conn;
     }
 
+    /// <summary>
+    /// Добавляет параметры UTC-диапазона в SQL-команду.
+    /// </summary>
     private static void AddTimestampRange(
         NpgsqlCommand cmd,
         DateTimeOffset fromUtc,
@@ -167,12 +197,19 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
         cmd.Parameters.Add("to_utc", NpgsqlDbType.TimestampTz).Value = toUtc;
     }
 
+    /// <summary>
+    /// Добавляет исходный фильтр и ILIKE-вариант для SQL.
+    /// </summary>
     private static void AddFilter(NpgsqlCommand cmd, string filter)
     {
         cmd.Parameters.AddWithValue("filter", filter);
         cmd.Parameters.AddWithValue("like_filter", $"%{filter}%");
     }
 
+    /// <summary>
+    /// Переводит локальную дату пользователя в UTC-диапазон [день; следующий день).
+    /// Так корректно фильтруются timestamp with time zone значения в PostgreSQL.
+    /// </summary>
     private static (DateTimeOffset FromUtc, DateTimeOffset ToUtc) BuildLocalDayRangeUtc(DateTime date)
     {
         var startLocal = DateTime.SpecifyKind(date.Date, DateTimeKind.Unspecified);
@@ -184,6 +221,9 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
             new DateTimeOffset(endUtc, TimeSpan.Zero));
     }
 
+    /// <summary>
+    /// Безопасно читает DateTime/DateTimeOffset из Npgsql reader и возвращает локальное время.
+    /// </summary>
     private static DateTime ReadDateTime(NpgsqlDataReader reader, string name)
     {
         var ordinal = reader.GetOrdinal(name);
@@ -199,6 +239,9 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
         };
     }
 
+    /// <summary>
+    /// Читает строковое поле, заменяя null на пустую строку.
+    /// </summary>
     private static string ReadString(NpgsqlDataReader reader, string name)
     {
         var ordinal = reader.GetOrdinal(name);
@@ -207,6 +250,9 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
             : Convert.ToString(reader.GetValue(ordinal))?.Trim() ?? "";
     }
 
+    /// <summary>
+    /// Читает целочисленное поле, заменяя null на 0.
+    /// </summary>
     private static int ReadInt(NpgsqlDataReader reader, string name)
     {
         var ordinal = reader.GetOrdinal(name);
@@ -215,11 +261,17 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
             : Convert.ToInt32(reader.GetValue(ordinal), CultureInfo.InvariantCulture);
     }
 
+    /// <summary>
+    /// Нормализует пользовательский фильтр.
+    /// </summary>
     private static string NormalizeFilter(string? value)
     {
         return (value ?? "").Trim();
     }
 
+    /// <summary>
+    /// Очищает SCADA-localized текст вида @(...) перед отображением в WEB.
+    /// </summary>
     private static string CleanScadaText(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))

@@ -14,8 +14,14 @@ namespace TechMES.Infrastructure.PostgreSql.Messages;
 /// </summary>
 public sealed class PostgreSqlMessageStore : IMessageStore
 {
+    /// <summary>
+    /// Строка подключения к рабочей PostgreSQL БД, где лежат сообщения и отметки просмотра.
+    /// </summary>
     private readonly string _connectionString;
 
+    /// <summary>
+    /// Создает хранилище сообщений и читает строку подключения из конфигурации Runtime.Service.
+    /// </summary>
     public PostgreSqlMessageStore(IConfiguration configuration)
     {
         // Строку подключения держим в appsettings Runtime.Service.
@@ -131,6 +137,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
             ct);
     }
 
+    /// <summary>
+    /// Возвращает список сообщений для WEB-экрана Messages с учетом активности и отметок просмотра текущего устройства.
+    /// </summary>
     public async Task<IReadOnlyList<EquipmentMessageDto>> GetMessagesAsync(
         bool includeInactive,
         string deviceName,
@@ -203,6 +212,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         return result;
     }
 
+    /// <summary>
+    /// Считает активные сообщения для бейджей/индикаторов без загрузки всего списка.
+    /// </summary>
     public async Task<int> GetActiveMessageCountAsync(CancellationToken ct = default)
     {
         await using var conn = await OpenConnectionAsync(ct);
@@ -219,8 +231,11 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         return Convert.ToInt32(value);
     }
 
+    /// <summary>
+    /// Возвращает компактный снимок состояния таблиц Messages для watcher-а и диагностики Runtime.Service.
+    /// </summary>
     public async Task<MessageStorageSnapshot> GetStorageSnapshotAsync(
-    CancellationToken ct = default)
+        CancellationToken ct = default)
     {
         await using var conn = await OpenConnectionAsync(ct);
 
@@ -270,6 +285,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         };
     }
 
+    /// <summary>
+    /// Создает новое сообщение или обновляет существующее, затем повторно читает его в формате DTO для WEB.
+    /// </summary>
     public async Task<EquipmentMessageDto> SaveMessageAsync(
         SaveMessageRequest request,
         string userName,
@@ -293,6 +311,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
                ?? throw new InvalidOperationException($"Сообщение Id={request.Id} не найдено.");
     }
 
+    /// <summary>
+    /// Переключает активность сообщения. Делать это может только устройство/пользователь, который создал сообщение.
+    /// </summary>
     public async Task<bool> ToggleActivityAsync(
         long messageId,
         string userName,
@@ -320,6 +341,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         return affected > 0;
     }
 
+    /// <summary>
+    /// Удаляет сообщение и каскадно удаляет связанные отметки просмотра.
+    /// </summary>
     public async Task DeleteMessageAsync(long messageId, CancellationToken ct = default)
     {
         await using var conn = await OpenConnectionAsync(ct);
@@ -336,6 +360,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    /// <summary>
+    /// Ставит или обновляет отметку просмотра сообщения для текущего устройства.
+    /// </summary>
     public async Task MarkViewedAsync(long messageId, string deviceName, CancellationToken ct = default)
     {
         await using var conn = await OpenConnectionAsync(ct);
@@ -402,6 +429,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         }
     }
 
+    /// <summary>
+    /// Вставляет новую строку equip_message и возвращает сгенерированный PostgreSQL идентификатор.
+    /// </summary>
     private async Task<long> InsertMessageAsync(
         SaveMessageRequest request,
         string userName,
@@ -443,6 +473,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         return Convert.ToInt64(value);
     }
 
+    /// <summary>
+    /// Обновляет содержимое сообщения, не меняя автора и дату создания.
+    /// </summary>
     private async Task UpdateMessageAsync(
         SaveMessageRequest request,
         string userName,
@@ -473,6 +506,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    /// <summary>
+    /// Повторно читает одну запись после create/update, чтобы WEB получил все вычисленные поля просмотра.
+    /// </summary>
     private async Task<EquipmentMessageDto?> GetMessageByIdAsync(
         long id,
         string deviceName,
@@ -539,6 +575,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
             : null;
     }
 
+    /// <summary>
+    /// Открывает отдельное соединение Npgsql на время одной операции store-а.
+    /// </summary>
     private async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
     {
         var conn = new NpgsqlConnection(_connectionString);
@@ -546,6 +585,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         return conn;
     }
 
+    /// <summary>
+    /// Выполняет простой DDL/DML SQL без параметров. Используется при инициализации схемы.
+    /// </summary>
     private static async Task ExecuteNonQueryAsync(
         NpgsqlConnection conn,
         string sql,
@@ -555,6 +597,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    /// <summary>
+    /// Мапит текущую строку reader-а в DTO сообщения, включая вычисленные поля просмотра.
+    /// </summary>
     private static EquipmentMessageDto ReadMessage(NpgsqlDataReader reader)
     {
         return new EquipmentMessageDto
@@ -574,6 +619,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         };
     }
 
+    /// <summary>
+    /// Читает nullable text-колонку без повторения проверки IsDBNull в каждом SQL-маппере.
+    /// </summary>
     private static string? ReadNullableString(NpgsqlDataReader reader, string columnName)
     {
         var ordinal = reader.GetOrdinal(columnName);
@@ -582,6 +630,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
             : reader.GetString(ordinal);
     }
 
+    /// <summary>
+    /// Читает nullable timestamp-колонку из PostgreSQL.
+    /// </summary>
     private static DateTime? ReadNullableDateTime(NpgsqlDataReader reader, string columnName)
     {
         var ordinal = reader.GetOrdinal(columnName);
@@ -590,6 +641,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
             : reader.GetDateTime(ordinal);
     }
 
+    /// <summary>
+    /// Преобразует сохраненный текстовый тип сообщения в enum с безопасным fallback на Info.
+    /// </summary>
     private static MessageType ParseMessageType(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -604,6 +658,9 @@ public sealed class PostgreSqlMessageStore : IMessageStore
         return MessageType.Info;
     }
 
+    /// <summary>
+    /// Нормализует имя устройства/пользователя для сравнения в таблице просмотров.
+    /// </summary>
     private static string NormalizeDeviceName(string? value)
     {
         return string.IsNullOrWhiteSpace(value)

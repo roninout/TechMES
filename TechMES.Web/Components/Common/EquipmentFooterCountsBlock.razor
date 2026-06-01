@@ -22,16 +22,25 @@
 </RadzenStack>
 
 @code {
+    /// <summary>
+    /// Подписывается на scoped footer state текущей Blazor-сессии.
+    /// </summary>
     protected override void OnInitialized()
     {
         EquipmentFooterState.Changed += OnCountsChanged;
     }
 
+    /// <summary>
+    /// Перерисовывает footer badges после изменения счетчиков.
+    /// </summary>
     private void OnCountsChanged()
     {
         _ = InvokeAsync(StateHasChanged);
     }
 
+    /// <summary>
+    /// Отписывается от события, чтобы закрытая страница не держалась в памяти.
+    /// </summary>
     public void Dispose()
     {
         EquipmentFooterState.Changed -= OnCountsChanged;

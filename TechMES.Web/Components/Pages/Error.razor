@@ -14,13 +14,25 @@
 }
 
 @code {
+    /// <summary>
+    /// Текущий HTTP context, если error page рендерится во время server request.
+    /// </summary>
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
 
+    /// <summary>
+    /// Request id для диагностики ошибок в логах.
+    /// </summary>
     private string? RequestId { get; set; }
 
+    /// <summary>
+    /// true, если request id можно показать пользователю.
+    /// </summary>
     private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
 
+    /// <summary>
+    /// Получает request id из Activity или HttpContext.
+    /// </summary>
     protected override void OnInitialized()
     {
         RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;

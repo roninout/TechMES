@@ -67,12 +67,21 @@ else
 }
 
 @code {
+    /// <summary>
+    /// Ответ Runtime.Service с PLC references.
+    /// </summary>
     [Parameter]
     public ParamPlcRefsResponse? Response { get; set; }
 
+    /// <summary>
+    /// Событие выбора связанного оборудования из таблицы PLC refs.
+    /// </summary>
     [Parameter]
     public EventCallback<string> OnSelectEquipment { get; set; }
 
+    /// <summary>
+    /// Передает выбранное equipment name родительской Param-панели.
+    /// </summary>
     private Task SelectEquipmentAsync(string equipmentName)
     {
         return OnSelectEquipment.HasDelegate
@@ -80,6 +89,9 @@ else
             : Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Форматирует PLC reference value.
+    /// </summary>
     private static string FormatValue(ParamPlcRefDto row)
     {
         if (row.BooleanValue.HasValue)
@@ -90,6 +102,9 @@ else
             : row.ValueText;
     }
 
+    /// <summary>
+    /// CSS-класс для bool-значений PLC reference.
+    /// </summary>
     private static string GetValueClass(ParamPlcRefDto row)
     {
         if (row.BooleanValue == true)
@@ -101,6 +116,9 @@ else
         return "";
     }
 
+    /// <summary>
+    /// CSS-класс forced-состояния канала.
+    /// </summary>
     private static string GetForcedClass(ParamPlcRefDto row)
     {
         return row.ForceCmd == true
@@ -108,6 +126,9 @@ else
             : "param-ref-value-off";
     }
 
+    /// <summary>
+    /// Нормализует пустые значения для UI.
+    /// </summary>
     private static string DisplayValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? "-" : value;

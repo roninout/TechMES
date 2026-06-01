@@ -3,23 +3,40 @@ using TechMES.Contracts.Info;
 
 namespace TechMES.Web.Clients;
 
+/// <summary>
+/// HTTP-клиент WEB-слоя для Info-модуля.
+/// Инкапсулирует работу с карточкой оборудования, файлами, PDF view state и notes.
+/// </summary>
 public sealed class InfoApiClient
 {
+    /// <summary>
+    /// Фабрика именованного клиента RuntimeService.
+    /// </summary>
     private readonly IHttpClientFactory _httpClientFactory;
+
+    /// <summary>
+    /// Конфигурация WEB-проекта. Нужна для имени текущего клиента/устройства.
+    /// </summary>
     private readonly IConfiguration _configuration;
 
+    /// <summary>
+    /// Создает клиент Info API.
+    /// </summary>
     public InfoApiClient(IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
     }
 
+    /// <summary>
+    /// Имя WEB-клиента для author/audit полей notes.
+    /// </summary>
     public string DeviceName => _configuration["App:DeviceName"] ?? Environment.MachineName;
 
     /// <summary>
-    /// Loads the complete Info snapshot for one equipment item. Binary files are
-    /// not downloaded here; Runtime.Service returns metadata, and the client adds
-    /// stable content URLs for lazy image/PDF loading.
+    /// Загружает полный Info snapshot для одного оборудования.
+    /// Бинарные файлы здесь не скачиваются: Runtime.Service возвращает metadata,
+    /// а клиент добавляет стабильные ContentUrl для ленивой загрузки image/PDF.
     /// </summary>
     public async Task<EquipmentInfoDto> GetInfoAsync(string equipName, CancellationToken ct = default)
     {
@@ -37,7 +54,7 @@ public sealed class InfoApiClient
     }
 
     /// <summary>
-    /// Saves the editable long description and receives a refreshed Info snapshot.
+    /// Сохраняет редактируемое long description и получает обновленный Info snapshot.
     /// </summary>
     public async Task<EquipmentInfoDto> SaveDescriptionAsync(
         string equipName,
@@ -69,7 +86,7 @@ public sealed class InfoApiClient
     }
 
     /// <summary>
-    /// Reads remembered PDF page/zoom for a specific instruction or scheme file.
+    /// Читает сохраненные page/zoom для конкретного PDF instruction или scheme.
     /// </summary>
     public async Task<EquipmentInfoDocumentViewStateDto?> GetDocumentViewStateAsync(
         string equipName,
@@ -93,7 +110,7 @@ public sealed class InfoApiClient
     }
 
     /// <summary>
-    /// Persists remembered PDF page/zoom through Runtime.Service.
+    /// Сохраняет remembered PDF page/zoom через Runtime.Service.
     /// </summary>
     public async Task<EquipmentInfoDocumentViewStateDto> SaveDocumentViewStateAsync(
         string equipName,
@@ -117,7 +134,7 @@ public sealed class InfoApiClient
     }
 
     /// <summary>
-    /// Adds one note and passes the current device name for audit fields.
+    /// Добавляет одну note и передает имя текущего WEB-клиента для audit/author полей.
     /// </summary>
     public async Task<EquipmentInfoNoteDto> AddNoteAsync(
         string equipName,
@@ -144,7 +161,7 @@ public sealed class InfoApiClient
     }
 
     /// <summary>
-    /// Updates one existing note and returns the normalized server copy.
+    /// Обновляет существующую note и возвращает нормализованную server copy.
     /// </summary>
     public async Task<EquipmentInfoNoteDto> UpdateNoteAsync(
         string equipName,
@@ -172,7 +189,7 @@ public sealed class InfoApiClient
     }
 
     /// <summary>
-    /// Deletes one note from the current equipment item.
+    /// Удаляет одну note у текущего оборудования.
     /// </summary>
     public async Task DeleteNoteAsync(string equipName, long noteId, CancellationToken ct = default)
     {
@@ -186,15 +203,18 @@ public sealed class InfoApiClient
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Возвращает HttpClient, настроенный на Runtime.Service.
+    /// </summary>
     private HttpClient CreateClient()
     {
         return _httpClientFactory.CreateClient("RuntimeService");
     }
 
     /// <summary>
-    /// Converts file metadata into same-origin Web URLs. This is important for
-    /// tablets and other devices: their browser must request files from TechMES.Web,
-    /// not from Runtime.Service's localhost address on the client device.
+    /// Преобразует metadata файлов в same-origin WEB URLs.
+    /// Это важно для планшетов: браузер должен запрашивать файлы у TechMES.Web,
+    /// а не у localhost Runtime.Service на клиентском устройстве.
     /// </summary>
     private void ApplyContentUrls(EquipmentInfoDto info)
     {
@@ -217,6 +237,9 @@ public sealed class InfoApiClient
         }
     }
 
+    /// <summary>
+    /// Заполняет ContentUrl одного файла и добавляет cache-busting hash, если он есть.
+    /// </summary>
     private void ApplyContentUrl(EquipmentInfoFileDto file)
     {
         var relative = $"/api/runtime/info/files/{file.Kind}/{file.Id}";

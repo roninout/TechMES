@@ -51,7 +51,7 @@ builder.Services.AddScoped<EquipmentApiClient>();
 // Клиент Info-модуля: карточка оборудования, описание и notes.
 builder.Services.AddScoped<InfoApiClient>();
 
-// Read-only Param client. WEB calls Runtime.Service; CtApi details stay behind the service boundary.
+// Клиент Param-модуля. WEB вызывает Runtime.Service, а детали CtApi остаются за границей backend-а.
 builder.Services.AddScoped<ParamApiClient>();
 builder.Services.AddScoped<EventLogApiClient>();
 builder.Services.AddScoped<SoeApiClient>();
@@ -84,6 +84,10 @@ app.MapRazorComponents<App>()
 
 app.Run();
 
+/// <summary>
+/// Проксирует файлы Info-модуля через WEB-приложение.
+/// Браузер получает изображения/PDF с того же origin, поэтому планшетам не нужен прямой доступ к Runtime.Service.
+/// </summary>
 static async Task<IResult> ProxyRuntimeInfoFileAsync(
     string kind,
     long id,
@@ -133,6 +137,10 @@ static async Task<IResult> ProxyRuntimeInfoFileAsync(
         entityTag: entityTag);
 }
 
+/// <summary>
+/// Передает Runtime.Service условные cache-заголовки браузера.
+/// Это позволяет backend-у вернуть 304 и не пересылать фото/PDF повторно.
+/// </summary>
 static void ForwardConditionalCacheHeaders(
     HttpContext httpContext,
     HttpRequestMessage request)
@@ -152,6 +160,9 @@ static void ForwardConditionalCacheHeaders(
     }
 }
 
+/// <summary>
+/// Копирует важные file-заголовки Runtime.Service в ответ WEB-прокси.
+/// </summary>
 static void CopyRuntimeFileHeaders(
     HttpContext httpContext,
     HttpResponseMessage response)
@@ -163,6 +174,9 @@ static void CopyRuntimeFileHeaders(
         httpContext.Response.Headers.ContentDisposition = contentDisposition;
 }
 
+/// <summary>
+/// Безопасно читает ETag из ответа Runtime.Service.
+/// </summary>
 static EntityTagHeaderValue? TryReadEntityTag(HttpResponseMessage response)
 {
     if (!TryGetHeader(response, HeaderNames.ETag, out var etag))
@@ -173,6 +187,9 @@ static EntityTagHeaderValue? TryReadEntityTag(HttpResponseMessage response)
         : null;
 }
 
+/// <summary>
+/// Ищет HTTP-заголовок как в заголовках ответа, так и в заголовках content-а.
+/// </summary>
 static bool TryGetHeader(
     HttpResponseMessage response,
     string headerName,

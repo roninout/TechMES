@@ -22,23 +22,69 @@ namespace TechMES.Infrastructure.CtApi.Gateways;
 /// </summary>
 public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
 {
+    /// <summary>
+    /// Plant SCADA таблица tag-ов, из которой WPF строил каталог оборудования.
+    /// </summary>
     private const string TagTableName = "Tag";
+
+    /// <summary>
+    /// Фильтр tag-ов, по которым находятся реальные узлы оборудования.
+    /// </summary>
     private const string HashCodeTagFilter = "Tag=*_HASHCODE";
+
+    /// <summary>
+    /// Фильтр tag-ов, по которым находятся group nodes.
+    /// </summary>
     private const string GroupTagFilter = "Tag=*_EQUIP";
 
+    /// <summary>
+    /// Имя поля equipment в ответе ctFind.
+    /// </summary>
     private const string EquipmentField = "EQUIPMENT";
+
+    /// <summary>
+    /// Имя поля tag в ответе ctFind.
+    /// </summary>
     private const string TagField = "TAG";
+
+    /// <summary>
+    /// Имя поля комментария/описания в ответе ctFind.
+    /// </summary>
     private const string CommentField = "COMMENT";
 
+    /// <summary>
+    /// Низкоуровневый CtApi-клиент для Find и Cicode-вызовов.
+    /// </summary>
     private readonly ICtApiNativeClient _nativeClient;
+
+    /// <summary>
+    /// Настройки каталога: cluster, aliases и разрешенные SCADA-типы.
+    /// </summary>
     private readonly IOptions<EquipmentCatalogOptions> _options;
+
+    /// <summary>
+    /// Логгер загрузки и диагностики каталога.
+    /// </summary>
     private readonly ILogger<CtApiEquipmentCatalogProvider> _logger;
 
+    /// <summary>
+    /// Защищает кэш от параллельной перезагрузки несколькими HTTP-запросами.
+    /// </summary>
     private readonly SemaphoreSlim _loadGate = new(1, 1);
 
+    /// <summary>
+    /// In-memory кэш дерева оборудования, построенного из Plant SCADA.
+    /// </summary>
     private List<EquipmentDto> _cache = [];
+
+    /// <summary>
+    /// Время последней успешной загрузки кэша.
+    /// </summary>
     private DateTime _lastLoadedAt = DateTime.MinValue;
 
+    /// <summary>
+    /// Создает CtApi-провайдер каталога оборудования.
+    /// </summary>
     public CtApiEquipmentCatalogProvider(
         ICtApiNativeClient nativeClient,
         IOptions<EquipmentCatalogOptions> options,
@@ -49,6 +95,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         _logger = logger;
     }
 
+    /// <summary>
+    /// Предварительно загружает каталог при старте Runtime.Service.
+    /// </summary>
     public async Task InitializeAsync(CancellationToken ct = default)
     {
         /*
@@ -66,6 +115,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         }
     }
 
+    /// <summary>
+    /// Возвращает каталог оборудования из кэша, а при пустом кэше выполняет загрузку через CtApi.
+    /// </summary>
     public async Task<EquipmentListResponse> GetEquipmentListAsync(CancellationToken ct = default)
     {
         /*
@@ -106,6 +158,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         };
     }
 
+    /// <summary>
+    /// Ищет оборудование по имени в текущем кэше.
+    /// </summary>
     public async Task<EquipmentDto?> GetEquipmentByNameAsync(string name, CancellationToken ct = default)
     {
         if (_cache.Count == 0)
@@ -117,6 +172,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
             string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Меняет favorite-флаг только в runtime-кэше. Постоянное хранение избранного делает Info/PostgreSQL слой.
+    /// </summary>
     public async Task<EquipmentDto?> SetFavoriteAsync(string name, bool isFavorite, CancellationToken ct = default)
     {
         if (_cache.Count == 0)
@@ -141,6 +199,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         return items.FirstOrDefault();
     }
 
+    /// <summary>
+    /// Полностью перестраивает кэш каталога: читает plain equipment, group nodes и связи group-child.
+    /// </summary>
     private async Task ReloadAsync(CancellationToken ct)
     {
         await _loadGate.WaitAsync(ct);
@@ -344,6 +405,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         }
     }
 
+    /// <summary>
+    /// Читает реальный SCADA type оборудования через EquipGetProperty, как это делал WPF.
+    /// </summary>
     private async Task<string> GetEquipmentTypeAsync(string equipmentName, CancellationToken ct)
     {
         var escapedEquipmentName = EscapeCicodeString(equipmentName);
@@ -354,6 +418,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         return (value ?? "").Trim();
     }
 
+    /// <summary>
+    /// Читает location из Custom1. Ошибка не ломает каталог, а возвращает пустое значение.
+    /// </summary>
     private async Task<string> GetEquipmentLocationAsync(string equipmentName, CancellationToken ct)
     {
         try
@@ -371,6 +438,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         }
     }
 
+    /// <summary>
+    /// Через EquipRefBrowse читает дочерние элементы группы оборудования.
+    /// </summary>
     private async Task<List<string>> GetEquipmentGroupRefsAsync(string equipmentName, CancellationToken ct)
     {
         var result = new List<string>();
@@ -434,6 +504,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         return result;
     }
 
+    /// <summary>
+    /// Преобразует строки ctFind(Tag) в промежуточные записи оборудования.
+    /// </summary>
     private static IEnumerable<SourceEquipment> ExtractTagRows(
         IEnumerable<Dictionary<string, string>> rows)
     {
@@ -450,6 +523,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         }
     }
 
+    /// <summary>
+    /// Собирает набор SCADA-типов, которые разрешено показывать в каталоге.
+    /// </summary>
     private static HashSet<string> BuildScadaAllowedTypes(
         EquipmentCatalogOptions options)
     {
@@ -496,6 +572,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         return result;
     }
 
+    /// <summary>
+    /// Мапит SCADA Type в короткую WEB-группу типа оборудования: AI, DI, DO, Motor, VGA и т.д.
+    /// </summary>
     private static EquipmentTypeGroup MapTypeGroup(
         string scadaTypeName,
         EquipmentCatalogOptions options)
@@ -554,6 +633,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         };
     }
 
+    /// <summary>
+    /// Безопасно достает поле из строки ctFind с учетом возможного отличия регистра имени поля.
+    /// </summary>
     private static string GetValue(Dictionary<string, string> row, string fieldName)
     {
         if (string.IsNullOrWhiteSpace(fieldName))
@@ -573,6 +655,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         return pair.Value ?? "";
     }
 
+    /// <summary>
+    /// Выделяет станцию из имени оборудования по первому сегменту до точки.
+    /// </summary>
     private static string ExtractStation(string equipmentName)
     {
         if (string.IsNullOrWhiteSpace(equipmentName))
@@ -585,6 +670,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
             : "";
     }
 
+    /// <summary>
+    /// Нормализует SCADA Type для switch-а: убирает разделители и приводит к upper-case.
+    /// </summary>
     private static string NormalizeType(string value)
     {
         return new string(
@@ -594,6 +682,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
                 .ToArray());
     }
 
+    /// <summary>
+    /// Экранирует строку перед подстановкой в Cicode-команду.
+    /// </summary>
     private static string EscapeCicodeString(string value)
     {
         /*
@@ -603,6 +694,9 @@ public sealed class CtApiEquipmentCatalogProvider : IEquipmentCatalogProvider
         return (value ?? "").Replace("\"", "\"\"");
     }
 
+    /// <summary>
+    /// Сырая строка оборудования, полученная из таблицы Tag до построения EquipmentDto.
+    /// </summary>
     private sealed record SourceEquipment(
         string Equipment,
         string Tag,

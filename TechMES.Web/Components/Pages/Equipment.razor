@@ -211,38 +211,112 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Текст пункта фильтра "все станции".
+    /// </summary>
     private const string AllStationsText = "All stations";
+
+    /// <summary>
+    /// Текст пункта фильтра "все типы".
+    /// </summary>
     private const string AllTypesText = "All types";
+
+    /// <summary>
+    /// Специальный пункт фильтра по избранному оборудованию.
+    /// </summary>
     private const string FavoritesTypeText = "Favorites";
+
+    /// <summary>
+    /// ParentNodeId корневых узлов дерева.
+    /// </summary>
     private const string RootParentNodeId = "0";
+
+    /// <summary>
+    /// Базовый отступ description-строки в дереве оборудования.
+    /// </summary>
     private const int TreeDescriptionBaseIndent = 73;
 
+    /// <summary>
+    /// Полный каталог оборудования, полученный от Runtime.Service.
+    /// </summary>
     private List<EquipmentDto> _allEquipments = [];
+
+    /// <summary>
+    /// Плоское представление видимых строк дерева после фильтров и раскрытия групп.
+    /// </summary>
     private List<TreeRow> _treeRows = [];
+
+    /// <summary>
+    /// Подсказки RadzenAutoComplete. Сейчас строятся только по equipment name.
+    /// </summary>
     private List<string> _searchSuggestions = [];
 
+    /// <summary>
+    /// Текущее выбранное оборудование/группа.
+    /// </summary>
     private EquipmentDto? _selectedEquipment;
 
+    /// <summary>
+    /// Список станций для первого фильтра.
+    /// </summary>
     private List<string> _stationItems = [AllStationsText];
+
+    /// <summary>
+    /// Список типов для второго фильтра.
+    /// </summary>
     private List<string> _typeItems = [AllTypesText];
 
+    /// <summary>
+    /// NodeId раскрытых group-узлов дерева.
+    /// </summary>
     private readonly HashSet<string> _expandedNodeIds = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Выбранная станция в фильтре.
+    /// </summary>
     private string _selectedStation = AllStationsText;
+
+    /// <summary>
+    /// Выбранный тип или Favorites-фильтр.
+    /// </summary>
     private string _selectedType = AllTypesText;
+
+    /// <summary>
+    /// Текст поиска по каталогу.
+    /// </summary>
     private string _searchText = "";
 
+    /// <summary>
+    /// true, пока загружается каталог оборудования.
+    /// </summary>
     private bool _isLoading;
+
+    /// <summary>
+    /// true, пока сохраняется favorite-флаг выбранного оборудования.
+    /// </summary>
     private bool _isFavoriteSaving;
 
+    /// <summary>
+    /// Status message страницы Equipment.
+    /// </summary>
     private string _statusText = "";
+
+    /// <summary>
+    /// Стиль status alert страницы Equipment.
+    /// </summary>
     private AlertStyle _statusStyle = AlertStyle.Info;
 
+    /// <summary>
+    /// Определяет режим правой панели по URL: Info или Param.
+    /// </summary>
     private bool IsParamMode =>
         NavigationManager
             .ToBaseRelativePath(NavigationManager.Uri)
             .StartsWith("equipment/param", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Подписывается на route/QR события и загружает каталог оборудования.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         NavigationManager.LocationChanged += OnLocationChanged;
@@ -250,11 +324,17 @@
         await LoadAsync();
     }
 
+    /// <summary>
+    /// Обновляет layout, когда пользователь переключается между Info и Param route.
+    /// </summary>
     private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
     {
         _ = InvokeAsync(StateHasChanged);
     }
 
+    /// <summary>
+    /// Загружает каталог оборудования из Runtime.Service и восстанавливает прежний выбор.
+    /// </summary>
     private async Task LoadAsync()
     {
         _isLoading = true;
@@ -312,17 +392,26 @@
         }
     }
 
+    /// <summary>
+    /// Применяет текущие filters, стараясь сохранить выбранный узел.
+    /// </summary>
     private void ApplyFilters()
     {
         ApplyFilters(_selectedEquipment?.Name, _selectedEquipment?.NodeId);
     }
 
+    /// <summary>
+    /// Обновляет поисковый текст из RadzenAutoComplete и перестраивает дерево.
+    /// </summary>
     private void OnSearchChanged(object? value)
     {
         _searchText = Convert.ToString(value) ?? string.Empty;
         ApplyFilters();
     }
 
+    /// <summary>
+    /// Очищает search filter по кнопке X.
+    /// </summary>
     private void ClearSearch()
     {
         if (string.IsNullOrWhiteSpace(_searchText))
@@ -332,6 +421,10 @@
         ApplyFilters();
     }
 
+    /// <summary>
+    /// Главный filter pipeline: выбирает подходящие узлы, добавляет родителей,
+    /// раскрывает нужные группы и пересобирает видимые строки дерева.
+    /// </summary>
     private void ApplyFilters(string? preferredName, string? preferredNodeId)
     {
         var directlyMatched = _allEquipments
@@ -377,6 +470,9 @@
         ApplySelectionAfterFilter(preferredName, preferredNodeId);
     }
 
+    /// <summary>
+    /// Проверяет, проходит ли equipment текущие station/type/search filters.
+    /// </summary>
     private bool MatchesFilters(EquipmentDto equipment)
     {
         if (!string.Equals(_selectedStation, AllStationsText, StringComparison.OrdinalIgnoreCase)
@@ -412,12 +508,18 @@
         return true;
     }
 
+    /// <summary>
+    /// true, если активен фильтр, который может спрятать найденные дочерние узлы внутри групп.
+    /// </summary>
     private bool IsAnyNarrowFilterActive()
     {
         return !string.Equals(_selectedType, AllTypesText, StringComparison.OrdinalIgnoreCase)
             || !string.IsNullOrWhiteSpace(_searchText);
     }
 
+    /// <summary>
+    /// Добавляет узел и всех его родителей в набор видимых node ids.
+    /// </summary>
     private void IncludeNodeWithParents(
         EquipmentDto equipment,
         HashSet<string> includedNodeIds)
@@ -444,6 +546,9 @@
         }
     }
 
+    /// <summary>
+    /// Добавляет дочерние узлы группы. Оставлено рекурсивным на случай многоуровневого дерева.
+    /// </summary>
     private void IncludeNodeWithChildren(
         EquipmentDto equipment,
         HashSet<string> includedNodeIds)
@@ -464,6 +569,9 @@
         }
     }
 
+    /// <summary>
+    /// true, если выбран фильтр Type = Equipment.
+    /// </summary>
     private bool IsEquipmentTypeFilterActive()
     {
         return string.Equals(
@@ -472,21 +580,33 @@
             StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// true, если выбран фильтр Favorites.
+    /// </summary>
     private bool IsFavoritesTypeFilterActive()
     {
         return IsFavoritesType(_selectedType);
     }
 
+    /// <summary>
+    /// Проверяет строку типа на специальное значение Favorites.
+    /// </summary>
     private static bool IsFavoritesType(string? typeText)
     {
         return string.Equals(typeText, FavoritesTypeText, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// true для обычного оборудования, а не group/child wrapper.
+    /// </summary>
     private static bool IsPhysicalEquipment(EquipmentDto equipment)
     {
         return !equipment.IsGroup && !equipment.IsEquipmentChildNode;
     }
 
+    /// <summary>
+    /// Раскрывает все родительские группы выбранного или найденного оборудования.
+    /// </summary>
     private void ExpandParents(EquipmentDto equipment)
     {
         var current = equipment;
@@ -505,6 +625,9 @@
         }
     }
 
+    /// <summary>
+    /// Строит видимое плоское дерево из включенных node ids и состояния expanded nodes.
+    /// </summary>
     private List<TreeRow> BuildTreeRows(HashSet<string> includedNodeIds)
     {
         var includedItems = _allEquipments
@@ -549,6 +672,9 @@
         }
     }
 
+    /// <summary>
+    /// После пересборки дерева выбирает preferred node или первый видимый узел.
+    /// </summary>
     private void ApplySelectionAfterFilter(string? preferredName, string? preferredNodeId)
     {
         if (_treeRows.Count == 0)
@@ -577,11 +703,17 @@
         SetSelectedEquipment(selected ?? _treeRows.First().Node);
     }
 
+    /// <summary>
+    /// Выбирает узел дерева по клику пользователя.
+    /// </summary>
     private void SelectEquipment(EquipmentDto equipment)
     {
         SetSelectedEquipment(equipment);
     }
 
+    /// <summary>
+    /// Выбирает оборудование по имени из Param reference page.
+    /// </summary>
     private Task SelectEquipmentByNameAsync(string equipmentName)
     {
         equipmentName = (equipmentName ?? string.Empty).Trim();
@@ -622,6 +754,9 @@
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Устанавливает выбранное оборудование и публикует его в SelectedEquipmentState.
+    /// </summary>
     private void SetSelectedEquipment(EquipmentDto? equipment)
     {
         _selectedEquipment = equipment;
@@ -631,6 +766,9 @@
         SelectedEquipmentState.SetSelectedEquipment(equipment);
     }
 
+    /// <summary>
+    /// Переключает favorite-флаг выбранного оборудования с optimistic UI update.
+    /// </summary>
     private async Task ToggleSelectedFavoriteAsync()
     {
         if (_selectedEquipment is null || _selectedEquipment.IsGroup || _isFavoriteSaving)
@@ -673,6 +811,9 @@
         }
     }
 
+    /// <summary>
+    /// Обновляет favorite-флаг во всех локальных копиях оборудования с тем же именем.
+    /// </summary>
     private void SetFavoriteFlagInLoadedEquipments(string equipmentName, bool isFavorite)
     {
         foreach (var equipment in _allEquipments)
@@ -694,6 +835,9 @@
         }
     }
 
+    /// <summary>
+    /// Раскрывает или сворачивает group-узел дерева.
+    /// </summary>
     private void ToggleNode(EquipmentDto equipment)
     {
         var nodeId = GetNodeId(equipment);
@@ -706,6 +850,9 @@
         ApplyFilters(_selectedEquipment?.Name, _selectedEquipment?.NodeId);
     }
 
+    /// <summary>
+    /// Возвращает inline style строки дерева с учетом selected/group/child состояния.
+    /// </summary>
     private string GetTreeRowStyle(TreeRow row)
     {
         var selected = IsSelected(row.Node);
@@ -724,6 +871,9 @@
         return baseStyle;
     }
 
+    /// <summary>
+    /// Проверяет, выбран ли переданный узел дерева.
+    /// </summary>
     private bool IsSelected(EquipmentDto equipment)
     {
         return string.Equals(
@@ -732,6 +882,9 @@
             StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Преобразует текст фильтра в EquipmentTypeGroup для badge в dropdown.
+    /// </summary>
     private static bool TryGetTypeGroup(string? typeText, out EquipmentTypeGroup typeGroup)
     {
         if (Enum.TryParse(typeText, ignoreCase: true, out typeGroup))
@@ -741,11 +894,17 @@
         return false;
     }
 
+    /// <summary>
+    /// Выбирает Material icon для favorite-состояния.
+    /// </summary>
     private static string GetFavoriteIcon(EquipmentDto equipment)
     {
         return equipment.IsFavorite ? "star" : "star_border";
     }
 
+    /// <summary>
+    /// Возвращает CSS-класс favorite-кнопки с учетом активного состояния.
+    /// </summary>
     private static string GetFavoriteButtonClass(EquipmentDto equipment)
     {
         return equipment.IsFavorite
@@ -753,12 +912,18 @@
             : "equipment-favorite-button";
     }
 
+    /// <summary>
+    /// Проверяет, нужно ли показывать location.
+    /// </summary>
     private static bool ShouldShowLocation(EquipmentDto equipment)
     {
         return !string.IsNullOrWhiteSpace(equipment.Location)
             && !string.Equals(equipment.Location, "Unknown", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Форматирует location из module.channel в человекочитаемый вид.
+    /// </summary>
     private static string FormatLocation(string? raw)
     {
         raw = (raw ?? "").Trim();
@@ -777,6 +942,9 @@
         return raw;
     }
 
+    /// <summary>
+    /// Возвращает описание оборудования или дефис.
+    /// </summary>
     private static string GetDescriptionText(EquipmentDto equipment)
     {
         return string.IsNullOrWhiteSpace(equipment.Description)
@@ -784,6 +952,9 @@
             : equipment.Description;
     }
 
+    /// <summary>
+    /// Возвращает стабильный NodeId; для старых DTO fallback-ом служит Name.
+    /// </summary>
     private static string GetNodeId(EquipmentDto equipment)
     {
         return string.IsNullOrWhiteSpace(equipment.NodeId)
@@ -791,6 +962,9 @@
             : equipment.NodeId;
     }
 
+    /// <summary>
+    /// Достраивает NodeId/ParentNodeId для provider-ов, которые вернули старую плоскую модель.
+    /// </summary>
     private static void NormalizeTreeFields(List<EquipmentDto> equipments)
     {
         // InMemory provider и будущие адаптеры могут вернуть старую плоскую модель.
@@ -830,6 +1004,9 @@
         }
     }
 
+    /// <summary>
+    /// Строит подсказки поиска только из equipment name.
+    /// </summary>
     private static List<string> BuildSearchSuggestions(IEnumerable<EquipmentDto> equipments)
     {
         return equipments
@@ -841,6 +1018,9 @@
             .ToList();
     }
 
+    /// <summary>
+    /// Проверяет, нужно ли показывать маленькие Info-иконки в строке дерева.
+    /// </summary>
     private static bool HasInfoIndicators(EquipmentDto equipment)
     {
         return equipment.PhotoCount > 0
@@ -849,15 +1029,18 @@
             || equipment.NoteCount > 0;
     }
 
+    /// <summary>
+    /// Перерисовывает дерево, когда InfoPanel обновила счетчики фото/PDF/схем/notes.
+    /// </summary>
     private void OnInfoCountsChanged()
     {
         StateHasChanged();
     }
 
     /// <summary>
-    /// Handles QR text published by the global header scanner and converts it into
-    /// the normal equipment selection flow: choose station/type filters, expand
-    /// parents, select the node, and refresh the details panel.
+    /// Обрабатывает QR-текст, опубликованный глобальным scanner-ом из header.
+    /// Дальше используется обычный сценарий выбора оборудования:
+    /// выставить station/type filters, раскрыть родителей, выбрать узел и обновить правую панель.
     /// </summary>
     private Task SelectEquipmentFromQrAsync(string qrText)
     {
@@ -912,6 +1095,9 @@
         });
     }
 
+    /// <summary>
+    /// Ищет оборудование по QR payload: exact match, starts-with и contains по Name/DisplayName.
+    /// </summary>
     private EquipmentDto? FindEquipmentForQrText(string qrText)
     {
         qrText = (qrText ?? string.Empty).Trim();
@@ -930,12 +1116,18 @@
             ?? items.FirstOrDefault(x => x.DisplayName.Contains(qrText, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Одна видимая строка дерева после применения фильтров и expanded state.
+    /// </summary>
     private sealed record TreeRow(
         EquipmentDto Node,
         int Level,
         bool HasChildren,
         bool IsExpanded);
 
+    /// <summary>
+    /// Отписывается от route/QR событий и очищает footer state при уходе со страницы.
+    /// </summary>
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;

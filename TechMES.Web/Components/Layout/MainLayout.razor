@@ -79,8 +79,8 @@
     private QrScannerDialog? _qrScannerDialog;
 
     /// <summary>
-    /// Opens the global QR scanner from the header bar. The dialog component owns
-    /// camera lifecycle; the layout only places the command near the app logo.
+    /// Открывает глобальный QR-сканер из header bar.
+    /// Жизненным циклом камеры управляет сам dialog-компонент.
     /// </summary>
     private Task OpenQrScannerAsync()
     {
@@ -88,8 +88,8 @@
     }
 
     /// <summary>
-    /// Publishes scanned QR text to whichever page is currently interested in it.
-    /// Equipment.razor subscribes and selects the matching equipment node.
+    /// Публикует считанный QR-текст в scoped state.
+    /// Страница Equipment подписывается на это событие и выбирает найденный узел оборудования.
     /// </summary>
     private Task OnQrScannedAsync(string qrText)
     {

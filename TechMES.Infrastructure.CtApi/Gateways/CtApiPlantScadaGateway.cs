@@ -20,8 +20,19 @@ namespace TechMES.Infrastructure.CtApi.Gateways;
 /// </summary>
 public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposable
 {
+    /// <summary>
+    /// Низкоуровневый wrapper над CtApi.dll. Gateway не вызывает legacy-код напрямую.
+    /// </summary>
     private readonly ICtApiNativeClient _nativeClient;
+
+    /// <summary>
+    /// Текущие настройки CtApi из appsettings Runtime.Service.
+    /// </summary>
     private readonly IOptions<CtApiOptions> _options;
+
+    /// <summary>
+    /// Логгер для диагностики подключения, чтения и записи tag-ов.
+    /// </summary>
     private readonly ILogger<CtApiPlantScadaGateway> _logger;
 
     /// <summary>
@@ -30,10 +41,24 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
     /// </summary>
     private readonly SemaphoreSlim _apiGate = new(1, 1);
 
+    /// <summary>
+    /// Последний известный статус соединения, который отдается endpoint-у диагностики.
+    /// </summary>
     private PlantScadaConnectionStatus _status = PlantScadaConnectionStatus.Disconnected;
+
+    /// <summary>
+    /// Человекочитаемое описание последнего состояния или ошибки соединения.
+    /// </summary>
     private string _lastMessage = "CtApi adapter ещё не инициализирован.";
+
+    /// <summary>
+    /// Момент последнего изменения состояния. Пока используется как внутренняя диагностика.
+    /// </summary>
     private DateTime _lastStateChangedAt = DateTime.Now;
 
+    /// <summary>
+    /// Создает Plant SCADA gateway поверх низкоуровневого CtApi native-клиента.
+    /// </summary>
     public CtApiPlantScadaGateway(ICtApiNativeClient nativeClient, IOptions<CtApiOptions> options, ILogger<CtApiPlantScadaGateway> logger)
     {
         _nativeClient = nativeClient;
@@ -41,6 +66,9 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
         _logger = logger;
     }
 
+    /// <summary>
+    /// Открывает CtApi при старте Runtime.Service. Ошибка не валит сервис, а переводит gateway в Disconnected.
+    /// </summary>
     public async Task InitializeAsync(CancellationToken ct = default)
     {
         await _apiGate.WaitAsync(ct);
@@ -80,6 +108,9 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
         }
     }
 
+    /// <summary>
+    /// Возвращает текущее состояние CtApi и при необходимости пробует выполнить probe/reconnect.
+    /// </summary>
     public async Task<PlantScadaHealthResponse> GetHealthAsync(CancellationToken ct = default)
     {
         /*
@@ -108,7 +139,7 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
         {
             /*
                 Если связь уже считается потерянной,
-                health worker будет периодически пытаться восстановить её.
+                фоновая проверка будет периодически пытаться восстановить её.
             */
             await TryReconnectAsync(ct);
         }
@@ -123,6 +154,9 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
         };
     }
 
+    /// <summary>
+    /// Выполняет легкую проверку живости CtApi через native-клиент.
+    /// </summary>
     private async Task<bool> ProbeConnectionAsync(CancellationToken ct)
     {
         await _apiGate.WaitAsync(ct);
@@ -142,6 +176,9 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
         }
     }
 
+    /// <summary>
+    /// Пытается закрыть старое соединение и открыть CtApi заново после ошибки связи.
+    /// </summary>
     private async Task TryReconnectAsync(CancellationToken ct)
     {
         await _apiGate.WaitAsync(ct);
@@ -183,6 +220,9 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
         }
     }
 
+    /// <summary>
+    /// Читает один SCADA tag через CtApi и возвращает контролируемый DTO-ответ для Runtime endpoint-а.
+    /// </summary>
     public async Task<ScadaTagReadResponse> ReadTagAsync(string tagName, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(tagName))
@@ -243,6 +283,9 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
         }
     }
 
+    /// <summary>
+    /// Записывает один SCADA tag, если запись разрешена настройкой CtApi:AllowWrites.
+    /// </summary>
     public async Task<ScadaTagWriteResponse> WriteTagAsync(ScadaTagWriteRequest request, CancellationToken ct = default)
     {
         var options = _options.Value;
@@ -323,6 +366,9 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
         }
     }
 
+    /// <summary>
+    /// Закрывает CtApi-соединение при остановке DI-контейнера.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         await _apiGate.WaitAsync();
@@ -342,6 +388,9 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
         }
     }
 
+    /// <summary>
+    /// Обновляет локальное состояние gateway, которое затем видит endpoint диагностики.
+    /// </summary>
     private void SetState(PlantScadaConnectionStatus status, string message)
     {
         _status = status;

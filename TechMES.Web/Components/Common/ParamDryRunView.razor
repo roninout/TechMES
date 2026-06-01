@@ -97,12 +97,21 @@ else
 }
 
 @code {
+    /// <summary>
+    /// Ответ Runtime.Service с DryRun settings и связанными DI/AI.
+    /// </summary>
     [Parameter]
     public ParamDryRunResponse? Response { get; set; }
 
+    /// <summary>
+    /// Событие выбора связанного оборудования из DryRun карточек.
+    /// </summary>
     [Parameter]
     public EventCallback<string> OnSelectEquipment { get; set; }
 
+    /// <summary>
+    /// Передает выбранное equipment name родительской Param-панели.
+    /// </summary>
     private Task SelectEquipmentAsync(string equipmentName)
     {
         return OnSelectEquipment.HasDelegate
@@ -110,6 +119,9 @@ else
             : Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Форматирует значение связанного DI.
+    /// </summary>
     private static string FormatDiValue(ParamDiDoRefDto row)
     {
         if (row.BooleanValue.HasValue)
@@ -120,6 +132,9 @@ else
             : row.ValueText;
     }
 
+    /// <summary>
+    /// CSS-класс для значения связанного DI.
+    /// </summary>
     private static string GetDiValueClass(ParamDiDoRefDto row)
     {
         if (row.BooleanValue == true)
@@ -131,6 +146,9 @@ else
         return "";
     }
 
+    /// <summary>
+    /// Нормализует пустые значения для UI.
+    /// </summary>
     private static string DisplayValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? "-" : value;

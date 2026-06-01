@@ -8,7 +8,18 @@ namespace TechMES.Contracts.Messages;
 /// </summary>
 public enum MessageType
 {
+    /// <summary>
+    /// Информационное сообщение.
+    /// </summary>
     Info = 0,
+
+    /// <summary>
+    /// Предупреждение.
+    /// </summary>
     Warning = 1,
+
+    /// <summary>
+    /// Критичное сообщение.
+    /// </summary>
     Critical = 2
 }

@@ -16,9 +16,18 @@ public sealed class SaveMessageRequest
     /// </summary>
     public long Id { get; set; }
 
+    /// <summary>
+    /// Тип сообщения.
+    /// </summary>
     public MessageType MessageType { get; set; } = MessageType.Info;
 
+    /// <summary>
+    /// Тема сообщения.
+    /// </summary>
     public string MessageSubject { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Текст сообщения.
+    /// </summary>
     public string MessageText { get; set; } = string.Empty;
 }

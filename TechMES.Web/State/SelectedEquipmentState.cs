@@ -13,6 +13,10 @@ namespace TechMES.Web.State;
 /// </summary>
 public sealed class SelectedEquipmentState
 {
+    /// <summary>
+    /// Внутреннее значение выбранного оборудования.
+    /// Наружу отдается только read-only property, чтобы изменение всегда проходило через SetSelectedEquipment.
+    /// </summary>
     private EquipmentDto? _selectedEquipment;
 
     /// <summary>

@@ -1,19 +1,27 @@
 namespace TechMES.Web.State;
 
 /// <summary>
-/// Scoped bridge between the global QR scanner in MainLayout and pages that know
-/// how to interpret scanned QR text. In Blazor Server this state belongs to one
-/// browser circuit, so each opened browser tab gets its own scanner event stream.
+/// Scoped-мост между глобальным QR scanner в MainLayout и страницами,
+/// которые умеют интерпретировать QR-текст.
+/// В Blazor Server это состояние принадлежит одному browser circuit,
+/// поэтому каждая вкладка браузера получает собственный поток QR-событий.
 /// </summary>
 public sealed class QrScannerState
 {
+    /// <summary>
+    /// Событие успешного сканирования QR.
+    /// Подписчик сам решает, как трактовать текст: выбрать оборудование, показать ошибку и т.д.
+    /// </summary>
     public event Func<string, Task>? Scanned;
 
+    /// <summary>
+    /// Последний считанный QR-текст. Полезно для диагностики и повторной обработки.
+    /// </summary>
     public string? LastScannedText { get; private set; }
 
     /// <summary>
-    /// Stores the latest scanned value and notifies active page components.
-    /// The scanner itself does not select equipment; Equipment.razor owns that rule.
+    /// Сохраняет последнее значение и уведомляет активные страницы.
+    /// Сам scanner не выбирает оборудование; правило выбора живет в Equipment.razor.
     /// </summary>
     public async Task NotifyScannedAsync(string qrText)
     {

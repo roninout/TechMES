@@ -1,10 +1,12 @@
 @using TechMES.Contracts.Equipment
 @using TechMES.Contracts.Info
 @using TechMES.Contracts.Param
+@using System.Globalization
 @using TechMES.Web.Settings
 @inject ParamApiClient ParamApi
 @inject InfoApiClient InfoApi
 @inject Microsoft.Extensions.Options.IOptions<ParamUiOptions> ParamOptions
+@inject DialogService DialogService
 @inject NotificationService NotificationService
 @implements IDisposable
 
@@ -95,6 +97,68 @@
             </RadzenAlert>
         }
 
+        @if (_writeItem is not null)
+        {
+            <RadzenCard class="param-write-card">
+                <RadzenStack Gap="12px">
+                    <RadzenStack Orientation="Orientation.Horizontal"
+                                 AlignItems="AlignItems.Center"
+                                 JustifyContent="JustifyContent.SpaceBetween">
+                        <RadzenStack Gap="2px">
+                            <RadzenText Text="@($"Write: {_writeItem.Name}")"
+                                        TextStyle="TextStyle.Subtitle1" />
+                            <RadzenText Text="@($"Current: {FormatValue(_writeItem)}")"
+                                        TextStyle="TextStyle.Caption"
+                                        Style="color: gray;" />
+                        </RadzenStack>
+
+                        <RadzenButton Icon="close"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Size="ButtonSize.Small"
+                                      Disabled="@_isWriting"
+                                      Click="@CancelParamWrite" />
+                    </RadzenStack>
+
+                    @if (_writeItem.Kind == ParamValueKind.Boolean)
+                    {
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+                            <RadzenCheckBox TValue="bool"
+                                            @bind-Value="_writeBooleanValue"
+                                            Disabled="@_isWriting" />
+                            <RadzenLabel Text="@(_writeBooleanValue ? "on" : "off")" />
+                        </RadzenStack>
+                    }
+                    else
+                    {
+                        <RadzenTextBox @bind-Value="_writeValueText"
+                                       Placeholder="New value..."
+                                       Disabled="@_isWriting"
+                                       Style="width: 260px;" />
+                    }
+
+                    <RadzenTextArea @bind-Value="_writeComment"
+                                    Placeholder="Comment..."
+                                    Disabled="@_isWriting"
+                                    Rows="2"
+                                    Style="width: 100%;" />
+
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="8px">
+                        <RadzenButton Text="@(_isWriting ? "Writing..." : "Write")"
+                                      Icon="edit"
+                                      ButtonStyle="ButtonStyle.Warning"
+                                      Disabled="@(_isWriting || !CanSubmitParamWrite())"
+                                      Click="@SaveParamWriteAsync" />
+
+                        <RadzenButton Text="Cancel"
+                                      Icon="close"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Disabled="@_isWriting"
+                                      Click="@CancelParamWrite" />
+                    </RadzenStack>
+                </RadzenStack>
+            </RadzenCard>
+        }
+
         <div class="equipment-param-tabs">
             @if (_isLoading)
             {
@@ -155,20 +219,23 @@
                         </RadzenTabsItem>
 
                         <RadzenTabsItem Text="Values">
-                            <ParamItemsTable Items="@_snapshot.Items" />
+                            <ParamItemsTable Items="@_snapshot.Items"
+                                             OnWriteRequested="@BeginParamWrite" />
                         </RadzenTabsItem>
 
                         @if (HasAlarmItems)
                         {
                             <RadzenTabsItem Text="Alarm">
-                                <ParamItemsTable Items="@GetAlarmItems()" />
+                                <ParamItemsTable Items="@GetAlarmItems()"
+                                                 OnWriteRequested="@BeginParamWrite" />
                             </RadzenTabsItem>
                         }
 
                         @if (HasTimeItems)
                         {
                             <RadzenTabsItem Text="TimeWork">
-                                <ParamItemsTable Items="@GetTimeItems()" />
+                                <ParamItemsTable Items="@GetTimeItems()"
+                                                 OnWriteRequested="@BeginParamWrite" />
                             </RadzenTabsItem>
                         }
 
@@ -239,46 +306,176 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Токен текущей загрузки snapshot/trend/reference pages.
+    /// При переключении оборудования старые запросы отменяются.
+    /// </summary>
     private CancellationTokenSource _loadCts = new();
+
+    /// <summary>
+    /// Токен фонового polling-а Param snapshot/trend.
+    /// </summary>
     private CancellationTokenSource? _refreshCts;
+
+    /// <summary>
+    /// Задача фонового polling loop.
+    /// </summary>
     private Task? _refreshTask;
 
+    /// <summary>
+    /// Имя оборудования, для которого сейчас загружена Param-панель.
+    /// </summary>
     private string? _loadedEquipmentName;
+
+    /// <summary>
+    /// Краткая Info-карточка, используемая в верхней части Param-панели.
+    /// </summary>
     private EquipmentInfoDto? _info;
+
+    /// <summary>
+    /// Последний snapshot текущих значений Param items.
+    /// </summary>
     private ParamSnapshotResponse? _snapshot;
+
+    /// <summary>
+    /// Буфер тренда для вкладки Graph.
+    /// </summary>
     private ParamTrendResponse? _trend;
+
+    /// <summary>
+    /// Read-only reference page PLC.
+    /// </summary>
     private ParamPlcRefsResponse? _plcRefs;
+
+    /// <summary>
+    /// Read-only reference page DI/DO.
+    /// </summary>
     private ParamDiDoRefsResponse? _diDoRefs;
+
+    /// <summary>
+    /// Read-only reference page DryRun.
+    /// </summary>
     private ParamDryRunResponse? _dryRun;
+
+    /// <summary>
+    /// Read-only reference page ATV.
+    /// </summary>
     private ParamAtvRefResponse? _atvRef;
 
+    /// <summary>
+    /// Индекс выбранной вкладки RadzenTabs.
+    /// </summary>
     private int _selectedTabIndex;
+
+    /// <summary>
+    /// Видимое live-окно графика в минутах.
+    /// </summary>
     private int _windowMinutes = 30;
+
+    /// <summary>
+    /// Исторический буфер, который заранее загружается для плавной прокрутки графика.
+    /// </summary>
     private int _trendHistoryMinutes = 240;
+
+    /// <summary>
+    /// Правая граница фиксированного исторического окна; null означает live-режим.
+    /// </summary>
     private DateTime? _fixedTrendToUtc;
+
+    /// <summary>
+    /// Версия графика. Увеличение версии сбрасывает JS zoom state.
+    /// </summary>
     private int _chartViewVersion;
+
+    /// <summary>
+    /// true, пока идет первая загрузка панели.
+    /// </summary>
     private bool _isLoading;
+
+    /// <summary>
+    /// true, пока идет refresh snapshot/trend, чтобы не запускать параллельные опросы CtApi.
+    /// </summary>
     private bool _isRefreshing;
+
+    /// <summary>
+    /// true, пока загружается выбранная reference page.
+    /// </summary>
     private bool _isRefsLoading;
+
+    /// <summary>
+    /// true, пока выполняется write-запрос в Runtime.Service.
+    /// </summary>
+    private bool _isWriting;
+
+    /// <summary>
+    /// Защита от обновления UI после уничтожения компонента.
+    /// </summary>
     private bool _isDisposed;
+
+    /// <summary>
+    /// Status message Param-панели.
+    /// </summary>
     private string _statusText = "";
+
+    /// <summary>
+    /// Стиль status alert Param-панели.
+    /// </summary>
     private AlertStyle _statusStyle = AlertStyle.Info;
 
+    /// <summary>
+    /// Param item, для которого открыт write editor.
+    /// </summary>
+    private ParamItemDto? _writeItem;
+
+    /// <summary>
+    /// Текстовое значение write editor для numeric/string параметров.
+    /// </summary>
+    private string _writeValueText = "";
+
+    /// <summary>
+    /// Boolean значение write editor для bool-параметров.
+    /// </summary>
+    private bool _writeBooleanValue;
+
+    /// <summary>
+    /// Комментарий оператора, который уйдет в audit через CiCode SaveActionOperators.
+    /// </summary>
+    private string _writeComment = "";
+
+    /// <summary>
+    /// Оборудование, выбранное в дереве Equipment.razor.
+    /// </summary>
     [Parameter]
     public EquipmentDto? Equipment { get; set; }
 
+    /// <summary>
+    /// true, когда пользователь находится в Param route.
+    /// При false polling прекращается, чтобы не грузить CtApi лишними запросами.
+    /// </summary>
     [Parameter]
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// true, пока родитель сохраняет favorite-флаг.
+    /// </summary>
     [Parameter]
     public bool IsFavoriteSaving { get; set; }
 
+    /// <summary>
+    /// Команда переключения favorite, реализованная в Equipment.razor.
+    /// </summary>
     [Parameter]
     public EventCallback OnToggleFavorite { get; set; }
 
+    /// <summary>
+    /// Событие выбора оборудования из reference page.
+    /// </summary>
     [Parameter]
     public EventCallback<string> OnSelectEquipment { get; set; }
 
+    /// <summary>
+    /// Читает UI-настройки Param-графика из appsettings.json.
+    /// </summary>
     protected override void OnInitialized()
     {
         var options = ParamOptions.Value;
@@ -290,6 +487,10 @@
             24 * 60);
     }
 
+    /// <summary>
+    /// Реагирует на смену Equipment/route mode: отменяет старые запросы,
+    /// загружает новую панель и включает polling только когда Param видим.
+    /// </summary>
     protected override async Task OnParametersSetAsync()
     {
         if (!IsActive)
@@ -318,6 +519,7 @@
         _diDoRefs = null;
         _dryRun = null;
         _atvRef = null;
+        _writeItem = null;
         _fixedTrendToUtc = null;
         _chartViewVersion++;
         _statusText = "";
@@ -329,11 +531,18 @@
         StartRefreshLoop();
     }
 
+    /// <summary>
+    /// Выполняет ручное обновление текущей вкладки.
+    /// </summary>
     private async Task RefreshNowAsync()
     {
         await LoadAsync(showLoading: false, includeTrend: IsGraphTabVisible, ct: GetActiveLoadToken());
     }
 
+    /// <summary>
+    /// Обрабатывает переключение вкладок: Graph грузит trend,
+    /// reference-вкладки грузят только свои read-only страницы.
+    /// </summary>
     private async Task OnTabChangedAsync(int index)
     {
         _selectedTabIndex = index;
@@ -348,6 +557,9 @@
             await LoadSelectedReferencePageAsync(GetActiveLoadToken());
     }
 
+    /// <summary>
+    /// Получает от JS-графика запрос подгрузить older/newer segment истории.
+    /// </summary>
     private async Task OnChartHistoryRequestedAsync(string direction)
     {
         if (_isRefreshing)
@@ -365,6 +577,9 @@
         }
     }
 
+    /// <summary>
+    /// Возвращает график в live-режим: правая граница снова равна текущему времени.
+    /// </summary>
     private async Task GoLiveAsync()
     {
         _fixedTrendToUtc = null;
@@ -373,6 +588,10 @@
         await RefreshNowAsync();
     }
 
+    /// <summary>
+    /// Загружает Info snapshot, Param snapshot и при необходимости trend.
+    /// Метод специально защищен от параллельных refresh-ов, чтобы не перегружать CtApi.
+    /// </summary>
     private async Task LoadAsync(
         bool showLoading,
         bool includeTrend,
@@ -455,6 +674,9 @@
         }
     }
 
+    /// <summary>
+    /// Загружает дополнительный historical segment и сливает его с текущим буфером тренда.
+    /// </summary>
     private async Task LoadHistorySegmentAsync(string direction)
     {
         if (Equipment is null || _trend is null)
@@ -525,6 +747,9 @@
         }
     }
 
+    /// <summary>
+    /// Запускает polling loop, если Param-панель активна и loop еще не запущен.
+    /// </summary>
     private void StartRefreshLoop()
     {
         if (_refreshCts is not null || _isDisposed || !IsActive || Equipment is null)
@@ -534,6 +759,10 @@
         _refreshTask = RefreshLoopAsync(_refreshCts.Token);
     }
 
+    /// <summary>
+    /// Периодический опрос snapshot/trend.
+    /// Работает только когда пользователь находится в Param-режиме.
+    /// </summary>
     private async Task RefreshLoopAsync(CancellationToken ct)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
@@ -557,6 +786,9 @@
         }
     }
 
+    /// <summary>
+    /// Останавливает polling loop при уходе из Param, смене оборудования или Dispose.
+    /// </summary>
     private void StopRefreshLoop()
     {
         var refreshCts = _refreshCts;
@@ -574,6 +806,9 @@
         refreshCts?.Dispose();
     }
 
+    /// <summary>
+    /// Возвращает рабочий cancellation token текущей загрузки, пересоздавая CTS после отмены.
+    /// </summary>
     private CancellationToken GetActiveLoadToken()
     {
         if (_loadCts.IsCancellationRequested)
@@ -585,6 +820,9 @@
         return _loadCts.Token;
     }
 
+    /// <summary>
+    /// Отменяет активные HTTP/CtApi-загрузки текущей панели.
+    /// </summary>
     private void CancelActiveLoads()
     {
         try
@@ -596,11 +834,17 @@
         }
     }
 
+    /// <summary>
+    /// Передает favorite-команду родительской Equipment.razor.
+    /// </summary>
     private Task ToggleFavoriteAsync()
     {
         return OnToggleFavorite.InvokeAsync();
     }
 
+    /// <summary>
+    /// Передает выбор связанного оборудования из reference page в Equipment.razor.
+    /// </summary>
     private Task SelectEquipmentByNameAsync(string equipmentName)
     {
         return OnSelectEquipment.HasDelegate
@@ -608,6 +852,225 @@
             : Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Открывает встроенный редактор записи для одного Param item.
+    /// Метод вызывается из ParamItemsTable только для CanWrite=true.
+    /// </summary>
+    private void BeginParamWrite(ParamItemDto item)
+    {
+        if (Equipment is null || item is null || !item.CanWrite || _isWriting)
+            return;
+
+        _writeItem = item;
+        _writeComment = item.Name;
+
+        if (item.Kind == ParamValueKind.Boolean)
+        {
+            _writeBooleanValue = item.BooleanValue == true;
+            _writeValueText = _writeBooleanValue ? "1" : "0";
+        }
+        else
+        {
+            _writeValueText = !string.IsNullOrWhiteSpace(item.ValueText)
+                ? item.ValueText
+                : item.NumericValue.HasValue
+                    ? FormatWriteNumber(item.NumericValue.Value)
+                    : "";
+        }
+    }
+
+    /// <summary>
+    /// Закрывает редактор записи без отправки запроса в Runtime.Service.
+    /// Во время активной записи закрытие запрещено, чтобы не потерять состояние операции.
+    /// </summary>
+    private void CancelParamWrite()
+    {
+        if (_isWriting)
+            return;
+
+        _writeItem = null;
+        _writeValueText = "";
+        _writeBooleanValue = false;
+        _writeComment = "";
+    }
+
+    /// <summary>
+    /// Проверяет, можно ли нажать Write: выбран item, есть комментарий и новое значение.
+    /// Backend все равно повторно валидирует запрос, это только UX-фильтр.
+    /// </summary>
+    private bool CanSubmitParamWrite()
+    {
+        if (_writeItem is null)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(_writeComment))
+            return false;
+
+        return _writeItem.Kind == ParamValueKind.Boolean
+            || !string.IsNullOrWhiteSpace(_writeValueText);
+    }
+
+    /// <summary>
+    /// Полный UI write-flow: подтверждение оператора, POST в Runtime.Service,
+    /// отображение результата и повторное чтение snapshot после успешной операции.
+    /// </summary>
+    private async Task SaveParamWriteAsync()
+    {
+        if (Equipment is null || _writeItem is null || !CanSubmitParamWrite())
+            return;
+
+        var equipmentName = Equipment.Name;
+        var item = _writeItem;
+        var value = item.Kind == ParamValueKind.Boolean
+            ? (_writeBooleanValue ? "1" : "0")
+            : _writeValueText.Trim();
+
+        if (!await ConfirmParamWriteAsync(equipmentName, item, value))
+            return;
+
+        _isWriting = true;
+
+        try
+        {
+            var response = await ParamApi.WriteAsync(
+                equipmentName,
+                new ParamWriteRequest
+                {
+                    ItemName = item.Name,
+                    Value = value,
+                    Comment = _writeComment.Trim()
+                },
+                GetActiveLoadToken());
+
+            if (response.Success)
+            {
+                var auditWarning = !response.DryRun && response.AuditAttempted && !response.AuditSucceeded;
+                _statusStyle = response.DryRun
+                    ? AlertStyle.Info
+                    : auditWarning
+                        ? AlertStyle.Warning
+                        : AlertStyle.Success;
+                _statusText = BuildWriteStatus(response, item);
+
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = response.DryRun
+                        ? NotificationSeverity.Info
+                        : auditWarning
+                            ? NotificationSeverity.Warning
+                            : NotificationSeverity.Success,
+                    Summary = "Param write",
+                    Detail = response.Message ?? _statusText,
+                    Duration = 3500
+                });
+
+                CancelParamWriteAfterSave();
+                await LoadAsync(showLoading: false, includeTrend: IsGraphTabVisible, ct: GetActiveLoadToken());
+            }
+            else
+            {
+                _statusStyle = AlertStyle.Warning;
+                _statusText = response.Error ?? response.Message ?? "Param write was rejected.";
+
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Warning,
+                    Summary = "Param write",
+                    Detail = _statusText,
+                    Duration = 4500
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusStyle = AlertStyle.Danger;
+            _statusText = "Cannot write Param value: " + ex.Message;
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Param write",
+                Detail = "Cannot write Param value.",
+                Duration = 4500
+            });
+        }
+        finally
+        {
+            _isWriting = false;
+        }
+    }
+
+    /// <summary>
+    /// Показывает подтверждение перед записью.
+    /// Для ForceCmd=on текст сделан более строгим, как в WPF-проекте.
+    /// </summary>
+    private async Task<bool> ConfirmParamWriteAsync(string equipmentName, ParamItemDto item, string value)
+    {
+        var current = FormatValue(item);
+        var enablesForce = item.Name.Equals("ForceCmd", StringComparison.OrdinalIgnoreCase)
+            && item.Kind == ParamValueKind.Boolean
+            && value == "1";
+
+        var title = enablesForce ? "Attention!!!" : "Confirm Param write";
+        var message = enablesForce
+            ? $"Do you really want to enable channel forcing?\n\nEquipment: {equipmentName}\nItem: {item.Name}\nCurrent: {current}\nNew: on"
+            : $"Write Param value?\n\nEquipment: {equipmentName}\nItem: {item.Name}\nCurrent: {current}\nNew: {DisplayValue(value)}";
+
+        var confirmed = await DialogService.Confirm(
+            message,
+            title,
+            new ConfirmOptions
+            {
+                OkButtonText = "Write",
+                CancelButtonText = "Cancel"
+            });
+
+        return confirmed == true;
+    }
+
+    /// <summary>
+    /// Собирает короткую строку статуса после записи: режим, старое/новое значение,
+    /// tag и результат audit, если он выполнялся.
+    /// </summary>
+    private static string BuildWriteStatus(ParamWriteResponse response, ParamItemDto item)
+    {
+        var mode = response.DryRun ? "Dry-run OK" : "Wrote";
+        var current = string.IsNullOrWhiteSpace(response.CurrentValue)
+            ? "-"
+            : response.CurrentValue;
+        var written = string.IsNullOrWhiteSpace(response.WrittenValue)
+            ? "-"
+            : response.WrittenValue;
+
+        var parts = new List<string>
+        {
+            $"{mode}: {response.EquipmentName}.{item.Name} {current} -> {written}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(response.TagName))
+            parts.Add($"Tag: {response.TagName}");
+
+        if (response.AuditAttempted)
+            parts.Add(response.AuditSucceeded ? "Audit: OK" : "Audit: failed");
+
+        return string.Join(" | ", parts);
+    }
+
+    /// <summary>
+    /// Сбрасывает editor после успешной операции.
+    /// Вынесено отдельно, чтобы не смешивать cleanup с логикой HTTP-запроса.
+    /// </summary>
+    private void CancelParamWriteAfterSave()
+    {
+        _writeItem = null;
+        _writeValueText = "";
+        _writeBooleanValue = false;
+        _writeComment = "";
+    }
+
+    /// <summary>
+    /// Загружает reference page для текущей вкладки: PLC, DI/DO, DryRun или ATV.
+    /// </summary>
     private async Task LoadSelectedReferencePageAsync(CancellationToken ct)
     {
         if (Equipment is null || !IsActive || ct.IsCancellationRequested)
@@ -670,23 +1133,44 @@
         }
     }
 
+    /// <summary>
+    /// Возвращает UTC-диапазон исторического буфера, который нужно запросить у Runtime.Service.
+    /// </summary>
     private (DateTime FromUtc, DateTime ToUtc) GetTrendRequestBufferUtc()
     {
         var toUtc = _fixedTrendToUtc ?? DateTime.UtcNow;
         return (toUtc.AddMinutes(-_trendHistoryMinutes), toUtc);
     }
 
+    /// <summary>
+    /// true, если график привязан к текущему времени.
+    /// </summary>
     private bool IsGraphLive => !_fixedTrendToUtc.HasValue;
 
+    /// <summary>
+    /// Можно ли прокручивать график назад и просить старую историю.
+    /// </summary>
     private bool CanScrollGraphBackward => _trend?.Supported == true;
 
+    /// <summary>
+    /// Можно ли прокручивать график вперед к live-краю.
+    /// </summary>
     private bool CanScrollGraphForward =>
         _trend?.Supported == true && _trend.ToUtc < DateTime.UtcNow.AddSeconds(-3);
 
+    /// <summary>
+    /// true, когда активна вкладка Graph.
+    /// </summary>
     private bool IsGraphTabVisible => SelectedTabKind == ParamPanelTabKind.Graph;
 
+    /// <summary>
+    /// Тип активной вкладки с учетом динамического набора tabs.
+    /// </summary>
     private ParamPanelTabKind SelectedTabKind => GetTabKindByIndex(_selectedTabIndex);
 
+    /// <summary>
+    /// Переводит индекс RadzenTabs в логический тип вкладки.
+    /// </summary>
     private ParamPanelTabKind GetTabKindByIndex(int index)
     {
         if (index-- == 0)
@@ -716,6 +1200,9 @@
         return ParamPanelTabKind.None;
     }
 
+    /// <summary>
+    /// Возвращает короткое имя reference page для status/error сообщений.
+    /// </summary>
     private static string GetReferencePageTitle(ParamPanelTabKind tab)
     {
         return tab switch
@@ -728,19 +1215,31 @@
         };
     }
 
+    /// <summary>
+    /// Ключ ECharts состояния: меняется при смене оборудования или принудительном reset live.
+    /// </summary>
     private string ChartViewKey =>
         $"{Equipment?.Name ?? ""}|{_windowMinutes}|{_chartViewVersion}";
 
+    /// <summary>
+    /// Левая граница видимого окна графика.
+    /// </summary>
     private DateTime? GetVisibleFromUtc()
     {
         return _trend?.ToUtc.AddMinutes(-_windowMinutes);
     }
 
+    /// <summary>
+    /// Правая граница видимого окна графика.
+    /// </summary>
     private DateTime? GetVisibleToUtc()
     {
         return _trend?.ToUtc;
     }
 
+    /// <summary>
+    /// Сливает уже загруженный trend с новым historical chunk без дублей точек.
+    /// </summary>
     private static ParamTrendResponse MergeTrends(
         ParamTrendResponse existing,
         ParamTrendResponse chunk)
@@ -775,25 +1274,43 @@
         };
     }
 
+    /// <summary>
+    /// Проверяет, поддерживает ли текущий тип оборудования reference page.
+    /// </summary>
     private bool HasPage(ParamPageKind page)
     {
         return _snapshot?.Pages.Contains(page) == true;
     }
 
+    /// <summary>
+    /// Есть ли параметры alarm-группы для отдельной вкладки.
+    /// </summary>
     private bool HasAlarmItems => _snapshot?.Items.Any(IsAlarmItem) == true;
 
+    /// <summary>
+    /// Есть ли параметры времени работы для отдельной вкладки.
+    /// </summary>
     private bool HasTimeItems => _snapshot?.Items.Any(IsTimeItem) == true;
 
+    /// <summary>
+    /// Возвращает items для вкладки Alarm.
+    /// </summary>
     private IReadOnlyList<ParamItemDto> GetAlarmItems()
     {
         return _snapshot?.Items.Where(IsAlarmItem).ToList() ?? [];
     }
 
+    /// <summary>
+    /// Возвращает items для вкладки TimeWork.
+    /// </summary>
     private IReadOnlyList<ParamItemDto> GetTimeItems()
     {
         return _snapshot?.Items.Where(IsTimeItem).ToList() ?? [];
     }
 
+    /// <summary>
+    /// Простая классификация alarm-настроек по имени параметра.
+    /// </summary>
     private static bool IsAlarmItem(ParamItemDto item)
     {
         return item.Name.Contains("Alarm", StringComparison.OrdinalIgnoreCase)
@@ -801,11 +1318,17 @@
             || item.Name.StartsWith("SetH", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Простая классификация time-настроек по имени параметра.
+    /// </summary>
     private static bool IsTimeItem(ParamItemDto item)
     {
         return item.Name.Contains("Time", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Форматирует время последнего snapshot-а для нижней строки графика.
+    /// </summary>
     private string FormatSnapshotTime()
     {
         return _snapshot is null
@@ -813,6 +1336,9 @@
             : $"Last update: {_snapshot.Time:HH:mm:ss}";
     }
 
+    /// <summary>
+    /// Формирует строку статуса графика: время snapshot-а и диапазон trend buffer.
+    /// </summary>
     private string FormatGraphStatus()
     {
         var status = FormatSnapshotTime();
@@ -826,16 +1352,25 @@
         return $"{status} | {from:HH:mm:ss} - {to:HH:mm:ss}";
     }
 
+    /// <summary>
+    /// Возвращает первое фото для компактной верхней карточки Param.
+    /// </summary>
     private EquipmentInfoFileDto? GetSummaryPhoto()
     {
         return _info?.Photos.FirstOrDefault();
     }
 
+    /// <summary>
+    /// Выбирает Material icon для favorite-кнопки.
+    /// </summary>
     private static string GetFavoriteIcon(EquipmentDto equipment)
     {
         return equipment.IsFavorite ? "star" : "star_border";
     }
 
+    /// <summary>
+    /// Возвращает CSS-класс favorite-кнопки с учетом активного состояния.
+    /// </summary>
     private static string GetFavoriteButtonClass(EquipmentDto equipment)
     {
         return equipment.IsFavorite
@@ -843,12 +1378,18 @@
             : "equipment-favorite-button";
     }
 
+    /// <summary>
+    /// Проверяет, нужно ли показывать location из каталога оборудования.
+    /// </summary>
     private static bool ShouldShowLocation(EquipmentDto equipment)
     {
         return !string.IsNullOrWhiteSpace(equipment.Location)
             && !string.Equals(equipment.Location, "Unknown", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Преобразует location из формата "module.channel" в человекочитаемый текст.
+    /// </summary>
     private static string FormatLocation(string? raw)
     {
         raw = (raw ?? "").Trim();
@@ -867,11 +1408,38 @@
         return raw;
     }
 
+    /// <summary>
+    /// Нормализует пустые строки для отображения в UI.
+    /// </summary>
     private static string DisplayValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? "-" : value;
     }
 
+    /// <summary>
+    /// Форматирует текущее значение Param item для таблиц и write dialog.
+    /// </summary>
+    private static string FormatValue(ParamItemDto item)
+    {
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(item.ValueText)
+            ? "-"
+            : item.ValueText;
+    }
+
+    /// <summary>
+    /// Форматирует число для поля ввода записи без артефактов double вроде 5.4800000000000004.
+    /// </summary>
+    private static string FormatWriteNumber(double value)
+    {
+        return value.ToString("0.###############", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Возвращает описание оборудования или дефис.
+    /// </summary>
     private static string GetDescriptionText(EquipmentDto equipment)
     {
         return string.IsNullOrWhiteSpace(equipment.Description)
@@ -879,6 +1447,9 @@
             : equipment.Description;
     }
 
+    /// <summary>
+    /// Останавливает polling и отменяет активные запросы при уничтожении Param-панели.
+    /// </summary>
     public void Dispose()
     {
         _isDisposed = true;
@@ -887,6 +1458,9 @@
         _loadCts.Dispose();
     }
 
+    /// <summary>
+    /// Логические вкладки Param-панели. Нужны, потому что реальные tabs создаются динамически.
+    /// </summary>
     private enum ParamPanelTabKind
     {
         None,

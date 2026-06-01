@@ -1,4 +1,5 @@
 window.techMesPdfViewer = {
+    // Пытается прочитать page/zoom из src или текущего location встроенного PDF iframe.
     getViewState(frameId) {
         const frame = document.getElementById(frameId);
 
@@ -15,13 +16,14 @@ window.techMesPdfViewer = {
                 url = href;
             }
         } catch {
-            // Browser-native PDF viewers can be isolated from the host page.
+            // Встроенные PDF-viewer-ы браузера могут быть изолированы от host page.
         }
 
         return parsePdfViewState(url);
     }
 };
 
+// Разбирает PDF fragment вида #page=7&zoom=175.
 function parsePdfViewState(url) {
     if (!url) {
         return null;
@@ -50,11 +52,13 @@ function parsePdfViewState(url) {
     };
 }
 
+// Читает положительное целое число или возвращает null.
 function parsePositiveInteger(value) {
     const parsed = Number.parseInt(value || "", 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+// Читает положительное дробное число или возвращает null.
 function parsePositiveNumber(value) {
     const parsed = Number.parseFloat(value || "");
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;

@@ -9,13 +9,28 @@
 /// </summary>
 public sealed class ScadaTagReadResponse
 {
+    /// <summary>
+    /// Имя прочитанного tag-а.
+    /// </summary>
     public string TagName { get; set; } = "";
 
+    /// <summary>
+    /// Значение tag-а как строка.
+    /// </summary>
     public string? Value { get; set; }
 
+    /// <summary>
+    /// Успешно ли чтение.
+    /// </summary>
     public bool Success { get; set; }
 
+    /// <summary>
+    /// Текст ошибки, если чтение не удалось.
+    /// </summary>
     public string? Error { get; set; }
 
+    /// <summary>
+    /// Время чтения.
+    /// </summary>
     public DateTime Time { get; set; } = DateTime.Now;
 }

@@ -72,20 +72,48 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Имя оборудования, для которого читается SOE.
+    /// </summary>
     private string _equipmentName = "";
+
+    /// <summary>
+    /// Строки SOE, собранные Runtime.Service из trend tags.
+    /// </summary>
     private List<SoeEventDto> _rows = [];
+
+    /// <summary>
+    /// Время последней успешной загрузки SOE.
+    /// </summary>
     private DateTime? _loadedAt;
 
+    /// <summary>
+    /// true, пока идет HTTP-загрузка SOE.
+    /// </summary>
     private bool _isLoading;
+
+    /// <summary>
+    /// Status message страницы.
+    /// </summary>
     private string _statusText = "";
+
+    /// <summary>
+    /// Стиль status alert.
+    /// </summary>
     private AlertStyle _statusStyle = AlertStyle.Info;
 
+    /// <summary>
+    /// Подставляет выбранное оборудование и загружает SOE.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         _equipmentName = SelectedEquipmentState.SelectedEquipmentName ?? "";
         await LoadAsync();
     }
 
+    /// <summary>
+    /// Загружает SOE для указанного оборудования через Runtime.Service.
+    /// </summary>
     private async Task LoadAsync()
     {
         _statusText = "";

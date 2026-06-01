@@ -11,10 +11,19 @@ namespace TechMES.Runtime.Service.Equipment;
 /// </summary>
 public sealed class InMemoryEquipmentCatalogProvider : IEquipmentCatalogProvider
 {
+    /// <summary>
+    /// Тестовый список оборудования, живущий только в памяти процесса.
+    /// </summary>
     private readonly List<EquipmentDto> _equipments = [];
 
+    /// <summary>
+    /// Защита списка от одновременного доступа нескольких HTTP-запросов.
+    /// </summary>
     private readonly object _gate = new();
 
+    /// <summary>
+    /// Заполняет тестовый каталог один раз при старте Runtime.Service.
+    /// </summary>
     public Task InitializeAsync(CancellationToken ct = default)
     {
         lock (_gate)
@@ -43,6 +52,9 @@ public sealed class InMemoryEquipmentCatalogProvider : IEquipmentCatalogProvider
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Возвращает тестовый каталог, станции и группы типов для фильтров WEB.
+    /// </summary>
     public Task<EquipmentListResponse> GetEquipmentListAsync(CancellationToken ct = default)
     {
         lock (_gate)
@@ -76,6 +88,9 @@ public sealed class InMemoryEquipmentCatalogProvider : IEquipmentCatalogProvider
         }
     }
 
+    /// <summary>
+    /// Ищет тестовое оборудование по имени.
+    /// </summary>
     public Task<EquipmentDto?> GetEquipmentByNameAsync(string name, CancellationToken ct = default)
     {
         lock (_gate)
@@ -87,6 +102,9 @@ public sealed class InMemoryEquipmentCatalogProvider : IEquipmentCatalogProvider
         }
     }
 
+    /// <summary>
+    /// Меняет favorite-флаг в in-memory списке.
+    /// </summary>
     public Task<EquipmentDto?> SetFavoriteAsync(string name, bool isFavorite, CancellationToken ct = default)
     {
         lock (_gate)
@@ -104,6 +122,9 @@ public sealed class InMemoryEquipmentCatalogProvider : IEquipmentCatalogProvider
         }
     }
 
+    /// <summary>
+    /// Добавляет один узел в тестовый каталог и сразу формирует поля дерева.
+    /// </summary>
     private void Add(
         string name,
         string displayName,

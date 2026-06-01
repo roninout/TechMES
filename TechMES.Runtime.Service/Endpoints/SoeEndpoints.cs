@@ -5,8 +5,16 @@ using TechMES.Runtime.Service.Settings;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
+/// <summary>
+/// HTTP API SOE-модуля.
+/// Runtime.Service разрешает выбранное оборудование и передает полный каталог в provider,
+/// потому что SOE может собираться из связанных trend/event источников.
+/// </summary>
 public static class SoeEndpoints
 {
+    /// <summary>
+    /// Подключает endpoint чтения SOE для одного оборудования.
+    /// </summary>
     public static IEndpointRouteBuilder MapSoeEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/soe/{equipmentName}", GetSoeAsync);
@@ -14,6 +22,10 @@ public static class SoeEndpoints
         return app;
     }
 
+    /// <summary>
+    /// Возвращает SOE-события для выбранного оборудования.
+    /// perTrendMax/totalMax можно переопределить из query string, иначе используются SoeOptions.
+    /// </summary>
     private static async Task<IResult> GetSoeAsync(
         string equipmentName,
         int? perTrendMax,

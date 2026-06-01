@@ -25,17 +25,26 @@
 </RadzenStack>
 
 @code {
+    /// <summary>
+    /// Подписывается на изменение выбранного оборудования.
+    /// </summary>
     protected override void OnInitialized()
     {
         // Layout должен обновиться, когда пользователь выбрал другое оборудование на странице Equipment.
         SelectedEquipmentState.Changed += OnSelectedEquipmentChanged;
     }
 
+    /// <summary>
+    /// Перерисовывает блок после выбора нового equipment на странице Equipment.
+    /// </summary>
     private void OnSelectedEquipmentChanged()
     {
         _ = InvokeAsync(StateHasChanged);
     }
 
+    /// <summary>
+    /// Отписывается от state service при уничтожении компонента.
+    /// </summary>
     public void Dispose()
     {
         SelectedEquipmentState.Changed -= OnSelectedEquipmentChanged;

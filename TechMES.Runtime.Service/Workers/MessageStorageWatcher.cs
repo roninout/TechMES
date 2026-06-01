@@ -21,14 +21,39 @@ namespace TechMES.Runtime.Service.Workers;
 /// </summary>
 public sealed class MessageStorageWatcher : BackgroundService
 {
+    /// <summary>
+    /// Scope factory нужен, чтобы каждый цикл watcher-а получал свежий scoped IMessageStore.
+    /// </summary>
     private readonly IServiceScopeFactory _scopeFactory;
+
+    /// <summary>
+    /// SignalR hub для отправки события MessagesChanged всем WEB-клиентам.
+    /// </summary>
     private readonly IHubContext<MessagesHub> _hubContext;
+
+    /// <summary>
+    /// Настройки периода и включения watcher-а.
+    /// </summary>
     private readonly IOptions<MessagesOptions> _options;
+
+    /// <summary>
+    /// Runtime-контекст нужен, чтобы подписать событие именем текущего сервиса/устройства.
+    /// </summary>
     private readonly IAppRuntimeContext _runtime;
+
+    /// <summary>
+    /// Логгер фоновой проверки Messages-хранилища.
+    /// </summary>
     private readonly ILogger<MessageStorageWatcher> _logger;
 
+    /// <summary>
+    /// Последний снимок хранилища для сравнения с новым циклом.
+    /// </summary>
     private MessageStorageSnapshot? _lastSnapshot;
 
+    /// <summary>
+    /// Создает watcher внешних изменений Messages-хранилища.
+    /// </summary>
     public MessageStorageWatcher(
         IServiceScopeFactory scopeFactory,
         IHubContext<MessagesHub> hubContext,
@@ -43,6 +68,9 @@ public sealed class MessageStorageWatcher : BackgroundService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Основной цикл: периодически читает snapshot и отправляет SignalR-событие при изменении.
+    /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var options = _options.Value;
@@ -92,6 +120,9 @@ public sealed class MessageStorageWatcher : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Безопасно читает snapshot из текущего IMessageStore.
+    /// </summary>
     private async Task<MessageStorageSnapshot?> TryReadSnapshotAsync(
         CancellationToken ct)
     {
@@ -119,6 +150,9 @@ public sealed class MessageStorageWatcher : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Уведомляет все WEB-клиенты, что Messages-хранилище изменилось вне текущего HTTP-запроса.
+    /// </summary>
     private Task NotifyStorageChangedAsync(CancellationToken ct)
     {
         var notification = new MessageChangedNotification

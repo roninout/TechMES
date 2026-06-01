@@ -6,21 +6,71 @@ using TechMES.Contracts.Info;
 
 namespace TechMES.Infrastructure.PostgreSql.Info;
 
+/// <summary>
+/// PostgreSQL-хранилище Info-модуля.
+/// Класс работает с существующими таблицами WPF/обслуживающего приложения и отдает Runtime.Service
+/// карточку оборудования, вложения, заметки, избранное и состояние просмотра PDF/схем.
+/// </summary>
 public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
 {
+    /// <summary>
+    /// Основная карточка оборудования: supplier, product code, description и дата изменения.
+    /// </summary>
     private const string InfoTable = "public.equip_info";
+
+    /// <summary>
+    /// Коллекция заметок по оборудованию.
+    /// </summary>
     private const string NoteTable = "public.equip_note";
+
+    /// <summary>
+    /// Таблица связи оборудования с фотографиями из библиотеки фото.
+    /// </summary>
     private const string PhotoLinkTable = "public.equip_info_photo";
+
+    /// <summary>
+    /// Таблица связи оборудования с PDF-инструкциями.
+    /// </summary>
     private const string InstructionLinkTable = "public.equip_info_instruction";
+
+    /// <summary>
+    /// Таблица связи оборудования со схемами.
+    /// </summary>
     private const string SchemeLinkTable = "public.equip_info_scheme";
+
+    /// <summary>
+    /// Библиотека фото с бинарными данными.
+    /// </summary>
     private const string PhotoTable = "public.equip_photo";
+
+    /// <summary>
+    /// Библиотека PDF-инструкций с бинарными данными.
+    /// </summary>
     private const string InstructionTable = "public.equip_instruction";
+
+    /// <summary>
+    /// Библиотека схем с бинарными данными.
+    /// </summary>
     private const string SchemeTable = "public.equip_scheme";
+
+    /// <summary>
+    /// Таблица запомненного положения PDF/схемы: страница, zoom и якорь просмотра.
+    /// </summary>
     private const string DocumentViewTable = "public.equip_info_pdf_view";
+
+    /// <summary>
+    /// Персональное избранное оборудования для конкретного устройства/пользователя.
+    /// </summary>
     private const string FavoriteTable = "public.equip_favorite";
 
+    /// <summary>
+    /// Строка подключения к PostgreSQL, где лежат Info-таблицы.
+    /// </summary>
     private readonly string _connectionString;
 
+    /// <summary>
+    /// Создает store и берет строку подключения из appsettings Runtime.Service.
+    /// </summary>
     public PostgreSqlEquipmentInfoStore(IConfiguration configuration)
     {
         _connectionString =
@@ -31,8 +81,8 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Loads card fields, supplier logo, linked file metadata, and notes for one
-    /// equipment item. File bytes are deliberately not loaded here.
+    /// Загружает карточку оборудования, логотип поставщика, метаданные вложений и заметки.
+    /// Бинарные данные файлов здесь не читаются, чтобы открытие оборудования оставалось быстрым.
     /// </summary>
     public async Task<EquipmentInfoDto> GetAsync(string equipName, CancellationToken ct = default)
     {
@@ -113,8 +163,8 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Loads only per-equipment counters for tree badges/icons. This keeps the
-    /// catalog endpoint lightweight and avoids pulling full Info records.
+    /// Загружает только счетчики вложений/заметок для списка оборудования.
+    /// Используется для иконок слева и счетчиков вкладок без чтения полной карточки Info.
     /// </summary>
     public async Task<IReadOnlyList<EquipmentInfoSummaryDto>> GetSummariesAsync(
         IEnumerable<string> equipNames,
@@ -166,8 +216,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Upserts the editable description in equip_info and returns the refreshed
-    /// Info snapshot for the frontend.
+    /// Сохраняет редактируемое описание в equip_info и возвращает обновленный снимок карточки.
     /// </summary>
     public async Task<EquipmentInfoDto> SaveDescriptionAsync(
         string equipName,
@@ -209,6 +258,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
         return await GetAsync(equipName, ct);
     }
 
+    /// <summary>
+    /// Возвращает имена оборудования, добавленного в избранное для текущего устройства/пользователя.
+    /// </summary>
     public async Task<IReadOnlyCollection<string>> GetFavoriteEquipNamesAsync(
         string deviceName,
         CancellationToken ct = default)
@@ -241,6 +293,10 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
         return result;
     }
 
+    /// <summary>
+    /// Добавляет или удаляет оборудование из избранного.
+    /// Групповые узлы на фронтенде сюда не отправляются, поэтому store работает только с реальными equipName.
+    /// </summary>
     public async Task SetFavoriteAsync(
         string equipName,
         bool isFavorite,
@@ -300,8 +356,8 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Loads binary file content only when the browser asks for it. This is the
-    /// server-side half of lazy image/PDF loading and browser cache reuse.
+    /// Загружает бинарное содержимое файла только по прямому запросу браузера.
+    /// Это серверная часть ленивой загрузки фото/PDF и повторного использования кэша браузера.
     /// </summary>
     public async Task<EquipmentInfoFileContentDto?> GetFileAsync(
         EquipmentInfoFileKind kind,
@@ -354,7 +410,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Reads remembered page/zoom for one document and equipment pair.
+    /// Читает запомненные страницу, zoom и якорь просмотра для одного PDF/схемы.
     /// </summary>
     public async Task<EquipmentInfoDocumentViewStateDto?> GetDocumentViewStateAsync(
         string equipName,
@@ -400,7 +456,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Upserts remembered page/zoom values for PDF and scheme viewers.
+    /// Сохраняет запомненное положение PDF/схемы, чтобы при следующем открытии вернуться туда же.
     /// </summary>
     public async Task<EquipmentInfoDocumentViewStateDto> SaveDocumentViewStateAsync(
         string equipName,
@@ -500,7 +556,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Adds one note to the collection tied to the equipment name.
+    /// Добавляет новую заметку в коллекцию оборудования.
     /// </summary>
     public async Task<EquipmentInfoNoteDto> AddNoteAsync(
         string equipName,
@@ -575,7 +631,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Updates note text and audit fields, returning null if the note disappeared.
+    /// Обновляет текст заметки и поля аудита. Возвращает null, если запись уже удалена.
     /// </summary>
     public async Task<EquipmentInfoNoteDto?> UpdateNoteAsync(
         string equipName,
@@ -631,7 +687,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Deletes one note. Missing rows are treated as already deleted.
+    /// Удаляет одну заметку. Отсутствующая строка считается уже удаленной и не является ошибкой.
     /// </summary>
     public async Task DeleteNoteAsync(
         string equipName,
@@ -658,6 +714,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    /// <summary>
+    /// Открывает новое Npgsql-соединение на время одной операции Info store-а.
+    /// </summary>
     private async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
     {
         var conn = new NpgsqlConnection(_connectionString);
@@ -665,6 +724,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
         return conn;
     }
 
+    /// <summary>
+    /// Создает минимальную строку equip_info, если дочерние операции Notes/PDF-state требуют внешний ключ.
+    /// </summary>
     private static async Task EnsureInfoRowExistsAsync(
         NpgsqlConnection conn,
         NpgsqlTransaction tx,
@@ -694,8 +756,8 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Reads file metadata through the WPF-style link tables without loading blob
-    /// data. Counts and tabs are based on this lightweight metadata.
+    /// Читает метаданные файлов через WPF-совместимые link-таблицы без загрузки blob-данных.
+    /// Именно эти легкие данные используются для вкладок, счетчиков и списков файлов.
     /// </summary>
     private static async Task<List<EquipmentInfoFileDto>> LoadLinkedFilesMetadataAsync(
         NpgsqlConnection conn,
@@ -751,6 +813,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
         return result;
     }
 
+    /// <summary>
+    /// Считает привязанные фото/PDF/схемы для пачки оборудования одним SQL-запросом.
+    /// </summary>
     private static async Task LoadLinkedFileCountsAsync(
         NpgsqlConnection conn,
         string linkTable,
@@ -789,6 +854,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
         }
     }
 
+    /// <summary>
+    /// Считает непустые заметки для пачки оборудования.
+    /// </summary>
     private static async Task LoadNoteCountsAsync(
         NpgsqlConnection conn,
         string[] equipNames,
@@ -827,7 +895,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Loads the note collection newest-first, matching the card list in the UI.
+    /// Загружает коллекцию заметок от новых к старым, как она отображается карточками в UI.
     /// </summary>
     private static async Task<List<EquipmentInfoNoteDto>> GetNotesAsync(
         NpgsqlConnection conn,
@@ -864,8 +932,8 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Embeds supplier logo bytes as a data URL because it is small, belongs to the
-    /// card header, and should render together with the equipment summary.
+    /// Встраивает логотип поставщика как data URL.
+    /// Логотип маленький и относится к шапке карточки, поэтому его удобно отдавать сразу с Info DTO.
     /// </summary>
     private static async Task LoadSupplierLogoAsync(
         NpgsqlConnection conn,
@@ -923,6 +991,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
             $"data:{GetImageContentType(fileName)};base64,{Convert.ToBase64String(data)}";
     }
 
+    /// <summary>
+    /// Мапит строку equip_note в DTO заметки.
+    /// </summary>
     private static EquipmentInfoNoteDto ReadNote(NpgsqlDataReader reader)
     {
         return new EquipmentInfoNoteDto
@@ -937,6 +1008,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
         };
     }
 
+    /// <summary>
+    /// Мапит строку equip_info_pdf_view в DTO состояния просмотра документа.
+    /// </summary>
     private static EquipmentInfoDocumentViewStateDto ReadDocumentViewState(NpgsqlDataReader reader)
     {
         var kindText = ReadString(reader, "info_page_kind") ?? EquipmentInfoFileKind.Instruction.ToString();
@@ -957,6 +1031,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
         };
     }
 
+    /// <summary>
+    /// Читает nullable text-колонку из reader-а.
+    /// </summary>
     private static string? ReadString(NpgsqlDataReader reader, string columnName)
     {
         var ordinal = reader.GetOrdinal(columnName);
@@ -965,6 +1042,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
             : reader.GetString(ordinal);
     }
 
+    /// <summary>
+    /// Читает nullable timestamp-колонку из reader-а.
+    /// </summary>
     private static DateTime? ReadNullableDateTime(NpgsqlDataReader reader, string columnName)
     {
         var ordinal = reader.GetOrdinal(columnName);
@@ -973,6 +1053,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
             : reader.GetDateTime(ordinal);
     }
 
+    /// <summary>
+    /// Добавляет nullable text-параметр: пустые строки в БД сохраняются как NULL.
+    /// </summary>
     private static void AddNullableText(NpgsqlCommand cmd, string name, string? value)
     {
         var parameter = cmd.Parameters.Add(name, NpgsqlDbType.Text);
@@ -981,16 +1064,25 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
             : value.Trim();
     }
 
+    /// <summary>
+    /// Нормализует имя оборудования перед использованием в SQL.
+    /// </summary>
     private static string NormalizeName(string? value)
     {
         return (value ?? string.Empty).Trim();
     }
 
+    /// <summary>
+    /// Нормализует произвольный пользовательский текст.
+    /// </summary>
     private static string NormalizeText(string? value)
     {
         return (value ?? string.Empty).Trim();
     }
 
+    /// <summary>
+    /// Нормализует имя пользователя/устройства, чтобы audit-поля не оставались пустыми.
+    /// </summary>
     private static string NormalizeUser(string? value)
     {
         value = NormalizeText(value);
@@ -999,6 +1091,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
             : value;
     }
 
+    /// <summary>
+    /// Возвращает таблицу библиотеки файлов по типу вложения.
+    /// </summary>
     private static string GetFileTable(EquipmentInfoFileKind kind)
     {
         return kind switch
@@ -1010,6 +1105,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
         };
     }
 
+    /// <summary>
+    /// Определяет HTTP content type для отдачи файла браузеру.
+    /// </summary>
     private static string GetContentType(string? fileName, EquipmentInfoFileKind kind)
     {
         if (kind is EquipmentInfoFileKind.Instruction or EquipmentInfoFileKind.Scheme)
@@ -1018,6 +1116,9 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
         return GetImageContentType(fileName);
     }
 
+    /// <summary>
+    /// Определяет content type изображения по расширению файла.
+    /// </summary>
     private static string GetImageContentType(string? fileName)
     {
         return Path.GetExtension(fileName ?? string.Empty).ToLowerInvariant() switch

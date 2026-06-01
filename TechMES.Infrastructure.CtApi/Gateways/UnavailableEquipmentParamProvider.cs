@@ -4,15 +4,28 @@ using TechMES.Contracts.Param;
 
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
+/// <summary>
+/// Заглушка Param-провайдера для режима, когда реальный CtApi/Param недоступен.
+/// Runtime.Service может стартовать и показывать понятную ошибку в UI вместо падения приложения.
+/// </summary>
 public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
 {
+    /// <summary>
+    /// Текст причины недоступности, который возвращается во все Param-ответы.
+    /// </summary>
     private readonly string _message;
 
+    /// <summary>
+    /// Создает заглушку с общей диагностической причиной недоступности.
+    /// </summary>
     public UnavailableEquipmentParamProvider(string message)
     {
         _message = message;
     }
 
+    /// <summary>
+    /// Возвращает неподдерживаемый snapshot без обращения к SCADA.
+    /// </summary>
     public Task<ParamSnapshotResponse> GetSnapshotAsync(
         EquipmentDto equipment,
         CancellationToken ct = default)
@@ -28,6 +41,9 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
+    /// <summary>
+    /// Возвращает пустой trend-ответ с корректным временным диапазоном для UI.
+    /// </summary>
     public Task<ParamTrendResponse> GetTrendAsync(
         EquipmentDto equipment,
         int windowMinutes = 30,
@@ -49,6 +65,9 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
+    /// <summary>
+    /// Возвращает пустую PLC reference page, если Param-провайдер выключен.
+    /// </summary>
     public Task<ParamPlcRefsResponse> GetPlcRefsAsync(
         EquipmentDto equipment,
         CancellationToken ct = default)
@@ -62,6 +81,9 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
+    /// <summary>
+    /// Возвращает пустую DI/DO reference page, если Param-провайдер выключен.
+    /// </summary>
     public Task<ParamDiDoRefsResponse> GetDiDoRefsAsync(
         EquipmentDto equipment,
         IReadOnlyList<EquipmentDto> equipmentCatalog,
@@ -76,6 +98,9 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
+    /// <summary>
+    /// Возвращает пустую DryRun reference page, если Param-провайдер выключен.
+    /// </summary>
     public Task<ParamDryRunResponse> GetDryRunAsync(
         EquipmentDto equipment,
         IReadOnlyList<EquipmentDto> equipmentCatalog,
@@ -90,6 +115,9 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
+    /// <summary>
+    /// Возвращает пустую ATV reference page, если Param-провайдер выключен.
+    /// </summary>
     public Task<ParamAtvRefResponse> GetAtvRefAsync(
         EquipmentDto equipment,
         IReadOnlyList<EquipmentDto> equipmentCatalog,
@@ -104,6 +132,27 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
+    /// <summary>
+    /// Безопасно запрещает Param write, потому что реальный провайдер недоступен.
+    /// </summary>
+    public Task<ParamWriteResponse> WriteAsync(
+        EquipmentDto equipment,
+        ParamWriteRequest request,
+        CancellationToken ct = default)
+    {
+        return Task.FromResult(new ParamWriteResponse
+        {
+            EquipmentName = equipment.Name,
+            TypeGroup = equipment.TypeGroup,
+            ItemName = request.ItemName,
+            Success = false,
+            Error = _message
+        });
+    }
+
+    /// <summary>
+    /// Нормализует входные границы тренда в UTC, чтобы UI получал предсказуемый диапазон.
+    /// </summary>
     private static DateTime? NormalizeUtc(DateTime? value)
     {
         if (!value.HasValue)

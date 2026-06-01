@@ -10,16 +10,51 @@ using TechMES.Infrastructure.CtApi.Settings;
 
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
+/// <summary>
+/// Основная CtApi-реализация Param-модуля.
+/// Класс переводит доменную модель оборудования в Plant SCADA tag/trend/ref запросы,
+/// нормализует ответы CtApi в DTO и изолирует Runtime.Service от нативных деталей CtApi.dll.
+/// </summary>
 public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
 {
+    /// <summary>
+    /// Формат чисел, который ожидает Plant SCADA/Cicode: точка как разделитель и invariant culture.
+    /// </summary>
     private static readonly CultureInfo CitectNumberFormat = CultureInfo.InvariantCulture;
 
+    /// <summary>
+    /// Тонкая обертка над CtApi.dll. Все реальные TagRead/TagWrite/Cicode идут через нее.
+    /// </summary>
     private readonly ICtApiNativeClient _nativeClient;
+
+    /// <summary>
+    /// Общие настройки CtApi: источник данных, AllowWrites, параллелизм чтения и health tag.
+    /// </summary>
     private readonly IOptions<CtApiOptions> _options;
+
+    /// <summary>
+    /// Настройки write-flow Param: Enabled, DryRun, RequireComment и AuditEnabled.
+    /// </summary>
+    private readonly IOptions<ParamWriteOptions> _writeOptions;
+
+    /// <summary>
+    /// Логгер для CtApi ошибок, которые важно увидеть в Runtime.Service console.
+    /// </summary>
     private readonly ILogger<CtApiEquipmentParamProvider> _logger;
 
+    /// <summary>
+    /// Кэш Equipment+EquipItem -> TagName. Снижает нагрузку на CtApi при частом polling.
+    /// </summary>
     private readonly ConcurrentDictionary<string, string> _tagNameCache = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Кэш единиц измерения по TagName.
+    /// </summary>
     private readonly ConcurrentDictionary<string, string> _tagUnitCache = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Кэш Equipment+TrendItem -> TrendName для графиков Param.
+    /// </summary>
     private readonly ConcurrentDictionary<string, string> _trendNameCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly IReadOnlyList<ParamItemDefinition> DryRunItems =
@@ -34,10 +69,12 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
     public CtApiEquipmentParamProvider(
         ICtApiNativeClient nativeClient,
         IOptions<CtApiOptions> options,
+        IOptions<ParamWriteOptions> writeOptions,
         ILogger<CtApiEquipmentParamProvider> logger)
     {
         _nativeClient = nativeClient;
         _options = options;
+        _writeOptions = writeOptions;
         _logger = logger;
     }
 
@@ -100,6 +137,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
             }
 
             var dto = BuildItemDto(item, tagName, raw);
+            dto.CanWrite = ParamWriteDefinitions.CanWrite(equipment.TypeGroup, item.Name);
 
             if (item.Name.Equals("R", StringComparison.OrdinalIgnoreCase))
             {
@@ -512,6 +550,134 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return response;
     }
 
+    public async Task<ParamWriteResponse> WriteAsync(
+        EquipmentDto equipment,
+        ParamWriteRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(equipment);
+        ArgumentNullException.ThrowIfNull(request);
+
+        // Ответ создается сразу: дальше каждый guard возвращает структурированную причину отказа,
+        // чтобы WEB мог показать оператору не общий HTTP error, а конкретную проблему.
+        var response = new ParamWriteResponse
+        {
+            EquipmentName = equipment.Name,
+            TypeGroup = equipment.TypeGroup,
+            ItemName = (request.ItemName ?? "").Trim(),
+            Time = DateTime.Now
+        };
+
+        if (equipment.IsGroup)
+            return WriteFailed(response, "Param write is not available for Equipment group nodes.");
+
+        if (string.IsNullOrWhiteSpace(response.ItemName))
+            return WriteFailed(response, "Param item name is required.");
+
+        if (!ParamDefinitions.TryGet(equipment.TypeGroup, out var definition))
+            return WriteFailed(response, $"Param write is not configured for type group '{equipment.TypeGroup}'.");
+
+        var itemDefinition = definition.Items.FirstOrDefault(item =>
+            item.Name.Equals(response.ItemName, StringComparison.OrdinalIgnoreCase));
+
+        if (itemDefinition is null)
+            return WriteFailed(response, $"Param item '{response.ItemName}' is not configured for '{equipment.TypeGroup}'.");
+
+        if (!ParamWriteDefinitions.CanWrite(equipment.TypeGroup, itemDefinition.Name))
+            return WriteFailed(response, $"Param item '{itemDefinition.Name}' is read-only.");
+
+        var options = _writeOptions.Value;
+        if (options.RequireComment && string.IsNullOrWhiteSpace(request.Comment))
+            return WriteFailed(response, "Comment is required for Param write.");
+
+        // Нормализация выполняется на сервере, даже если WEB уже показывал правильный editor.
+        // Это защищает endpoint от ручных HTTP-запросов с неправильным типом значения.
+        if (!TryNormalizeWriteValue(request.Value, itemDefinition.Kind, out var writeValue, out var normalizeError))
+            return WriteFailed(response, normalizeError);
+
+        response.WrittenValue = writeValue;
+
+        // Перед записью обязательно разрешаем реальный tag и читаем текущее значение:
+        // оно нужно оператору, audit и диагностике.
+        var tagName = await ResolveTagNameAsync(equipment.Name, itemDefinition.Name, ct);
+        if (!IsReadableTagName(tagName))
+            return WriteFailed(response, $"Tag for '{equipment.Name}.{itemDefinition.Name}' was not found.");
+
+        response.TagName = tagName;
+
+        string? currentValue;
+        try
+        {
+            currentValue = await _nativeClient.TagReadAsync(tagName, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Param write current value read failed. Equipment={Equipment}, Item={Item}, Tag={Tag}",
+                equipment.Name,
+                itemDefinition.Name,
+                tagName);
+
+            return WriteFailed(response, "Cannot read current value before Param write: " + ex.Message);
+        }
+
+        response.CurrentValue = currentValue;
+
+        if (!options.Enabled)
+            return WriteFailed(response, "Param writes are disabled. Set ParamWrites:Enabled = true to allow write requests.");
+
+        // DryRun специально расположен после всех проверок и чтения current value:
+        // так можно проверить allow-list/tag resolve без реальной записи в Plant SCADA.
+        if (options.DryRun)
+        {
+            response.Success = true;
+            response.DryRun = true;
+            response.Message = "Dry-run: validation succeeded, CtApi TagWrite was not executed.";
+            return response;
+        }
+
+        if (!_options.Value.AllowWrites)
+            return WriteFailed(response, "CtApi writes are disabled. Set CtApi:AllowWrites = true to allow real writes.");
+
+        try
+        {
+            await _nativeClient.TagWriteAsync(tagName, writeValue, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Param TagWrite failed. Equipment={Equipment}, Item={Item}, Tag={Tag}, Value={Value}",
+                equipment.Name,
+                itemDefinition.Name,
+                tagName,
+                writeValue);
+
+            return WriteFailed(response, "CtApi TagWrite failed: " + ex.Message);
+        }
+
+        response.Success = true;
+        response.DryRun = false;
+        response.Message = "Param value was written.";
+
+        if (options.AuditEnabled)
+        {
+            // Audit best-effort: если SaveActionOperators упадет, основная запись считается выполненной.
+            response.AuditAttempted = true;
+            response.AuditSucceeded = await TrySaveOperatorActionAsync(
+                equipment,
+                itemDefinition.Name,
+                currentValue,
+                writeValue,
+                request.Comment,
+                request.Actor,
+                ct);
+        }
+
+        return response;
+    }
+
     private async Task<ParamDiDoRefDto?> TryResolveDryRunDiAsync(
         string dryRunEquipmentName,
         IReadOnlyDictionary<string, EquipmentDto> catalogLookup,
@@ -629,6 +795,8 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
                 continue;
 
             var item = BuildItemDto(definition, tagName, raw);
+            item.CanWrite = equipment is not null
+                && ParamWriteDefinitions.CanWrite(equipment.TypeGroup, definition.Name);
 
             if (definition.Kind == ParamValueKind.Number)
             {
@@ -1180,6 +1348,186 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return dto;
     }
 
+    private static ParamWriteResponse WriteFailed(ParamWriteResponse response, string error)
+    {
+        response.Success = false;
+        response.Error = error;
+        response.Time = DateTime.Now;
+        return response;
+    }
+
+    /// <summary>
+    /// Приводит пользовательское значение к формату, который безопасно отдавать в CtApi TagWrite.
+    /// Boolean пишется как 1/0, number - invariant string без лишнего double-хвоста.
+    /// </summary>
+    private static bool TryNormalizeWriteValue(
+        string? raw,
+        ParamValueKind kind,
+        out string value,
+        out string error)
+    {
+        value = "";
+        error = "";
+
+        raw = (raw ?? "").Trim();
+        if (raw.Length == 0)
+        {
+            error = "Write value is required.";
+            return false;
+        }
+
+        if (kind == ParamValueKind.Boolean)
+        {
+            if (TryParseWriteBoolean(raw, out var boolValue))
+            {
+                value = boolValue ? "1" : "0";
+                return true;
+            }
+
+            error = "Boolean write value must be one of: 1, 0, true, false, on, off.";
+            return false;
+        }
+
+        if (kind == ParamValueKind.Number)
+        {
+            var normalized = raw.Replace(',', '.');
+            if (double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+                && !double.IsNaN(number)
+                && !double.IsInfinity(number))
+            {
+                value = FormatWriteNumber(number);
+                return true;
+            }
+
+            error = "Number write value is invalid.";
+            return false;
+        }
+
+        error = $"Write is not supported for value kind '{kind}'.";
+        return false;
+    }
+
+    /// <summary>
+    /// Разбирает boolean в вариантах, которые встречаются в UI и CtApi: 1/0, true/false, on/off.
+    /// </summary>
+    private static bool TryParseWriteBoolean(string raw, out bool value)
+    {
+        raw = (raw ?? "").Trim();
+
+        if (raw.Equals("1", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("true", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("on", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("yes", StringComparison.OrdinalIgnoreCase))
+        {
+            value = true;
+            return true;
+        }
+
+        if (raw.Equals("0", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("false", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("off", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("no", StringComparison.OrdinalIgnoreCase))
+        {
+            value = false;
+            return true;
+        }
+
+        value = false;
+        return false;
+    }
+
+    private async Task<bool> TrySaveOperatorActionAsync(
+        EquipmentDto equipment,
+        string itemName,
+        string? currentValue,
+        string? newValue,
+        string? description,
+        string? actor,
+        CancellationToken ct)
+    {
+        try
+        {
+            // Повторяем WPF-поведение: сначала кладем заголовок оборудования в sWndTitle,
+            // затем вызываем Cicode-функцию, которая сама пишет действие оператора в SCADA/Event DB.
+            var safeName = ToCicodeStringArg($"{equipment.Name}.{itemName}");
+            var safeCurrent = ToCicodeValueArg(currentValue);
+            var safeNew = ToCicodeValueArg(newValue);
+            var safeDescription = ToCicodeStringArg(description ?? itemName);
+            var safeDeviceName = ToCicodeStringArg(actor);
+
+            var equipmentDescription = GetEquipmentAuditTitle(equipment);
+            await _nativeClient.TagWriteAsync(
+                "sWndTitle",
+                $"\"{EscapeCicodeString(equipmentDescription)}\"",
+                ct);
+
+            await _nativeClient.CicodeAsync(
+                $"SaveActionOperators({safeName}, {safeCurrent}, {safeNew}, {safeDescription}, {safeDeviceName})",
+                ct);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Param write operator action audit failed. Equipment={Equipment}, Item={Item}",
+                equipment.Name,
+                itemName);
+
+            return false;
+        }
+    }
+
+    private static string GetEquipmentAuditTitle(EquipmentDto equipment)
+    {
+        if (!string.IsNullOrWhiteSpace(equipment.Description))
+            return equipment.Description;
+
+        if (!string.IsNullOrWhiteSpace(equipment.DisplayName))
+            return equipment.DisplayName;
+
+        return equipment.Name;
+    }
+
+    /// <summary>
+    /// Формирует строковый аргумент Cicode с экранированием двойных кавычек.
+    /// </summary>
+    private static string ToCicodeStringArg(string? value)
+    {
+        return $"\"{EscapeCicodeString((value ?? "").Trim())}\"";
+    }
+
+    /// <summary>
+    /// Формирует Cicode-аргумент: числа и boolean передаются без кавычек, текст - как строка.
+    /// Это важно для SaveActionOperators, который в SCADA ожидает смешанные типы.
+    /// </summary>
+    private static string ToCicodeValueArg(object? value)
+    {
+        if (value is null)
+            return "\"\"";
+
+        if (value is bool b)
+            return b ? "1" : "0";
+
+        if (value is byte or sbyte or short or ushort or int or uint or long or ulong)
+            return Convert.ToString(value, CultureInfo.InvariantCulture) ?? "0";
+
+        if (value is float or double or decimal)
+            return Convert.ToString(value, CultureInfo.InvariantCulture)?.Replace(',', '.') ?? "0";
+
+        var text = Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim() ?? "";
+
+        if (TryParseWriteBoolean(text, out var boolValue))
+            return boolValue ? "1" : "0";
+
+        var numeric = text.Replace(',', '.');
+        if (double.TryParse(numeric, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+            return numeric;
+
+        return ToCicodeStringArg(text);
+    }
+
     private static ParamTrendItemDto ToDto(ParamTrendItemDefinition definition)
     {
         return new ParamTrendItemDto
@@ -1266,6 +1614,14 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
     private static string FormatNumber(double value)
     {
         return value.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Форматирует число именно для записи, сохраняя больше точности, чем обычный display-format.
+    /// </summary>
+    private static string FormatWriteNumber(double value)
+    {
+        return value.ToString("0.###############", CultureInfo.InvariantCulture);
     }
 
     private static string CleanScadaText(string? value)
@@ -1421,4 +1777,61 @@ internal static class ParamDefinitions
 
     private static ParamTrendItemDefinition T(string name, string color, double? nativeMin = null, double? nativeMax = null) =>
         new(name, color, nativeMin, nativeMax);
+}
+
+/// <summary>
+/// Описывает, какие EquipItem разрешены к записи для каждого типа оборудования.
+/// Это второй рубеж защиты после UI: даже ручной HTTP-запрос не запишет item вне allow-list.
+/// </summary>
+internal static class ParamWriteDefinitions
+{
+    /// <summary>
+    /// Список разрешенных к записи EquipItem по типам оборудования.
+    /// Все отсутствующие здесь параметры считаются read-only независимо от действий WEB UI.
+    /// </summary>
+    private static readonly Dictionary<EquipmentTypeGroup, HashSet<string>> WritableItems = new()
+    {
+        [EquipmentTypeGroup.AI] = Names(
+            "AlarmLAEn", "AlarmLWEn", "AlarmHWEn", "AlarmHAEn", "ForceCmd",
+            "Min", "Max", "MinR", "MaxR", "Flt", "Coef", "SetLA", "SetLW",
+            "SetHW", "SetHA", "SetHyst", "HmiForced"),
+
+        [EquipmentTypeGroup.DI] = Names("ForceCmd", "ValueForced"),
+
+        [EquipmentTypeGroup.DO] = Names("ForceCmd", "ValueForced"),
+
+        [EquipmentTypeGroup.Motor] = Names(
+            "Mode", "Man", "AlarmAEn", "TimeReset",
+            "TimeWarn", "TimeSet"),
+
+        [EquipmentTypeGroup.ATV] = Names(
+            "Mode", "AlarmLAEn", "AlarmLWEn", "AlarmHWEn", "AlarmHAEn",
+            "ForceCmd", "AlarmEn", "OutMin", "OutMax", "NMax", "Nsp", "Cli",
+            "RemoteSet", "RemoteAcc", "RemoteDec", "LocalSet", "LocalAcc",
+            "LocalDec", "Man", "ManForced", "SetLA", "SetLW", "SetHW",
+            "SetHA", "SetHyst"),
+
+        [EquipmentTypeGroup.VGA] = Names(
+            "Mode", "AlarmLAEn", "AlarmLWEn", "AlarmHWEn", "AlarmHAEn",
+            "ForceCmd", "Min", "Max", "MinR", "MaxR", "OutMin", "OutMax",
+            "Man", "ManForced", "SetLA", "SetLW", "SetHW", "SetHA", "SetHyst"),
+
+        [EquipmentTypeGroup.VGA_EL] = Names(
+            "Mode", "OpenCmd", "CloseCmd", "AlarmEn", "SQEn", "ActuatorEn",
+            "Man", "TimeOpening", "OutMin", "OutMax"),
+
+        [EquipmentTypeGroup.VGD] = Names(
+            "Mode", "Man", "AlarmEn", "TOpen", "TClose")
+    };
+
+    public static bool CanWrite(EquipmentTypeGroup typeGroup, string itemName)
+    {
+        return WritableItems.TryGetValue(typeGroup, out var names)
+            && names.Contains(itemName);
+    }
+
+    private static HashSet<string> Names(params string[] names)
+    {
+        return new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+    }
 }

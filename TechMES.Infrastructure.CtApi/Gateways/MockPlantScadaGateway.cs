@@ -13,9 +13,15 @@ namespace TechMES.Infrastructure.CtApi.Gateways;
 /// </summary>
 public sealed class MockPlantScadaGateway : IPlantScadaGateway
 {
+    /// <summary>
+    /// In-memory набор tag-ов для разработки без реальной Plant SCADA.
+    /// </summary>
     private readonly ConcurrentDictionary<string, string?> _tags =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Заполняет несколько тестовых tag-ов при старте Runtime.Service.
+    /// </summary>
     public Task InitializeAsync(CancellationToken ct = default)
     {
         // Несколько тестовых tag-ов, чтобы можно было проверить API.
@@ -27,6 +33,9 @@ public sealed class MockPlantScadaGateway : IPlantScadaGateway
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Возвращает health-ответ Mock provider-а.
+    /// </summary>
     public Task<PlantScadaHealthResponse> GetHealthAsync(CancellationToken ct = default)
     {
         return Task.FromResult(new PlantScadaHealthResponse
@@ -39,6 +48,9 @@ public sealed class MockPlantScadaGateway : IPlantScadaGateway
         });
     }
 
+    /// <summary>
+    /// Читает tag из in-memory словаря.
+    /// </summary>
     public Task<ScadaTagReadResponse> ReadTagAsync(string tagName, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(tagName))
@@ -65,6 +77,9 @@ public sealed class MockPlantScadaGateway : IPlantScadaGateway
         });
     }
 
+    /// <summary>
+    /// Записывает tag в in-memory словарь.
+    /// </summary>
     public Task<ScadaTagWriteResponse> WriteTagAsync(ScadaTagWriteRequest request, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.TagName))

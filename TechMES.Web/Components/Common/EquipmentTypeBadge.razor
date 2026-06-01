@@ -3,19 +3,34 @@
              Style="@CombinedStyle" />
 
 @code {
+    /// <summary>
+    /// Тип оборудования, который нужно показать коротким badge.
+    /// </summary>
     [Parameter]
     public EquipmentTypeGroup TypeGroup { get; set; } = EquipmentTypeGroup.Unknown;
 
+    /// <summary>
+    /// Дополнительный inline-style от родительского компонента.
+    /// </summary>
     [Parameter]
     public string? Style { get; set; }
 
+    /// <summary>
+    /// Единый размер badge 33x20, согласованный с tree/list UI.
+    /// </summary>
     private const string BaseStyle =
         "display: inline-flex; align-items: center; justify-content: center; width: 33px; min-width: 33px; height: 20px; padding: 0; font-size: 11px; line-height: 20px;";
 
+    /// <summary>
+    /// Итоговый style: базовый размер плюс необязательные внешние отступы.
+    /// </summary>
     private string CombinedStyle => string.IsNullOrWhiteSpace(Style)
         ? BaseStyle
         : $"{BaseStyle} {Style}";
 
+    /// <summary>
+    /// Короткий текст badge. Длинные типы заменены на M/EQ/EL.
+    /// </summary>
     private string BadgeText => TypeGroup switch
     {
         EquipmentTypeGroup.Motor => "M",
@@ -25,6 +40,9 @@
         _ => TypeGroup.ToString()
     };
 
+    /// <summary>
+    /// Цвет badge по типу оборудования.
+    /// </summary>
     private BadgeStyle BadgeStyle => TypeGroup switch
     {
         EquipmentTypeGroup.Motor => BadgeStyle.Success,

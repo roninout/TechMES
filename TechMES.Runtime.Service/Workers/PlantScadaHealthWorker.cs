@@ -12,10 +12,24 @@ namespace TechMES.Runtime.Service.Workers;
 /// </summary>
 public sealed class PlantScadaHealthWorker : BackgroundService
 {
+    /// <summary>
+    /// Абстракция доступа к Plant SCADA/CtApi, через которую worker проверяет связь.
+    /// </summary>
     private readonly IPlantScadaGateway _plantScadaGateway;
+
+    /// <summary>
+    /// Настройки CtApi, включая provider и период фоновой проверки.
+    /// </summary>
     private readonly IOptions<CtApiOptions> _options;
+
+    /// <summary>
+    /// Логгер фонового health-check процесса.
+    /// </summary>
     private readonly ILogger<PlantScadaHealthWorker> _logger;
 
+    /// <summary>
+    /// Создает worker, который периодически проверяет доступность Plant SCADA adapter-а.
+    /// </summary>
     public PlantScadaHealthWorker(IPlantScadaGateway plantScadaGateway, IOptions<CtApiOptions> options, ILogger<PlantScadaHealthWorker> logger)
     {
         _plantScadaGateway = plantScadaGateway;
@@ -23,6 +37,10 @@ public sealed class PlantScadaHealthWorker : BackgroundService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Основной цикл фоновой проверки связи с SCADA.
+    /// Проверка не читает производственные теги и не мешает Param/Info запросам.
+    /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var options = _options.Value;
