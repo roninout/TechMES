@@ -1,0 +1,139 @@
+@using System.Globalization
+
+<div class="@MeterClass">
+    <div class="param-meter-scale">
+        <span class="param-meter-limit param-meter-limit-top">@FormatNumber(ActualMax)</span>
+        <span class="param-meter-tick param-meter-tick-top"></span>
+        <span class="param-meter-tick param-meter-tick-middle"></span>
+        <span class="param-meter-tick param-meter-tick-bottom"></span>
+        <span class="param-meter-limit param-meter-limit-bottom">@FormatNumber(ActualMin)</span>
+    </div>
+
+    <div class="param-meter-body"
+         title="@TooltipText">
+        <div class="param-meter-fill" style="@FillStyle"></div>
+        <span class="param-meter-value">@($"{Label}: {FormatNumber(Value)}")</span>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Подпись значения внутри вертикальной шкалы.
+    /// В WPF эта подпись выводилась прямо в ProgressBar вертикальным текстом.
+    /// </summary>
+    [Parameter]
+    public string Label { get; set; } = "";
+
+    /// <summary>
+    /// Текущее значение, которое нужно показать высотой заполнения.
+    /// Если CtApi не вернул значение, шкала остается пустой, но сама область не исчезает.
+    /// </summary>
+    [Parameter]
+    public double? Value { get; set; }
+
+    /// <summary>
+    /// Нижняя граница шкалы из Param item-ов: Min, MinR, OutMin или фиксированный 0.
+    /// </summary>
+    [Parameter]
+    public double? Min { get; set; }
+
+    /// <summary>
+    /// Верхняя граница шкалы из Param item-ов: Max, MaxR, OutMax или фиксированный 100.
+    /// </summary>
+    [Parameter]
+    public double? Max { get; set; }
+
+    /// <summary>
+    /// Цвет заливки, который повторяет смысл WPF-блоков: серый для PLC/Position,
+    /// зеленый для R у AI и синий для ручных/клапанных значений.
+    /// </summary>
+    [Parameter]
+    public string FillColor { get; set; } = "#4f81bd";
+
+    /// <summary>
+    /// Положение числовой шкалы относительно бара.
+    /// В WPF у пары баров левая шкала стоит слева, правая - справа.
+    /// </summary>
+    [Parameter]
+    public bool ScaleOnRight { get; set; }
+
+    /// <summary>
+    /// Реальный минимум шкалы. Если backend не дал значение, используем 0,
+    /// чтобы панель оставалась стабильной по размеру и не прыгала при обновлениях.
+    /// </summary>
+    private double ActualMin => Min ?? 0;
+
+    /// <summary>
+    /// Реальный максимум шкалы. Если backend не дал значение или диапазон вырожденный,
+    /// поднимаем верхнюю границу хотя бы на единицу выше минимума.
+    /// </summary>
+    private double ActualMax
+    {
+        get
+        {
+            var candidate = Max ?? 100;
+            return Math.Abs(candidate - ActualMin) < double.Epsilon
+                ? ActualMin + 1
+                : candidate;
+        }
+    }
+
+    /// <summary>
+    /// CSS-класс корневого блока. Он меняет порядок шкалы и бара для правой стороны.
+    /// </summary>
+    private string MeterClass => ScaleOnRight
+        ? "param-meter param-meter-scale-right"
+        : "param-meter";
+
+    /// <summary>
+    /// Inline-style высоты и цвета заливки.
+    /// Высоту считаем в процентах, чтобы CSS мог растягивать сам бар под доступную высоту графика.
+    /// </summary>
+    private string FillStyle
+    {
+        get
+        {
+            var percent = GetFillPercent();
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"height: {percent:0.###}%; background: {FillColor};");
+        }
+    }
+
+    /// <summary>
+    /// Подсказка при наведении: удобно сверять реальные границы,
+    /// особенно когда текущее значение зажато в 0% или 100%.
+    /// </summary>
+    private string TooltipText =>
+        $"{Label}: {FormatNumber(Value)} [{FormatNumber(ActualMin)} - {FormatNumber(ActualMax)}]";
+
+    /// <summary>
+    /// Переводит инженерное значение в процент заполнения шкалы.
+    /// Значения вне диапазона аккуратно прижимаются к краям, как это делает визуальный ProgressBar.
+    /// </summary>
+    private double GetFillPercent()
+    {
+        if (!Value.HasValue)
+            return 0;
+
+        var min = ActualMin;
+        var max = ActualMax;
+        var span = max - min;
+
+        if (Math.Abs(span) < double.Epsilon)
+            return 0;
+
+        var percent = (Value.Value - min) / span * 100;
+        return Math.Clamp(percent, 0, 100);
+    }
+
+    /// <summary>
+    /// Форматирует числа компактно: без длинных хвостов double, но с сохранением дробной части.
+    /// </summary>
+    private static string FormatNumber(double? value)
+    {
+        return value.HasValue
+            ? value.Value.ToString("0.###", CultureInfo.InvariantCulture)
+            : "-";
+    }
+}

@@ -1,0 +1,130 @@
+@using TechMES.Contracts.Param
+
+<div class="ai-settings-page">
+    @RenderGroup("PLC settings", "manufacturing", PlcRows)
+    @RenderGroup("Chanel settings", "settings_input_component", ChannelRows)
+</div>
+
+@code {
+    /// <summary>
+    /// Полный набор Param item-ов текущего AI-оборудования.
+    /// Компонент сам выбирает из него только поля, нужные для WPF-like вкладки Settings.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<ParamItemDto>? Items { get; set; }
+
+    /// <summary>
+    /// Команда записи, которую родительский EquipmentParamPanel уже реализует через Radzen Dialog и Runtime.Service.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Поля верхнего блока PLC settings для AI.
+    /// </summary>
+    private static readonly AiSettingRow[] PlcRows =
+    [
+        new("Max", "Max"),
+        new("Min", "Min"),
+        new("Filtration", "Flt")
+    ];
+
+    /// <summary>
+    /// Поля нижнего блока Chanel settings; название оставлено как в WPF-экране.
+    /// </summary>
+    private static readonly AiSettingRow[] ChannelRows =
+    [
+        new("MaxR", "MaxR"),
+        new("MinR", "MinR"),
+        new("Coefficient", "Coef")
+    ];
+
+    /// <summary>
+    /// Рисует одну WPF-like группу настроек с заголовком и строками FormField.
+    /// </summary>
+    private RenderFragment RenderGroup(string title, string icon, IReadOnlyList<AiSettingRow> rows) => @<ParamAiPanel Title="@title" Icon="@icon">
+        <div class="ai-settings-group-body">
+            @foreach (var row in rows)
+            {
+                var item = FindItem(row.ItemName);
+
+                <div class="ai-setting-row">
+                    <span class="ai-setting-label">@row.Label</span>
+
+                    <div class="@GetFieldShellClass(item)"
+                         title="@GetFieldTitle(item)"
+                         @onclick="@(() => RequestWriteAsync(item))">
+                        <RadzenFormField AllowFloatingLabel="false"
+                                         Text="@row.Label"
+                                         Variant="Variant.Outlined"
+                                         class="ai-setting-form-field">
+                            <RadzenTextBox Value="@FormatValue(item)"
+                                           ReadOnly="true"
+                                           Disabled="@(item is null)"
+                                           class="ai-setting-value" />
+                        </RadzenFormField>
+                    </div>
+                </div>
+            }
+        </div>
+    </ParamAiPanel>;
+
+    /// <summary>
+    /// Ищет Param item по имени EquipItem без учета регистра.
+    /// </summary>
+    private ParamItemDto? FindItem(string itemName)
+    {
+        return Items?.FirstOrDefault(item => item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Вызывает общий write-dialog только для writable item-ов.
+    /// </summary>
+    private async Task RequestWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// CSS-класс контейнера FormField: writable поля выглядят кликабельными, read-only остаются спокойными.
+    /// </summary>
+    private static string GetFieldShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "ai-setting-field-shell is-writable"
+            : "ai-setting-field-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Tooltip помогает отличать writable поле от отсутствующего или read-only item-а.
+    /// </summary>
+    private static string GetFieldTitle(ParamItemDto? item)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        return item.CanWrite ? "Write value" : "Read only";
+    }
+
+    /// <summary>
+    /// Форматирует значение так же, как общая Param-таблица.
+    /// </summary>
+    private static string FormatValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return "-";
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(item.ValueText) ? "-" : item.ValueText;
+    }
+
+    /// <summary>
+    /// Описание строки AI Settings: человекочитаемый label и реальное имя Param item.
+    /// </summary>
+    private sealed record AiSettingRow(string Label, string ItemName);
+}

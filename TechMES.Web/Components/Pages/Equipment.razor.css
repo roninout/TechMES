@@ -1,4 +1,8 @@
 .equipment-page {
+    /* Правые фильтры и содержимое Info/Param используют одинаковый внутренний отступ от границы дерева.
+       Меняя это значение, можно одновременно подкорректировать положение кнопки, поиска и Refresh. */
+    --equipment-right-content-inset: 8px;
+
     display: grid;
     grid-template-rows: auto auto auto minmax(0, 1fr);
     gap: 12px;
@@ -11,6 +15,15 @@
     grid-template-columns: 400px minmax(0, 1fr);
     gap: 8px;
     align-items: center;
+}
+
+/* В свернутом режиме фильтры дерева исчезают, а строка поиска занимает всю доступную ширину. */
+.equipment-filter-layout.is-left-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.equipment-filter-layout.is-left-collapsed .equipment-tree-filters {
+    display: none;
 }
 
 .equipment-tree-filters {
@@ -26,6 +39,64 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
+    box-sizing: border-box;
+    padding-inline-start: var(--equipment-right-content-inset);
+}
+
+/* Локальный Info/Param SelectBar прижимается к правой границе строки фильтров.
+   margin-inline-start: auto — основная настройка его горизонтального положения. */
+.equipment-mode-switch {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+    padding-inline-end: var(--equipment-right-content-inset);
+}
+
+/* Высота SelectBar и его пунктов совпадает с dropdown, поиском и Refresh.
+   Через эти правила также можно подкорректировать размеры локального переключателя. */
+::deep .equipment-mode-selectbar,
+::deep .equipment-mode-selectbar .rz-button {
+    height: 36px;
+    min-height: 36px;
+}
+
+::deep .equipment-mode-selectbar .rz-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Кнопка каталога имеет ту же фиксированную высоту, что поиск, dropdown и Refresh. */
+::deep .equipment-pane-toggle-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 36px;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--rz-text-color) !important;
+    transition: background-color 120ms ease, transform 120ms ease;
+}
+
+::deep .equipment-pane-toggle-button:hover {
+    border-color: transparent !important;
+    background: var(--rz-base-200) !important;
+}
+
+::deep .equipment-pane-toggle-button:active {
+    transform: scale(0.92);
+}
+
+::deep .equipment-pane-toggle-button .rz-button-icon-left {
+    margin: 0;
+    color: inherit !important;
+    font-size: 21px;
 }
 
 .equipment-search-wrapper {
@@ -38,18 +109,26 @@
     min-width: 0;
 }
 
-::deep .equipment-main-splitter {
+/* Основная область больше не использует RadzenSplitter: кнопка возле поиска
+   переключает фиксированную левую колонку и растягивает правую. */
+.equipment-main-layout {
+    display: grid;
+    grid-template-columns: 400px minmax(0, 1fr);
+    gap: 8px;
     height: 100%;
     min-height: 0;
 }
 
-::deep .equipment-main-splitter > .rz-splitter-horizontal {
-    height: 100%;
-    min-height: 0;
+.equipment-main-layout.is-left-collapsed {
+    grid-template-columns: minmax(0, 1fr);
 }
 
-::deep .equipment-left-pane,
-::deep .equipment-right-pane {
+.equipment-main-layout.is-left-collapsed .equipment-left-pane {
+    display: none;
+}
+
+.equipment-left-pane,
+.equipment-right-pane {
     min-height: 0;
     overflow: hidden;
 }

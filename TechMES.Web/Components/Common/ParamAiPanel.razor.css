@@ -1,0 +1,35 @@
+::deep .param-ai-panel {
+    --rz-panel-border-radius: 0;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+::deep .param-ai-panel .rz-panel-titlebar {
+    align-items: center;
+    min-height: 32px;
+    padding: 0 0 12px 0;
+}
+
+::deep .param-ai-panel .rz-panel-content {
+    margin: 0;
+}
+
+::deep .param-ai-panel-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    line-height: 32px;
+}
+
+::deep .param-ai-panel-heading-icon {
+    flex: 0 0 auto;
+    font-size: 20px;
+    line-height: 1;
+}
+
+::deep .param-ai-panel-card {
+    margin-top: 8px;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    box-shadow: none;
+}

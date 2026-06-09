@@ -1,0 +1,13 @@
+.param-write-dialog {
+    --param-write-field-gap: 16px;
+    --param-write-actions-margin-top: 0;
+    min-width: 0;
+}
+
+.param-write-current {
+    color: var(--rz-text-secondary-color);
+}
+
+.param-write-actions {
+    margin-top: var(--param-write-actions-margin-top);
+}

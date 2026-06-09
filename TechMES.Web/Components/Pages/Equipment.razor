@@ -13,7 +13,7 @@
 <PageTitle>@(IsParamMode ? "Param" : "Info")</PageTitle>
 
 <div class="equipment-page">
-    <div class="equipment-filter-layout">
+    <div class="@GetFilterLayoutCssClass()">
         <div class="equipment-tree-filters">
             <RadzenDropDown TValue="string"
                             Data="@_stationItems"
@@ -56,6 +56,15 @@
         </div>
 
         <div class="equipment-search-actions">
+            @* Кнопка управляет всей левой зоной: колонкой каталога и относящимися к ней фильтрами. *@
+            <RadzenButton Icon="@(_isLeftPaneCollapsed ? "menu_open" : "menu")"
+                          ButtonStyle="ButtonStyle.Light"
+                          Variant="Variant.Text"
+                          class="equipment-pane-toggle-button"
+                          title="@(_isLeftPaneCollapsed ? "Show equipment tree" : "Hide equipment tree")"
+                          aria-label="@(_isLeftPaneCollapsed ? "Show equipment tree" : "Hide equipment tree")"
+                          Click="@ToggleLeftPane" />
+
             <div class="equipment-search-wrapper">
                 <RadzenAutoComplete Data="@_searchSuggestions"
                                     @bind-Value="_searchText"
@@ -83,6 +92,27 @@
                           Disabled="@_isLoading"
                           class="equipment-refresh-button"
                           Click="@LoadAsync" />
+
+            @* Локальный переключатель дублирует пункты Info/Param из Header,
+               но оставляет пользователя внутри текущего Equipment-контекста:
+               выбранное оборудование и примененные фильтры при смене route сохраняются. *@
+            <div class="equipment-mode-switch">
+                <RadzenSelectBar TValue="string"
+                                 Value="@SelectedEquipmentMode"
+                                 Change="@OnEquipmentModeChanged"
+                                 Size="ButtonSize.Small"
+                                 class="equipment-mode-selectbar"
+                                 aria-label="Equipment view mode">
+                    <Items>
+                        <RadzenSelectBarItem Text="Info"
+                                             Value="@InfoModeValue"
+                                             Icon="info" />
+                        <RadzenSelectBarItem Text="Param"
+                                             Value="@ParamModeValue"
+                                             Icon="tune" />
+                    </Items>
+                </RadzenSelectBar>
+            </div>
         </div>
     </div>
 
@@ -101,8 +131,10 @@
         <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
     }
 
-    <RadzenSplitter class="equipment-main-splitter">
-        <RadzenSplitterPane Size="400px" Min="400px" Max="400px" class="equipment-left-pane">
+    @* Обычная CSS-grid заменила RadzenSplitter: ширина дерева фиксирована,
+       а управляет его видимостью только отдельная кнопка возле поиска. *@
+    <div class="@GetMainLayoutCssClass()">
+        <section class="equipment-left-pane">
             @if (_treeRows.Count == 0 && !_isLoading)
             {
                 <RadzenCard>
@@ -186,9 +218,9 @@
                     </div>
                 </RadzenCard>
             }
-        </RadzenSplitterPane>
+        </section>
 
-        <RadzenSplitterPane class="equipment-right-pane">
+        <section class="equipment-right-pane">
             <div @key="IsParamMode" class="equipment-right-mode-host">
                 @if (IsParamMode)
                 {
@@ -206,8 +238,8 @@
                                         OnInfoCountsChanged="@OnInfoCountsChanged" />
                 }
             </div>
-        </RadzenSplitterPane>
-    </RadzenSplitter>
+        </section>
+    </div>
 </div>
 
 @code {
@@ -225,6 +257,16 @@
     /// Специальный пункт фильтра по избранному оборудованию.
     /// </summary>
     private const string FavoritesTypeText = "Favorites";
+
+    /// <summary>
+    /// Значение локального SelectBar, соответствующее информационному режиму Equipment.
+    /// </summary>
+    private const string InfoModeValue = "info";
+
+    /// <summary>
+    /// Значение локального SelectBar, соответствующее режиму просмотра параметров Equipment.
+    /// </summary>
+    private const string ParamModeValue = "param";
 
     /// <summary>
     /// ParentNodeId корневых узлов дерева.
@@ -297,6 +339,13 @@
     private bool _isFavoriteSaving;
 
     /// <summary>
+    /// Определяет, свернута ли левая зона каталога оборудования.
+    /// Одно состояние одновременно управляет CSS-grid и фильтрами станции/типа,
+    /// поэтому после сворачивания правая рабочая зона получает всю доступную ширину.
+    /// </summary>
+    private bool _isLeftPaneCollapsed;
+
+    /// <summary>
     /// Status message страницы Equipment.
     /// </summary>
     private string _statusText = "";
@@ -315,6 +364,13 @@
             .StartsWith("equipment/param", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Возвращает выбранный пункт локального Info/Param SelectBar на основании текущего URL.
+    /// Отдельное состояние намеренно не хранится: Header и локальный переключатель всегда
+    /// синхронизированы через единый источник истины — активный Equipment route.
+    /// </summary>
+    private string SelectedEquipmentMode => IsParamMode ? ParamModeValue : InfoModeValue;
+
+    /// <summary>
     /// Подписывается на route/QR события и загружает каталог оборудования.
     /// </summary>
     protected override async Task OnInitializedAsync()
@@ -330,6 +386,26 @@
     private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
     {
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Переключает рабочую область выбранного оборудования между Info и Param.
+    /// Компонент страницы при этом остается тем же, поэтому выбранное оборудование,
+    /// фильтры каталога и состояние дерева не сбрасываются.
+    /// </summary>
+    /// <param name="mode">Значение выбранного пункта локального SelectBar.</param>
+    private void OnEquipmentModeChanged(string? mode)
+    {
+        if (string.Equals(mode, SelectedEquipmentMode, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var targetRoute = string.Equals(mode, ParamModeValue, StringComparison.OrdinalIgnoreCase)
+            ? "/equipment/param"
+            : "/equipment";
+
+        NavigationManager.NavigateTo(targetRoute);
     }
 
     /// <summary>
@@ -419,6 +495,40 @@
 
         _searchText = string.Empty;
         ApplyFilters();
+    }
+
+    /// <summary>
+    /// Возвращает CSS-класс строки фильтров с учетом состояния левой зоны.
+    /// В свернутом режиме сетка переходит с двух колонок на одну, и поиск начинается
+    /// непосредственно после кнопки открытия каталога.
+    /// </summary>
+    private string GetFilterLayoutCssClass()
+    {
+        return _isLeftPaneCollapsed
+            ? "equipment-filter-layout is-left-collapsed"
+            : "equipment-filter-layout";
+    }
+
+    /// <summary>
+    /// Возвращает CSS-класс основной двухколоночной области Equipment.
+    /// В свернутом режиме левая колонка скрывается через CSS, но ее содержимое остается в render tree,
+    /// поэтому выбранное оборудование и состояние правого Info/Param-модуля не теряются.
+    /// </summary>
+    private string GetMainLayoutCssClass()
+    {
+        return _isLeftPaneCollapsed
+            ? "equipment-main-layout is-left-collapsed"
+            : "equipment-main-layout";
+    }
+
+    /// <summary>
+    /// Сворачивает или раскрывает левую зону каталога вместе с ее фильтрами.
+    /// CSS-grid скрывает только левую колонку, поэтому Info/Param-модули сохраняют текущие данные
+    /// и не выполняют лишнюю повторную загрузку.
+    /// </summary>
+    private void ToggleLeftPane()
+    {
+        _isLeftPaneCollapsed = !_isLeftPaneCollapsed;
     }
 
     /// <summary>

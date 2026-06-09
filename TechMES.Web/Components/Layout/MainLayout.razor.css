@@ -6,6 +6,12 @@
     padding: 20px 24px 18px;
 }
 
+/* После удаления Footer рабочая область занимает его прежнюю высоту.
+   Базовые размеры Header и Footer этим правилом не изменяются. */
+.page-content.footer-hidden {
+    height: calc(100vh - 59px);
+}
+
 .app-header {
     border-bottom: 1px solid var(--rz-border-color);
     background: var(--rz-secondary-lighter);
@@ -38,15 +44,66 @@
     flex: 1 1 auto;
 }
 
+/* Правый блок удерживает глобальные действия и логотип в одной строке,
+   не позволяя иконкам менять размер при сжатии основного меню. */
+.header-actions {
+    /* Отступы логотипа от соседних кнопок можно независимо подкорректировать здесь. */
+    --app-logo-margin-left: 20px;
+    --app-logo-margin-right: 10px;
+
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 6px;
+}
+
+/* Общий прозрачный стиль для QR, Footer-toggle и RadzenAppearanceToggle.
+   Явный text-color нужен, потому что ButtonStyle.Light почти сливается со светлым Header. */
+::deep .header-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--rz-text-color) !important;
+    transition: background-color 120ms ease, transform 120ms ease;
+}
+
+::deep .header-icon-button:hover {
+    border-color: transparent !important;
+    background: var(--rz-base-200) !important;
+}
+
+::deep .header-icon-button:active {
+    transform: scale(0.92);
+}
+
+::deep .header-icon-button .rz-button-icon-left {
+    margin: 0;
+    color: inherit !important;
+    font-size: 21px;
+}
+
 ::deep .header-qr-button {
     flex: 0 0 auto;
 }
 
 .app-logo {
+    display: block;
     flex: 0 0 auto;
     width: 152px;
     height: 40px;
-    object-fit: contain;
+    margin-left: var(--app-logo-margin-left);
+    margin-right: var(--app-logo-margin-right);
+    background-color: var(--rz-text-color);
+    opacity: 0.78;
+    -webkit-mask: url("/images/TIS_logo_intellegence_g.png") center / contain no-repeat;
+    mask: url("/images/TIS_logo_intellegence_g.png") center / contain no-repeat;
 }
 
 ::deep .top-nav-link {
@@ -103,12 +160,9 @@
         display: none;
     }
 
-    ::deep .header-qr-button {
-        align-self: flex-end;
-    }
-
-    .app-logo {
-        align-self: flex-end;
+    .header-actions {
+        justify-content: flex-end;
+        width: 100%;
     }
 
     .app-footer-bar {

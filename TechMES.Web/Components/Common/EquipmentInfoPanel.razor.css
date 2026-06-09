@@ -122,6 +122,39 @@
     min-width: 0;
 }
 
+.info-tab-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+    min-width: 0;
+    padding: 0;
+    color: inherit;
+}
+
+.info-tab-header.has-count {
+    color: inherit;
+}
+
+.info-tab-header ::deep .rzi {
+    font-size: 18px;
+    color: inherit;
+}
+
+::deep .info-tab-counter-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 11px;
+    line-height: 1;
+    margin-left: 2px;
+}
+
 .description-block {
     display: grid;
     gap: 12px;

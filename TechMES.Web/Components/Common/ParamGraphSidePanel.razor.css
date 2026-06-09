@@ -1,0 +1,311 @@
+.param-graph-side-panel {
+    display: flex;
+    flex-direction: column;
+    width: 180px;
+    min-width: 180px;
+    max-width: 100%;
+    /* Высота синхронизирована с .param-echart, чтобы боковой WPF-блок стоял по центру высоты графика. */
+    height: 460px;
+    min-height: 0;
+    padding: 8px;
+    border: 1px solid var(--rz-border-color);
+    /* Используем фон активной темы, а не base-100: в Standard Dark значение base-100
+       остается светлой служебной поверхностью и визуально выбивается из Graph-зоны. */
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-color);
+}
+
+.param-graph-side-panel-digital {
+    width: 260px;
+    min-width: 260px;
+}
+
+.param-graph-side-panel-manual {
+    width: 220px;
+    min-width: 220px;
+}
+
+/* Для AI фактические границы plot-area приходят из Apache ECharts через CSS-переменные.
+   Поэтому верх и низ вертикальных шкал совпадают с линиями области построения,
+   а не с полным canvas, включающим подписи оси, dataZoom и legend. */
+.param-graph-side-panel-aligned-bars {
+    position: relative;
+    box-sizing: border-box;
+    padding-block: 0;
+}
+
+.param-graph-side-panel-aligned-bars .param-side-stack {
+    position: relative;
+}
+
+.param-graph-side-panel-aligned-bars .param-side-bars {
+    position: absolute;
+    inset-block-start: var(--param-chart-plot-top, 30px);
+    inset-block-end: var(--param-chart-plot-bottom, 90px);
+    inset-inline: 0;
+    min-height: 0;
+}
+
+/* В обычных панелях meter сохраняет минимальную высоту для читаемости.
+   У AI высоту диктует реальная plot-area ECharts, иначе min-height может вытолкнуть нижнюю границу шкалы. */
+.param-graph-side-panel-aligned-bars ::deep .param-meter {
+    min-height: 0;
+}
+
+.param-graph-side-panel-aligned-bars .param-side-unit {
+    position: absolute;
+    inset-block-start: calc(100% - var(--param-chart-plot-bottom, 90px) + 8px);
+    inset-inline: 0;
+}
+
+.param-side-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+    min-height: 0;
+}
+
+.param-side-warning {
+    min-height: 22px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 22px;
+}
+
+.param-side-warning.is-alarm {
+    color: #d71920;
+}
+
+.param-side-warning.is-forced {
+    color: #f28c00;
+    animation: param-forced-blink 900ms ease-in-out infinite alternate;
+}
+
+.param-side-warning.is-time-work {
+    color: cornflowerblue;
+}
+
+.param-side-bars {
+    display: flex;
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: 280px;
+    min-width: 0;
+}
+
+.param-side-bars-one {
+    justify-content: center;
+}
+
+.param-side-bars-two {
+    /* Расстояние между двумя вертикальными шкалами внутри AI/VGA/VGA_EL.
+       В WPF бары стоят почти вплотную, поэтому оставляем небольшой отрицательный сдвиг. */
+    gap: 0;
+}
+
+.param-side-unit {
+    min-height: 18px;
+    text-align: center;
+    color: var(--rz-text-color);
+    font-size: 13px;
+}
+
+.param-side-readout {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 4px 8px;
+    border: 1px solid var(--rz-border-color);
+    background: var(--rz-base-background-color);
+}
+
+.param-side-readout span {
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
+}
+
+.param-side-readout strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--rz-text-color);
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.param-side-state {
+    min-height: 34px;
+    padding: 7px 10px;
+    border: 1px solid var(--rz-border-color);
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-color);
+    font-weight: 700;
+    text-align: center;
+    text-transform: lowercase;
+}
+
+.param-side-mode {
+    width: 100%;
+    min-height: 36px;
+    padding: 8px 10px;
+    border: 1px solid var(--rz-border-color);
+    background: var(--rz-base-200);
+    color: var(--rz-text-color);
+    font-weight: 700;
+    text-align: center;
+}
+
+.param-side-mode.is-auto {
+    border-color: var(--rz-success);
+    background: var(--rz-success-lighter);
+    color: var(--rz-on-success-lighter);
+}
+
+.param-digital-diagram {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: 86px minmax(42px, 1fr) 86px;
+    grid-template-rows: 40px minmax(56px, 1fr) 40px;
+    align-items: center;
+    min-height: 180px;
+    margin-top: 8px;
+}
+
+.param-digital-led {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 86px;
+    height: 40px;
+    border: 1px solid var(--rz-text-color);
+    border-radius: 3px;
+    background: var(--rz-base-300);
+    color: var(--rz-text-color);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.15;
+    text-align: center;
+}
+
+.param-digital-led.is-on {
+    background: #52ff52;
+}
+
+.param-digital-led-channel {
+    grid-row: 1;
+    grid-column: 1;
+}
+
+.param-digital-led-forced {
+    grid-row: 3;
+    grid-column: 1;
+}
+
+.param-digital-led-show {
+    grid-row: 2;
+    grid-column: 3;
+}
+
+.param-digital-bus {
+    position: relative;
+    grid-row: 1 / 4;
+    grid-column: 2;
+    align-self: stretch;
+    min-width: 42px;
+}
+
+.param-digital-line {
+    position: absolute;
+    display: block;
+    background: var(--rz-text-color);
+}
+
+.param-digital-line-top,
+.param-digital-line-bottom {
+    left: 0;
+    right: 0;
+    height: 2px;
+}
+
+.param-digital-line-top {
+    top: 20px;
+}
+
+.param-digital-line-bottom {
+    bottom: 20px;
+}
+
+.param-digital-line-middle {
+    top: 50%;
+    right: 0;
+    width: 14px;
+    height: 2px;
+}
+
+.param-digital-line-vertical {
+    top: 20px;
+    right: 0;
+    bottom: 20px;
+    width: 2px;
+}
+
+.param-manual-station {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-rows: 1fr 1fr;
+    min-height: 260px;
+    margin: 0 12px;
+    padding: 8px;
+    border: 1px solid var(--rz-border-color);
+    background: var(--rz-base-100);
+}
+
+.param-manual-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 8px;
+    border: 1px solid var(--rz-border-color);
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-color);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.param-manual-button.is-active {
+    border-width: 3px;
+    border-color: #1d4ed8;
+}
+
+.param-manual-button.is-disabled {
+    background: var(--rz-base-300);
+    color: var(--rz-text-secondary-color);
+}
+
+@media (max-height: 760px) {
+    .param-graph-side-panel {
+        height: 380px;
+    }
+
+    .param-side-bars {
+        min-height: 230px;
+    }
+
+    .param-manual-station {
+        min-height: 220px;
+    }
+}
+
+@keyframes param-forced-blink {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0.15;
+    }
+}

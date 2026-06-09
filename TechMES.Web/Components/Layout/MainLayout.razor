@@ -9,14 +9,12 @@
             </div>
 
             <nav class="top-nav" aria-label="Main navigation">
-                <NavLink class="top-nav-link" href="/equipment" Match="NavLinkMatch.All">
-                    <RadzenIcon Icon="info" />
-                    <span>Info</span>
-                </NavLink>
-
-                <NavLink class="top-nav-link" href="/equipment/param">
-                    <RadzenIcon Icon="tune" />
-                    <span>Param</span>
+                @* Верхний пункт Equipment теперь ведет в общий модуль оборудования.
+                   Переключение Info/Param вынесено в локальный SelectBar на странице Equipment,
+                   поэтому отдельная кнопка Param в глобальном меню больше не нужна. *@
+                <NavLink class="top-nav-link" href="/equipment" Match="NavLinkMatch.Prefix">
+                    <RadzenIcon Icon="precision_manufacturing" />
+                    <span>Equipment</span>
                 </NavLink>
 
                 <NavLink class="top-nav-link" href="/operation-actions">
@@ -42,33 +40,63 @@
 
             <div class="header-spacer"></div>
 
-            <RadzenButton Icon="photo_camera"
-                          Text="Scan QR"
-                          ButtonStyle="ButtonStyle.Light"
-                          class="header-qr-button"
-                          Click="@OpenQrScannerAsync" />
+            @* Все глобальные действия собраны справа в одном flex-контейнере:
+               переключение темы и Footer не влияют на ширину основного меню. *@
+            <div class="header-actions">
+                <RadzenButton Icon="qr_code_scanner"
+                              ButtonStyle="ButtonStyle.Light"
+                              Variant="Variant.Text"
+                              class="header-icon-button header-qr-button"
+                              title="Scan QR"
+                              aria-label="Scan QR"
+                              Click="@OpenQrScannerAsync" />
 
-            <img class="app-logo"
-                 src="images/TIS_logo_intellegence_g.png"
-                 alt="Techinservice Intelligence" />
+                @* PNG используется как прозрачная маска, а цвет логотипа задается активной темой.
+                   Благодаря этому один и тот же файл остается читаемым и в светлом, и в темном режиме. *@
+                <span class="app-logo"
+                      role="img"
+                      aria-label="Techinservice Intelligence"></span>
+
+                <RadzenAppearanceToggle LightTheme="standard"
+                                        DarkTheme="standard-dark"
+                                        ButtonStyle="ButtonStyle.Light"
+                                        ToggleButtonStyle="ButtonStyle.Light"
+                                        Variant="Variant.Text"
+                                        class="header-icon-button header-appearance-toggle"
+                                        title="Switch light/dark theme"
+                                        aria-label="Switch light/dark theme" />
+
+                <RadzenButton Icon="@(_isFooterVisible ? "bottom_panel_close" : "bottom_panel_open")"
+                              ButtonStyle="ButtonStyle.Light"
+                              Variant="Variant.Text"
+                              class="header-icon-button"
+                              title="@(_isFooterVisible ? "Hide footer" : "Show footer")"
+                              aria-label="@(_isFooterVisible ? "Hide footer" : "Show footer")"
+                              Click="@ToggleFooter" />
+            </div>
         </div>
     </RadzenHeader>
 
     <RadzenBody>
-        <div class="page-content">
+        <div class="@GetPageContentCssClass()">
             @Body
         </div>
     </RadzenBody>
 
-    <RadzenFooter class="app-footer">
-        <div class="app-footer-bar">
-            <EquipmentFooterCountsBlock />
+    @* При скрытии Footer компонент удаляется целиком, а не маскируется через visibility:
+       это освобождает место для основной рабочей области. *@
+    @if (_isFooterVisible)
+    {
+        <RadzenFooter class="app-footer">
+            <div class="app-footer-bar">
+                <EquipmentFooterCountsBlock />
 
-            <div class="footer-spacer"></div>
+                <div class="footer-spacer"></div>
 
-            <RuntimeStatusBlock />
-        </div>
-    </RadzenFooter>
+                <RuntimeStatusBlock />
+            </div>
+        </RadzenFooter>
+    }
 </RadzenLayout>
 
 <RadzenDialog />
@@ -77,6 +105,34 @@
 
 @code {
     private QrScannerDialog? _qrScannerDialog;
+
+    /// <summary>
+    /// Определяет, отображается ли диагностическая Footer-зона.
+    /// Состояние относится только к текущей пользовательской Blazor-сессии и после обновления страницы
+    /// возвращается к значению по умолчанию: Footer скрыт.
+    /// </summary>
+    private bool _isFooterVisible;
+
+    /// <summary>
+    /// Возвращает CSS-классы рабочей области с учетом состояния Footer.
+    /// Когда Footer скрыт, дополнительный класс разрешает содержимому занять освободившуюся высоту окна.
+    /// </summary>
+    private string GetPageContentCssClass()
+    {
+        return _isFooterVisible
+            ? "page-content"
+            : "page-content footer-hidden";
+    }
+
+    /// <summary>
+    /// Переключает видимость Footer-зоны.
+    /// Компонент Footer удаляется из render tree, поэтому его счетчики и runtime-status не занимают место,
+    /// а основная рабочая область сразу расширяется до нижней границы окна.
+    /// </summary>
+    private void ToggleFooter()
+    {
+        _isFooterVisible = !_isFooterVisible;
+    }
 
     /// <summary>
     /// Открывает глобальный QR-сканер из header bar.

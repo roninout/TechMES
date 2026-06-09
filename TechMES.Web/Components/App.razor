@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
 
-    <link rel="stylesheet" href="_content/Radzen.Blazor/css/standard-base.css" />
+    @* RadzenTheme регистрирует активную таблицу стилей и позволяет RadzenAppearanceToggle
+       переключать стандартную светлую тему на ее темный вариант без перезагрузки страницы. *@
+    <RadzenTheme Theme="standard" />
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="TechMES.Web.styles.css" />
 

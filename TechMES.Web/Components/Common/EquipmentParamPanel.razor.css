@@ -9,26 +9,13 @@
 }
 
 ::deep .equipment-param-summary-card {
-    min-height: 196px;
+    min-height: 56px;
 }
 
 .equipment-param-summary {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 20px;
-    min-height: 170px;
-}
-
-.equipment-param-main {
-    min-width: 0;
-}
-
-.equipment-param-side {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    justify-content: flex-start;
-    gap: 14px;
+    align-items: center;
+    min-height: 44px;
     min-width: 0;
 }
 
@@ -39,6 +26,25 @@
     min-height: 32px;
 }
 
+.equipment-param-selected-header {
+    align-items: flex-start;
+    width: 100%;
+}
+
+.equipment-param-title-block {
+    display: grid;
+    gap: 2px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.equipment-param-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
 .equipment-selected-title {
     min-width: 0;
 }
@@ -46,6 +52,19 @@
 .equipment-selected-title ::deep .rz-text-h6 {
     margin: 0;
     line-height: 32px;
+}
+
+.equipment-param-description {
+    /* В Param повторяем типографику значения Desc из полной Info-карточки. */
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--rz-text-color);
+    font-size: var(--rz-body-font-size);
+    font-weight: 400;
+    line-height: var(--rz-body-line-height);
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
 ::deep .equipment-favorite-button {
@@ -79,30 +98,6 @@
     color: #c79a00;
 }
 
-.equipment-selected-fields {
-    display: grid;
-    grid-template-columns: 96px minmax(0, 1fr);
-    column-gap: 8px;
-    row-gap: 8px;
-    margin-top: 14px;
-}
-
-.equipment-field-label {
-    font-weight: 600;
-}
-
-.supplier-logo {
-    max-width: 240px;
-    max-height: 58px;
-    object-fit: contain;
-}
-
-.summary-photo {
-    max-width: 220px;
-    max-height: 88px;
-    object-fit: contain;
-}
-
 .equipment-param-tabs {
     min-height: 320px;
     min-width: 0;
@@ -113,17 +108,110 @@
 }
 
 .param-toolbar {
+    /* Левая колонка верхней строки Graph: в ней находится read-only поле R. */
+    --param-toolbar-side-width: 180px;
+    /* Фактическая ширина самого RadzenFormField с текущим значением R. */
+    --param-toolbar-r-width: 100px;
+    /* Пустая колонка между R и уведомлением Forced. Меняй ее, чтобы сдвигать alert вправо. */
+    --param-toolbar-spacer-width: 52px;
+    /* Максимальная ширина уведомления Forced внутри доступной центральной колонки. */
+    --param-toolbar-alert-width: 1800px;
+    /* Одинаковый внешний отступ сверху и снизу от строки R/alert/live-button. */
+    --param-toolbar-outer-gap: 0px;
+    /* Вертикальное смещение поля R, если нужно чуть опустить или поднять его относительно alert. */
+    --param-toolbar-r-offset-y: 0px;
+    display: grid;
+    /* Колонки: зона R, ручной spacer, зона alert, кнопка перехода к live-краю графика. */
+    grid-template-columns: var(--param-toolbar-side-width) var(--param-toolbar-spacer-width) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    margin: var(--param-toolbar-outer-gap) 0;
+    min-width: 0;
+}
+
+.param-toolbar-side-slot {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-bottom: 10px;
+    justify-content: center;
     min-width: 0;
+}
+
+.param-toolbar-r-field-shell {
+    width: var(--param-toolbar-r-width);
+    min-width: 0;
+    transform: translateY(var(--param-toolbar-r-offset-y));
+}
+
+.param-toolbar-r-field {
+    width: 100%;
+}
+
+.param-toolbar-r-field-shell ::deep .rz-form-field {
+    width: 100%;
+}
+
+.param-toolbar-r-field-shell ::deep .rz-textbox {
+    width: 100%;
+    text-align: center;
+}
+
+.param-toolbar-spacer {
+    width: var(--param-toolbar-spacer-width);
+    min-width: 0;
+}
+
+.param-toolbar-alert-slot {
+    display: flex;
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: 0;
+    overflow: hidden;
+    padding-inline: 8px;
+}
+
+::deep .param-forced-alert {
+    width: min(var(--param-toolbar-alert-width), 100%);
+    max-width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    margin: 0;
+    overflow: hidden;
+    color: #f28c00;
+}
+
+::deep .param-forced-alert .rz-alert-content,
+::deep .param-forced-alert .rz-alert-message {
+    min-width: 0;
+}
+
+::deep .param-forced-alert .rz-alert-message {
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .param-graph-panel {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
+    min-width: 0;
+}
+
+.param-graph-layout {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    /* Боковая WPF-панель центрируется относительно контейнера ECharts, а не прижимается к верхней кромке вкладки Graph. */
+    align-items: center;
+    /* Расстояние между левой Param-панелью и графиком. Уменьшаем его здесь, не меняя внутреннюю геометрию шкал. */
+    gap: 6px;
+    min-height: 360px;
+    min-width: 0;
+}
+
+.param-graph-main {
+    display: flex;
+    flex-direction: column;
+    justify-content: stretch;
     min-width: 0;
 }
 
@@ -170,12 +258,21 @@
     min-width: 0;
 }
 
-@media (max-width: 1100px) {
-    .equipment-param-summary {
-        grid-template-columns: 1fr;
+/* Планшетная/узкая раскладка: этот блок включается, когда доступная ширина <= 900px. */
+@media (max-width: 900px) {
+    .param-toolbar {
+        /* Здесь можно отдельно настроить те же размеры для планшета, не трогая desktop. */
+        --param-toolbar-side-width: 180px;
+        --param-toolbar-r-width: 100px;
+        --param-toolbar-spacer-width: 52px;
+        --param-toolbar-alert-width: 1800px;
+        --param-toolbar-outer-gap: 0px;
+        --param-toolbar-r-offset-y: 0px;
     }
 
-    .equipment-param-side {
-        align-items: flex-start;
+    .param-graph-layout {
+        /* На узком экране можно свернуть Graph в одну колонку. Если нужен WPF-вид с барграфом слева,
+           перенеси это правило в меньший breakpoint или удали его. */
+        grid-template-columns: minmax(0, 1fr);
     }
 }

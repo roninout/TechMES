@@ -1,0 +1,182 @@
+@using System.Globalization
+@using TechMES.Contracts.Param
+@inject DialogService DialogService
+
+<div class="param-write-dialog">
+    @if (Item is null)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
+            Param item is not selected.
+        </RadzenAlert>
+    }
+    else
+    {
+        <RadzenStack Gap="var(--param-write-field-gap)">
+            <RadzenText Text="@($"Current: {FormatValue(Item)}")"
+                        TextStyle="TextStyle.Caption"
+                        class="param-write-current" />
+
+            @if (Item.Kind == ParamValueKind.Boolean)
+            {
+                <RadzenStack Orientation="Orientation.Horizontal"
+                             AlignItems="AlignItems.Center"
+                             Gap="0.5rem">
+                    <RadzenLabel Text="@(_booleanValue ? "on" : "off")"
+                                 Component="param-write-switch" />
+                    <RadzenSwitch @bind-Value="_booleanValue"
+                                  Name="param-write-switch" />
+                </RadzenStack>
+            }
+            else if (Item.Kind == ParamValueKind.Number)
+            {
+                <RadzenNumeric TValue="double?"
+                               @bind-Value="_numericValue"
+                               Placeholder="New value..."
+                               Style="width: 100%;" />
+            }
+            else
+            {
+                <RadzenTextBox @bind-Value="_valueText"
+                               Placeholder="New value..."
+                               Style="width: 100%;" />
+            }
+
+            <RadzenStack Orientation="Orientation.Horizontal"
+                         JustifyContent="JustifyContent.End"
+                         Gap="8px"
+                         class="param-write-actions">
+                <RadzenButton Text="Write"
+                              Icon="edit"
+                              ButtonStyle="ButtonStyle.Warning"
+                              Disabled="@(!CanSubmit)"
+                              Click="@Submit" />
+            </RadzenStack>
+        </RadzenStack>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Param item, для которого диалог предлагает ввести новое значение.
+    /// Сама запись в Runtime.Service выполняется в EquipmentParamPanel.
+    /// </summary>
+    [Parameter]
+    public ParamItemDto? Item { get; set; }
+
+    /// <summary>
+    /// Текстовое значение для number/text Param item.
+    /// </summary>
+    private string _valueText = "";
+
+    /// <summary>
+    /// Boolean-значение для on/off Param item.
+    /// </summary>
+    private bool _booleanValue;
+
+    /// <summary>
+    /// Числовое значение для RadzenNumeric; хранится отдельно от текста, чтобы компонент не показывал двоичные хвосты double вроде 5.4800000000000004.
+    /// </summary>
+    private double? _numericValue;
+
+    /// <summary>
+    /// Подготавливает начальное значение диалога из текущего snapshot.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        if (Item is null)
+            return;
+
+        if (Item.Kind == ParamValueKind.Boolean)
+        {
+            _booleanValue = Item.BooleanValue == true;
+            _valueText = _booleanValue ? "1" : "0";
+            return;
+        }
+
+        if (Item.Kind == ParamValueKind.Number)
+        {
+            _numericValue = Item.NumericValue ?? TryParseNumber(Item.ValueText);
+            _valueText = _numericValue.HasValue ? FormatWriteNumber(_numericValue.Value) : "";
+            return;
+        }
+
+        _valueText = !string.IsNullOrWhiteSpace(Item.ValueText)
+            ? Item.ValueText
+            : Item.NumericValue.HasValue
+                ? FormatWriteNumber(Item.NumericValue.Value)
+                : "";
+    }
+
+    /// <summary>
+    /// true, когда диалог может вернуть новое значение в parent-компонент.
+    /// </summary>
+    private bool CanSubmit =>
+        Item is not null
+        && (Item.Kind == ParamValueKind.Boolean
+            || (Item.Kind == ParamValueKind.Number
+                ? _numericValue.HasValue
+                : !string.IsNullOrWhiteSpace(_valueText)));
+
+    /// <summary>
+    /// Закрывает диалог с введенным значением.
+    /// Комментарий не возвращается: он формируется автоматически по имени item.
+    /// </summary>
+    private void Submit()
+    {
+        if (Item is null)
+            return;
+
+        var value = Item.Kind switch
+        {
+            ParamValueKind.Boolean => _booleanValue ? "1" : "0",
+            ParamValueKind.Number => _numericValue.HasValue ? FormatWriteNumber(_numericValue.Value) : "",
+            _ => _valueText.Trim()
+        };
+
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        DialogService.Close(new ParamWriteDialogResult
+        {
+            Value = value
+        });
+    }
+
+    /// <summary>
+    /// Форматирует текущее значение для подписи в диалоге.
+    /// </summary>
+    private static string FormatValue(ParamItemDto item)
+    {
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(item.ValueText)
+            ? "-"
+            : item.ValueText;
+    }
+
+    /// <summary>
+    /// Форматирует double без шума вроде 5.4800000000000004.
+    /// </summary>
+    private static string FormatWriteNumber(double value)
+    {
+        return value.ToString("0.###############", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Пытается разобрать число из snapshot-текста: сначала в SCADA/JSON формате с точкой, потом в локальном формате Windows.
+    /// </summary>
+    private static double? TryParseNumber(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var invariantValue))
+            return invariantValue;
+
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.CurrentCulture, out var currentCultureValue))
+            return currentCultureValue;
+
+        return null;
+    }
+}

@@ -1,0 +1,63 @@
+<RadzenPanel AllowCollapse="true"
+             @bind-Collapsed="_isCollapsed"
+             class="param-ai-panel">
+    <HeaderTemplate>
+        <RadzenText TextStyle="TextStyle.H6"
+                    class="param-ai-panel-heading rz-display-flex rz-align-items-center rz-m-0"
+                    Style="display: flex; align-items: center; gap: 8px; line-height: 32px;">
+            <RadzenIcon Icon="@Icon"
+                        class="param-ai-panel-heading-icon"
+                        Style="font-size: 20px; line-height: 1;" />
+            <span>@Title</span>
+        </RadzenText>
+    </HeaderTemplate>
+
+    <ChildContent>
+        <RadzenCard Variant="Variant.Outlined"
+                    class="param-ai-panel-card"
+                    Style="margin-top: 22px; border: 1px solid var(--rz-border-color, #d7dbe0); box-shadow: none;">
+            @ChildContent
+        </RadzenCard>
+    </ChildContent>
+</RadzenPanel>
+
+@code {
+    /// <summary>
+    /// Заголовок секции AI Param. Используется в HeaderTemplate RadzenPanel.
+    /// </summary>
+    [Parameter]
+    public string Title { get; set; } = "";
+
+    /// <summary>
+    /// Material icon для заголовка секции.
+    /// </summary>
+    [Parameter]
+    public string Icon { get; set; } = "tune";
+
+    /// <summary>
+    /// Начальное состояние RadzenPanel. Дальше состояние хранится внутри компонента,
+    /// чтобы пользователь мог раскрывать и сворачивать панель без сброса при перерисовке.
+    /// </summary>
+    [Parameter]
+    public bool InitiallyCollapsed { get; set; }
+
+    /// <summary>
+    /// Внутреннее содержимое секции: строки настроек, switch-и или поля ввода.
+    /// Общий компонент специально отвечает только за одинаковую рамку, заголовок и collapse-поведение.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Текущее состояние сворачивания общей панели.
+    /// </summary>
+    private bool _isCollapsed;
+
+    /// <summary>
+    /// Инициализирует внутреннее состояние панели из входного параметра.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        _isCollapsed = InitiallyCollapsed;
+    }
+}

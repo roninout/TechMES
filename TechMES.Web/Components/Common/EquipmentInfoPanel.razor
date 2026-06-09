@@ -103,7 +103,9 @@
             {
                 <RadzenTabs>
                     <Tabs>
-                        <RadzenTabsItem Text="Description">
+                        @* Иконки вкладок используем через штатный RadzenTabsItem.Icon.
+                           Цвет не задается вручную, поэтому активные/неактивные состояния наследуются от текущей темы. *@
+                        <RadzenTabsItem Text="Description" Icon="description">
                             <div class="description-block">
                                 <div class="description-actions">
                                     @if (_isDescriptionEditing)
@@ -146,150 +148,174 @@
                             </div>
                         </RadzenTabsItem>
 
-                        <RadzenTabsItem Text="@ImagesTabText">
-                            @if (_info.Photos.Count == 0)
-                            {
-                                <RadzenText Text="No images"
-                                            TextStyle="TextStyle.Caption"
-                                            class="muted-text" />
-                            }
-                            else
-                            {
-                                <RadzenCarousel Auto="false"
-                                                AllowNavigation="@(_info.Photos.Count > 1)"
-                                                AllowPaging="@(_info.Photos.Count > 1)"
-                                                PagerPosition="PagerPosition.Bottom"
-                                                class="photo-carousel">
-                                    <Items>
-                                        @foreach (var file in _info.Photos)
-                                        {
-                                            <RadzenCarouselItem>
-                                                <div class="photo-carousel-item">
-                                                    <img class="photo-preview"
-                                                         src="@file.ContentUrl"
-                                                         alt="@file.DisplayName" />
+                        <RadzenTabsItem>
+                            <Template>
+                                @RenderTabHeader("Images", "image", PhotoTabCount)
+                            </Template>
 
-                                                    <div class="photo-caption">@file.DisplayName</div>
-                                                </div>
-                                            </RadzenCarouselItem>
-                                        }
-                                    </Items>
-                                </RadzenCarousel>
-                            }
-                        </RadzenTabsItem>
-
-                        <RadzenTabsItem Text="@PdfTabText">
-                            @RenderDocumentPanel(_info.Instructions, _selectedInstruction, SelectInstructionByIdAsync, "No PDF files", "Select PDF", "instruction-pdf-preview")
-                        </RadzenTabsItem>
-
-                        <RadzenTabsItem Text="@SchemesTabText">
-                            @RenderDocumentPanel(_info.Schemes, _selectedScheme, SelectSchemeByIdAsync, "No schemes", "Select scheme", "scheme-pdf-preview")
-                        </RadzenTabsItem>
-
-                        <RadzenTabsItem Text="@NotesTabText">
-                            @{
-                                var selectedNote = GetSelectedNote();
-                            }
-
-                            <div class="notes-tab">
-                                <div class="notes-layout">
-                                    <div class="notes-list">
-                                        @if (_info.Notes.Count == 0)
-                                        {
-                                            <RadzenText Text="No notes"
-                                                        TextStyle="TextStyle.Caption"
-                                                        class="muted-text" />
-                                        }
-                                        else
-                                        {
-                                            <div class="note-card-list">
-                                                @foreach (var note in _info.Notes)
-                                                {
-                                                    <article class="@GetNoteCardClass(note)"
-                                                             @onclick="@(() => SelectNote(note))">
-                                                        <div class="note-card-author">@DisplayValue(note.CreatedBy)</div>
-                                                        <div class="note-card-date">@FormatNoteDate(note.CreatedAt)</div>
-                                                        <div class="note-card-preview">@note.PreviewText</div>
-                                                    </article>
-                                                }
-                                            </div>
-                                        }
-                                    </div>
-
-                                    <div class="notes-editor">
-                                        <div class="notes-editor-actions">
-                                            @if (IsNoteEditorActive)
+                            <ChildContent>
+                                @if (_info.Photos.Count == 0)
+                                {
+                                    <RadzenText Text="No images"
+                                                TextStyle="TextStyle.Caption"
+                                                class="muted-text" />
+                                }
+                                else
+                                {
+                                    <RadzenCarousel Auto="false"
+                                                    AllowNavigation="@(_info.Photos.Count > 1)"
+                                                    AllowPaging="@(_info.Photos.Count > 1)"
+                                                    PagerPosition="PagerPosition.Bottom"
+                                                    class="photo-carousel">
+                                        <Items>
+                                            @foreach (var file in _info.Photos)
                                             {
-                                                <RadzenButton Icon="save"
-                                                              Text="Save"
-                                                              ButtonStyle="ButtonStyle.Primary"
-                                                              Disabled="@(_isBusy || string.IsNullOrWhiteSpace(_editNoteText))"
-                                                              Click="@SaveNoteAsync" />
+                                                <RadzenCarouselItem>
+                                                    <div class="photo-carousel-item">
+                                                        <img class="photo-preview"
+                                                             src="@file.ContentUrl"
+                                                             alt="@file.DisplayName" />
 
-                                                <RadzenButton Icon="close"
-                                                              Text="Cancel"
-                                                              ButtonStyle="ButtonStyle.Light"
-                                                              Disabled="@_isBusy"
-                                                              Click="@CancelNoteEdit" />
+                                                        <div class="photo-caption">@file.DisplayName</div>
+                                                    </div>
+                                                </RadzenCarouselItem>
+                                            }
+                                        </Items>
+                                    </RadzenCarousel>
+                                }
+                            </ChildContent>
+                        </RadzenTabsItem>
+
+                        <RadzenTabsItem>
+                            <Template>
+                                @RenderTabHeader("PDF", "picture_as_pdf", PdfTabCount)
+                            </Template>
+
+                            <ChildContent>
+                                @RenderDocumentPanel(_info.Instructions, _selectedInstruction, SelectInstructionByIdAsync, "No PDF files", "Select PDF", "instruction-pdf-preview")
+                            </ChildContent>
+                        </RadzenTabsItem>
+
+                        <RadzenTabsItem>
+                            <Template>
+                                @RenderTabHeader("Schemes", "account_tree", SchemeTabCount)
+                            </Template>
+
+                            <ChildContent>
+                                @RenderDocumentPanel(_info.Schemes, _selectedScheme, SelectSchemeByIdAsync, "No schemes", "Select scheme", "scheme-pdf-preview")
+                            </ChildContent>
+                        </RadzenTabsItem>
+
+                        <RadzenTabsItem>
+                            <Template>
+                                @RenderTabHeader("Notes", "notes", NoteTabCount)
+                            </Template>
+
+                            <ChildContent>
+                                @{
+                                    var selectedNote = GetSelectedNote();
+                                }
+
+                                <div class="notes-tab">
+                                    <div class="notes-layout">
+                                        <div class="notes-list">
+                                            @if (_info.Notes.Count == 0)
+                                            {
+                                                <RadzenText Text="No notes"
+                                                            TextStyle="TextStyle.Caption"
+                                                            class="muted-text" />
                                             }
                                             else
                                             {
-                                                <RadzenButton Icon="add"
-                                                              Text="Add"
-                                                              ButtonStyle="ButtonStyle.Light"
-                                                              Disabled="@_isBusy"
-                                                              Click="@BeginNoteCreate" />
-
-                                                <RadzenButton Icon="edit"
-                                                              Text="Edit"
-                                                              ButtonStyle="ButtonStyle.Light"
-                                                              Disabled="@(_isBusy || selectedNote is null)"
-                                                              Click="@BeginSelectedNoteEdit" />
-
-                                                <RadzenButton Icon="delete"
-                                                              Text="Delete"
-                                                              ButtonStyle="ButtonStyle.Danger"
-                                                              Disabled="@(_isBusy || selectedNote is null)"
-                                                              Click="@DeleteSelectedNoteAsync" />
+                                                <div class="note-card-list">
+                                                    @foreach (var note in _info.Notes)
+                                                    {
+                                                        <article class="@GetNoteCardClass(note)"
+                                                                 @onclick="@(() => SelectNote(note))">
+                                                            <div class="note-card-author">@DisplayValue(note.CreatedBy)</div>
+                                                            <div class="note-card-date">@FormatNoteDate(note.CreatedAt)</div>
+                                                            <div class="note-card-preview">@note.PreviewText</div>
+                                                        </article>
+                                                    }
+                                                </div>
                                             }
                                         </div>
 
-                                        @if (IsNoteEditorActive)
-                                        {
-                                            <RadzenTextArea @bind-Value="_editNoteText"
-                                                            Placeholder="New note..."
-                                                            Rows="12"
-                                                            class="note-editor-text full-width"
-                                                            Disabled="@_isBusy" />
-                                        }
-                                        else if (selectedNote is null)
-                                        {
-                                            <div class="empty-note-view">
-                                                <RadzenText Text="No selected note"
-                                                            TextStyle="TextStyle.Caption"
-                                                            class="muted-text" />
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <div class="note-view-text">@selectedNote.NoteText</div>
-
-                                            <div class="note-meta note-view-meta">
-                                                <span>Created: @FormatNoteDate(selectedNote.CreatedAt)</span>
-                                                <span>By: @DisplayValue(selectedNote.CreatedBy)</span>
-
-                                                @if (selectedNote.UpdatedAt is not null)
+                                        <div class="notes-editor">
+                                            <div class="notes-editor-actions">
+                                                @if (IsNoteEditorActive)
                                                 {
-                                                    <span>Updated: @FormatNoteDate(selectedNote.UpdatedAt.Value)</span>
+                                                    <RadzenButton Icon="save"
+                                                                  Text="Save"
+                                                                  ButtonStyle="ButtonStyle.Primary"
+                                                                  Disabled="@(_isBusy || string.IsNullOrWhiteSpace(_editNoteText))"
+                                                                  Click="@SaveNoteAsync" />
+
+                                                    <RadzenButton Icon="close"
+                                                                  Text="Cancel"
+                                                                  ButtonStyle="ButtonStyle.Light"
+                                                                  Disabled="@_isBusy"
+                                                                  Click="@CancelNoteEdit" />
+                                                }
+                                                else
+                                                {
+                                                    <RadzenButton Icon="add"
+                                                                  Text="Add"
+                                                                  ButtonStyle="ButtonStyle.Light"
+                                                                  Disabled="@_isBusy"
+                                                                  Click="@BeginNoteCreate" />
+
+                                                    <RadzenButton Icon="edit"
+                                                                  Text="Edit"
+                                                                  ButtonStyle="ButtonStyle.Light"
+                                                                  Disabled="@(_isBusy || selectedNote is null)"
+                                                                  Click="@BeginSelectedNoteEdit" />
+
+                                                    <RadzenButton Icon="delete"
+                                                                  Text="Delete"
+                                                                  ButtonStyle="ButtonStyle.Danger"
+                                                                  Disabled="@(_isBusy || selectedNote is null)"
+                                                                  Click="@DeleteSelectedNoteAsync" />
                                                 }
                                             </div>
-                                        }
+
+                                            @if (IsNoteEditorActive)
+                                            {
+                                                <RadzenTextArea @bind-Value="_editNoteText"
+                                                                Placeholder="New note..."
+                                                                Rows="12"
+                                                                class="note-editor-text full-width"
+                                                                Disabled="@_isBusy" />
+                                            }
+                                            else if (selectedNote is null)
+                                            {
+                                                <div class="empty-note-view">
+                                                    <RadzenText Text="No selected note"
+                                                                TextStyle="TextStyle.Caption"
+                                                                class="muted-text" />
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="note-view-text">@selectedNote.NoteText</div>
+
+                                                <div class="note-meta note-view-meta">
+                                                    <span>Created: @FormatNoteDate(selectedNote.CreatedAt)</span>
+                                                    <span>By: @DisplayValue(selectedNote.CreatedBy)</span>
+
+                                                    @if (selectedNote.UpdatedAt is not null)
+                                                    {
+                                                        <span>Updated: @FormatNoteDate(selectedNote.UpdatedAt.Value)</span>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            </ChildContent>
                         </RadzenTabsItem>
 
-                        <RadzenTabsItem Text="QR">
+                        <RadzenTabsItem Text="QR" Icon="qr_code">
                             <div class="qr-tab">
                                 <div class="qr-code-block">
                                     <div class="qr-caption">@Equipment.Name</div>
@@ -508,6 +534,32 @@
     /// Безопасное имя файла для скачивания QR PNG.
     /// </summary>
     private string QrFileName => MakeSafeFileName(Equipment?.Name ?? "qr") + ".png";
+
+    /// <summary>
+    /// Рисует шаблон заголовка вкладки Info-раздела.
+    /// Счетчик выводится отдельным RadzenBadge и не смешивается с текстом вкладки.
+    /// При count = 0 badge не рисуется, чтобы не показывать пустые "(0)".
+    /// </summary>
+    private static RenderFragment RenderTabHeader(string text, string icon, int count) => @<span class="@GetInfoTabHeaderClass(count)">
+        <RadzenIcon Icon="@icon" />
+        <span>@text</span>
+        @if (count > 0)
+        {
+            <RadzenBadge Text="@count.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                         BadgeStyle="BadgeStyle.Primary"
+                         Variant="Variant.Outlined"
+                         IsPill="true"
+                         class="info-tab-counter-badge" />
+        }
+    </span>;
+
+    /// <summary>
+    /// Выбирает CSS-класс заголовка вкладки: если есть счетчик, вкладка получает вид компактной Radzen-кнопки с badge.
+    /// </summary>
+    private static string GetInfoTabHeaderClass(int count)
+    {
+        return count > 0 ? "info-tab-header has-count" : "info-tab-header";
+    }
 
     /// <summary>
     /// Общий RenderFragment для вкладок PDF и Schemes:

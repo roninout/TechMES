@@ -14,4 +14,10 @@ public sealed class ParamUiOptions
     /// Исторический диапазон, который WEB запрашивает заранее для плавной прокрутки графика.
     /// </summary>
     public int TrendHistoryMinutes { get; set; } = 60;
+
+    /// <summary>
+    /// true, если перед write-запросом нужно показывать отдельное подтверждение.
+    /// По умолчанию false: после диалога ввода нового значения запись сразу уходит в Runtime.Service.
+    /// </summary>
+    public bool ConfirmWrites { get; set; }
 }

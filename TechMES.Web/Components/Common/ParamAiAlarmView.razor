@@ -1,0 +1,179 @@
+@using TechMES.Contracts.Param
+
+<ParamAiPanel Title="Alarm settings" Icon="notifications_active">
+    <div class="ai-alarm-body">
+        @foreach (var row in AlarmRows)
+        {
+            var switchItem = FindItem(row.SwitchItemName);
+            var valueItem = FindItem(row.ValueItemName);
+
+            <div class="ai-alarm-row">
+                <div class="@GetSwitchShellClass(switchItem)"
+                     title="@GetFieldTitle(switchItem)"
+                     @onclick="@(() => RequestWriteAsync(switchItem))">
+                    <RadzenStack Orientation="Orientation.Horizontal"
+                                 AlignItems="AlignItems.Center"
+                                 Gap="0.5rem"
+                                 class="ai-alarm-switch-stack">
+                        <RadzenLabel Text="@GetSwitchText(switchItem)"
+                                     Component="@row.SwitchItemName" />
+                        <RadzenSwitch Value="@GetSwitchValue(switchItem)"
+                                      Disabled="@(switchItem is null)"
+                                      Name="@row.SwitchItemName" />
+                    </RadzenStack>
+                </div>
+
+                <span class="ai-alarm-description">@row.Description</span>
+
+                <div class="@GetFieldShellClass(valueItem)"
+                     title="@GetFieldTitle(valueItem)"
+                     @onclick="@(() => RequestWriteAsync(valueItem))">
+                    <RadzenFormField AllowFloatingLabel="false"
+                                     Text="@row.Label"
+                                     Variant="Variant.Outlined"
+                                     class="ai-alarm-form-field">
+                        <RadzenTextBox Value="@FormatValue(valueItem)"
+                                       ReadOnly="true"
+                                       Disabled="@(valueItem is null)"
+                                       class="ai-alarm-value" />
+                    </RadzenFormField>
+                </div>
+            </div>
+        }
+
+        @{
+            var hysteresisItem = FindItem("SetHyst");
+        }
+
+        <div class="ai-alarm-row ai-alarm-hysteresis-row">
+            <div class="ai-alarm-switch-placeholder"></div>
+            <span class="ai-alarm-description">Hysteresis</span>
+
+            <div class="@GetFieldShellClass(hysteresisItem)"
+                 title="@GetFieldTitle(hysteresisItem)"
+                 @onclick="@(() => RequestWriteAsync(hysteresisItem))">
+                <RadzenFormField AllowFloatingLabel="false"
+                                 Text="Hysteresis"
+                                 Variant="Variant.Outlined"
+                                 class="ai-alarm-form-field">
+                    <RadzenTextBox Value="@FormatValue(hysteresisItem)"
+                                   ReadOnly="true"
+                                   Disabled="@(hysteresisItem is null)"
+                                   class="ai-alarm-value" />
+                </RadzenFormField>
+            </div>
+        </div>
+    </div>
+</ParamAiPanel>
+
+@code {
+    /// <summary>
+    /// Все Param item-ы выбранного AI. Компонент выбирает из них alarm enable, setpoint и hysteresis поля.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<ParamItemDto>? Items { get; set; }
+
+    /// <summary>
+    /// Команда записи, переданная родительской Param-панелью.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Строки alarm-настроек AI: boolean enable item, числовой setpoint item,
+    /// короткая fixed-label подпись поля и обычное текстовое описание параметра.
+    /// </summary>
+    private static readonly AiAlarmRow[] AlarmRows =
+    [
+        new("AlarmHAEn", "SetHA", "HA", "High alarm parameter"),
+        new("AlarmHWEn", "SetHW", "HW", "High warning parameter"),
+        new("AlarmLWEn", "SetLW", "LW", "Low warning parameter"),
+        new("AlarmLAEn", "SetLA", "LA", "Low alarm parameter")
+    ];
+
+    /// <summary>
+    /// Ищет Param item по имени EquipItem без учета регистра.
+    /// </summary>
+    private ParamItemDto? FindItem(string itemName)
+    {
+        return Items?.FirstOrDefault(item => item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Открывает общий write-dialog для writable item-а.
+    /// </summary>
+    private async Task RequestWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Возвращает текущее boolean-значение для RadzenSwitch.
+    /// Switch отключен от прямого изменения: клик по контейнеру открывает write-dialog.
+    /// </summary>
+    private static bool GetSwitchValue(ParamItemDto? item)
+    {
+        return item?.BooleanValue == true;
+    }
+
+    /// <summary>
+    /// Возвращает текст рядом со switch вместо старой WPF-подписи Disabled.
+    /// </summary>
+    private static string GetSwitchText(ParamItemDto? item)
+    {
+        return GetSwitchValue(item) ? "on" : "off";
+    }
+
+    /// <summary>
+    /// CSS-класс контейнера switch с учетом доступности записи.
+    /// </summary>
+    private static string GetSwitchShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "ai-alarm-switch-shell is-writable"
+            : "ai-alarm-switch-shell is-read-only";
+    }
+
+    /// <summary>
+    /// CSS-класс контейнера FormField с учетом доступности записи.
+    /// </summary>
+    private static string GetFieldShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "ai-alarm-field-shell is-writable"
+            : "ai-alarm-field-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Tooltip для writable/read-only/missing состояния.
+    /// </summary>
+    private static string GetFieldTitle(ParamItemDto? item)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        return item.CanWrite ? "Write value" : "Read only";
+    }
+
+    /// <summary>
+    /// Форматирует значение так же, как общая Param-таблица.
+    /// </summary>
+    private static string FormatValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return "-";
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(item.ValueText) ? "-" : item.ValueText;
+    }
+
+    /// <summary>
+    /// Описание одной строки AI Alarm.
+    /// </summary>
+    private sealed record AiAlarmRow(string SwitchItemName, string ValueItemName, string Label, string Description);
+}

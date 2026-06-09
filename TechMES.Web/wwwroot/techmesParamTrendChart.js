@@ -85,13 +85,19 @@
         }
 
         if (window.ResizeObserver) {
-            const observer = new ResizeObserver(() => chart.resize());
+            const observer = new ResizeObserver(() => {
+                chart.resize();
+                syncPlotBounds(element, chart);
+            });
             observer.observe(element);
             resizeObservers.set(element, observer);
             return;
         }
 
-        const handler = () => chart.resize();
+        const handler = () => {
+            chart.resize();
+            syncPlotBounds(element, chart);
+        };
         window.addEventListener("resize", handler);
         resizeObservers.set(element, { disconnect: () => window.removeEventListener("resize", handler) });
     }
@@ -518,6 +524,38 @@
         };
     }
 
+    // Передает фактические вертикальные границы ECharts grid в общую Graph-разметку.
+    // Координаты пересчитываются относительно левой панели, поэтому шкалы совпадают с plot-area
+    // даже при изменении высоты окна, появлении служебной строки над графиком или смене устройства.
+    function syncPlotBounds(element, chart) {
+        if (!element || !chart || chart.isDisposed?.()) {
+            return;
+        }
+
+        const layout = element.closest?.(".param-graph-layout");
+        const sidePanel = layout?.querySelector?.(".param-graph-side-panel-aligned-bars");
+        const grid = chart.getModel?.()?.getComponent?.("grid", 0)?.coordinateSystem?.getRect?.();
+
+        if (!layout || !sidePanel || !grid) {
+            return;
+        }
+
+        const chartRect = element.getBoundingClientRect();
+        const panelRect = sidePanel.getBoundingClientRect();
+        const panelStyle = window.getComputedStyle(sidePanel);
+        const borderTop = Number.parseFloat(panelStyle.borderTopWidth) || 0;
+        const borderBottom = Number.parseFloat(panelStyle.borderBottomWidth) || 0;
+        const plotTop = chartRect.top + grid.y;
+        const plotBottom = plotTop + grid.height;
+
+        // Absolute-positioned bars отсчитывают inset от padding-box панели, поэтому исключаем border.
+        const top = Math.max(0, plotTop - panelRect.top - borderTop);
+        const bottom = Math.max(0, panelRect.bottom - borderBottom - plotBottom);
+
+        layout.style.setProperty("--param-chart-plot-top", `${top}px`);
+        layout.style.setProperty("--param-chart-plot-bottom", `${bottom}px`);
+    }
+
     // Расстояние между двумя pointer-ами для pinch zoom.
     function getDistance(first, second) {
         return Math.hypot(
@@ -646,7 +684,8 @@
             grid: {
                 left: 54,
                 right: 22,
-                top: 18,
+                // Над plot-area остается место для мигающих диагностических надписей левой панели.
+                top: 30,
                 bottom: 86,
                 containLabel: true
             },
@@ -737,6 +776,10 @@
             lazyUpdate: true,
             replaceMerge: ["series"]
         });
+
+        // После setOption ECharts уже знает итоговый grid с учетом containLabel.
+        // requestAnimationFrame дает canvas завершить layout перед чтением координат.
+        window.requestAnimationFrame(() => syncPlotBounds(element, chart));
     }
 
     // Преобразует компактные series DTO в формат series ECharts.
@@ -913,6 +956,12 @@
         if (chart && !chart.isDisposed?.()) {
             chart.dispose();
         }
+
+        // Границы принадлежат конкретному экземпляру графика. После его удаления CSS должен
+        // вернуться к безопасным значениям по умолчанию до следующего render.
+        const layout = element.closest?.(".param-graph-layout");
+        layout?.style.removeProperty("--param-chart-plot-top");
+        layout?.style.removeProperty("--param-chart-plot-bottom");
 
         charts.delete(element);
         zoomStates.delete(element);

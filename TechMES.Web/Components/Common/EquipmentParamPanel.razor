@@ -1,10 +1,8 @@
 @using TechMES.Contracts.Equipment
-@using TechMES.Contracts.Info
 @using TechMES.Contracts.Param
 @using System.Globalization
 @using TechMES.Web.Settings
 @inject ParamApiClient ParamApi
-@inject InfoApiClient InfoApi
 @inject Microsoft.Extensions.Options.IOptions<ParamUiOptions> ParamOptions
 @inject DialogService DialogService
 @inject NotificationService NotificationService
@@ -23,66 +21,40 @@
     {
         <RadzenCard class="equipment-param-summary-card">
             <div class="equipment-param-summary">
-                <div class="equipment-param-main">
-                    <div class="equipment-selected-header">
-                        <EquipmentTypeBadge TypeGroup="@Equipment.TypeGroup" />
+                @* Param намеренно показывает только идентификационную строку.
+                   Полная карточка с полями, логотипом и фотографией остается в EquipmentInfoPanel. *@
+                <div class="equipment-selected-header equipment-param-selected-header">
+                    <EquipmentTypeBadge TypeGroup="@Equipment.TypeGroup" />
 
-                        <div class="equipment-selected-title">
-                            <RadzenText Text="@Equipment.Name" TextStyle="TextStyle.H6" />
+                    <div class="equipment-param-title-block">
+                        <div class="equipment-param-title-row">
+                            <div class="equipment-selected-title">
+                                <RadzenText Text="@Equipment.Name" TextStyle="TextStyle.H6" />
+                            </div>
+
+                            @if (!Equipment.IsGroup)
+                            {
+                                <RadzenButton Icon="@GetFavoriteIcon(Equipment)"
+                                              ButtonStyle="ButtonStyle.Light"
+                                              Size="ButtonSize.Small"
+                                              Disabled="@IsFavoriteSaving"
+                                              class="@GetFavoriteButtonClass(Equipment)"
+                                              title="Favorite"
+                                              Click="@ToggleFavoriteAsync" />
+                            }
                         </div>
 
-                        @if (!Equipment.IsGroup)
+                        @* В Param показываем компактную подпись тем же текстом, который виден в дереве слева.
+                           Пустое описание или дубль имени не отображаются, чтобы верхняя карточка не раздувалась. *@
+                        @{
+                            var paramDescription = GetParamDescriptionText(Equipment);
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(paramDescription))
                         {
-                            <RadzenButton Icon="@GetFavoriteIcon(Equipment)"
-                                          ButtonStyle="ButtonStyle.Light"
-                                          Size="ButtonSize.Small"
-                                          Disabled="@IsFavoriteSaving"
-                                          class="@GetFavoriteButtonClass(Equipment)"
-                                          title="Favorite"
-                                          Click="@ToggleFavoriteAsync" />
+                            <div class="equipment-param-description">@paramDescription</div>
                         }
                     </div>
-
-                    <div class="equipment-selected-fields">
-                        <span class="equipment-field-label">Type:</span>
-                        <span>@DisplayValue(Equipment.TypeName)</span>
-
-                        @if (ShouldShowLocation(Equipment))
-                        {
-                            <span class="equipment-field-label">Location:</span>
-                            <span>@FormatLocation(Equipment.Location)</span>
-                        }
-                        else if (!string.IsNullOrWhiteSpace(_snapshot?.Location))
-                        {
-                            <span class="equipment-field-label">Location:</span>
-                            <span>@FormatLocation(_snapshot.Location)</span>
-                        }
-
-                        <span class="equipment-field-label">Supplier:</span>
-                        <span>@DisplayValue(_info?.Supplier)</span>
-
-                        <span class="equipment-field-label">Product code:</span>
-                        <span>@DisplayValue(_info?.ProductCode)</span>
-
-                        <span class="equipment-field-label">Desc:</span>
-                        <span>@GetDescriptionText(Equipment)</span>
-                    </div>
-                </div>
-
-                <div class="equipment-param-side">
-                    @if (!string.IsNullOrWhiteSpace(_info?.SupplierLogoDataUrl))
-                    {
-                        <img class="supplier-logo"
-                             src="@_info.SupplierLogoDataUrl"
-                             alt="@DisplayValue(_info.Supplier)" />
-                    }
-
-                    @if (GetSummaryPhoto() is { } summaryPhoto)
-                    {
-                        <img class="summary-photo"
-                             src="@summaryPhoto.ContentUrl"
-                             alt="@summaryPhoto.DisplayName" />
-                    }
                 </div>
             </div>
         </RadzenCard>
@@ -95,68 +67,6 @@
                          Close="@(() => _statusText = string.Empty)">
                 @_statusText
             </RadzenAlert>
-        }
-
-        @if (_writeItem is not null)
-        {
-            <RadzenCard class="param-write-card">
-                <RadzenStack Gap="12px">
-                    <RadzenStack Orientation="Orientation.Horizontal"
-                                 AlignItems="AlignItems.Center"
-                                 JustifyContent="JustifyContent.SpaceBetween">
-                        <RadzenStack Gap="2px">
-                            <RadzenText Text="@($"Write: {_writeItem.Name}")"
-                                        TextStyle="TextStyle.Subtitle1" />
-                            <RadzenText Text="@($"Current: {FormatValue(_writeItem)}")"
-                                        TextStyle="TextStyle.Caption"
-                                        Style="color: gray;" />
-                        </RadzenStack>
-
-                        <RadzenButton Icon="close"
-                                      ButtonStyle="ButtonStyle.Light"
-                                      Size="ButtonSize.Small"
-                                      Disabled="@_isWriting"
-                                      Click="@CancelParamWrite" />
-                    </RadzenStack>
-
-                    @if (_writeItem.Kind == ParamValueKind.Boolean)
-                    {
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
-                            <RadzenCheckBox TValue="bool"
-                                            @bind-Value="_writeBooleanValue"
-                                            Disabled="@_isWriting" />
-                            <RadzenLabel Text="@(_writeBooleanValue ? "on" : "off")" />
-                        </RadzenStack>
-                    }
-                    else
-                    {
-                        <RadzenTextBox @bind-Value="_writeValueText"
-                                       Placeholder="New value..."
-                                       Disabled="@_isWriting"
-                                       Style="width: 260px;" />
-                    }
-
-                    <RadzenTextArea @bind-Value="_writeComment"
-                                    Placeholder="Comment..."
-                                    Disabled="@_isWriting"
-                                    Rows="2"
-                                    Style="width: 100%;" />
-
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="8px">
-                        <RadzenButton Text="@(_isWriting ? "Writing..." : "Write")"
-                                      Icon="edit"
-                                      ButtonStyle="ButtonStyle.Warning"
-                                      Disabled="@(_isWriting || !CanSubmitParamWrite())"
-                                      Click="@SaveParamWriteAsync" />
-
-                        <RadzenButton Text="Cancel"
-                                      Icon="close"
-                                      ButtonStyle="ButtonStyle.Light"
-                                      Disabled="@_isWriting"
-                                      Click="@CancelParamWrite" />
-                    </RadzenStack>
-                </RadzenStack>
-            </RadzenCard>
         }
 
         <div class="equipment-param-tabs">
@@ -182,9 +92,49 @@
                             @bind-SelectedIndex="_selectedTabIndex"
                             Change="@OnTabChangedAsync">
                     <Tabs>
-                        <RadzenTabsItem Text="Graph">
+                        @* Иконки вкладок Param остаются themed: Radzen сам окрашивает их по активной теме и состоянию вкладки. *@
+                        <RadzenTabsItem Text="Graph" Icon="area_chart">
                             <div class="param-graph-panel">
                                 <div class="param-toolbar">
+                                    <div class="param-toolbar-side-slot">
+                                        @if (IsAiEquipment)
+                                        {
+                                            @* Поле R вынесено в общий верхний row Graph, чтобы оно не попадало
+                                               внутрь абсолютной зоны барграфов и не нарушало их выравнивание с ECharts. *@
+                                            <div class="param-toolbar-r-field-shell">
+                                                <RadzenFormField AllowFloatingLabel="false"
+                                                                 Text="R"
+                                                                 Variant="Variant.Outlined"
+                                                                 class="param-toolbar-r-field">
+                                                    <RadzenTextBox Value='@GetSnapshotItemDisplayValue("R")'
+                                                                   ReadOnly="true"
+                                                                   class="param-toolbar-r-value" />
+                                                </RadzenFormField>
+                                            </div>
+                                        }
+                                    </div>
+
+                                    @* Пустая колонка между полем R и уведомлением Forced.
+                                       Ее ширина задается в CSS через --param-toolbar-spacer-width,
+                                       чтобы можно было точно подвинуть alert, не меняя разметку графика. *@
+                                    <div class="param-toolbar-spacer" aria-hidden="true"></div>
+
+                                    <div class="param-toolbar-alert-slot">
+                                        @if (IsGraphForcedChannelActive)
+                                        {
+                                            @* Forced-состояние выводим над графиком, чтобы боковая панель с барграфами
+                                               не меняла свою геометрию и продолжала совпадать с plot-area ECharts. *@
+                                            <RadzenAlert AllowClose="false"
+                                                         AlertStyle="AlertStyle.Warning"
+                                                         Variant="Variant.Flat"
+                                                         Shade="Shade.Lighter"
+                                                         ShowIcon="true"
+                                                         class="param-forced-alert">
+                                                Forced chanel!
+                                            </RadzenAlert>
+                                        }
+                                    </div>
+
                                     <RadzenButton Icon="skip_next"
                                                   ButtonStyle="ButtonStyle.Light"
                                                   class="param-live-button"
@@ -192,25 +142,32 @@
                                                   Click="@GoLiveAsync" />
                                 </div>
 
-                                @if (_trend is null || _trend.Points.Count == 0)
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                                        @DisplayValue(_trend?.Message ?? "Trend points are not loaded yet.")
-                                    </RadzenAlert>
-                                }
-                                else
-                                {
-                                    <div class="param-chart-shell">
-                                        <EquipmentTrendChart Trend="@_trend"
-                                                             ViewKey="@ChartViewKey"
-                                                             Unit="@_snapshot.Unit"
-                                                             VisibleFromUtc="@GetVisibleFromUtc()"
-                                                             VisibleToUtc="@GetVisibleToUtc()"
-                                                             CanLoadOlder="@CanScrollGraphBackward"
-                                                             CanLoadNewer="@CanScrollGraphForward"
-                                                             OnHistoryRequested="@OnChartHistoryRequestedAsync" />
+                                <div class="param-graph-layout">
+                                    <ParamGraphSidePanel Equipment="@Equipment"
+                                                         Snapshot="@_snapshot" />
+
+                                    <div class="param-graph-main">
+                                        @if (_trend is null || _trend.Points.Count == 0)
+                                        {
+                                            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                                                @DisplayValue(_trend?.Message ?? "Trend points are not loaded yet.")
+                                            </RadzenAlert>
+                                        }
+                                        else
+                                        {
+                                            <div class="param-chart-shell">
+                                                <EquipmentTrendChart Trend="@_trend"
+                                                                     ViewKey="@ChartViewKey"
+                                                                     Unit="@_snapshot.Unit"
+                                                                     VisibleFromUtc="@GetVisibleFromUtc()"
+                                                                     VisibleToUtc="@GetVisibleToUtc()"
+                                                                     CanLoadOlder="@CanScrollGraphBackward"
+                                                                     CanLoadNewer="@CanScrollGraphForward"
+                                                                     OnHistoryRequested="@OnChartHistoryRequestedAsync" />
+                                            </div>
+                                        }
                                     </div>
-                                }
+                                </div>
 
                                 <div class="param-graph-footer">
                                     <span class="param-status">@FormatGraphStatus()</span>
@@ -218,30 +175,57 @@
                             </div>
                         </RadzenTabsItem>
 
-                        <RadzenTabsItem Text="Values">
-                            <ParamItemsTable Items="@_snapshot.Items"
-                                             OnWriteRequested="@BeginParamWrite" />
-                        </RadzenTabsItem>
+                        @if (HasAiSettingsItems)
+                        {
+                            <RadzenTabsItem Text="Settings" Icon="tune">
+                                <ParamAiSettingsView Items="@_snapshot.Items"
+                                                     OnWriteRequested="@BeginParamWriteAsync" />
+                            </RadzenTabsItem>
+                        }
+
+                        @if (!IsAiEquipment)
+                        {
+                            <RadzenTabsItem Text="All" Icon="dataset">
+                                <ParamItemsTable Items="@_snapshot.Items"
+                                                 OnWriteRequested="@BeginParamWriteAsync" />
+                            </RadzenTabsItem>
+                        }
 
                         @if (HasAlarmItems)
                         {
-                            <RadzenTabsItem Text="Alarm">
-                                <ParamItemsTable Items="@GetAlarmItems()"
-                                                 OnWriteRequested="@BeginParamWrite" />
+                            <RadzenTabsItem Text="Alarm" Icon="notifications_active">
+                                @if (IsAiEquipment)
+                                {
+                                    <ParamAiAlarmView Items="@_snapshot.Items"
+                                                      OnWriteRequested="@BeginParamWriteAsync" />
+                                }
+                                else
+                                {
+                                    <ParamItemsTable Items="@GetAlarmItems()"
+                                                     OnWriteRequested="@BeginParamWriteAsync" />
+                                }
+                            </RadzenTabsItem>
+                        }
+
+                        @if (IsAiEquipment)
+                        {
+                            <RadzenTabsItem Text="All" Icon="dataset">
+                                <ParamItemsTable Items="@_snapshot.Items"
+                                                 OnWriteRequested="@BeginParamWriteAsync" />
                             </RadzenTabsItem>
                         }
 
                         @if (HasTimeItems)
                         {
-                            <RadzenTabsItem Text="TimeWork">
+                            <RadzenTabsItem Text="TimeWork" Icon="timer">
                                 <ParamItemsTable Items="@GetTimeItems()"
-                                                 OnWriteRequested="@BeginParamWrite" />
+                                                 OnWriteRequested="@BeginParamWriteAsync" />
                             </RadzenTabsItem>
                         }
 
                         @if (HasPage(ParamPageKind.Plc))
                         {
-                            <RadzenTabsItem Text="PLC">
+                            <RadzenTabsItem Text="PLC" Icon="developer_board">
                                 @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.Plc)
                                 {
                                     <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
@@ -256,7 +240,7 @@
 
                         @if (HasPage(ParamPageKind.DiDo))
                         {
-                            <RadzenTabsItem Text="DI/DO">
+                            <RadzenTabsItem Text="DI/DO" Icon="settings_input_component">
                                 @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.DiDo)
                                 {
                                     <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
@@ -271,7 +255,7 @@
 
                         @if (HasPage(ParamPageKind.DryRun))
                         {
-                            <RadzenTabsItem Text="DryRun">
+                            <RadzenTabsItem Text="DryRun" Icon="speed">
                                 @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.DryRun)
                                 {
                                     <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
@@ -286,7 +270,7 @@
 
                         @if (HasPage(ParamPageKind.Atv))
                         {
-                            <RadzenTabsItem Text="ATV">
+                            <RadzenTabsItem Text="ATV" Icon="electric_bolt">
                                 @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.Atv)
                                 {
                                     <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
@@ -326,11 +310,6 @@
     /// Имя оборудования, для которого сейчас загружена Param-панель.
     /// </summary>
     private string? _loadedEquipmentName;
-
-    /// <summary>
-    /// Краткая Info-карточка, используемая в верхней части Param-панели.
-    /// </summary>
-    private EquipmentInfoDto? _info;
 
     /// <summary>
     /// Последний snapshot текущих значений Param items.
@@ -425,22 +404,41 @@
     /// <summary>
     /// Param item, для которого открыт write editor.
     /// </summary>
+    private bool _confirmWrites;
+
+    /// <summary>
+    /// Legacy-state для старого inline write-flow.
+    /// Разметка этого flow уже удалена, а новые записи идут через ParamWriteDialog.
+    /// Поля оставлены до отдельной чистки методов, чтобы не смешивать UI-перенос с большим refactor.
+    /// </summary>
     private ParamItemDto? _writeItem;
 
     /// <summary>
-    /// Текстовое значение write editor для numeric/string параметров.
+    /// Legacy-value для старого inline write-flow.
     /// </summary>
     private string _writeValueText = "";
 
     /// <summary>
-    /// Boolean значение write editor для bool-параметров.
+    /// Legacy-bool для старого inline write-flow.
     /// </summary>
     private bool _writeBooleanValue;
 
     /// <summary>
-    /// Комментарий оператора, который уйдет в audit через CiCode SaveActionOperators.
+    /// Legacy-comment для старого inline write-flow; в новом flow комментарий формируется автоматически.
     /// </summary>
     private string _writeComment = "";
+
+    /// <summary>
+    /// Текстовое значение write editor для numeric/string параметров.
+    /// </summary>
+
+    /// <summary>
+    /// Boolean значение write editor для bool-параметров.
+    /// </summary>
+
+    /// <summary>
+    /// Комментарий оператора, который уйдет в audit через CiCode SaveActionOperators.
+    /// </summary>
 
     /// <summary>
     /// Оборудование, выбранное в дереве Equipment.razor.
@@ -485,6 +483,7 @@
             Math.Max(options.TrendHistoryMinutes, _windowMinutes),
             _windowMinutes,
             24 * 60);
+        _confirmWrites = options.ConfirmWrites;
     }
 
     /// <summary>
@@ -512,14 +511,12 @@
         CancelActiveLoads();
 
         _loadedEquipmentName = currentName;
-        _info = null;
         _snapshot = null;
         _trend = null;
         _plcRefs = null;
         _diDoRefs = null;
         _dryRun = null;
         _atvRef = null;
-        _writeItem = null;
         _fixedTrendToUtc = null;
         _chartViewVersion++;
         _statusText = "";
@@ -589,7 +586,9 @@
     }
 
     /// <summary>
-    /// Загружает Info snapshot, Param snapshot и при необходимости trend.
+    /// Загружает Param snapshot и при необходимости trend.
+    /// Info DTO здесь намеренно не запрашивается: полная карточка оборудования принадлежит Info-режиму,
+    /// а Param-режиму для идентификационной строки достаточно выбранного EquipmentDto.
     /// Метод специально защищен от параллельных refresh-ов, чтобы не перегружать CtApi.
     /// </summary>
     private async Task LoadAsync(
@@ -610,7 +609,6 @@
             _statusText = "";
 
             var equipmentName = Equipment.Name;
-            var infoTask = InfoApi.GetInfoAsync(equipmentName, ct);
 
             _snapshot = await ParamApi.GetSnapshotAsync(equipmentName, ct);
 
@@ -634,16 +632,6 @@
 
             if (_snapshot.Supported)
                 await LoadSelectedReferencePageAsync(ct);
-
-            try
-            {
-                _info = await infoTask;
-            }
-            catch
-            {
-                _info = null;
-            }
-
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested || _isDisposed || !IsActive)
         {
@@ -853,6 +841,120 @@
     }
 
     /// <summary>
+    /// Открывает Radzen Dialog для ввода нового значения Param item.
+    /// Диалог возвращает только значение; audit-comment формируется автоматически.
+    /// </summary>
+    private async Task BeginParamWriteAsync(ParamItemDto item)
+    {
+        if (Equipment is null || item is null || !item.CanWrite || _isWriting)
+            return;
+
+        var result = await DialogService.OpenAsync<ParamWriteDialog>(
+            $"Write: {item.Name}",
+            new Dictionary<string, object?>
+            {
+                [nameof(ParamWriteDialog.Item)] = item
+            },
+            new DialogOptions
+            {
+                Width = "420px",
+                CloseDialogOnOverlayClick = false,
+                CloseDialogOnEsc = true
+            });
+
+        if (result is not ParamWriteDialogResult writeResult)
+            return;
+
+        await SaveParamWriteAsync(item, writeResult.Value);
+    }
+
+    /// <summary>
+    /// Выполняет write-flow после закрытия диалога: опциональный confirm,
+    /// POST в Runtime.Service, отображение результата и повторное чтение snapshot.
+    /// </summary>
+    private async Task SaveParamWriteAsync(ParamItemDto item, string value)
+    {
+        if (Equipment is null || item is null || !item.CanWrite || string.IsNullOrWhiteSpace(value))
+            return;
+
+        var equipmentName = Equipment.Name;
+        var comment = BuildDefaultWriteComment(item);
+
+        if (_confirmWrites && !await ConfirmParamWriteAsync(equipmentName, item, value))
+            return;
+
+        _isWriting = true;
+
+        try
+        {
+            var response = await ParamApi.WriteAsync(
+                equipmentName,
+                new ParamWriteRequest
+                {
+                    ItemName = item.Name,
+                    Value = value,
+                    Comment = comment
+                },
+                GetActiveLoadToken());
+
+            if (response.Success)
+            {
+                var auditWarning = !response.DryRun && response.AuditAttempted && !response.AuditSucceeded;
+                _statusStyle = response.DryRun
+                    ? AlertStyle.Info
+                    : auditWarning
+                        ? AlertStyle.Warning
+                        : AlertStyle.Success;
+                _statusText = BuildWriteStatus(response, item);
+
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = response.DryRun
+                        ? NotificationSeverity.Info
+                        : auditWarning
+                            ? NotificationSeverity.Warning
+                            : NotificationSeverity.Success,
+                    Summary = "Param write",
+                    Detail = response.Message ?? _statusText,
+                    Duration = 3500
+                });
+
+                await LoadAsync(showLoading: false, includeTrend: IsGraphTabVisible, ct: GetActiveLoadToken());
+            }
+            else
+            {
+                _statusStyle = AlertStyle.Warning;
+                _statusText = response.Error ?? response.Message ?? "Param write was rejected.";
+
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Warning,
+                    Summary = "Param write",
+                    Detail = _statusText,
+                    Duration = 4500
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusStyle = AlertStyle.Danger;
+            _statusText = "Cannot write Param value: " + ex.Message;
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Param write",
+                Detail = "Cannot write Param value.",
+                Duration = 4500
+            });
+        }
+        finally
+        {
+            _isWriting = false;
+        }
+    }
+
+    /// <summary>
     /// Открывает встроенный редактор записи для одного Param item.
     /// Метод вызывается из ParamItemsTable только для CanWrite=true.
     /// </summary>
@@ -1029,6 +1131,15 @@
     }
 
     /// <summary>
+    /// Формирует автоматический комментарий для audit/Cicode SaveActionOperators.
+    /// Поле ввода комментария в UI убрано, поэтому по договоренности используем имя изменяемого Param item.
+    /// </summary>
+    private static string BuildDefaultWriteComment(ParamItemDto item)
+    {
+        return item.Name;
+    }
+
+    /// <summary>
     /// Собирает короткую строку статуса после записи: режим, старое/новое значение,
     /// tag и результат audit, если он выполнялся.
     /// </summary>
@@ -1176,11 +1287,17 @@
         if (index-- == 0)
             return ParamPanelTabKind.Graph;
 
-        if (index-- == 0)
+        if (HasAiSettingsItems && index-- == 0)
+            return ParamPanelTabKind.Settings;
+
+        if (!IsAiEquipment && index-- == 0)
             return ParamPanelTabKind.Values;
 
         if (HasAlarmItems && index-- == 0)
             return ParamPanelTabKind.Alarm;
+
+        if (IsAiEquipment && index-- == 0)
+            return ParamPanelTabKind.Values;
 
         if (HasTimeItems && index-- == 0)
             return ParamPanelTabKind.TimeWork;
@@ -1285,7 +1402,21 @@
     /// <summary>
     /// Есть ли параметры alarm-группы для отдельной вкладки.
     /// </summary>
-    private bool HasAlarmItems => _snapshot?.Items.Any(IsAlarmItem) == true;
+    /// <summary>
+    /// true, когда выбран AI-объект и для него нужно показать специализированную вкладку Settings.
+    /// </summary>
+    private bool HasAiSettingsItems => IsAiEquipment && _snapshot?.Items.Count > 0;
+
+    /// <summary>
+    /// true, когда выбранное оборудование относится к типу AI.
+    /// Специализированные вкладки Settings/Alarm пока включаем только для этого типа.
+    /// </summary>
+    private bool IsAiEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.AI;
+
+    private bool HasAlarmItems =>
+        IsAiEquipment
+            ? _snapshot?.Items.Any(IsAiAlarmItem) == true
+            : _snapshot?.Items.Any(IsAlarmItem) == true;
 
     /// <summary>
     /// Есть ли параметры времени работы для отдельной вкладки.
@@ -1316,6 +1447,22 @@
         return item.Name.Contains("Alarm", StringComparison.OrdinalIgnoreCase)
             || item.Name.StartsWith("SetL", StringComparison.OrdinalIgnoreCase)
             || item.Name.StartsWith("SetH", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Распознает alarm-поля AI, которые должны отображаться в специализированной вкладке Alarm.
+    /// </summary>
+    private static bool IsAiAlarmItem(ParamItemDto item)
+    {
+        return item.Name.Equals("AlarmHAEn", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("AlarmHWEn", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("AlarmLWEn", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("AlarmLAEn", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("SetHA", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("SetHW", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("SetLW", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("SetLA", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("SetHyst", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -1353,11 +1500,53 @@
     }
 
     /// <summary>
-    /// Возвращает первое фото для компактной верхней карточки Param.
+    /// true, если текущий snapshot сообщает о принудительном режиме канала.
+    /// Предупреждение показывается в верхней зоне Graph, отдельно от левого блока барграфов,
+    /// чтобы предупреждающий текст не сдвигал WPF-like шкалы относительно plot-area ECharts.
     /// </summary>
-    private EquipmentInfoFileDto? GetSummaryPhoto()
+    private bool IsGraphForcedChannelActive => IsSnapshotItemOn("ForceCmd");
+
+    /// <summary>
+    /// Читает boolean-состояние Param item из текущего snapshot без дополнительных запросов к Runtime.Service.
+    /// Поддерживает BooleanValue, числовой 0/1 и строковые значения, которые может вернуть CtApi.
+    /// </summary>
+    private bool IsSnapshotItemOn(params string[] names)
     {
-        return _info?.Photos.FirstOrDefault();
+        if (_snapshot is null || names.Length == 0)
+            return false;
+
+        var item = _snapshot.Items.FirstOrDefault(candidate =>
+            names.Any(name => candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+
+        if (item is null)
+            return false;
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Возвращает отображаемое значение Param item из текущего snapshot без дополнительного запроса.
+    /// Используется в верхней Graph-строке для read-only поля R.
+    /// </summary>
+    private string GetSnapshotItemDisplayValue(params string[] names)
+    {
+        if (_snapshot is null || names.Length == 0)
+            return "-";
+
+        var item = _snapshot.Items.FirstOrDefault(candidate =>
+            names.Any(name => candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+
+        return item is null ? "-" : FormatValue(item);
     }
 
     /// <summary>
@@ -1379,33 +1568,45 @@
     }
 
     /// <summary>
-    /// Проверяет, нужно ли показывать location из каталога оборудования.
+    /// Определяет, нужно ли показывать описание в компактной Param-карточке.
+    /// Логика повторяет левый список оборудования: техническое имя уже видно крупно,
+    /// поэтому description показываем только когда оно несет дополнительный смысл.
     /// </summary>
-    private static bool ShouldShowLocation(EquipmentDto equipment)
+    /// <summary>
+    /// Формирует подпись для компактной Param-карточки так же, как это делает левый список оборудования:
+    /// сначала DisplayName, затем Description через разделитель, если это разные тексты.
+    /// </summary>
+    private static string GetParamDescriptionText(EquipmentDto equipment)
     {
-        return !string.IsNullOrWhiteSpace(equipment.Location)
-            && !string.Equals(equipment.Location, "Unknown", StringComparison.OrdinalIgnoreCase);
+        var displayName = equipment.DisplayName?.Trim() ?? "";
+        var description = equipment.Description?.Trim() ?? "";
+
+        if (string.IsNullOrWhiteSpace(displayName)
+            || string.Equals(displayName, equipment.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            displayName = "";
+        }
+
+        if (string.IsNullOrWhiteSpace(description)
+            || string.Equals(description, equipment.Name, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(description, displayName, StringComparison.OrdinalIgnoreCase))
+        {
+            description = "";
+        }
+
+        if (!string.IsNullOrWhiteSpace(displayName) && !string.IsNullOrWhiteSpace(description))
+            return $"{displayName} · {description}";
+
+        return !string.IsNullOrWhiteSpace(displayName)
+            ? displayName
+            : description;
     }
 
-    /// <summary>
-    /// Преобразует location из формата "module.channel" в человекочитаемый текст.
-    /// </summary>
-    private static string FormatLocation(string? raw)
+    private static bool ShouldShowParamDescription(EquipmentDto equipment)
     {
-        raw = (raw ?? "").Trim();
-
-        if (string.IsNullOrWhiteSpace(raw))
-            return "";
-
-        if (raw.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-            return raw;
-
-        var parts = raw.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        if (parts.Length >= 2)
-            return $"module: {parts[0]}, chanel: {parts[1]}";
-
-        return raw;
+        return !string.IsNullOrWhiteSpace(equipment.Description)
+            && !string.Equals(equipment.Description, equipment.Name, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(equipment.Description, equipment.DisplayName, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -1438,16 +1639,6 @@
     }
 
     /// <summary>
-    /// Возвращает описание оборудования или дефис.
-    /// </summary>
-    private static string GetDescriptionText(EquipmentDto equipment)
-    {
-        return string.IsNullOrWhiteSpace(equipment.Description)
-            ? "-"
-            : equipment.Description;
-    }
-
-    /// <summary>
     /// Останавливает polling и отменяет активные запросы при уничтожении Param-панели.
     /// </summary>
     public void Dispose()
@@ -1465,6 +1656,7 @@
     {
         None,
         Graph,
+        Settings,
         Values,
         Alarm,
         TimeWork,
