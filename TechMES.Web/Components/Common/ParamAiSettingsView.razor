@@ -3,6 +3,7 @@
 <div class="ai-settings-page">
     @RenderGroup("PLC settings", "manufacturing", PlcRows)
     @RenderGroup("Chanel settings", "settings_input_component", ChannelRows)
+    @RenderForcedGroup()
 </div>
 
 @code {
@@ -18,6 +19,13 @@
     /// </summary>
     [Parameter]
     public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Команда записи boolean item-а с заранее выбранным новым значением.
+    /// Используется для ForceCmd, чтобы клик по switch открывал диалог уже с инверсией текущего состояния.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamWriteDialogRequest> OnBooleanWriteRequested { get; set; }
 
     /// <summary>
     /// Поля верхнего блока PLC settings для AI.
@@ -38,6 +46,53 @@
         new("MinR", "MinR"),
         new("Coefficient", "Coef")
     ];
+
+    /// <summary>
+    /// Рисует нижний WPF-like блок Forced.
+    /// В WPF для AI здесь использовалась пара ForceCmd/HmiForced: switch включает режим force,
+    /// а HmiForced показывает/задает принудительное HMI-значение канала.
+    /// </summary>
+    private RenderFragment RenderForcedGroup() => @<ParamAiPanel Title="Forced" Icon="flash_on">
+        @{
+            var switchItem = FindItem("ForceCmd");
+            var valueItem = FindItem("HmiForced");
+        }
+
+        <div class="ai-forced-body">
+            <div class="ai-forced-row">
+                <div class="@GetSwitchShellClass(switchItem)"
+                     title="@GetFieldTitle(switchItem)"
+                     @onclick="@(() => RequestSwitchWriteAsync(switchItem))">
+                    <RadzenStack Orientation="Orientation.Horizontal"
+                                 AlignItems="AlignItems.Center"
+                                 Gap="0.5rem"
+                                 class="ai-forced-switch-stack">
+                        <RadzenLabel Text="@GetSwitchText(switchItem)"
+                                     Component="ForceCmd" />
+                        <RadzenSwitch Value="@GetSwitchValue(switchItem)"
+                                      Disabled="@(switchItem is null)"
+                                      Name="ForceCmd" />
+                    </RadzenStack>
+                </div>
+
+                <span class="ai-forced-description">Forcing the chanel</span>
+
+                <div class="@GetForcedFieldShellClass(valueItem)"
+                     title="@GetFieldTitle(valueItem)"
+                     @onclick="@(() => RequestWriteAsync(valueItem))">
+                    <RadzenFormField AllowFloatingLabel="false"
+                                     Text="HmiForced"
+                                     Variant="Variant.Outlined"
+                                     class="ai-forced-form-field">
+                        <RadzenTextBox Value="@FormatValue(valueItem)"
+                                       ReadOnly="true"
+                                       Disabled="@(valueItem is null)"
+                                       class="ai-forced-value" />
+                    </RadzenFormField>
+                </div>
+            </div>
+        </div>
+    </ParamAiPanel>;
 
     /// <summary>
     /// Рисует одну WPF-like группу настроек с заголовком и строками FormField.
@@ -89,6 +144,30 @@
     }
 
     /// <summary>
+    /// Открывает write-dialog для switch-а уже с противоположным boolean-значением.
+    /// Это устраняет ситуацию, когда оператор кликает switch, а диалог предлагает записать старое состояние.
+    /// </summary>
+    private async Task RequestSwitchWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        var request = new ParamWriteDialogRequest
+        {
+            Item = item,
+            InitialBooleanValue = !GetSwitchValue(item)
+        };
+
+        if (OnBooleanWriteRequested.HasDelegate)
+        {
+            await OnBooleanWriteRequested.InvokeAsync(request);
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
     /// CSS-класс контейнера FormField: writable поля выглядят кликабельными, read-only остаются спокойными.
     /// </summary>
     private static string GetFieldShellClass(ParamItemDto? item)
@@ -96,6 +175,57 @@
         return item?.CanWrite == true
             ? "ai-setting-field-shell is-writable"
             : "ai-setting-field-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Возвращает boolean-состояние ForceCmd для RadzenSwitch.
+    /// Switch не пишет напрямую: клик открывает общий write-dialog родительской Param-панели.
+    /// </summary>
+    private static bool GetSwitchValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return false;
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Текст рядом со switch: вместо WPF-подписи Disabled показываем текущее состояние on/off.
+    /// </summary>
+    private static string GetSwitchText(ParamItemDto? item)
+    {
+        return GetSwitchValue(item) ? "on" : "off";
+    }
+
+    /// <summary>
+    /// CSS-класс контейнера switch в блоке Forced с учетом доступности write.
+    /// </summary>
+    private static string GetSwitchShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "ai-forced-switch-shell is-writable"
+            : "ai-forced-switch-shell is-read-only";
+    }
+
+    /// <summary>
+    /// CSS-класс контейнера HmiForced FormField с учетом доступности write.
+    /// </summary>
+    private static string GetForcedFieldShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "ai-forced-field-shell is-writable"
+            : "ai-forced-field-shell is-read-only";
     }
 
     /// <summary>

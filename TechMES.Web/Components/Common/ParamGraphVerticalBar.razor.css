@@ -1,9 +1,16 @@
 .param-meter {
+    /* Ширина колонки с min/max цифрами. Если длинное число вроде 10000 не помещается - увеличивай здесь. */
+    --param-meter-scale-width: 42px;
+    /* Горизонтальный отступ цифры от ближайшей линии шкалы/бара. */
+    --param-meter-label-gap: 6px;
+    /* Одинаковый вертикальный отступ верхней и нижней цифры от границы шкалы. */
+    --param-meter-limit-block-offset: 6px;
+    /* Зазор между числовой шкалой и самим баром. Здесь регулируется плотность двух соседних WPF-шкал. */
+    --param-meter-scale-gap: 2px;
     display: flex;
     align-items: stretch;
     justify-content: center;
-    /* Зазор между числовой шкалой и самим баром. Здесь регулируется плотность двух соседних WPF-шкал. */
-    gap: 2px;
+    gap: var(--param-meter-scale-gap);
     min-width: 64px;
     height: 100%;
     min-height: 260px;
@@ -15,8 +22,8 @@
 
 .param-meter-scale {
     position: relative;
-    width: 32px;
-    min-width: 32px;
+    width: var(--param-meter-scale-width);
+    min-width: var(--param-meter-scale-width);
     color: var(--rz-text-color);
     font-size: 12px;
     line-height: 1;
@@ -24,20 +31,30 @@
 
 .param-meter-limit {
     position: absolute;
-    max-width: 32px;
+    max-width: calc(var(--param-meter-scale-width) - var(--param-meter-label-gap));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .param-meter-limit-top {
-    top: 0;
-    inset-inline-end: 8px;
+    top: var(--param-meter-limit-block-offset);
 }
 
 .param-meter-limit-bottom {
-    bottom: 0;
-    inset-inline-end: 8px;
+    bottom: var(--param-meter-limit-block-offset);
+}
+
+.param-meter:not(.param-meter-scale-right) .param-meter-limit {
+    inset-inline-start: 0;
+    inset-inline-end: var(--param-meter-label-gap);
+    text-align: right;
+}
+
+.param-meter-scale-right .param-meter-limit {
+    inset-inline-start: var(--param-meter-label-gap);
+    inset-inline-end: 0;
+    text-align: left;
 }
 
 .param-meter-tick {

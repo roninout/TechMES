@@ -10,7 +10,7 @@
             <div class="ai-alarm-row">
                 <div class="@GetSwitchShellClass(switchItem)"
                      title="@GetFieldTitle(switchItem)"
-                     @onclick="@(() => RequestWriteAsync(switchItem))">
+                     @onclick="@(() => RequestSwitchWriteAsync(switchItem))">
                     <RadzenStack Orientation="Orientation.Horizontal"
                                  AlignItems="AlignItems.Center"
                                  Gap="0.5rem"
@@ -80,6 +80,13 @@
     public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
 
     /// <summary>
+    /// Команда записи boolean item-а с заранее выбранным новым значением.
+    /// Используется только switch-строками, чтобы клик по switch означал инверсию текущего состояния.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamWriteDialogRequest> OnBooleanWriteRequested { get; set; }
+
+    /// <summary>
     /// Строки alarm-настроек AI: boolean enable item, числовой setpoint item,
     /// короткая fixed-label подпись поля и обычное текстовое описание параметра.
     /// </summary>
@@ -111,12 +118,50 @@
     }
 
     /// <summary>
+    /// Открывает write-dialog для switch-а уже с противоположным boolean-значением.
+    /// Сам RadzenSwitch в строке не меняет модель напрямую: запись идет только после кнопки Write.
+    /// </summary>
+    private async Task RequestSwitchWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        var request = new ParamWriteDialogRequest
+        {
+            Item = item,
+            InitialBooleanValue = !GetSwitchValue(item)
+        };
+
+        if (OnBooleanWriteRequested.HasDelegate)
+        {
+            await OnBooleanWriteRequested.InvokeAsync(request);
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
     /// Возвращает текущее boolean-значение для RadzenSwitch.
     /// Switch отключен от прямого изменения: клик по контейнеру открывает write-dialog.
     /// </summary>
     private static bool GetSwitchValue(ParamItemDto? item)
     {
-        return item?.BooleanValue == true;
+        if (item is null)
+            return false;
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

@@ -114,7 +114,7 @@
     --param-toolbar-r-width: 100px;
     /* Пустая колонка между R и уведомлением Forced. Меняй ее, чтобы сдвигать alert вправо. */
     --param-toolbar-spacer-width: 52px;
-    /* Максимальная ширина уведомления Forced внутри доступной центральной колонки. */
+    /* Максимальная ширина каждого уведомления внутри своей части центральной колонки. */
     --param-toolbar-alert-width: 1800px;
     /* Одинаковый внешний отступ сверху и снизу от строки R/alert/live-button. */
     --param-toolbar-outer-gap: 0px;
@@ -161,30 +161,38 @@
 }
 
 .param-toolbar-alert-slot {
-    display: flex;
-    flex: 1 1 auto;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    align-items: center;
+    gap: 10px;
     min-width: 0;
     overflow: hidden;
     padding-inline: 8px;
 }
 
-::deep .param-forced-alert {
+::deep .param-graph-alert {
     width: min(var(--param-toolbar-alert-width), 100%);
     max-width: 100%;
     min-width: 0;
     min-height: 36px;
     margin: 0;
     overflow: hidden;
+}
+
+::deep .param-forced-alert {
     color: #f28c00;
 }
 
-::deep .param-forced-alert .rz-alert-content,
-::deep .param-forced-alert .rz-alert-message {
+::deep .param-channel-error-alert {
+    color: var(--rz-danger);
+}
+
+::deep .param-graph-alert .rz-alert-content,
+::deep .param-graph-alert .rz-alert-message {
     min-width: 0;
 }
 
-::deep .param-forced-alert .rz-alert-message {
+::deep .param-graph-alert .rz-alert-message {
     font-weight: 700;
     overflow: hidden;
     text-overflow: ellipsis;

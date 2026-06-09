@@ -129,8 +129,22 @@
                                                          Variant="Variant.Flat"
                                                          Shade="Shade.Lighter"
                                                          ShowIcon="true"
-                                                         class="param-forced-alert">
+                                                         class="param-graph-alert param-forced-alert">
                                                 Forced chanel!
+                                            </RadzenAlert>
+                                        }
+
+                                        @if (IsGraphChannelErrorActive)
+                                        {
+                                            @* AlarmHealth переносим из бокового WPF-блока наверх:
+                                               предупреждение остается видимым, но больше не меняет высоту/позицию барграфов. *@
+                                            <RadzenAlert AllowClose="false"
+                                                         AlertStyle="AlertStyle.Danger"
+                                                         Variant="Variant.Flat"
+                                                         Shade="Shade.Lighter"
+                                                         ShowIcon="true"
+                                                         class="param-graph-alert param-channel-error-alert">
+                                                Chanel error!
                                             </RadzenAlert>
                                         }
                                     </div>
@@ -179,7 +193,8 @@
                         {
                             <RadzenTabsItem Text="Settings" Icon="tune">
                                 <ParamAiSettingsView Items="@_snapshot.Items"
-                                                     OnWriteRequested="@BeginParamWriteAsync" />
+                                                     OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                     OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
                             </RadzenTabsItem>
                         }
 
@@ -197,7 +212,8 @@
                                 @if (IsAiEquipment)
                                 {
                                     <ParamAiAlarmView Items="@_snapshot.Items"
-                                                      OnWriteRequested="@BeginParamWriteAsync" />
+                                                      OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                      OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
                                 }
                                 else
                                 {
@@ -759,6 +775,9 @@
         {
             while (await timer.WaitForNextTickAsync(ct))
             {
+                if (_isWriting)
+                    continue;
+
                 await InvokeAsync(async () =>
                 {
                     await LoadAsync(
@@ -844,7 +863,27 @@
     /// Открывает Radzen Dialog для ввода нового значения Param item.
     /// Диалог возвращает только значение; audit-comment формируется автоматически.
     /// </summary>
+    private Task BeginParamWriteAsync(ParamWriteDialogRequest request)
+    {
+        return request.Item is null
+            ? Task.CompletedTask
+            : BeginParamWriteAsync(request.Item, request.InitialBooleanValue);
+    }
+
+    /// <summary>
+    /// Открывает Radzen Dialog для ввода нового значения Param item.
+    /// initialBooleanValue используется для switch-строк: диалог открывается с уже выбранным новым состоянием.
+    /// </summary>
     private async Task BeginParamWriteAsync(ParamItemDto item)
+    {
+        await BeginParamWriteAsync(item, initialBooleanValue: null);
+    }
+
+    /// <summary>
+    /// Открывает Radzen Dialog для ввода нового значения Param item.
+    /// Диалог возвращает только значение; audit-comment формируется автоматически.
+    /// </summary>
+    private async Task BeginParamWriteAsync(ParamItemDto item, bool? initialBooleanValue)
     {
         if (Equipment is null || item is null || !item.CanWrite || _isWriting)
             return;
@@ -853,7 +892,8 @@
             $"Write: {item.Name}",
             new Dictionary<string, object?>
             {
-                [nameof(ParamWriteDialog.Item)] = item
+                [nameof(ParamWriteDialog.Item)] = item,
+                [nameof(ParamWriteDialog.InitialBooleanValue)] = initialBooleanValue
             },
             new DialogOptions
             {
@@ -919,7 +959,9 @@
                     Duration = 3500
                 });
 
-                await LoadAsync(showLoading: false, includeTrend: IsGraphTabVisible, ct: GetActiveLoadToken());
+                ApplyWrittenValueToSnapshot(item, response.WrittenValue ?? value);
+                await InvokeAsync(StateHasChanged);
+                await ReloadAfterWriteAsync(item, response.WrittenValue ?? value);
             }
             else
             {
@@ -1100,6 +1142,86 @@
         {
             _isWriting = false;
         }
+    }
+
+    /// <summary>
+    /// Локально применяет записанное значение к текущему snapshot.
+    /// Это сразу обновляет switch-и в UI и не ждет, пока CtApi начнет возвращать новое значение.
+    /// </summary>
+    private void ApplyWrittenValueToSnapshot(ParamItemDto item, string value)
+    {
+        var snapshotItem = _snapshot?.Items.FirstOrDefault(candidate =>
+            candidate.Name.Equals(item.Name, StringComparison.OrdinalIgnoreCase));
+
+        if (snapshotItem is null)
+            return;
+
+        snapshotItem.ValueText = value;
+        snapshotItem.NumericValue = null;
+        snapshotItem.BooleanValue = null;
+
+        if (snapshotItem.Kind == ParamValueKind.Boolean && TryParseBooleanValue(value, out var boolValue))
+        {
+            snapshotItem.BooleanValue = boolValue;
+            snapshotItem.NumericValue = boolValue ? 1 : 0;
+            snapshotItem.ValueText = boolValue ? "true" : "false";
+            return;
+        }
+
+        if (snapshotItem.Kind == ParamValueKind.Number
+            && double.TryParse(value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
+        {
+            snapshotItem.NumericValue = number;
+            snapshotItem.ValueText = FormatWriteNumber(number);
+        }
+    }
+
+    /// <summary>
+    /// Повторно читает snapshot после write.
+    /// Для boolean ждем короткую паузу и при необходимости делаем несколько попыток:
+    /// CtApi иногда еще один цикл возвращает старое значение сразу после TagWrite.
+    /// </summary>
+    private async Task ReloadAfterWriteAsync(ParamItemDto item, string value)
+    {
+        var ct = GetActiveLoadToken();
+        var attempts = item.Kind == ParamValueKind.Boolean ? 3 : 1;
+
+        for (var attempt = 0; attempt < attempts; attempt++)
+        {
+            if (attempt > 0)
+                await Task.Delay(250, ct);
+
+            await WaitForRefreshIdleAsync(ct);
+            await LoadAsync(showLoading: false, includeTrend: IsGraphTabVisible, ct: ct);
+
+            if (item.Kind != ParamValueKind.Boolean || SnapshotMatchesWrittenValue(item.Name, value))
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Ждет завершения уже запущенного background refresh, чтобы write-refresh не был пропущен из-за _isRefreshing.
+    /// </summary>
+    private async Task WaitForRefreshIdleAsync(CancellationToken ct)
+    {
+        for (var i = 0; i < 10 && _isRefreshing && !ct.IsCancellationRequested; i++)
+            await Task.Delay(100, ct);
+    }
+
+    /// <summary>
+    /// Проверяет, что перечитанный snapshot уже содержит записанное boolean-значение.
+    /// </summary>
+    private bool SnapshotMatchesWrittenValue(string itemName, string value)
+    {
+        if (!TryParseBooleanValue(value, out var expected))
+            return true;
+
+        var snapshotItem = _snapshot?.Items.FirstOrDefault(candidate =>
+            candidate.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+
+        return snapshotItem is not null
+            && TryReadBooleanValue(snapshotItem, out var actual)
+            && actual == expected;
     }
 
     /// <summary>
@@ -1507,6 +1629,12 @@
     private bool IsGraphForcedChannelActive => IsSnapshotItemOn("ForceCmd");
 
     /// <summary>
+    /// true, если snapshot сообщает об ошибке канала через AlarmHealth.
+    /// Этот сигнал показывается в верхней строке Graph рядом с Forced, чтобы боковая WPF-панель оставалась только шкалой/состоянием.
+    /// </summary>
+    private bool IsGraphChannelErrorActive => IsSnapshotItemOn("AlarmHealth");
+
+    /// <summary>
     /// Читает boolean-состояние Param item из текущего snapshot без дополнительных запросов к Runtime.Service.
     /// Поддерживает BooleanValue, числовой 0/1 и строковые значения, которые может вернуть CtApi.
     /// </summary>
@@ -1521,17 +1649,7 @@
         if (item is null)
             return false;
 
-        if (item.BooleanValue.HasValue)
-            return item.BooleanValue.Value;
-
-        if (item.NumericValue.HasValue)
-            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
-
-        var text = item.ValueText?.Trim();
-        return text is not null
-            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
-                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
-                || text.Equals("1", StringComparison.OrdinalIgnoreCase));
+        return TryReadBooleanValue(item, out var value) && value;
     }
 
     /// <summary>
@@ -1622,12 +1740,62 @@
     /// </summary>
     private static string FormatValue(ParamItemDto item)
     {
-        if (item.BooleanValue.HasValue)
-            return item.BooleanValue.Value ? "on" : "off";
+        if (item.Kind == ParamValueKind.Boolean && TryReadBooleanValue(item, out var boolValue))
+            return boolValue ? "on" : "off";
 
         return string.IsNullOrWhiteSpace(item.ValueText)
             ? "-"
             : item.ValueText;
+    }
+
+    /// <summary>
+    /// Читает boolean из Param item независимо от того, как Runtime.Service его заполнил:
+    /// BooleanValue, NumericValue или строка 1/0/on/off.
+    /// </summary>
+    private static bool TryReadBooleanValue(ParamItemDto item, out bool value)
+    {
+        if (item.BooleanValue.HasValue)
+        {
+            value = item.BooleanValue.Value;
+            return true;
+        }
+
+        if (item.NumericValue.HasValue)
+        {
+            value = Math.Abs(item.NumericValue.Value) > double.Epsilon;
+            return true;
+        }
+
+        return TryParseBooleanValue(item.ValueText, out value);
+    }
+
+    /// <summary>
+    /// Разбирает boolean-текст в вариантах, которые встречаются в UI и CtApi.
+    /// </summary>
+    private static bool TryParseBooleanValue(string? raw, out bool value)
+    {
+        raw = (raw ?? "").Trim();
+
+        if (raw.Equals("1", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("true", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("on", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("yes", StringComparison.OrdinalIgnoreCase))
+        {
+            value = true;
+            return true;
+        }
+
+        if (raw.Equals("0", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("false", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("off", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals("no", StringComparison.OrdinalIgnoreCase))
+        {
+            value = false;
+            return true;
+        }
+
+        value = false;
+        return false;
     }
 
     /// <summary>

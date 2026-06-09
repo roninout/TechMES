@@ -33,6 +33,10 @@
     white-space: nowrap;
 }
 
+.ai-alarm-switch-shell ::deep .rz-switch {
+    pointer-events: none;
+}
+
 .ai-alarm-switch-placeholder {
     min-width: 112px;
 }

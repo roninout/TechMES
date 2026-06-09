@@ -64,6 +64,13 @@
     public ParamItemDto? Item { get; set; }
 
     /// <summary>
+    /// Необязательное стартовое значение для boolean item-а.
+    /// Используется при клике по switch в Settings/Alarm: диалог открывается уже с противоположным значением.
+    /// </summary>
+    [Parameter]
+    public bool? InitialBooleanValue { get; set; }
+
+    /// <summary>
     /// Текстовое значение для number/text Param item.
     /// </summary>
     private string _valueText = "";
@@ -88,7 +95,7 @@
 
         if (Item.Kind == ParamValueKind.Boolean)
         {
-            _booleanValue = Item.BooleanValue == true;
+            _booleanValue = InitialBooleanValue ?? ReadBooleanValue(Item);
             _valueText = _booleanValue ? "1" : "0";
             return;
         }
@@ -147,12 +154,32 @@
     /// </summary>
     private static string FormatValue(ParamItemDto item)
     {
-        if (item.BooleanValue.HasValue)
-            return item.BooleanValue.Value ? "on" : "off";
+        if (item.Kind == ParamValueKind.Boolean)
+            return ReadBooleanValue(item) ? "on" : "off";
 
         return string.IsNullOrWhiteSpace(item.ValueText)
             ? "-"
             : item.ValueText;
+    }
+
+    /// <summary>
+    /// Нормализует boolean из всех форматов, которые может вернуть Runtime.Service:
+    /// BooleanValue, NumericValue или текстовое 1/0/on/off.
+    /// </summary>
+    private static bool ReadBooleanValue(ParamItemDto item)
+    {
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
