@@ -112,6 +112,24 @@
                                                 </RadzenFormField>
                                             </div>
                                         }
+                                        else if (IsVgaEquipment)
+                                        {
+                                            @* Поле Man для VGA вынесено в ту же верхнюю строку, где у AI находится R.
+                                               Так боковая WPF-like панель остается только шкалой и не сдвигает барграфы относительно plot-area ECharts. *@
+                                            <div class="@GetVgaManToolbarFieldShellClass()"
+                                                 title="@GetVgaManToolbarFieldTitle()"
+                                                 @onclick="@RequestVgaManToolbarWriteAsync">
+                                                <RadzenFormField AllowFloatingLabel="false"
+                                                                 Text="Man"
+                                                                 Variant="Variant.Outlined"
+                                                                 class="param-toolbar-r-field">
+                                                    <RadzenTextBox Value='@GetSnapshotItemDisplayValue("Man")'
+                                                                   ReadOnly="true"
+                                                                   Disabled="@IsVgaManToolbarFieldDisabled"
+                                                                   class="param-toolbar-r-value" />
+                                                </RadzenFormField>
+                                            </div>
+                                        }
                                     </div>
 
                                     @* Пустая колонка между полем R и уведомлением Forced.
@@ -158,7 +176,9 @@
 
                                 <div class="param-graph-layout">
                                     <ParamGraphSidePanel Equipment="@Equipment"
-                                                         Snapshot="@_snapshot" />
+                                                         Snapshot="@_snapshot"
+                                                         OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                         OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
 
                                     <div class="param-graph-main">
                                         @if (_trend is null || _trend.Points.Count == 0)
@@ -189,16 +209,25 @@
                             </div>
                         </RadzenTabsItem>
 
-                        @if (HasAiSettingsItems)
+                        @if (HasAnalogSettingsItems)
                         {
                             <RadzenTabsItem Text="Settings" Icon="tune">
-                                <ParamAiSettingsView Items="@_snapshot.Items"
-                                                     OnWriteRequested="@(item => BeginParamWriteAsync(item))"
-                                                     OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                @if (IsVgaEquipment)
+                                {
+                                    <ParamVgaSettingsView Items="@_snapshot.Items"
+                                                          OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                          OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                }
+                                else
+                                {
+                                    <ParamAiSettingsView Items="@_snapshot.Items"
+                                                         OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                         OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                }
                             </RadzenTabsItem>
                         }
 
-                        @if (!IsAiEquipment)
+                        @if (!UsesAnalogSpecializedTabs)
                         {
                             <RadzenTabsItem Text="All" Icon="dataset">
                                 <ParamItemsTable Items="@_snapshot.Items"
@@ -209,7 +238,7 @@
                         @if (HasAlarmItems)
                         {
                             <RadzenTabsItem Text="Alarm" Icon="notifications_active">
-                                @if (IsAiEquipment)
+                                @if (UsesAnalogSpecializedTabs)
                                 {
                                     <ParamAiAlarmView Items="@_snapshot.Items"
                                                       OnWriteRequested="@(item => BeginParamWriteAsync(item))"
@@ -223,7 +252,7 @@
                             </RadzenTabsItem>
                         }
 
-                        @if (IsAiEquipment)
+                        @if (UsesAnalogSpecializedTabs)
                         {
                             <RadzenTabsItem Text="All" Icon="dataset">
                                 <ParamItemsTable Items="@_snapshot.Items"
@@ -1409,16 +1438,16 @@
         if (index-- == 0)
             return ParamPanelTabKind.Graph;
 
-        if (HasAiSettingsItems && index-- == 0)
+        if (HasAnalogSettingsItems && index-- == 0)
             return ParamPanelTabKind.Settings;
 
-        if (!IsAiEquipment && index-- == 0)
+        if (!UsesAnalogSpecializedTabs && index-- == 0)
             return ParamPanelTabKind.Values;
 
         if (HasAlarmItems && index-- == 0)
             return ParamPanelTabKind.Alarm;
 
-        if (IsAiEquipment && index-- == 0)
+        if (UsesAnalogSpecializedTabs && index-- == 0)
             return ParamPanelTabKind.Values;
 
         if (HasTimeItems && index-- == 0)
@@ -1527,7 +1556,7 @@
     /// <summary>
     /// true, когда выбран AI-объект и для него нужно показать специализированную вкладку Settings.
     /// </summary>
-    private bool HasAiSettingsItems => IsAiEquipment && _snapshot?.Items.Count > 0;
+    private bool HasAnalogSettingsItems => UsesAnalogSpecializedTabs && _snapshot?.Items.Count > 0;
 
     /// <summary>
     /// true, когда выбранное оборудование относится к типу AI.
@@ -1535,9 +1564,21 @@
     /// </summary>
     private bool IsAiEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.AI;
 
+    /// <summary>
+    /// true, когда выбран клапан VGA. Для него используем тот же WPF-like набор вкладок, что и для AI,
+    /// но с отдельной вкладкой Settings и writable-полем ручного задания на Graph.
+    /// </summary>
+    private bool IsVgaEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.VGA;
+
+    /// <summary>
+    /// true для аналоговых типов, у которых уже есть специализированные WEB-вкладки Settings/Alarm/All.
+    /// Это сохраняет старый generic All-first режим для остальных типов Param.
+    /// </summary>
+    private bool UsesAnalogSpecializedTabs => IsAiEquipment || IsVgaEquipment;
+
     private bool HasAlarmItems =>
-        IsAiEquipment
-            ? _snapshot?.Items.Any(IsAiAlarmItem) == true
+        UsesAnalogSpecializedTabs
+            ? _snapshot?.Items.Any(IsAnalogAlarmItem) == true
             : _snapshot?.Items.Any(IsAlarmItem) == true;
 
     /// <summary>
@@ -1574,7 +1615,7 @@
     /// <summary>
     /// Распознает alarm-поля AI, которые должны отображаться в специализированной вкладке Alarm.
     /// </summary>
-    private static bool IsAiAlarmItem(ParamItemDto item)
+    private static bool IsAnalogAlarmItem(ParamItemDto item)
     {
         return item.Name.Equals("AlarmHAEn", StringComparison.OrdinalIgnoreCase)
             || item.Name.Equals("AlarmHWEn", StringComparison.OrdinalIgnoreCase)
@@ -1633,6 +1674,69 @@
     /// Этот сигнал показывается в верхней строке Graph рядом с Forced, чтобы боковая WPF-панель оставалась только шкалой/состоянием.
     /// </summary>
     private bool IsGraphChannelErrorActive => IsSnapshotItemOn("AlarmHealth");
+
+    /// <summary>
+    /// true, когда VGA находится в ручном режиме. В исходном WPF поле Man было доступно только при Mode=false.
+    /// </summary>
+    private bool IsVgaManualMode => !IsSnapshotItemOn("Mode");
+
+    /// <summary>
+    /// true, когда верхнее поле Man для VGA должно быть отключено: item отсутствует, read-only или клапан в Auto.
+    /// </summary>
+    private bool IsVgaManToolbarFieldDisabled => FindSnapshotItem("Man")?.CanWrite != true || !IsVgaManualMode;
+
+    /// <summary>
+    /// CSS-класс верхнего поля Man. Используем те же размеры, что у AI-поля R, но добавляем состояние writable/read-only.
+    /// </summary>
+    private string GetVgaManToolbarFieldShellClass()
+    {
+        return IsVgaManToolbarFieldDisabled
+            ? "param-toolbar-r-field-shell param-toolbar-man-field-shell is-read-only"
+            : "param-toolbar-r-field-shell param-toolbar-man-field-shell is-writable";
+    }
+
+    /// <summary>
+    /// Tooltip объясняет, почему поле Man может быть недоступно для записи.
+    /// </summary>
+    private string GetVgaManToolbarFieldTitle()
+    {
+        var item = FindSnapshotItem("Man");
+
+        if (item is null)
+            return "Param item is not available";
+
+        if (!item.CanWrite)
+            return "Read only";
+
+        return IsVgaManualMode ? "Write value" : "Available only in Manual mode";
+    }
+
+    /// <summary>
+    /// Открывает общий write-dialog для VGA Man из верхней строки Graph.
+    /// Запись намеренно блокируется в Auto-режиме, как это было сделано в WPF.
+    /// </summary>
+    private async Task RequestVgaManToolbarWriteAsync()
+    {
+        var item = FindSnapshotItem("Man");
+
+        if (item is null || !item.CanWrite || !IsVgaManualMode)
+            return;
+
+        await BeginParamWriteAsync(item);
+    }
+
+    /// <summary>
+    /// Ищет Param item в текущем snapshot без дополнительного обращения к Runtime.Service.
+    /// Helper нужен верхней Graph-строке: она читает R/Man/Mode из уже загруженного snapshot.
+    /// </summary>
+    private ParamItemDto? FindSnapshotItem(params string[] names)
+    {
+        if (_snapshot is null || names.Length == 0)
+            return null;
+
+        return _snapshot.Items.FirstOrDefault(candidate =>
+            names.Any(name => candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+    }
 
     /// <summary>
     /// Читает boolean-состояние Param item из текущего snapshot без дополнительных запросов к Runtime.Service.

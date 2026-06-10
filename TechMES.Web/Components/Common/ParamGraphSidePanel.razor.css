@@ -58,6 +58,12 @@
     inset-inline: 0;
 }
 
+.param-graph-side-panel-vga .param-vga-mode-button-shell {
+    position: absolute;
+    inset-block-start: calc(100% - var(--param-chart-plot-bottom, 90px) + 34px);
+    inset-inline: 18px;
+}
+
 .param-side-stack {
     display: flex;
     flex-direction: column;
@@ -135,6 +141,41 @@
     font-size: 14px;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.param-vga-man-field-shell {
+    width: 108px;
+    min-width: 0;
+    margin-inline: auto;
+    z-index: 1;
+}
+
+.param-vga-man-field-shell.is-writable {
+    cursor: pointer;
+}
+
+.param-vga-man-field-shell.is-read-only {
+    cursor: default;
+    opacity: 0.72;
+}
+
+.param-vga-man-field-shell ::deep .rz-form-field {
+    width: 100%;
+}
+
+.param-vga-man-field-shell ::deep .rz-textbox {
+    width: 100%;
+    text-align: center;
+}
+
+.param-vga-man-field-shell.is-writable ::deep .rz-textbox {
+    cursor: pointer;
+}
+
+::deep .param-vga-mode-button {
+    width: 100%;
+    min-height: 34px;
+    font-weight: 700;
 }
 
 .param-side-state {

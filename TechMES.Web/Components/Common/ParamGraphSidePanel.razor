@@ -85,12 +85,7 @@
                 break;
 
             case EquipmentTypeGroup.VGA:
-                <div class="param-side-stack">
-                    <div class="param-side-readout">
-                        <span>Man</span>
-                        <strong>@GetDisplayValue("Man")</strong>
-                    </div>
-
+                <div class="param-side-stack param-vga-side-stack">
                     <div class="param-side-bars param-side-bars-two">
                         <ParamGraphVerticalBar Label="PLC value"
                                                Value='@GetNumber("Value")'
@@ -106,7 +101,13 @@
                     </div>
 
                     <div class="param-side-unit">@DisplayUnit</div>
-                    <div class="@GetModeClass()">@FormatAutoMode()</div>
+                    <div class="param-vga-mode-button-shell">
+                        <RadzenButton Text="@FormatAutoMode()"
+                                      ButtonStyle='@(IsOn("Mode") ? ButtonStyle.Success : ButtonStyle.Light)'
+                                      Disabled="@IsVgaModeButtonDisabled"
+                                      class="param-vga-mode-button"
+                                      Click="@RequestVgaModeWriteAsync" />
+                    </div>
                 </div>
                 break;
 
@@ -186,6 +187,20 @@
     public ParamSnapshotResponse? Snapshot { get; set; }
 
     /// <summary>
+    /// Команда записи обычного Param item-а. Используется VGA-полем Man на Graph:
+    /// компонент только выбирает item, а диалог и backend-запись остаются в родительской Param-панели.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Команда записи boolean item-а с уже выбранным новым состоянием.
+    /// Нужна для VGA Mode, чтобы кнопка Auto/Manual открывала общий write-dialog с инверсией текущего режима.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamWriteDialogRequest> OnBooleanWriteRequested { get; set; }
+
+    /// <summary>
     /// Нормализованная группа оборудования, по которой выбирается WPF-подобный шаблон.
     /// </summary>
     private EquipmentTypeGroup PanelType => Snapshot?.TypeGroup ?? Equipment?.TypeGroup ?? EquipmentTypeGroup.Unknown;
@@ -205,6 +220,7 @@
     private string PanelClass => PanelType switch
     {
         EquipmentTypeGroup.AI => "param-graph-side-panel param-graph-side-panel-aligned-bars",
+        EquipmentTypeGroup.VGA => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-vga",
         EquipmentTypeGroup.DI or EquipmentTypeGroup.DO => "param-graph-side-panel param-graph-side-panel-digital",
         EquipmentTypeGroup.Motor or EquipmentTypeGroup.VGD => "param-graph-side-panel param-graph-side-panel-manual",
         _ => "param-graph-side-panel"
@@ -364,6 +380,85 @@
     private string FormatAutoMode()
     {
         return IsOn("Mode") ? "Auto" : "Manual";
+    }
+
+    /// <summary>
+    /// true, когда VGA находится в ручном режиме. В WPF поле Man редактировалось только при Mode=false.
+    /// </summary>
+    private bool IsVgaManualMode => !IsOn("Mode");
+
+    /// <summary>
+    /// true, когда поле Man нужно сделать визуально отключенным: нет item-а, нет права записи или VGA в Auto.
+    /// </summary>
+    private bool IsVgaManFieldDisabled => FindItem("Man")?.CanWrite != true || !IsVgaManualMode;
+
+    /// <summary>
+    /// true, когда кнопка Mode не должна открывать запись.
+    /// </summary>
+    private bool IsVgaModeButtonDisabled => FindItem("Mode")?.CanWrite != true;
+
+    /// <summary>
+    /// CSS-класс поля Man. В ручном режиме writable-поле выглядит кликабельным, в Auto - приглушенным.
+    /// </summary>
+    private string GetVgaManFieldShellClass()
+    {
+        return IsVgaManFieldDisabled
+            ? "param-vga-man-field-shell is-read-only"
+            : "param-vga-man-field-shell is-writable";
+    }
+
+    /// <summary>
+    /// Tooltip для поля Man объясняет, почему оно может быть недоступно.
+    /// </summary>
+    private string GetVgaManFieldTitle()
+    {
+        var item = FindItem("Man");
+
+        if (item is null)
+            return "Param item is not available";
+
+        if (!item.CanWrite)
+            return "Read only";
+
+        return IsVgaManualMode ? "Write value" : "Available only in Manual mode";
+    }
+
+    /// <summary>
+    /// Открывает общий write-dialog для VGA Man только в ручном режиме.
+    /// </summary>
+    private async Task RequestVgaManWriteAsync()
+    {
+        var item = FindItem("Man");
+
+        if (item is null || !item.CanWrite || !IsVgaManualMode)
+            return;
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Открывает общий write-dialog для VGA Mode с инверсией текущего Auto/Manual состояния.
+    /// </summary>
+    private async Task RequestVgaModeWriteAsync()
+    {
+        var item = FindItem("Mode");
+
+        if (item is null || !item.CanWrite)
+            return;
+
+        var request = new ParamWriteDialogRequest
+        {
+            Item = item,
+            InitialBooleanValue = !IsOn("Mode")
+        };
+
+        if (OnBooleanWriteRequested.HasDelegate)
+        {
+            await OnBooleanWriteRequested.InvokeAsync(request);
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(item);
     }
 
     /// <summary>

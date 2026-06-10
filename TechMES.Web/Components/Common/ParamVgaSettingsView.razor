@@ -1,0 +1,259 @@
+@using TechMES.Contracts.Param
+
+<div class="vga-settings-page">
+    @RenderGroup("PLC settings", "manufacturing", PlcRows)
+    @RenderGroup("Chanel settings", "settings_input_component", ChannelRows)
+    @RenderForcedGroup()
+</div>
+
+@code {
+    /// <summary>
+    /// Полный snapshot Param item-ов выбранного VGA. Компонент сам выбирает из него только поля,
+    /// которые в WPF были вынесены во вкладку Settings.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<ParamItemDto>? Items { get; set; }
+
+    /// <summary>
+    /// Общая команда записи числового/текстового параметра. Родительская панель открывает единый Radzen Dialog
+    /// и дальше отправляет значение в Runtime.Service.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Команда записи boolean-параметра с заранее выбранным новым состоянием.
+    /// Нужна для switch-ов: клик по switch должен открыть диалог уже с инверсией текущего значения.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamWriteDialogRequest> OnBooleanWriteRequested { get; set; }
+
+    /// <summary>
+    /// Верхний WPF-блок PLC settings для VGA: физический диапазон значения канала.
+    /// </summary>
+    private static readonly VgaSettingRow[] PlcRows =
+    [
+        new("Max", "Max"),
+        new("Min", "Min")
+    ];
+
+    /// <summary>
+    /// Блок Chanel settings для VGA: инженерный диапазон ручного/расчетного задания.
+    /// Название Chanel оставлено как в исходном WPF-экране.
+    /// </summary>
+    private static readonly VgaSettingRow[] ChannelRows =
+    [
+        new("MaxR", "MaxR"),
+        new("MinR", "MinR")
+    ];
+
+    /// <summary>
+    /// Нижний WPF-like блок Forced. Для VGA используется пара ForceCmd/ManForced:
+    /// switch включает принудительный режим, а ManForced задает принудительное значение канала.
+    /// </summary>
+    private RenderFragment RenderForcedGroup() => @<ParamAiPanel Title="Forced" Icon="flash_on">
+        @{
+            var switchItem = FindItem("ForceCmd");
+            var valueItem = FindItem("ManForced");
+        }
+
+        <div class="vga-forced-body">
+            <div class="vga-forced-row">
+                <div class="@GetSwitchShellClass(switchItem)"
+                     title="@GetFieldTitle(switchItem)"
+                     @onclick="@(() => RequestSwitchWriteAsync(switchItem))">
+                    <RadzenStack Orientation="Orientation.Horizontal"
+                                 AlignItems="AlignItems.Center"
+                                 Gap="0.5rem"
+                                 class="vga-forced-switch-stack">
+                        <RadzenLabel Text="@GetSwitchText(switchItem)"
+                                     Component="ForceCmd" />
+                        <RadzenSwitch Value="@GetSwitchValue(switchItem)"
+                                      Disabled="@(switchItem is null)"
+                                      Name="ForceCmd" />
+                    </RadzenStack>
+                </div>
+
+                <span class="vga-forced-description">Forcing the chanel</span>
+
+                <div class="@GetForcedFieldShellClass(valueItem)"
+                     title="@GetFieldTitle(valueItem)"
+                     @onclick="@(() => RequestWriteAsync(valueItem))">
+                    <RadzenFormField AllowFloatingLabel="false"
+                                     Text="ManForced"
+                                     Variant="Variant.Outlined"
+                                     class="vga-forced-form-field">
+                        <RadzenTextBox Value="@FormatValue(valueItem)"
+                                       ReadOnly="true"
+                                       Disabled="@(valueItem is null)"
+                                       class="vga-forced-value" />
+                    </RadzenFormField>
+                </div>
+            </div>
+        </div>
+    </ParamAiPanel>;
+
+    /// <summary>
+    /// Рисует один collapsible-блок настроек в том же стиле, что и AI Settings.
+    /// Каждая строка состоит из подписи слева и fixed-label FormField справа.
+    /// </summary>
+    private RenderFragment RenderGroup(string title, string icon, IReadOnlyList<VgaSettingRow> rows) => @<ParamAiPanel Title="@title" Icon="@icon">
+        <div class="vga-settings-group-body">
+            @foreach (var row in rows)
+            {
+                var item = FindItem(row.ItemName);
+
+                <div class="vga-setting-row">
+                    <span class="vga-setting-label">@row.Label</span>
+
+                    <div class="@GetFieldShellClass(item)"
+                         title="@GetFieldTitle(item)"
+                         @onclick="@(() => RequestWriteAsync(item))">
+                        <RadzenFormField AllowFloatingLabel="false"
+                                         Text="@row.Label"
+                                         Variant="Variant.Outlined"
+                                         class="vga-setting-form-field">
+                            <RadzenTextBox Value="@FormatValue(item)"
+                                           ReadOnly="true"
+                                           Disabled="@(item is null)"
+                                           class="vga-setting-value" />
+                        </RadzenFormField>
+                    </div>
+                </div>
+            }
+        </div>
+    </ParamAiPanel>;
+
+    /// <summary>
+    /// Ищет Param item по имени без учета регистра.
+    /// </summary>
+    private ParamItemDto? FindItem(string itemName)
+    {
+        return Items?.FirstOrDefault(item => item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Открывает общий write-dialog только для параметров, которые backend пометил как writable.
+    /// </summary>
+    private async Task RequestWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Открывает write-dialog для switch-а с противоположным boolean-значением.
+    /// Сам RadzenSwitch не меняет состояние напрямую, чтобы UI не расходился с фактической записью в SCADA.
+    /// </summary>
+    private async Task RequestSwitchWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        var request = new ParamWriteDialogRequest
+        {
+            Item = item,
+            InitialBooleanValue = !GetSwitchValue(item)
+        };
+
+        if (OnBooleanWriteRequested.HasDelegate)
+        {
+            await OnBooleanWriteRequested.InvokeAsync(request);
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// CSS-класс контейнера обычного FormField с учетом доступности записи.
+    /// </summary>
+    private static string GetFieldShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "vga-setting-field-shell is-writable"
+            : "vga-setting-field-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Возвращает текущее boolean-состояние switch-а с учетом возможных форматов CtApi: bool, число или строка.
+    /// </summary>
+    private static bool GetSwitchValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return false;
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Текст рядом со switch: вместо старой WPF-подписи Disabled показываем фактическое on/off.
+    /// </summary>
+    private static string GetSwitchText(ParamItemDto? item)
+    {
+        return GetSwitchValue(item) ? "on" : "off";
+    }
+
+    /// <summary>
+    /// CSS-класс switch-контейнера Forced.
+    /// </summary>
+    private static string GetSwitchShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "vga-forced-switch-shell is-writable"
+            : "vga-forced-switch-shell is-read-only";
+    }
+
+    /// <summary>
+    /// CSS-класс поля ManForced в Forced-блоке.
+    /// </summary>
+    private static string GetForcedFieldShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "vga-forced-field-shell is-writable"
+            : "vga-forced-field-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Tooltip показывает оператору, доступна ли запись конкретного поля.
+    /// </summary>
+    private static string GetFieldTitle(ParamItemDto? item)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        return item.CanWrite ? "Write value" : "Read only";
+    }
+
+    /// <summary>
+    /// Форматирует значение так же, как общая таблица Param.
+    /// </summary>
+    private static string FormatValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return "-";
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(item.ValueText) ? "-" : item.ValueText;
+    }
+
+    /// <summary>
+    /// Описание одной строки VGA Settings: видимая подпись и имя Param item-а.
+    /// </summary>
+    private sealed record VgaSettingRow(string Label, string ItemName);
+}
