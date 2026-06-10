@@ -209,10 +209,16 @@
                             </div>
                         </RadzenTabsItem>
 
-                        @if (HasAnalogSettingsItems)
+                        @if (HasSpecializedSettingsItems)
                         {
                             <RadzenTabsItem Text="Settings" Icon="tune">
-                                @if (IsVgaEquipment)
+                                @if (IsDiDoEquipment)
+                                {
+                                    <ParamDigitalSettingsView Items="@_snapshot.Items"
+                                                              OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                              OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                }
+                                else if (IsVgaEquipment)
                                 {
                                     <ParamVgaSettingsView Items="@_snapshot.Items"
                                                           OnWriteRequested="@(item => BeginParamWriteAsync(item))"
@@ -227,7 +233,7 @@
                             </RadzenTabsItem>
                         }
 
-                        @if (!UsesAnalogSpecializedTabs)
+                        @if (!UsesSpecializedParamTabs)
                         {
                             <RadzenTabsItem Text="All" Icon="dataset">
                                 <ParamItemsTable Items="@_snapshot.Items"
@@ -252,7 +258,7 @@
                             </RadzenTabsItem>
                         }
 
-                        @if (UsesAnalogSpecializedTabs)
+                        @if (UsesSpecializedParamTabs)
                         {
                             <RadzenTabsItem Text="All" Icon="dataset">
                                 <ParamItemsTable Items="@_snapshot.Items"
@@ -1438,16 +1444,16 @@
         if (index-- == 0)
             return ParamPanelTabKind.Graph;
 
-        if (HasAnalogSettingsItems && index-- == 0)
+        if (HasSpecializedSettingsItems && index-- == 0)
             return ParamPanelTabKind.Settings;
 
-        if (!UsesAnalogSpecializedTabs && index-- == 0)
+        if (!UsesSpecializedParamTabs && index-- == 0)
             return ParamPanelTabKind.Values;
 
         if (HasAlarmItems && index-- == 0)
             return ParamPanelTabKind.Alarm;
 
-        if (UsesAnalogSpecializedTabs && index-- == 0)
+        if (UsesSpecializedParamTabs && index-- == 0)
             return ParamPanelTabKind.Values;
 
         if (HasTimeItems && index-- == 0)
@@ -1556,7 +1562,7 @@
     /// <summary>
     /// true, когда выбран AI-объект и для него нужно показать специализированную вкладку Settings.
     /// </summary>
-    private bool HasAnalogSettingsItems => UsesAnalogSpecializedTabs && _snapshot?.Items.Count > 0;
+    private bool HasSpecializedSettingsItems => UsesSpecializedParamTabs && _snapshot?.Items.Count > 0;
 
     /// <summary>
     /// true, когда выбранное оборудование относится к типу AI.
@@ -1571,13 +1577,27 @@
     private bool IsVgaEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.VGA;
 
     /// <summary>
+    /// true, когда выбран цифровой вход или цифровой выход. Для DI/DO показываем Settings с форсированием,
+    /// но не показываем Alarm, потому что аварийных настроек у этих типов нет.
+    /// </summary>
+    private bool IsDiDoEquipment => Equipment?.TypeGroup is EquipmentTypeGroup.DI or EquipmentTypeGroup.DO;
+
+    /// <summary>
     /// true для аналоговых типов, у которых уже есть специализированные WEB-вкладки Settings/Alarm/All.
     /// Это сохраняет старый generic All-first режим для остальных типов Param.
     /// </summary>
     private bool UsesAnalogSpecializedTabs => IsAiEquipment || IsVgaEquipment;
 
+    /// <summary>
+    /// true для типов, где generic All-вкладка не должна быть первой.
+    /// Для них порядок вкладок становится WPF-like: Graph, Settings, Alarm если есть, затем All.
+    /// </summary>
+    private bool UsesSpecializedParamTabs => UsesAnalogSpecializedTabs || IsDiDoEquipment;
+
     private bool HasAlarmItems =>
-        UsesAnalogSpecializedTabs
+        IsDiDoEquipment
+            ? false
+            : UsesAnalogSpecializedTabs
             ? _snapshot?.Items.Any(IsAnalogAlarmItem) == true
             : _snapshot?.Items.Any(IsAlarmItem) == true;
 

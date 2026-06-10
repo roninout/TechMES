@@ -16,8 +16,11 @@
 }
 
 .param-graph-side-panel-digital {
-    width: 260px;
-    min-width: 260px;
+    width: 180px;
+    min-width: 180px;
+    --param-digital-led-width: 62px;
+    --param-digital-bus-width: 24px;
+    --param-digital-show-connector-width: 14px;
 }
 
 .param-graph-side-panel-manual {
@@ -209,24 +212,35 @@
 .param-digital-diagram {
     display: grid;
     flex: 1 1 auto;
-    grid-template-columns: 86px minmax(42px, 1fr) 86px;
+    grid-template-columns:
+        var(--param-digital-led-width)
+        minmax(var(--param-digital-bus-width), 1fr)
+        var(--param-digital-show-connector-width)
+        var(--param-digital-led-width);
     grid-template-rows: 40px minmax(56px, 1fr) 40px;
     align-items: center;
-    min-height: 180px;
-    margin-top: 8px;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
+
+.param-side-bars-digital {
+    align-items: stretch;
+    justify-content: center;
+    padding-inline: 0;
 }
 
 .param-digital-led {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 86px;
+    width: var(--param-digital-led-width);
     height: 40px;
     border: 1px solid var(--rz-text-color);
     border-radius: 3px;
     background: var(--rz-base-300);
     color: var(--rz-text-color);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     line-height: 1.15;
     text-align: center;
@@ -248,7 +262,7 @@
 
 .param-digital-led-show {
     grid-row: 2;
-    grid-column: 3;
+    grid-column: 4;
 }
 
 .param-digital-bus {
@@ -256,7 +270,8 @@
     grid-row: 1 / 4;
     grid-column: 2;
     align-self: stretch;
-    min-width: 42px;
+    min-width: var(--param-digital-bus-width);
+    overflow: visible;
 }
 
 .param-digital-line {
@@ -282,8 +297,8 @@
 
 .param-digital-line-middle {
     top: 50%;
-    right: 0;
-    width: 14px;
+    right: calc(-1 * var(--param-digital-show-connector-width));
+    width: var(--param-digital-show-connector-width);
     height: 2px;
 }
 

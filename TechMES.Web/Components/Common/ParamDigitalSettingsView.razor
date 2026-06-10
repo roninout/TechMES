@@ -1,0 +1,168 @@
+@using TechMES.Contracts.Param
+
+<div class="digital-settings-page">
+    <ParamAiPanel Title="Forced" Icon="flash_on">
+        @{
+            var forceItem = FindItem("ForceCmd");
+            var forcedValueItem = FindItem("ValueForced");
+            var isForceEnabled = GetSwitchValue(forceItem);
+        }
+
+        <div class="digital-forced-body">
+            <div class="digital-forced-row">
+                <div class="@GetSwitchShellClass(forceItem, isEnabled: true)"
+                     title="@GetFieldTitle(forceItem)"
+                     @onclick="@(() => RequestSwitchWriteAsync(forceItem, isEnabled: true))">
+                    <RadzenStack Orientation="Orientation.Horizontal"
+                                 AlignItems="AlignItems.Center"
+                                 Gap="0.5rem"
+                                 class="digital-forced-switch-stack">
+                        <RadzenLabel Text="@GetSwitchText(forceItem)"
+                                     Component="ForceCmd" />
+                        <RadzenSwitch Value="@GetSwitchValue(forceItem)"
+                                      Disabled="@(forceItem is null)"
+                                      Name="ForceCmd" />
+                    </RadzenStack>
+                </div>
+
+                <span class="digital-forced-description">Forcing the chanel</span>
+
+                <div class="@GetSwitchShellClass(forcedValueItem, isForceEnabled)"
+                     title="@GetForcedValueTitle(forcedValueItem, isForceEnabled)"
+                     @onclick="@(() => RequestSwitchWriteAsync(forcedValueItem, isForceEnabled))">
+                    <RadzenStack Orientation="Orientation.Horizontal"
+                                 AlignItems="AlignItems.Center"
+                                 JustifyContent="JustifyContent.End"
+                                 Gap="0.5rem"
+                                 class="digital-forced-switch-stack">
+                        <RadzenLabel Text="@GetSwitchText(forcedValueItem)"
+                                     Component="ValueForced" />
+                        <RadzenSwitch Value="@GetSwitchValue(forcedValueItem)"
+                                      Disabled="@(forcedValueItem is null || !isForceEnabled)"
+                                      Name="ValueForced" />
+                    </RadzenStack>
+                </div>
+            </div>
+        </div>
+    </ParamAiPanel>
+</div>
+
+@code {
+    /// <summary>
+    /// Полный snapshot Param item-ов выбранного DI/DO. Для Settings нужны только ForceCmd и ValueForced,
+    /// но работаем с общим списком, чтобы не добавлять отдельный DTO.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<ParamItemDto>? Items { get; set; }
+
+    /// <summary>
+    /// Общая команда записи обычного Param item-а. Для DI/DO сейчас используется boolean-путь,
+    /// но параметр оставлен для одинакового контракта с другими Settings-компонентами.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Команда записи boolean item-а с заранее выбранным новым состоянием.
+    /// Оба switch-а открывают общий write-dialog уже с инверсией текущего значения.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamWriteDialogRequest> OnBooleanWriteRequested { get; set; }
+
+    /// <summary>
+    /// Ищет Param item по имени без учета регистра.
+    /// </summary>
+    private ParamItemDto? FindItem(string itemName)
+    {
+        return Items?.FirstOrDefault(item => item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Открывает write-dialog для switch-а. ValueForced дополнительно блокируется,
+    /// если ForceCmd выключен: это повторяет WPF IsEnabled="{Binding ForceCmd}".
+    /// </summary>
+    private async Task RequestSwitchWriteAsync(ParamItemDto? item, bool isEnabled)
+    {
+        if (item is null || !item.CanWrite || !isEnabled)
+            return;
+
+        var request = new ParamWriteDialogRequest
+        {
+            Item = item,
+            InitialBooleanValue = !GetSwitchValue(item)
+        };
+
+        if (OnBooleanWriteRequested.HasDelegate)
+        {
+            await OnBooleanWriteRequested.InvokeAsync(request);
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Возвращает текущее boolean-состояние item-а с учетом форматов, которые может вернуть CtApi.
+    /// </summary>
+    private static bool GetSwitchValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return false;
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Текст рядом со switch: используем on/off, как в остальных writable-вкладках Param.
+    /// </summary>
+    private static string GetSwitchText(ParamItemDto? item)
+    {
+        return GetSwitchValue(item) ? "on" : "off";
+    }
+
+    /// <summary>
+    /// CSS-класс switch-контейнера с учетом write-доступа и логической доступности.
+    /// </summary>
+    private static string GetSwitchShellClass(ParamItemDto? item, bool isEnabled)
+    {
+        return item?.CanWrite == true && isEnabled
+            ? "digital-forced-switch-shell is-writable"
+            : "digital-forced-switch-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Tooltip для ForceCmd.
+    /// </summary>
+    private static string GetFieldTitle(ParamItemDto? item)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        return item.CanWrite ? "Write value" : "Read only";
+    }
+
+    /// <summary>
+    /// Tooltip для ValueForced отдельно сообщает, что поле доступно только при включенном ForceCmd.
+    /// </summary>
+    private static string GetForcedValueTitle(ParamItemDto? item, bool isForceEnabled)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        if (!item.CanWrite)
+            return "Read only";
+
+        return isForceEnabled ? "Write value" : "Available only when ForceCmd is on";
+    }
+}

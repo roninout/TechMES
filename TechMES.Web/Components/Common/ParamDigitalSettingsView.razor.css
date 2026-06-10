@@ -1,0 +1,63 @@
+.digital-settings-page {
+    display: grid;
+    gap: 20px;
+    min-width: 0;
+}
+
+.digital-forced-body {
+    display: grid;
+    align-content: start;
+    min-height: 96px;
+    min-width: 0;
+    padding: 28px 46px;
+}
+
+.digital-forced-row {
+    display: grid;
+    grid-template-columns: minmax(112px, max-content) minmax(180px, 1fr) minmax(112px, max-content);
+    align-items: center;
+    gap: 18px;
+    min-width: 0;
+}
+
+.digital-forced-description {
+    display: flex;
+    align-items: center;
+    min-height: var(--rz-input-height);
+    min-width: 0;
+    font-weight: 400;
+    overflow-wrap: anywhere;
+}
+
+.digital-forced-switch-shell {
+    min-width: 0;
+}
+
+.digital-forced-switch-stack {
+    white-space: nowrap;
+}
+
+.digital-forced-switch-shell ::deep .rz-switch {
+    pointer-events: none;
+}
+
+.digital-forced-switch-shell.is-writable {
+    cursor: pointer;
+}
+
+.digital-forced-switch-shell.is-read-only {
+    cursor: default;
+    opacity: 0.8;
+}
+
+@media (max-width: 700px) {
+    .digital-forced-body {
+        min-height: 0;
+        padding: 20px 16px;
+    }
+
+    .digital-forced-row {
+        grid-template-columns: minmax(96px, max-content) minmax(120px, 1fr) minmax(96px, max-content);
+        gap: 10px;
+    }
+}

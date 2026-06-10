@@ -30,16 +30,18 @@
             case EquipmentTypeGroup.DI:
             case EquipmentTypeGroup.DO:
                 <div class="param-side-stack">
-                    <div class="param-digital-diagram">
-                        <div class="@GetLedClass("ValueTrue") param-digital-led-channel">Chanel</div>
-                        <div class="@GetLedClass("ValueForced") param-digital-led-forced">Forced<br />Value</div>
-                        <div class="param-digital-bus" aria-hidden="true">
-                            <span class="param-digital-line param-digital-line-top"></span>
-                            <span class="param-digital-line param-digital-line-bottom"></span>
-                            <span class="param-digital-line param-digital-line-middle"></span>
-                            <span class="param-digital-line param-digital-line-vertical"></span>
+                    <div class="param-side-bars param-side-bars-digital">
+                        <div class="param-digital-diagram">
+                            <div class="@GetLedClass("ValueTrue") param-digital-led-channel">Chanel</div>
+                            <div class="@GetLedClass("ValueForced") param-digital-led-forced">Forced<br />Value</div>
+                            <div class="param-digital-bus" aria-hidden="true">
+                                <span class="param-digital-line param-digital-line-top"></span>
+                                <span class="param-digital-line param-digital-line-bottom"></span>
+                                <span class="param-digital-line param-digital-line-middle"></span>
+                                <span class="param-digital-line param-digital-line-vertical"></span>
+                            </div>
+                            <div class="@GetLedClass("Value") param-digital-led-show">Show<br />Value</div>
                         </div>
-                        <div class="@GetLedClass("Value") param-digital-led-show">Show<br />Value</div>
                     </div>
                 </div>
                 break;
@@ -221,7 +223,7 @@
     {
         EquipmentTypeGroup.AI => "param-graph-side-panel param-graph-side-panel-aligned-bars",
         EquipmentTypeGroup.VGA => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-vga",
-        EquipmentTypeGroup.DI or EquipmentTypeGroup.DO => "param-graph-side-panel param-graph-side-panel-digital",
+        EquipmentTypeGroup.DI or EquipmentTypeGroup.DO => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-digital",
         EquipmentTypeGroup.Motor or EquipmentTypeGroup.VGD => "param-graph-side-panel param-graph-side-panel-manual",
         _ => "param-graph-side-panel"
     };

@@ -1699,13 +1699,13 @@ internal static class ParamDefinitions
         [EquipmentTypeGroup.DI] = new(
             EquipmentTypeGroup.DI,
             [B("Value"), B("ValueTrue"), B("ValueForced"), B("ForceCmd"), B("AlarmHealth"), B("NotTrip"), B("Shunt"), N("STW"), N("HashCode")],
-            [T("Value", "CornflowerBlue", -0.2, 1.2)],
+            [T("Value", "#4F81BD", 0, 1)],
             []),
 
         [EquipmentTypeGroup.DO] = new(
             EquipmentTypeGroup.DO,
             [B("Value"), B("ValueTrue"), B("ValueForced"), B("ForceCmd"), B("AlarmHealth"), B("Reset"), N("STW"), N("HashCode")],
-            [T("Value", "Blue", -0.2, 1.2)],
+            [T("Value", "#4F81BD", 0, 1)],
             []),
 
         [EquipmentTypeGroup.Motor] = new(
