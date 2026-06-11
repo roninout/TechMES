@@ -1752,8 +1752,8 @@ internal static class ParamDefinitions
                 B("Opened"), B("Closed"), B("OpenAl"), B("CloseAl"), N("State"), N("Man"), N("CurrPos"),
                 N("TimeOpening"), N("OutMin"), N("OutMax"), N("R"), N("STW"), N("HashCode")
             ],
-            [T("R", "#4F81BD", 0, 100), T("CurrPos", "Gray", 0, 100)],
-            [ParamPageKind.Plc, ParamPageKind.DiDo, ParamPageKind.Alarm]),
+            [T("CurrPos", "#808080", 0, 100), T("R", "#4F81BD", 0, 100)],
+            [ParamPageKind.DiDo, ParamPageKind.Alarm]),
 
         [EquipmentTypeGroup.VGD] = new(
             EquipmentTypeGroup.VGD,

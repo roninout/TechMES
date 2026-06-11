@@ -5,9 +5,11 @@
         <RadzenText TextStyle="TextStyle.H6"
                     class="param-ai-panel-heading rz-display-flex rz-align-items-center rz-m-0"
                     Style="display: flex; align-items: center; gap: 8px; line-height: 32px;">
-            <RadzenIcon Icon="@Icon"
-                        class="param-ai-panel-heading-icon"
-                        Style="font-size: 20px; line-height: 1;" />
+            <span class="@GetIconWrapperClass()">
+                <RadzenIcon Icon="@Icon"
+                            class="param-ai-panel-heading-icon"
+                            Style="font-size: 20px; line-height: 1;" />
+            </span>
             <span>@Title</span>
         </RadzenText>
     </HeaderTemplate>
@@ -35,6 +37,13 @@
     public string Icon { get; set; } = "tune";
 
     /// <summary>
+    /// Дополнительный CSS-класс иконки заголовка. Нужен для редких случаев,
+    /// когда один и тот же panel-шаблон должен визуально различать вход/выход.
+    /// </summary>
+    [Parameter]
+    public string? IconClass { get; set; }
+
+    /// <summary>
     /// Начальное состояние RadzenPanel. Дальше состояние хранится внутри компонента,
     /// чтобы пользователь мог раскрывать и сворачивать панель без сброса при перерисовке.
     /// </summary>
@@ -59,5 +68,15 @@
     protected override void OnInitialized()
     {
         _isCollapsed = InitiallyCollapsed;
+    }
+
+    /// <summary>
+    /// Собирает базовый класс иконки и опциональный модификатор от вызывающего компонента.
+    /// </summary>
+    private string GetIconWrapperClass()
+    {
+        return string.IsNullOrWhiteSpace(IconClass)
+            ? "param-ai-panel-heading-icon-wrapper"
+            : $"param-ai-panel-heading-icon-wrapper {IconClass}";
     }
 }

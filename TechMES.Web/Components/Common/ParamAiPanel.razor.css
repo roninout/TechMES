@@ -22,6 +22,18 @@
     line-height: 32px;
 }
 
+.param-ai-panel-heading-icon-wrapper {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.param-ai-panel-heading-icon-wrapper.is-rotated-180 {
+    transform: rotate(180deg);
+}
+
 ::deep .param-ai-panel-heading-icon {
     flex: 0 0 auto;
     font-size: 20px;

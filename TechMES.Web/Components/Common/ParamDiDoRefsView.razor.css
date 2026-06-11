@@ -1,92 +1,145 @@
 .param-dido-layout {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
+    gap: 18px;
     min-width: 0;
 }
 
-.param-dido-section {
+.param-dido-panel-body {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    min-height: 160px;
     min-width: 0;
-}
-
-.param-dido-title {
-    color: #555;
-    font-size: 13px;
-    font-weight: 700;
-    margin: 0 0 8px;
+    padding: 24px 28px;
 }
 
 .param-dido-row {
-    display: block;
-    width: 100%;
-    margin: 0 0 8px;
-    padding: 9px 10px;
-    border: 1px solid var(--rz-border-color);
-    border-radius: 6px;
-    background: #fff;
-    color: var(--rz-text-color);
-    cursor: pointer;
-    text-align: left;
-}
-
-.param-dido-row:hover {
-    border-color: var(--rz-primary);
-    background: var(--rz-primary-lighter);
-}
-
-.param-dido-row-main {
     display: grid;
-    grid-template-columns: 33px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) 70px 58px 58px 36px;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    min-width: 0;
+    min-height: 34px;
 }
 
 .param-dido-row-title {
+    display: flex;
+    align-items: center;
     min-width: 0;
-    font-weight: 600;
-}
-
-.param-dido-row-title span {
-    display: block;
     overflow: hidden;
-    color: #777;
-    font-size: 12px;
-    font-weight: 400;
+    color: var(--rz-text-color);
+    font-size: 14px;
     line-height: 1.25;
-    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.param-dido-row-meta {
-    display: flex;
-    gap: 10px;
-    margin-top: 7px;
-    color: #777;
-    font-size: 12px;
+.param-dido-row-equipment {
+    flex: 0 0 auto;
+}
+
+.param-dido-row-separator {
+    flex: 0 0 auto;
+    margin-inline: 2px;
+}
+
+.param-dido-row-description {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.param-dido-forced {
+    color: #f28c00;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    visibility: hidden;
+}
+
+.param-dido-forced.is-active {
+    animation: param-dido-forced-blink 900ms ease-in-out infinite alternate;
+    visibility: visible;
+}
+
+.param-dido-value {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 54px;
+    min-height: 26px;
+    border: 1px solid var(--rz-text-color);
+    border-radius: 2px;
+    background: var(--rz-base-200);
+    color: var(--rz-text-color);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+}
+
+.param-dido-value.is-on {
+    border-color: var(--rz-text-color);
+    background: #8ee58f;
+    color: #063d0c;
+}
+
+.param-dido-value.is-off {
+    border-color: var(--rz-text-color);
+    background: var(--rz-base-300);
+    color: var(--rz-text-color);
+}
+
+.param-dido-channel {
+    color: var(--rz-text-color);
+    font-size: 13px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+::deep .param-dido-go-button {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    padding: 0;
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+::deep .param-dido-go-button:hover {
+    background: var(--rz-base-200) !important;
+    border-color: transparent !important;
+}
+
+::deep .param-dido-go-button .rz-button-icon-left {
+    margin: 0;
+    color: var(--rz-text-color);
+    font-size: 20px;
 }
 
 .param-ref-empty {
-    color: #777;
+    color: var(--rz-text-secondary-color);
     font-size: 13px;
     padding: 8px 0;
 }
 
-.param-ref-value-on {
-    color: #178a3d;
-    font-weight: 700;
+@media (max-width: 760px) {
+    .param-dido-panel-body {
+        padding: 18px 14px;
+    }
+
+    .param-dido-row {
+        grid-template-columns: minmax(0, 1fr) 58px 52px 48px 32px;
+        gap: 6px;
+    }
 }
 
-.param-ref-value-off {
-    color: #777;
-}
+@keyframes param-dido-forced-blink {
+    from {
+        opacity: 1;
+    }
 
-.param-ref-forced-on {
-    color: #c47b00;
-    font-weight: 700;
-}
-
-@media (max-width: 900px) {
-    .param-dido-layout {
-        grid-template-columns: 1fr;
+    to {
+        opacity: 0.25;
     }
 }

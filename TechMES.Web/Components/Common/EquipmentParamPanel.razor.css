@@ -127,6 +127,8 @@
     gap: 10px;
     margin: var(--param-toolbar-outer-gap) 0;
     min-width: 0;
+    position: relative;
+    z-index: 2;
 }
 
 .param-toolbar-side-slot {
@@ -134,6 +136,9 @@
     align-items: center;
     justify-content: center;
     min-width: 0;
+    overflow: visible;
+    position: relative;
+    z-index: 3;
 }
 
 .param-toolbar-r-field-shell {
@@ -153,6 +158,51 @@
 .param-toolbar-r-field-shell ::deep .rz-textbox {
     width: 100%;
     text-align: center;
+}
+
+.param-toolbar-vga-el-state-man {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    overflow: visible;
+    width: 156px;
+    min-width: 0;
+    z-index: 3;
+}
+
+.param-toolbar-vga-el-state-field {
+    width: 100%;
+}
+
+.param-toolbar-vga-el-state-field ::deep .rz-form-field {
+    width: 100%;
+}
+
+.param-toolbar-vga-el-state-field ::deep .rz-textbox {
+    width: 100%;
+    text-align: center;
+}
+
+.param-toolbar-vga-el-state-man .param-toolbar-r-field-shell {
+    width: var(--param-toolbar-r-width);
+}
+
+.param-toolbar-vga-el-state-text {
+    position: absolute;
+    inset-block-start: calc(100% + 8px);
+    inset-inline-start: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--rz-text-secondary-color);
+    font-size: 11px;
+    line-height: 14px;
+    pointer-events: none;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    z-index: 4;
 }
 
 .param-toolbar-man-field-shell.is-writable {

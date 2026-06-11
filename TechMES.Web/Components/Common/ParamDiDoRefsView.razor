@@ -15,105 +15,75 @@ else if (!Response.Supported)
 else
 {
     <div class="param-dido-layout">
-        <section class="param-dido-section">
-            <div class="param-dido-title">DI</div>
-            @if (Response.DiRows.Count == 0)
-            {
-                <div class="param-ref-empty">No DI references.</div>
-            }
-            else
-            {
-                @foreach (var row in Response.DiRows)
-                {
-                    @RenderRow(row)
-                }
-            }
-        </section>
-
-        <section class="param-dido-section">
-            <div class="param-dido-title">DO</div>
-            @if (Response.DoRows.Count == 0)
-            {
-                <div class="param-ref-empty">No DO references.</div>
-            }
-            else
-            {
-                @foreach (var row in Response.DoRows)
-                {
-                    @RenderRow(row)
-                }
-            }
-        </section>
+        @RenderPanel("DI", "input", Response.DiRows, "No DI references.")
+        @RenderPanel("DO", "input", Response.DoRows, "No DO references.", "is-rotated-180")
     </div>
 }
 
 @code {
     /// <summary>
     /// Ответ Runtime.Service с DI/DO reference rows.
+    /// Данные уже включают текущее значение, force-флаги и короткий номер канала.
     /// </summary>
     [Parameter]
     public ParamDiDoRefsResponse? Response { get; set; }
 
     /// <summary>
-    /// Событие выбора связанного оборудования из DI/DO карточки.
+    /// Событие выбора связанного оборудования из DI/DO строки.
+    /// Родительская Param-панель переключает выбранный equipment в общем списке.
     /// </summary>
     [Parameter]
     public EventCallback<string> OnSelectEquipment { get; set; }
 
     /// <summary>
-    /// RenderFragment одной DI/DO строки. Используется в двух секциях: DI и DO.
+    /// Рисует одну вертикальную панель DI или DO.
+    /// Панель сделана через общий ParamAiPanel, чтобы заголовок, бордер и themed-цвета совпадали с Settings/Alarm.
     /// </summary>
-    private RenderFragment<ParamDiDoRefDto> RenderRow => row => builder =>
-    {
-        var sequence = 0;
-        builder.OpenElement(sequence++, "button");
-        builder.AddAttribute(sequence++, "type", "button");
-        builder.AddAttribute(sequence++, "class", "param-dido-row");
-        builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => SelectEquipmentAsync(row.EquipmentName)));
+    private RenderFragment RenderPanel(
+        string title,
+        string icon,
+        IReadOnlyList<ParamDiDoRefDto> rows,
+        string emptyText,
+        string? iconClass = null) => @<ParamAiPanel Title="@title" Icon="@icon" IconClass="@iconClass">
+        <div class="param-dido-panel-body">
+            @if (rows.Count == 0)
+            {
+                <div class="param-ref-empty">@emptyText</div>
+            }
+            else
+            {
+                @foreach (var row in rows)
+                {
+                    @RenderRow(row)
+                }
+            }
+        </div>
+    </ParamAiPanel>;
 
-        builder.OpenElement(sequence++, "div");
-        builder.AddAttribute(sequence++, "class", "param-dido-row-main");
+    /// <summary>
+    /// Рисует одну строку DI/DO в WPF-like стиле: описание, forced-индикатор, read-only on/off, канал и кнопка перехода.
+    /// </summary>
+    private RenderFragment RenderRow(ParamDiDoRefDto row) => @<div class="param-dido-row">
+        <div class="param-dido-row-title" title="@row.Title">
+            <span class="param-dido-row-equipment">@row.EquipmentName</span>
+            @if (!string.IsNullOrWhiteSpace(row.Description))
+            {
+                <span class="param-dido-row-separator">:</span>
+                <span class="param-dido-row-description">@row.Description</span>
+            }
+        </div>
 
-        builder.OpenComponent<EquipmentTypeBadge>(sequence++);
-        builder.AddAttribute(sequence++, "TypeGroup", row.TypeGroup);
-        builder.CloseComponent();
+        <span class="@GetForcedClass(row)">Forced</span>
+        <span class="@GetValueClass(row)">@FormatValue(row)</span>
+        <span class="param-dido-channel">@DisplayValue(row.ChanelShort)</span>
 
-        builder.OpenElement(sequence++, "div");
-        builder.AddAttribute(sequence++, "class", "param-dido-row-title");
-        builder.AddContent(sequence++, row.EquipmentName);
-
-        if (!string.IsNullOrWhiteSpace(row.Description))
-        {
-            builder.OpenElement(sequence++, "span");
-            builder.AddContent(sequence++, row.Description);
-            builder.CloseElement();
-        }
-
-        builder.CloseElement();
-
-        builder.OpenElement(sequence++, "span");
-        builder.AddAttribute(sequence++, "class", GetValueClass(row));
-        builder.AddContent(sequence++, FormatValue(row));
-        builder.CloseElement();
-
-        builder.CloseElement();
-
-        builder.OpenElement(sequence++, "div");
-        builder.AddAttribute(sequence++, "class", "param-dido-row-meta");
-        builder.AddContent(sequence++, $"Channel: {DisplayValue(row.ChanelShort)}");
-
-        if (row.ForceCmd)
-        {
-            builder.OpenElement(sequence++, "span");
-            builder.AddAttribute(sequence++, "class", "param-ref-forced-on");
-            builder.AddContent(sequence++, "Forced");
-            builder.CloseElement();
-        }
-
-        builder.CloseElement();
-
-        builder.CloseElement();
-    };
+        <RadzenButton Icon="open_in_new"
+                      ButtonStyle="ButtonStyle.Light"
+                      Size="ButtonSize.Small"
+                      class="param-dido-go-button"
+                      title="Go to equipment"
+                      Click="@(() => SelectEquipmentAsync(row.EquipmentName))" />
+    </div>;
 
     /// <summary>
     /// Передает выбранное equipment name родительской Param-панели.
@@ -126,7 +96,7 @@ else
     }
 
     /// <summary>
-    /// Форматирует DI/DO value.
+    /// Форматирует DI/DO value в компактный on/off или исходный текст, если значение не boolean.
     /// </summary>
     private static string FormatValue(ParamDiDoRefDto row)
     {
@@ -139,17 +109,28 @@ else
     }
 
     /// <summary>
-    /// CSS-класс для bool-значений DI/DO.
+    /// CSS-класс read-only кнопки значения.
+    /// Зеленый on и серый off повторяют смысл WPF-прямоугольника значения.
     /// </summary>
     private static string GetValueClass(ParamDiDoRefDto row)
     {
         if (row.BooleanValue == true)
-            return "param-ref-value-on";
+            return "param-dido-value is-on";
 
         if (row.BooleanValue == false)
-            return "param-ref-value-off";
+            return "param-dido-value is-off";
 
-        return "";
+        return "param-dido-value";
+    }
+
+    /// <summary>
+    /// CSS-класс forced-индикатора. Невидимый вариант сохраняет ширину колонки, чтобы строки не прыгали.
+    /// </summary>
+    private static string GetForcedClass(ParamDiDoRefDto row)
+    {
+        return row.ForceCmd || row.ValueForced
+            ? "param-dido-forced is-active"
+            : "param-dido-forced";
     }
 
     /// <summary>

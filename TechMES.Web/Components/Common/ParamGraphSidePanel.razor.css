@@ -61,7 +61,8 @@
     inset-inline: 0;
 }
 
-.param-graph-side-panel-vga .param-vga-mode-button-shell {
+.param-graph-side-panel-vga .param-vga-mode-button-shell,
+.param-graph-side-panel-vga-el .param-vga-mode-button-shell {
     position: absolute;
     inset-block-start: calc(100% - var(--param-chart-plot-bottom, 90px) + 34px);
     inset-inline: 18px;

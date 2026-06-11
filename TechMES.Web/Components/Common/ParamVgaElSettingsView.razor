@@ -1,0 +1,237 @@
+@using TechMES.Contracts.Param
+
+<div class="vga-el-settings-page">
+    @RenderSettingsGroup()
+</div>
+
+@code {
+    /// <summary>
+    /// Полный snapshot Param item-ов выбранного VGA_EL.
+    /// Компонент сам не обращается к backend: он только раскладывает уже загруженные значения по WPF-like строкам.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<ParamItemDto>? Items { get; set; }
+
+    /// <summary>
+    /// Общая команда записи числового Param item-а.
+    /// Родительская Param-панель открывает единый Radzen Dialog и выполняет запись через Runtime.Service.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Команда записи boolean item-а с заранее выбранным новым состоянием.
+    /// Используется switch-строками, чтобы UI не показывал новое состояние до фактической записи в SCADA.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamWriteDialogRequest> OnBooleanWriteRequested { get; set; }
+
+    /// <summary>
+    /// Числовые строки VGA_EL Settings. Единицу измерения выводим прямо в поле, как пользователь отметил для TimeOpening.
+    /// </summary>
+    private static readonly VgaElNumericRow[] NumericRows =
+    [
+        new("Full running time", "TimeOpening", "sec")
+    ];
+
+    /// <summary>
+    /// Switch-строки VGA_EL Settings из WPF: доступность концевиков и исполнительного механизма.
+    /// </summary>
+    private static readonly VgaElSwitchRow[] SwitchRows =
+    [
+        new("SQEn", "Availability of limit switches"),
+        new("ActuatorEn", "Availability of an actuator")
+    ];
+
+    /// <summary>
+    /// Рисует одну объединенную панель Settings: сначала числовые параметры, затем switch-параметры.
+    /// </summary>
+    private RenderFragment RenderSettingsGroup() => @<ParamAiPanel Title="Settings" Icon="tune">
+        <div class="vga-el-settings-group-body">
+            @foreach (var row in NumericRows)
+            {
+                var item = FindItem(row.ItemName);
+
+                <div class="vga-el-setting-row">
+                    <span class="vga-el-setting-label">@row.Label</span>
+
+                    <div class="@GetFieldShellClass(item)"
+                         title="@GetFieldTitle(item)"
+                         @onclick="@(() => RequestWriteAsync(item))">
+                        <RadzenFormField AllowFloatingLabel="false"
+                                         Text="@row.ItemName"
+                                         Variant="Variant.Outlined"
+                                         class="vga-el-setting-form-field">
+                            <RadzenTextBox Value="@FormatValueWithUnit(item, row.Unit)"
+                                           ReadOnly="true"
+                                           Disabled="@(item is null)"
+                                           class="vga-el-setting-value" />
+                        </RadzenFormField>
+                    </div>
+                </div>
+            }
+
+            @foreach (var row in SwitchRows)
+            {
+                var item = FindItem(row.ItemName);
+
+                <div class="vga-el-switch-row">
+                    <div class="@GetSwitchShellClass(item)"
+                         title="@GetFieldTitle(item)"
+                         @onclick="@(() => RequestSwitchWriteAsync(item))">
+                        <RadzenStack Orientation="Orientation.Horizontal"
+                                     AlignItems="AlignItems.Center"
+                                     Gap="0.5rem"
+                                     class="vga-el-switch-stack">
+                            <RadzenLabel Text="@GetSwitchText(item)"
+                                         Component="@row.ItemName" />
+                            <RadzenSwitch Value="@GetSwitchValue(item)"
+                                          Disabled="@(item is null)"
+                                          Name="@row.ItemName" />
+                        </RadzenStack>
+                    </div>
+
+                    <span class="vga-el-switch-description">@row.Description</span>
+                </div>
+            }
+        </div>
+    </ParamAiPanel>;
+
+    /// <summary>
+    /// Ищет Param item по имени EquipItem без учета регистра.
+    /// </summary>
+    private ParamItemDto? FindItem(string itemName)
+    {
+        return Items?.FirstOrDefault(item => item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Открывает общий write-dialog только для writable item-ов.
+    /// </summary>
+    private async Task RequestWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Открывает write-dialog для switch-а с инверсией текущего boolean-состояния.
+    /// </summary>
+    private async Task RequestSwitchWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        var request = new ParamWriteDialogRequest
+        {
+            Item = item,
+            InitialBooleanValue = !GetSwitchValue(item)
+        };
+
+        if (OnBooleanWriteRequested.HasDelegate)
+        {
+            await OnBooleanWriteRequested.InvokeAsync(request);
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Возвращает текущее boolean-состояние item-а с учетом bool, numeric и строковых форматов CtApi.
+    /// </summary>
+    private static bool GetSwitchValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return false;
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Текст рядом со switch: вместо старой WPF-подписи Disabled показываем фактическое on/off.
+    /// </summary>
+    private static string GetSwitchText(ParamItemDto? item)
+    {
+        return GetSwitchValue(item) ? "on" : "off";
+    }
+
+    /// <summary>
+    /// CSS-класс контейнера switch с учетом доступности записи.
+    /// </summary>
+    private static string GetSwitchShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "vga-el-switch-shell is-writable"
+            : "vga-el-switch-shell is-read-only";
+    }
+
+    /// <summary>
+    /// CSS-класс контейнера FormField с учетом доступности записи.
+    /// </summary>
+    private static string GetFieldShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "vga-el-setting-field-shell is-writable"
+            : "vga-el-setting-field-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Tooltip подсказывает оператору, доступна ли запись конкретного поля.
+    /// </summary>
+    private static string GetFieldTitle(ParamItemDto? item)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        return item.CanWrite ? "Write value" : "Read only";
+    }
+
+    /// <summary>
+    /// Форматирует значение и добавляет единицу измерения только там, где она задана в описании строки.
+    /// </summary>
+    private static string FormatValueWithUnit(ParamItemDto? item, string? unit)
+    {
+        var value = FormatValue(item);
+        return string.IsNullOrWhiteSpace(unit) || value == "-"
+            ? value
+            : $"{value} {unit}";
+    }
+
+    /// <summary>
+    /// Форматирует значение так же, как общая таблица Param: bool -> on/off, пустое -> "-".
+    /// </summary>
+    private static string FormatValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return "-";
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(item.ValueText) ? "-" : item.ValueText;
+    }
+
+    /// <summary>
+    /// Описание числовой строки VGA_EL Settings.
+    /// </summary>
+    private sealed record VgaElNumericRow(string Label, string ItemName, string? Unit = null);
+
+    /// <summary>
+    /// Описание switch-строки VGA_EL Settings.
+    /// </summary>
+    private sealed record VgaElSwitchRow(string ItemName, string Description);
+}

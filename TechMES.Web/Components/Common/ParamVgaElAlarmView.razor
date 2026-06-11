@@ -1,0 +1,131 @@
+@using TechMES.Contracts.Param
+
+<ParamAiPanel Title="Alarm settings" Icon="notifications_active">
+    <div class="vga-el-alarm-body">
+        @{
+            var alarmItem = FindItem("AlarmEn");
+        }
+
+        <div class="vga-el-alarm-row">
+            <div class="@GetSwitchShellClass(alarmItem)"
+                 title="@GetFieldTitle(alarmItem)"
+                 @onclick="@(() => RequestSwitchWriteAsync(alarmItem))">
+                <RadzenStack Orientation="Orientation.Horizontal"
+                             AlignItems="AlignItems.Center"
+                             Gap="0.5rem"
+                             class="vga-el-alarm-switch-stack">
+                    <RadzenLabel Text="@GetSwitchText(alarmItem)"
+                                 Component="AlarmEn" />
+                    <RadzenSwitch Value="@GetSwitchValue(alarmItem)"
+                                  Disabled="@(alarmItem is null)"
+                                  Name="AlarmEn" />
+                </RadzenStack>
+            </div>
+
+            <span class="vga-el-alarm-description">Alarm message signaling status</span>
+        </div>
+    </div>
+</ParamAiPanel>
+
+@code {
+    /// <summary>
+    /// Полный snapshot Param item-ов выбранного VGA_EL.
+    /// Для Alarm-вкладки нужен только AlarmEn, но список передается целиком ради единого контракта с родителем.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<ParamItemDto>? Items { get; set; }
+
+    /// <summary>
+    /// Общая команда записи. Оставлена для совместимости с другими Param-вкладками, хотя здесь используется boolean-flow.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Команда записи switch-а с уже выбранным новым состоянием.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamWriteDialogRequest> OnBooleanWriteRequested { get; set; }
+
+    /// <summary>
+    /// Ищет Param item по имени EquipItem без учета регистра.
+    /// </summary>
+    private ParamItemDto? FindItem(string itemName)
+    {
+        return Items?.FirstOrDefault(item => item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Открывает write-dialog для switch-а с инверсией текущего boolean-состояния.
+    /// </summary>
+    private async Task RequestSwitchWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        var request = new ParamWriteDialogRequest
+        {
+            Item = item,
+            InitialBooleanValue = !GetSwitchValue(item)
+        };
+
+        if (OnBooleanWriteRequested.HasDelegate)
+        {
+            await OnBooleanWriteRequested.InvokeAsync(request);
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Возвращает текущее boolean-состояние AlarmEn с учетом bool, numeric и строковых форматов CtApi.
+    /// </summary>
+    private static bool GetSwitchValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return false;
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Текст рядом со switch показывает фактическое on/off-состояние.
+    /// </summary>
+    private static string GetSwitchText(ParamItemDto? item)
+    {
+        return GetSwitchValue(item) ? "on" : "off";
+    }
+
+    /// <summary>
+    /// CSS-класс switch-контейнера с учетом доступности записи.
+    /// </summary>
+    private static string GetSwitchShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "vga-el-alarm-switch-shell is-writable"
+            : "vga-el-alarm-switch-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Tooltip подсказывает оператору, доступна ли запись AlarmEn.
+    /// </summary>
+    private static string GetFieldTitle(ParamItemDto? item)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        return item.CanWrite ? "Write value" : "Read only";
+    }
+}

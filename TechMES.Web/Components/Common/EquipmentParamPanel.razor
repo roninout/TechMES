@@ -130,6 +130,30 @@
                                                 </RadzenFormField>
                                             </div>
                                         }
+                                        else if (IsVgaElEquipment)
+                                        {
+                                            @* VGA_EL повторяет WPF-логику Graph: State находится над Man.
+                                               Оба поля держим в верхней строке, чтобы левая шкала CurrPos/R оставалась выровненной с plot-area ECharts. *@
+                                            <div class="param-toolbar-vga-el-state-man">
+                                                <div class="@GetVgaManToolbarFieldShellClass()"
+                                                     title="@GetVgaManToolbarFieldTitle()"
+                                                     @onclick="@RequestVgaManToolbarWriteAsync">
+                                                    <RadzenFormField AllowFloatingLabel="false"
+                                                                     Text="Man"
+                                                                     Variant="Variant.Outlined"
+                                                                     class="param-toolbar-r-field">
+                                                        <RadzenTextBox Value='@GetSnapshotItemDisplayValue("Man")'
+                                                       ReadOnly="true"
+                                                                       Disabled="@IsVgaManToolbarFieldDisabled"
+                                                                       class="param-toolbar-r-value" />
+                                                    </RadzenFormField>
+                                                </div>
+
+                                                <div class="param-toolbar-vga-el-state-text">
+                                                    @GetVgaElStateDisplayValue()
+                                                </div>
+                                            </div>
+                                        }
                                     </div>
 
                                     @* Пустая колонка между полем R и уведомлением Forced.
@@ -163,6 +187,42 @@
                                                          ShowIcon="true"
                                                          class="param-graph-alert param-channel-error-alert">
                                                 Chanel error!
+                                            </RadzenAlert>
+                                        }
+
+                                        @if (IsGraphVgaElAlarmActive)
+                                        {
+                                            <RadzenAlert AllowClose="false"
+                                                         AlertStyle="AlertStyle.Danger"
+                                                         Variant="Variant.Flat"
+                                                         Shade="Shade.Lighter"
+                                                         ShowIcon="true"
+                                                         class="param-graph-alert param-channel-error-alert">
+                                                Alarm active!
+                                            </RadzenAlert>
+                                        }
+
+                                        @if (IsGraphVgaElOpenAlarmActive)
+                                        {
+                                            <RadzenAlert AllowClose="false"
+                                                         AlertStyle="AlertStyle.Danger"
+                                                         Variant="Variant.Flat"
+                                                         Shade="Shade.Lighter"
+                                                         ShowIcon="true"
+                                                         class="param-graph-alert param-channel-error-alert">
+                                                Open alarm!
+                                            </RadzenAlert>
+                                        }
+
+                                        @if (IsGraphVgaElCloseAlarmActive)
+                                        {
+                                            <RadzenAlert AllowClose="false"
+                                                         AlertStyle="AlertStyle.Danger"
+                                                         Variant="Variant.Flat"
+                                                         Shade="Shade.Lighter"
+                                                         ShowIcon="true"
+                                                         class="param-graph-alert param-channel-error-alert">
+                                                Close alarm!
                                             </RadzenAlert>
                                         }
                                     </div>
@@ -224,6 +284,12 @@
                                                           OnWriteRequested="@(item => BeginParamWriteAsync(item))"
                                                           OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
                                 }
+                                else if (IsVgaElEquipment)
+                                {
+                                    <ParamVgaElSettingsView Items="@_snapshot.Items"
+                                                            OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                            OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                }
                                 else
                                 {
                                     <ParamAiSettingsView Items="@_snapshot.Items"
@@ -246,14 +312,38 @@
                             <RadzenTabsItem Text="Alarm" Icon="notifications_active">
                                 @if (UsesAnalogSpecializedTabs)
                                 {
-                                    <ParamAiAlarmView Items="@_snapshot.Items"
-                                                      OnWriteRequested="@(item => BeginParamWriteAsync(item))"
-                                                      OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                    @if (IsVgaElEquipment)
+                                    {
+                                        <ParamVgaElAlarmView Items="@_snapshot.Items"
+                                                             OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                             OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                    }
+                                    else
+                                    {
+                                        <ParamAiAlarmView Items="@_snapshot.Items"
+                                                          OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                          OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                    }
                                 }
                                 else
                                 {
                                     <ParamItemsTable Items="@GetAlarmItems()"
                                                      OnWriteRequested="@BeginParamWriteAsync" />
+                                }
+                            </RadzenTabsItem>
+                        }
+
+                        @if (IsVgaElEquipment && HasPage(ParamPageKind.DiDo))
+                        {
+                            <RadzenTabsItem Text="DI/DO" Icon="settings_input_component">
+                                @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.DiDo)
+                                {
+                                    <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                }
+                                else
+                                {
+                                    <ParamDiDoRefsView Response="@_diDoRefs"
+                                                       OnSelectEquipment="@SelectEquipmentByNameAsync" />
                                 }
                             </RadzenTabsItem>
                         }
@@ -289,7 +379,7 @@
                             </RadzenTabsItem>
                         }
 
-                        @if (HasPage(ParamPageKind.DiDo))
+                        @if (!IsVgaElEquipment && HasPage(ParamPageKind.DiDo))
                         {
                             <RadzenTabsItem Text="DI/DO" Icon="settings_input_component">
                                 @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.DiDo)
@@ -1453,6 +1543,9 @@
         if (HasAlarmItems && index-- == 0)
             return ParamPanelTabKind.Alarm;
 
+        if (IsVgaElEquipment && HasPage(ParamPageKind.DiDo) && index-- == 0)
+            return ParamPanelTabKind.DiDo;
+
         if (UsesSpecializedParamTabs && index-- == 0)
             return ParamPanelTabKind.Values;
 
@@ -1462,7 +1555,7 @@
         if (HasPage(ParamPageKind.Plc) && index-- == 0)
             return ParamPanelTabKind.Plc;
 
-        if (HasPage(ParamPageKind.DiDo) && index-- == 0)
+        if (!IsVgaElEquipment && HasPage(ParamPageKind.DiDo) && index-- == 0)
             return ParamPanelTabKind.DiDo;
 
         if (HasPage(ParamPageKind.DryRun) && index-- == 0)
@@ -1577,6 +1670,11 @@
     private bool IsVgaEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.VGA;
 
     /// <summary>
+    /// true, когда выбран VGA_EL. Для него используем VGA-like Graph, но отдельные Settings/Alarm по WPF-шаблону.
+    /// </summary>
+    private bool IsVgaElEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.VGA_EL;
+
+    /// <summary>
     /// true, когда выбран цифровой вход или цифровой выход. Для DI/DO показываем Settings с форсированием,
     /// но не показываем Alarm, потому что аварийных настроек у этих типов нет.
     /// </summary>
@@ -1586,7 +1684,7 @@
     /// true для аналоговых типов, у которых уже есть специализированные WEB-вкладки Settings/Alarm/All.
     /// Это сохраняет старый generic All-first режим для остальных типов Param.
     /// </summary>
-    private bool UsesAnalogSpecializedTabs => IsAiEquipment || IsVgaEquipment;
+    private bool UsesAnalogSpecializedTabs => IsAiEquipment || IsVgaEquipment || IsVgaElEquipment;
 
     /// <summary>
     /// true для типов, где generic All-вкладка не должна быть первой.
@@ -1597,6 +1695,8 @@
     private bool HasAlarmItems =>
         IsDiDoEquipment
             ? false
+            : IsVgaElEquipment
+            ? _snapshot?.Items.Any(IsVgaElAlarmItem) == true
             : UsesAnalogSpecializedTabs
             ? _snapshot?.Items.Any(IsAnalogAlarmItem) == true
             : _snapshot?.Items.Any(IsAlarmItem) == true;
@@ -1604,7 +1704,7 @@
     /// <summary>
     /// Есть ли параметры времени работы для отдельной вкладки.
     /// </summary>
-    private bool HasTimeItems => _snapshot?.Items.Any(IsTimeItem) == true;
+    private bool HasTimeItems => !IsVgaElEquipment && _snapshot?.Items.Any(IsTimeItem) == true;
 
     /// <summary>
     /// Возвращает items для вкладки Alarm.
@@ -1646,6 +1746,14 @@
             || item.Name.Equals("SetLW", StringComparison.OrdinalIgnoreCase)
             || item.Name.Equals("SetLA", StringComparison.OrdinalIgnoreCase)
             || item.Name.Equals("SetHyst", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Распознает alarm-настройку VGA_EL. В WPF для этого типа в Alarm settings был только AlarmEn.
+    /// </summary>
+    private static bool IsVgaElAlarmItem(ParamItemDto item)
+    {
+        return item.Name.Equals("AlarmEn", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -1696,6 +1804,21 @@
     private bool IsGraphChannelErrorActive => IsSnapshotItemOn("AlarmHealth");
 
     /// <summary>
+    /// true, если VGA_EL сообщает об общей аварии.
+    /// </summary>
+    private bool IsGraphVgaElAlarmActive => IsVgaElEquipment && IsSnapshotItemOn("Alarm");
+
+    /// <summary>
+    /// true, если VGA_EL сообщает об аварии открытия.
+    /// </summary>
+    private bool IsGraphVgaElOpenAlarmActive => IsVgaElEquipment && IsSnapshotItemOn("OpenAl");
+
+    /// <summary>
+    /// true, если VGA_EL сообщает об аварии закрытия.
+    /// </summary>
+    private bool IsGraphVgaElCloseAlarmActive => IsVgaElEquipment && IsSnapshotItemOn("CloseAl");
+
+    /// <summary>
     /// true, когда VGA находится в ручном режиме. В исходном WPF поле Man было доступно только при Mode=false.
     /// </summary>
     private bool IsVgaManualMode => !IsSnapshotItemOn("Mode");
@@ -1729,6 +1852,50 @@
             return "Read only";
 
         return IsVgaManualMode ? "Write value" : "Available only in Manual mode";
+    }
+
+    /// <summary>
+    /// Возвращает текст состояния VGA_EL для верхнего Graph-блока.
+    /// Повторяет WPF-конвертер VGDStateToTextConverter, который использовался и для VGA_EL.
+    /// </summary>
+    private string GetVgaElStateDisplayValue()
+    {
+        var item = FindSnapshotItem("State");
+
+        if (item is null)
+            return "-";
+
+        if (item.NumericValue.HasValue)
+            return FormatVgaElValveState(item.NumericValue.Value);
+
+        if (double.TryParse(
+                item.ValueText?.Replace(',', '.'),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var parsed))
+        {
+            return FormatVgaElValveState(parsed);
+        }
+
+        return GetSnapshotItemDisplayValue("State");
+    }
+
+    /// <summary>
+    /// Преобразует код состояния VGA_EL/VGD в читаемый текст.
+    /// </summary>
+    private static string FormatVgaElValveState(double state)
+    {
+        var code = (int)Math.Round(state);
+        return code switch
+        {
+            0 => "closed",
+            1 => "opened",
+            2 => "alarm opening",
+            3 => "alarm closure",
+            4 => "opening",
+            5 => "closing",
+            _ => $"unknown ({code})"
+        };
     }
 
     /// <summary>

@@ -114,29 +114,7 @@
                 break;
 
             case EquipmentTypeGroup.VGA_EL:
-                <div class="param-side-stack">
-                    @if (IsOn("Alarm"))
-                    {
-                        <div class="param-side-warning is-alarm">Alarm active!</div>
-                    }
-
-                    @if (IsOn("OpenAl"))
-                    {
-                        <div class="param-side-warning is-alarm">Open alarm!</div>
-                    }
-
-                    @if (IsOn("CloseAl"))
-                    {
-                        <div class="param-side-warning is-alarm">Close alarm!</div>
-                    }
-
-                    <div class="param-side-state">@FormatValveState(GetNumber("State"))</div>
-
-                    <div class="param-side-readout">
-                        <span>Man</span>
-                        <strong>@GetDisplayValue("Man")</strong>
-                    </div>
-
+                <div class="param-side-stack param-vga-side-stack">
                     <div class="param-side-bars param-side-bars-two">
                         <ParamGraphVerticalBar Label="CurrPos"
                                                Value='@GetNumber("CurrPos")'
@@ -152,7 +130,13 @@
                     </div>
 
                     <div class="param-side-unit">@DisplayUnit</div>
-                    <div class="@GetModeClass()">@FormatAutoMode()</div>
+                    <div class="param-vga-mode-button-shell">
+                        <RadzenButton Text="@FormatAutoMode()"
+                                      ButtonStyle='@(IsOn("Mode") ? ButtonStyle.Success : ButtonStyle.Light)'
+                                      Disabled="@IsVgaModeButtonDisabled"
+                                      class="param-vga-mode-button"
+                                      Click="@RequestVgaModeWriteAsync" />
+                    </div>
                 </div>
                 break;
 
@@ -223,6 +207,7 @@
     {
         EquipmentTypeGroup.AI => "param-graph-side-panel param-graph-side-panel-aligned-bars",
         EquipmentTypeGroup.VGA => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-vga",
+        EquipmentTypeGroup.VGA_EL => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-vga-el",
         EquipmentTypeGroup.DI or EquipmentTypeGroup.DO => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-digital",
         EquipmentTypeGroup.Motor or EquipmentTypeGroup.VGD => "param-graph-side-panel param-graph-side-panel-manual",
         _ => "param-graph-side-panel"
