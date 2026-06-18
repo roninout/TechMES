@@ -105,84 +105,87 @@
                     <Tabs>
                         @* Иконки вкладок используем через штатный RadzenTabsItem.Icon.
                            Цвет не задается вручную, поэтому активные/неактивные состояния наследуются от текущей темы. *@
-                        <RadzenTabsItem Text="Description" Icon="description">
-                            <div class="description-block">
-                                <div class="description-actions">
-                                    @if (_isDescriptionEditing)
-                                    {
-                                        <RadzenStack Orientation="Orientation.Horizontal" Gap="6px">
-                                            <RadzenButton Icon="save"
-                                                          Text="Save"
-                                                          ButtonStyle="ButtonStyle.Primary"
-                                                          Disabled="@_isBusy"
-                                                          Click="@SaveDescriptionAsync" />
-
-                                            <RadzenButton Icon="close"
-                                                          Text="Cancel"
-                                                          ButtonStyle="ButtonStyle.Light"
-                                                          Disabled="@_isBusy"
-                                                          Click="@CancelDescriptionEdit" />
-                                        </RadzenStack>
-                                    }
-                                    else
-                                    {
-                                        <RadzenButton Icon="edit"
-                                                      Text="Edit"
-                                                      ButtonStyle="ButtonStyle.Light"
-                                                      Disabled="@_isBusy"
-                                                      Click="@BeginDescriptionEdit" />
-                                    }
-                                </div>
-
-                                @if (_isDescriptionEditing)
-                                {
-                                    <RadzenTextArea @bind-Value="_editDescription"
-                                                    Rows="6"
-                                                    class="full-width"
-                                                    Disabled="@_isBusy" />
-                                }
-                                else
-                                {
-                                    <div class="description-text">@DisplayValue(_info.Description)</div>
-                                }
-                            </div>
-                        </RadzenTabsItem>
-
                         <RadzenTabsItem>
                             <Template>
-                                @RenderTabHeader("Images", "image", PhotoTabCount)
+                                @RenderTabHeader("General", "info", PhotoTabCount)
                             </Template>
 
                             <ChildContent>
-                                @if (_info.Photos.Count == 0)
-                                {
-                                    <RadzenText Text="No images"
-                                                TextStyle="TextStyle.Caption"
-                                                class="muted-text" />
-                                }
-                                else
-                                {
-                                    <RadzenCarousel Auto="false"
-                                                    AllowNavigation="@(_info.Photos.Count > 1)"
-                                                    AllowPaging="@(_info.Photos.Count > 1)"
-                                                    PagerPosition="PagerPosition.Bottom"
-                                                    class="photo-carousel">
-                                        <Items>
-                                            @foreach (var file in _info.Photos)
+                                <div class="general-tab-content">
+                                    <div class="description-block">
+                                        <div class="@(_isDescriptionEditing ? "description-actions" : "description-actions is-hidden")">
+                                            @if (_isDescriptionEditing)
                                             {
-                                                <RadzenCarouselItem>
-                                                    <div class="photo-carousel-item">
-                                                        <img class="photo-preview"
-                                                             src="@file.ContentUrl"
-                                                             alt="@file.DisplayName" />
+                                                <RadzenStack Orientation="Orientation.Horizontal" Gap="6px">
+                                                    <RadzenButton Icon="save"
+                                                                  Text="Save"
+                                                                  ButtonStyle="ButtonStyle.Primary"
+                                                                  Disabled="@_isBusy"
+                                                                  Click="@SaveDescriptionAsync" />
 
-                                                        <div class="photo-caption">@file.DisplayName</div>
-                                                    </div>
-                                                </RadzenCarouselItem>
+                                                    <RadzenButton Icon="close"
+                                                                  Text="Cancel"
+                                                                  ButtonStyle="ButtonStyle.Light"
+                                                                  Disabled="@_isBusy"
+                                                                  Click="@CancelDescriptionEdit" />
+                                                </RadzenStack>
                                             }
-                                        </Items>
-                                    </RadzenCarousel>
-                                }
+                                            else
+                                            {
+                                                <RadzenButton Icon="edit"
+                                                              Text="Edit"
+                                                              ButtonStyle="ButtonStyle.Light"
+                                                              Disabled="@_isBusy"
+                                                              Style="display: none;"
+                                                              Click="@BeginDescriptionEdit" />
+                                            }
+                                        </div>
+
+                                        @if (_isDescriptionEditing)
+                                        {
+                                            <RadzenTextArea @bind-Value="_editDescription"
+                                                            Rows="6"
+                                                            class="full-width"
+                                                            Disabled="@_isBusy" />
+                                        }
+                                        else
+                                        {
+                                            <div class="description-text">@DisplayValue(_info.Description)</div>
+                                        }
+                                    </div>
+
+                                    <div class="general-images-block">
+                                        @if (_info.Photos.Count == 0)
+                                        {
+                                            <RadzenText Text="No images"
+                                                        TextStyle="TextStyle.Caption"
+                                                        class="muted-text" />
+                                        }
+                                        else
+                                        {
+                                            <RadzenCarousel Auto="false"
+                                                            AllowNavigation="@(_info.Photos.Count > 1)"
+                                                            AllowPaging="@(_info.Photos.Count > 1)"
+                                                            PagerPosition="PagerPosition.Bottom"
+                                                            class="photo-carousel">
+                                                <Items>
+                                                    @foreach (var file in _info.Photos)
+                                                    {
+                                                        <RadzenCarouselItem>
+                                                            <div class="photo-carousel-item">
+                                                                <img class="photo-preview"
+                                                                     src="@file.ContentUrl"
+                                                                     alt="@file.DisplayName" />
+
+                                                                <div class="photo-caption">@file.DisplayName</div>
+                                                            </div>
+                                                        </RadzenCarouselItem>
+                                                    }
+                                                </Items>
+                                            </RadzenCarousel>
+                                        }
+                                    </div>
+                                </div>
                             </ChildContent>
                         </RadzenTabsItem>
 
