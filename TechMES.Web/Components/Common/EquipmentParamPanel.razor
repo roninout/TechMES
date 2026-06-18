@@ -112,7 +112,7 @@
                                                 </RadzenFormField>
                                             </div>
                                         }
-                                        else if (IsVgaEquipment)
+                                        else if (IsVgaEquipment || IsAtvEquipment)
                                         {
                                             @* Поле Man для VGA вынесено в ту же верхнюю строку, где у AI находится R.
                                                Так боковая WPF-like панель остается только шкалой и не сдвигает барграфы относительно plot-area ECharts. *@
@@ -467,6 +467,39 @@
                                     <ParamVgdAlarmView Items="@_snapshot.Items"
                                                        OnWriteRequested="@(item => BeginParamWriteAsync(item))"
                                                        OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                </RadzenTabsItem>
+                            }
+
+                            <RadzenTabsItem Text="All" Icon="dataset">
+                                <ParamItemsTable Items="@_snapshot.Items"
+                                                 OnWriteRequested="@BeginParamWriteAsync" />
+                            </RadzenTabsItem>
+                        }
+                        else if (IsAtvEquipment)
+                        {
+                            @* ATV keeps its own compact order: Graph, ATV reference/settings page, Alarm, then All. *@
+                            @if (HasPage(ParamPageKind.Atv))
+                            {
+                                <RadzenTabsItem Text="ATV" Icon="electric_bolt">
+                                    @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.Atv)
+                                    {
+                                        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                    }
+                                    else
+                                    {
+                                        <ParamAtvRefView Response="@_atvRef"
+                                                         OnSelectEquipment="@SelectEquipmentByNameAsync"
+                                                         OnWriteRequested="@BeginTargetParamWriteAsync" />
+                                    }
+                                </RadzenTabsItem>
+                            }
+
+                            @if (HasAlarmItems)
+                            {
+                                <RadzenTabsItem Text="Alarm" Icon="notifications_active">
+                                    <ParamAiAlarmView Items="@_snapshot.Items"
+                                                      OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                      OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
                                 </RadzenTabsItem>
                             }
 
@@ -2026,6 +2059,20 @@
             return ParamPanelTabKind.None;
         }
 
+        if (IsAtvEquipment)
+        {
+            if (HasPage(ParamPageKind.Atv) && index-- == 0)
+                return ParamPanelTabKind.Atv;
+
+            if (HasAlarmItems && index-- == 0)
+                return ParamPanelTabKind.Alarm;
+
+            if (index-- == 0)
+                return ParamPanelTabKind.Values;
+
+            return ParamPanelTabKind.None;
+        }
+
         if (HasSpecializedSettingsItems && index-- == 0)
             return ParamPanelTabKind.Settings;
 
@@ -2183,6 +2230,12 @@
     private bool IsVgdEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.VGD;
 
     /// <summary>
+    /// true, when the selected equipment is an ATV drive.
+    /// ATV reuses the AI-like alarm page, but keeps its own compact tab order.
+    /// </summary>
+    private bool IsAtvEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.ATV;
+
+    /// <summary>
     /// true, когда выбран цифровой вход или цифровой выход. Для DI/DO показываем Settings с форсированием,
     /// но не показываем Alarm, потому что аварийных настроек у этих типов нет.
     /// </summary>
@@ -2207,6 +2260,8 @@
             ? _snapshot?.Items.Any(IsMotorAlarmItem) == true
             : IsVgdEquipment
             ? _snapshot?.Items.Any(IsVgdAlarmItem) == true
+            : IsAtvEquipment
+            ? _snapshot?.Items.Any(IsAnalogAlarmItem) == true
             : IsVgaElEquipment
             ? _snapshot?.Items.Any(IsVgaElAlarmItem) == true
             : UsesAnalogSpecializedTabs

@@ -78,6 +78,7 @@
     inset-inline: 0;
 }
 
+.param-graph-side-panel-atv .param-vga-mode-button-shell,
 .param-graph-side-panel-vga .param-vga-mode-button-shell,
 .param-graph-side-panel-vga-el .param-vga-mode-button-shell,
 .param-graph-side-panel-motor .param-vga-mode-button-shell {
@@ -169,6 +170,12 @@
 
 .param-side-bars-one {
     justify-content: center;
+}
+
+.param-graph-side-panel-atv .param-side-bars-one ::deep .param-meter {
+    /* ATV has a single bar with the numeric scale on the right.
+       Center the bar body itself, not the whole body+scale block. */
+    transform: translateX(calc((var(--param-meter-scale-width) + var(--param-meter-scale-gap)) / 2));
 }
 
 .param-side-bars-two {

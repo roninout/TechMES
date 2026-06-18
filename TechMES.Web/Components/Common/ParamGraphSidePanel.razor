@@ -80,12 +80,8 @@
                 break;
 
             case EquipmentTypeGroup.ATV:
-                <div class="param-side-stack">
-                    <div class="param-side-readout">
-                        <span>Man</span>
-                        <strong>@GetDisplayValue("Man")</strong>
-                    </div>
-
+                <div class="param-side-stack param-vga-side-stack">
+                    @* ATV repeats the VGA side layout, but shows only one manual-output bar. *@
                     <div class="param-side-bars param-side-bars-one">
                         <ParamGraphVerticalBar Label="ManTrue"
                                                Value='@GetNumber("ManTrue", "Man")'
@@ -96,7 +92,13 @@
                     </div>
 
                     <div class="param-side-unit">@DisplayUnit</div>
-                    <div class="@GetModeClass()">@FormatAutoMode()</div>
+                    <div class="param-vga-mode-button-shell">
+                        <RadzenButton Text="@FormatAutoMode()"
+                                      ButtonStyle='@(IsOn("Mode") ? ButtonStyle.Success : ButtonStyle.Light)'
+                                      Disabled="@IsModeButtonDisabled"
+                                      class="param-vga-mode-button"
+                                      Click="@RequestModeWriteAsync" />
+                    </div>
                 </div>
                 break;
 
@@ -239,6 +241,7 @@
     private string PanelClass => PanelType switch
     {
         EquipmentTypeGroup.AI => "param-graph-side-panel param-graph-side-panel-aligned-bars",
+        EquipmentTypeGroup.ATV => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-atv",
         EquipmentTypeGroup.VGA => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-vga",
         EquipmentTypeGroup.VGA_EL => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-vga-el",
         EquipmentTypeGroup.DI or EquipmentTypeGroup.DO => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-digital",
