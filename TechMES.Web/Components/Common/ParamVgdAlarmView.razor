@@ -1,0 +1,202 @@
+@using TechMES.Contracts.Param
+
+<ParamAiPanel Title="Alarm settings" Icon="notifications_active">
+    <div class="vgd-alarm-body">
+        @{
+            var alarmItem = FindItem("AlarmEn");
+        }
+
+        <div class="vgd-alarm-row">
+            <span class="vgd-alarm-description">Alarm message signaling status</span>
+
+            <div class="@GetSwitchShellClass(alarmItem)"
+                 title="@GetFieldTitle(alarmItem)"
+                 @onclick="@(() => RequestSwitchWriteAsync(alarmItem))">
+                <RadzenStack Orientation="Orientation.Horizontal"
+                             AlignItems="AlignItems.Center"
+                             Gap="0.5rem"
+                             class="vgd-alarm-switch-stack">
+                    <RadzenLabel Text="@GetSwitchText(alarmItem)"
+                                 Component="AlarmEn" />
+                    <RadzenSwitch Value="@GetSwitchValue(alarmItem)"
+                                  Disabled="@(alarmItem is null)"
+                                  Name="AlarmEn" />
+                </RadzenStack>
+            </div>
+        </div>
+
+        @foreach (var row in TimeRows)
+        {
+            var item = FindItem(row.ItemName);
+
+            <div class="vgd-alarm-row">
+                <span class="vgd-alarm-description">@row.Description</span>
+
+                <div class="@GetFieldShellClass(item)"
+                     title="@GetFieldTitle(item)"
+                     @onclick="@(() => RequestWriteAsync(item))">
+                    <RadzenFormField AllowFloatingLabel="false"
+                                     Text="@row.Label"
+                                     Variant="Variant.Outlined"
+                                     class="vgd-alarm-form-field">
+                        <RadzenTextBox Value="@FormatValue(item)"
+                                       ReadOnly="true"
+                                       Disabled="@(item is null)"
+                                       class="vgd-alarm-value" />
+                    </RadzenFormField>
+                </div>
+            </div>
+        }
+    </div>
+</ParamAiPanel>
+
+@code {
+    /// <summary>
+    /// Full VGD snapshot. The view selects only AlarmEn, TOpen and TClose from it.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<ParamItemDto>? Items { get; set; }
+
+    /// <summary>
+    /// Shared numeric write command from the parent Param panel.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Shared boolean write command used by the AlarmEn switch.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamWriteDialogRequest> OnBooleanWriteRequested { get; set; }
+
+    /// <summary>
+    /// VGD alarm time rows from the WPF page: opening and closing control time.
+    /// </summary>
+    private static readonly VgdAlarmTimeRow[] TimeRows =
+    [
+        new("TOpen", "TOpen", "Control time of valve opening"),
+        new("TClose", "TClose", "Control time of valve closing")
+    ];
+
+    /// <summary>
+    /// Finds Param item by EquipItem name without case sensitivity.
+    /// </summary>
+    private ParamItemDto? FindItem(string itemName)
+    {
+        return Items?.FirstOrDefault(item => item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Opens the shared write dialog for numeric writable rows.
+    /// </summary>
+    private async Task RequestWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Opens the shared write dialog for AlarmEn with the opposite boolean value preselected.
+    /// </summary>
+    private async Task RequestSwitchWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        var request = new ParamWriteDialogRequest
+        {
+            Item = item,
+            InitialBooleanValue = !GetSwitchValue(item)
+        };
+
+        if (OnBooleanWriteRequested.HasDelegate)
+        {
+            await OnBooleanWriteRequested.InvokeAsync(request);
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Converts bool, number and text values to the current switch state.
+    /// </summary>
+    private static bool GetSwitchValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return false;
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Shows the actual switch state beside the switch, as in the other Param tabs.
+    /// </summary>
+    private static string GetSwitchText(ParamItemDto? item)
+    {
+        return GetSwitchValue(item) ? "on" : "off";
+    }
+
+    /// <summary>
+    /// CSS class for writable/read-only switch state.
+    /// </summary>
+    private static string GetSwitchShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "vgd-alarm-switch-shell is-writable"
+            : "vgd-alarm-switch-shell is-read-only";
+    }
+
+    /// <summary>
+    /// CSS class for writable/read-only numeric field state.
+    /// </summary>
+    private static string GetFieldShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "vgd-alarm-field-shell is-writable"
+            : "vgd-alarm-field-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Tooltip text for unavailable/read-only/writable rows.
+    /// </summary>
+    private static string GetFieldTitle(ParamItemDto? item)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        return item.CanWrite ? "Write value" : "Read only";
+    }
+
+    /// <summary>
+    /// Formats value the same way the common Param table does.
+    /// </summary>
+    private static string FormatValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return "-";
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(item.ValueText) ? "-" : item.ValueText;
+    }
+
+    /// <summary>
+    /// One writable time setting row on the VGD alarm page.
+    /// </summary>
+    private sealed record VgdAlarmTimeRow(string ItemName, string Label, string Description);
+}

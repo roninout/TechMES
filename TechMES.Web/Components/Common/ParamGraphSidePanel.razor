@@ -58,14 +58,14 @@
                                           Shade="@GetMotorManualButtonShade(true)"
                                           Disabled="@IsMotorManualButtonDisabled"
                                           class="@GetMotorManualButtonClass(true)"
-                                          Click="@(() => RequestMotorManualWriteAsync(true))" />
+                                          Click="@(() => RequestManualWriteAsync(true))" />
                             <RadzenButton Text="Off"
                                           ButtonStyle="@GetMotorManualButtonStyle(false)"
                                           Variant="Variant.Flat"
                                           Shade="@GetMotorManualButtonShade(false)"
                                           Disabled="@IsMotorManualButtonDisabled"
                                           class="@GetMotorManualButtonClass(false)"
-                                          Click="@(() => RequestMotorManualWriteAsync(false))" />
+                                          Click="@(() => RequestManualWriteAsync(false))" />
                         </div>
                     </div>
 
@@ -155,16 +155,35 @@
                 break;
 
             case EquipmentTypeGroup.VGD:
-                <div class="param-side-stack">
-                    <div class="param-side-state">@FormatValveState(GetNumber("State"))</div>
-
-                    <div class="param-manual-station">
-                        <div class="@GetManualButtonClass(IsOn("Man"), IsOn("Mode"))">Open</div>
-                        <div class="@GetManualButtonClass(!IsOn("Man"), IsOn("Mode"))">Close</div>
+                <div class="param-side-stack param-motor-side-stack">
+                    @* VGD использует такую же геометрию ручной станции, как Motor:
+                       верхний State выводится родительской Graph-панелью, а здесь остаются только Open/Close и Mode. *@
+                    <div class="param-motor-button-station">
+                        <div class="param-motor-button-station-frame">
+                            <RadzenButton Text="Open"
+                                          ButtonStyle="@GetMotorManualButtonStyle(true)"
+                                          Variant="Variant.Flat"
+                                          Shade="@GetMotorManualButtonShade(true)"
+                                          Disabled="@IsMotorManualButtonDisabled"
+                                          class="@GetMotorManualButtonClass(true)"
+                                          Click="@(() => RequestManualWriteAsync(true))" />
+                            <RadzenButton Text="Close"
+                                          ButtonStyle="@GetMotorManualButtonStyle(false)"
+                                          Variant="Variant.Flat"
+                                          Shade="@GetMotorManualButtonShade(false)"
+                                          Disabled="@IsMotorManualButtonDisabled"
+                                          class="@GetMotorManualButtonClass(false)"
+                                          Click="@(() => RequestManualWriteAsync(false))" />
+                        </div>
                     </div>
 
-                    <div class="param-side-unit">@DisplayUnit</div>
-                    <div class="@GetModeClass()">@FormatAutoMode()</div>
+                    <div class="param-vga-mode-button-shell">
+                        <RadzenButton Text="@FormatAutoMode()"
+                                      ButtonStyle='@(IsOn("Mode") ? ButtonStyle.Success : ButtonStyle.Light)'
+                                      Disabled="@IsModeButtonDisabled"
+                                      class="param-vga-mode-button"
+                                      Click="@RequestModeWriteAsync" />
+                    </div>
                 </div>
                 break;
         }
@@ -224,7 +243,7 @@
         EquipmentTypeGroup.VGA_EL => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-vga-el",
         EquipmentTypeGroup.DI or EquipmentTypeGroup.DO => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-digital",
         EquipmentTypeGroup.Motor => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-motor",
-        EquipmentTypeGroup.VGD => "param-graph-side-panel param-graph-side-panel-manual",
+        EquipmentTypeGroup.VGD => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-motor param-graph-side-panel-vgd",
         _ => "param-graph-side-panel"
     };
 
@@ -481,7 +500,7 @@
     /// <summary>
     /// Открывает общий write-flow для Motor Man с уже выбранным новым boolean-состоянием.
     /// </summary>
-    private async Task RequestMotorManualWriteAsync(bool value)
+    private async Task RequestManualWriteAsync(bool value)
     {
         var item = FindItem("Man");
 

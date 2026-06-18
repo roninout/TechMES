@@ -166,6 +166,18 @@
                                                 </div>
                                             </div>
                                         }
+                                        else if (IsVgdEquipment)
+                                        {
+                                            @* VGD repeats the Motor graph layout: State is shown above the side command station,
+                                               while the station itself only contains Open/Close and Mode. *@
+                                            <div class="param-toolbar-vga-el-state-man param-toolbar-motor-state-shell">
+                                                <div class="param-toolbar-motor-state-anchor" aria-hidden="true"></div>
+
+                                                <div class="param-toolbar-vga-el-state-text param-toolbar-motor-state-text">
+                                                    @GetVgdStateDisplayValue()
+                                                </div>
+                                            </div>
+                                        }
                                     </div>
 
                                     @* Пустая колонка между полем R и уведомлением Forced.
@@ -249,6 +261,18 @@
                                                          ShowIcon="true"
                                                          class="param-graph-alert param-motor-time-work-alert">
                                                 Time Work!
+                                            </RadzenAlert>
+                                        }
+
+                                        @if (IsGraphVgdAlarmActive)
+                                        {
+                                            <RadzenAlert AllowClose="false"
+                                                         AlertStyle="AlertStyle.Danger"
+                                                         Variant="Variant.Flat"
+                                                         Shade="Shade.Lighter"
+                                                         ShowIcon="true"
+                                                         class="param-graph-alert param-channel-error-alert">
+                                                Alarm active!
                                             </RadzenAlert>
                                         }
                                     </div>
@@ -401,6 +425,54 @@
                                         }
                                     </ParamAiPanel>
                                 </div>
+                            </RadzenTabsItem>
+                        }
+                        else if (IsVgdEquipment)
+                        {
+                            @* VGD keeps a compact WPF-like order: Graph, PLC, DI/DO, Alarm, then the raw All table. *@
+                            @if (HasPage(ParamPageKind.Plc))
+                            {
+                                <RadzenTabsItem Text="PLC" Icon="developer_board">
+                                    @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.Plc)
+                                    {
+                                        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                    }
+                                    else
+                                    {
+                                        <ParamPlcRefsView Response="@_plcRefs"
+                                                          OnSelectEquipment="@SelectEquipmentByNameAsync"
+                                                          OnWriteRequested="@BeginTargetParamWriteAsync" />
+                                    }
+                                </RadzenTabsItem>
+                            }
+
+                            @if (HasPage(ParamPageKind.DiDo))
+                            {
+                                <RadzenTabsItem Text="DI/DO" Icon="settings_input_component">
+                                    @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.DiDo)
+                                    {
+                                        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                    }
+                                    else
+                                    {
+                                        <ParamDiDoRefsView Response="@_diDoRefs"
+                                                           OnSelectEquipment="@SelectEquipmentByNameAsync" />
+                                    }
+                                </RadzenTabsItem>
+                            }
+
+                            @if (HasAlarmItems)
+                            {
+                                <RadzenTabsItem Text="Alarm" Icon="notifications_active">
+                                    <ParamVgdAlarmView Items="@_snapshot.Items"
+                                                       OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                       OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                </RadzenTabsItem>
+                            }
+
+                            <RadzenTabsItem Text="All" Icon="dataset">
+                                <ParamItemsTable Items="@_snapshot.Items"
+                                                 OnWriteRequested="@BeginParamWriteAsync" />
                             </RadzenTabsItem>
                         }
                         else
@@ -1937,6 +2009,23 @@
             return ParamPanelTabKind.None;
         }
 
+        if (IsVgdEquipment)
+        {
+            if (HasPage(ParamPageKind.Plc) && index-- == 0)
+                return ParamPanelTabKind.Plc;
+
+            if (HasPage(ParamPageKind.DiDo) && index-- == 0)
+                return ParamPanelTabKind.DiDo;
+
+            if (HasAlarmItems && index-- == 0)
+                return ParamPanelTabKind.Alarm;
+
+            if (index-- == 0)
+                return ParamPanelTabKind.Values;
+
+            return ParamPanelTabKind.None;
+        }
+
         if (HasSpecializedSettingsItems && index-- == 0)
             return ParamPanelTabKind.Settings;
 
@@ -2088,6 +2177,12 @@
     private bool IsMotorEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.Motor;
 
     /// <summary>
+    /// true, when the selected equipment is a discrete valve VGD.
+    /// VGD uses a Motor-like command station on Graph, but has its own Alarm layout.
+    /// </summary>
+    private bool IsVgdEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.VGD;
+
+    /// <summary>
     /// true, когда выбран цифровой вход или цифровой выход. Для DI/DO показываем Settings с форсированием,
     /// но не показываем Alarm, потому что аварийных настроек у этих типов нет.
     /// </summary>
@@ -2110,6 +2205,8 @@
             ? false
             : IsMotorEquipment
             ? _snapshot?.Items.Any(IsMotorAlarmItem) == true
+            : IsVgdEquipment
+            ? _snapshot?.Items.Any(IsVgdAlarmItem) == true
             : IsVgaElEquipment
             ? _snapshot?.Items.Any(IsVgaElAlarmItem) == true
             : UsesAnalogSpecializedTabs
@@ -2181,6 +2278,16 @@
     }
 
     /// <summary>
+    /// Recognizes VGD alarm settings from the WPF page: alarm signaling enable and open/close control times.
+    /// </summary>
+    private static bool IsVgdAlarmItem(ParamItemDto item)
+    {
+        return item.Name.Equals("AlarmEn", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("TOpen", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("TClose", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Простая классификация time-настроек по имени параметра.
     /// </summary>
     private static bool IsTimeItem(ParamItemDto item)
@@ -2247,6 +2354,11 @@
     /// Это состояние показывается в общей строке уведомлений Graph, а не в кнопочной станции.
     /// </summary>
     private bool IsGraphMotorTimeWorkActive => IsMotorEquipment && IsSnapshotItemOn("TimeWorkAlarmW");
+
+    /// <summary>
+    /// true, when VGD reports an active alarm. It is shown in the shared Graph alert row.
+    /// </summary>
+    private bool IsGraphVgdAlarmActive => IsVgdEquipment && IsSnapshotItemOn("Alarm");
 
     /// <summary>
     /// true, когда VGA находится в ручном режиме. В исходном WPF поле Man было доступно только при Mode=false.
@@ -2331,6 +2443,32 @@
                 out var parsed))
         {
             return FormatMotorState(parsed);
+        }
+
+        return GetSnapshotItemDisplayValue("State");
+    }
+
+    /// <summary>
+    /// Returns readable VGD State text for the top Graph row.
+    /// VGD uses the same state codes as VGA_EL in the WPF converter.
+    /// </summary>
+    private string GetVgdStateDisplayValue()
+    {
+        var item = FindSnapshotItem("State");
+
+        if (item is null)
+            return "-";
+
+        if (item.NumericValue.HasValue)
+            return FormatVgaElValveState(item.NumericValue.Value);
+
+        if (double.TryParse(
+                item.ValueText?.Replace(',', '.'),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var parsed))
+        {
+            return FormatVgaElValveState(parsed);
         }
 
         return GetSnapshotItemDisplayValue("State");
