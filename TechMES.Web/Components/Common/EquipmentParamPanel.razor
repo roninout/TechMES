@@ -89,7 +89,7 @@
             else
             {
                 <RadzenTabs RenderMode="TabRenderMode.Server"
-                            @bind-SelectedIndex="_selectedTabIndex"
+                            SelectedIndex="@SelectedTabIndex"
                             Change="@OnTabChangedAsync">
                     <Tabs>
                         @* Иконки вкладок Param остаются themed: Radzen сам окрашивает их по активной теме и состоянию вкладки. *@
@@ -773,7 +773,7 @@
     /// <summary>
     /// Индекс выбранной вкладки RadzenTabs.
     /// </summary>
-    private int _selectedTabIndex;
+    private string _selectedTabKey = GraphTabKey;
 
     /// <summary>
     /// Видимое live-окно графика в минутах.
@@ -983,7 +983,10 @@
     /// </summary>
     private async Task OnTabChangedAsync(int index)
     {
-        _selectedTabIndex = index;
+        var visibleTabs = GetVisibleTabInfos();
+        _selectedTabKey = index >= 0 && index < visibleTabs.Count
+            ? visibleTabs[index].Key
+            : GraphTabKey;
 
         if (IsGraphTabVisible && _snapshot?.Supported == true)
         {
@@ -1052,8 +1055,10 @@
             var equipmentName = Equipment.Name;
 
             _snapshot = await ParamApi.GetSnapshotAsync(equipmentName, ct);
+            EnsureSelectedTabIsAvailable();
+            var shouldLoadTrend = includeTrend && IsGraphTabVisible;
 
-            if (_snapshot.Supported && includeTrend)
+            if (_snapshot.Supported && shouldLoadTrend)
             {
                 if (IsGraphLive || _trend is null)
                 {
@@ -1068,7 +1073,7 @@
             }
             else
             {
-                _trend = _snapshot.Supported && !includeTrend ? _trend : null;
+                _trend = _snapshot.Supported && !shouldLoadTrend ? _trend : null;
             }
 
             if (_snapshot.Supported)
@@ -2006,107 +2011,146 @@
     /// <summary>
     /// Тип активной вкладки с учетом динамического набора tabs.
     /// </summary>
-    private ParamPanelTabKind SelectedTabKind => GetTabKindByIndex(_selectedTabIndex);
+    private ParamPanelTabKind SelectedTabKind => GetSelectedTabInfo().Kind;
 
     /// <summary>
-    /// Переводит индекс RadzenTabs в логический тип вкладки.
+    /// Индекс, который RadzenTabs получает из стабильного ключа выбранной вкладки.
+    /// Если такой вкладки нет у нового типа оборудования, UI выбирает Graph.
     /// </summary>
-    private ParamPanelTabKind GetTabKindByIndex(int index)
+    private int SelectedTabIndex
     {
-        if (index-- == 0)
-            return ParamPanelTabKind.Graph;
+        get
+        {
+            var visibleTabs = GetVisibleTabInfos();
+            var index = visibleTabs.FindIndex(tab => IsSameTabKey(tab.Key, _selectedTabKey));
+
+            return index >= 0 ? index : 0;
+        }
+    }
+
+    /// <summary>
+    /// Возвращает текущую вкладку по ключу. Если ключ исчез при смене оборудования,
+    /// возвращает Graph как безопасную первую вкладку.
+    /// </summary>
+    private ParamPanelTabInfo GetSelectedTabInfo()
+    {
+        var visibleTabs = GetVisibleTabInfos();
+        return visibleTabs.FirstOrDefault(tab => IsSameTabKey(tab.Key, _selectedTabKey))
+            ?? visibleTabs.FirstOrDefault()
+            ?? new ParamPanelTabInfo(ParamPanelTabKind.Graph, GraphTabKey);
+    }
+
+    /// <summary>
+    /// Фиксирует выбранную вкладку на Graph, если прежняя вкладка отсутствует
+    /// у только что выбранного оборудования.
+    /// </summary>
+    private void EnsureSelectedTabIsAvailable()
+    {
+        if (GetVisibleTabInfos().Any(tab => IsSameTabKey(tab.Key, _selectedTabKey)))
+            return;
+
+        _selectedTabKey = GraphTabKey;
+    }
+
+    /// <summary>
+    /// Строит фактический порядок вкладок для текущего типа оборудования.
+    /// Этот список должен повторять порядок RadzenTabsItem в разметке выше.
+    /// </summary>
+    private List<ParamPanelTabInfo> GetVisibleTabInfos()
+    {
+        var tabs = new List<ParamPanelTabInfo>
+        {
+            new(ParamPanelTabKind.Graph, GraphTabKey)
+        };
 
         if (IsMotorEquipment)
         {
-            if (HasPage(ParamPageKind.Plc) && index-- == 0)
-                return ParamPanelTabKind.Plc;
+            if (HasPage(ParamPageKind.Plc))
+                tabs.Add(new(ParamPanelTabKind.Plc, PlcTabKey));
 
-            if (HasPage(ParamPageKind.Atv) && index-- == 0)
-                return ParamPanelTabKind.Atv;
+            if (HasPage(ParamPageKind.Atv))
+                tabs.Add(new(ParamPanelTabKind.Atv, AtvTabKey));
 
-            if (HasTimeItems && index-- == 0)
-                return ParamPanelTabKind.TimeWork;
+            if (HasTimeItems)
+                tabs.Add(new(ParamPanelTabKind.TimeWork, TimeWorkTabKey));
 
-            if (HasPage(ParamPageKind.DryRun) && index-- == 0)
-                return ParamPanelTabKind.DryRun;
+            if (HasPage(ParamPageKind.DryRun))
+                tabs.Add(new(ParamPanelTabKind.DryRun, DryRunTabKey));
 
-            if (HasPage(ParamPageKind.DiDo) && index-- == 0)
-                return ParamPanelTabKind.DiDo;
+            if (HasPage(ParamPageKind.DiDo))
+                tabs.Add(new(ParamPanelTabKind.DiDo, DiDoTabKey));
 
-            if (HasAlarmItems && index-- == 0)
-                return ParamPanelTabKind.Alarm;
+            if (HasAlarmItems)
+                tabs.Add(new(ParamPanelTabKind.Alarm, AlarmTabKey));
 
-            if (index-- == 0)
-                return ParamPanelTabKind.MotorAll;
+            tabs.Add(new(ParamPanelTabKind.MotorAll, AllTabKey));
 
-            return ParamPanelTabKind.None;
+            return tabs;
         }
 
         if (IsVgdEquipment)
         {
-            if (HasPage(ParamPageKind.Plc) && index-- == 0)
-                return ParamPanelTabKind.Plc;
+            if (HasPage(ParamPageKind.Plc))
+                tabs.Add(new(ParamPanelTabKind.Plc, PlcTabKey));
 
-            if (HasPage(ParamPageKind.DiDo) && index-- == 0)
-                return ParamPanelTabKind.DiDo;
+            if (HasPage(ParamPageKind.DiDo))
+                tabs.Add(new(ParamPanelTabKind.DiDo, DiDoTabKey));
 
-            if (HasAlarmItems && index-- == 0)
-                return ParamPanelTabKind.Alarm;
+            if (HasAlarmItems)
+                tabs.Add(new(ParamPanelTabKind.Alarm, AlarmTabKey));
 
-            if (index-- == 0)
-                return ParamPanelTabKind.Values;
+            tabs.Add(new(ParamPanelTabKind.Values, AllTabKey));
 
-            return ParamPanelTabKind.None;
+            return tabs;
         }
 
         if (IsAtvEquipment)
         {
-            if (HasPage(ParamPageKind.Atv) && index-- == 0)
-                return ParamPanelTabKind.Atv;
+            if (HasPage(ParamPageKind.Atv))
+                tabs.Add(new(ParamPanelTabKind.Atv, AtvTabKey));
 
-            if (HasAlarmItems && index-- == 0)
-                return ParamPanelTabKind.Alarm;
+            if (HasAlarmItems)
+                tabs.Add(new(ParamPanelTabKind.Alarm, AlarmTabKey));
 
-            if (index-- == 0)
-                return ParamPanelTabKind.Values;
+            tabs.Add(new(ParamPanelTabKind.Values, AllTabKey));
 
-            return ParamPanelTabKind.None;
+            return tabs;
         }
 
-        if (HasSpecializedSettingsItems && index-- == 0)
-            return ParamPanelTabKind.Settings;
+        if (HasSpecializedSettingsItems)
+            tabs.Add(new(ParamPanelTabKind.Settings, SettingsTabKey));
 
-        if (!UsesSpecializedParamTabs && !IsMotorEquipment && index-- == 0)
-            return ParamPanelTabKind.Values;
+        if (!UsesSpecializedParamTabs && !IsMotorEquipment)
+            tabs.Add(new(ParamPanelTabKind.Values, AllTabKey));
 
-        if (HasAlarmItems && index-- == 0)
-            return ParamPanelTabKind.Alarm;
+        if (HasAlarmItems)
+            tabs.Add(new(ParamPanelTabKind.Alarm, AlarmTabKey));
 
-        if (IsVgaElEquipment && HasPage(ParamPageKind.DiDo) && index-- == 0)
-            return ParamPanelTabKind.DiDo;
+        if (IsVgaElEquipment && HasPage(ParamPageKind.DiDo))
+            tabs.Add(new(ParamPanelTabKind.DiDo, DiDoTabKey));
 
-        if (UsesSpecializedParamTabs && index-- == 0)
-            return ParamPanelTabKind.Values;
+        if (UsesSpecializedParamTabs)
+            tabs.Add(new(ParamPanelTabKind.Values, AllTabKey));
 
-        if (HasTimeItems && index-- == 0)
-            return ParamPanelTabKind.TimeWork;
+        if (HasTimeItems)
+            tabs.Add(new(ParamPanelTabKind.TimeWork, TimeWorkTabKey));
 
-        if (HasPage(ParamPageKind.Plc) && index-- == 0)
-            return ParamPanelTabKind.Plc;
+        if (HasPage(ParamPageKind.Plc))
+            tabs.Add(new(ParamPanelTabKind.Plc, PlcTabKey));
 
-        if (!IsVgaElEquipment && HasPage(ParamPageKind.DiDo) && index-- == 0)
-            return ParamPanelTabKind.DiDo;
+        if (!IsVgaElEquipment && HasPage(ParamPageKind.DiDo))
+            tabs.Add(new(ParamPanelTabKind.DiDo, DiDoTabKey));
 
-        if (HasPage(ParamPageKind.DryRun) && index-- == 0)
-            return ParamPanelTabKind.DryRun;
+        if (HasPage(ParamPageKind.DryRun))
+            tabs.Add(new(ParamPanelTabKind.DryRun, DryRunTabKey));
 
-        if (HasPage(ParamPageKind.Atv) && index-- == 0)
-            return ParamPanelTabKind.Atv;
+        if (HasPage(ParamPageKind.Atv))
+            tabs.Add(new(ParamPanelTabKind.Atv, AtvTabKey));
 
-        if (IsMotorEquipment && index-- == 0)
-            return ParamPanelTabKind.MotorAll;
+        if (IsMotorEquipment)
+            tabs.Add(new(ParamPanelTabKind.MotorAll, AllTabKey));
 
-        return ParamPanelTabKind.None;
+        return tabs;
     }
 
     /// <summary>
@@ -2773,6 +2817,33 @@
         StopRefreshLoop();
         CancelActiveLoads();
         _loadCts.Dispose();
+    }
+
+    /// <summary>
+    /// Ключи вкладок совпадают с текстом вкладок, чтобы переключение между типами оборудования
+    /// сохраняло вкладку по имени, а не по позиции в динамическом списке.
+    /// </summary>
+    private const string GraphTabKey = "Graph";
+    private const string SettingsTabKey = "Settings";
+    private const string AllTabKey = "All";
+    private const string AlarmTabKey = "Alarm";
+    private const string TimeWorkTabKey = "TimeWork";
+    private const string PlcTabKey = "PLC";
+    private const string DiDoTabKey = "DI/DO";
+    private const string DryRunTabKey = "DryRun";
+    private const string AtvTabKey = "ATV";
+
+    /// <summary>
+    /// Описание одной видимой вкладки: внешний ключ для сохранения выбора и внутренний тип для логики загрузки.
+    /// </summary>
+    private sealed record ParamPanelTabInfo(ParamPanelTabKind Kind, string Key);
+
+    /// <summary>
+    /// Сравнивает ключи вкладок без учета регистра.
+    /// </summary>
+    private static bool IsSameTabKey(string left, string right)
+    {
+        return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

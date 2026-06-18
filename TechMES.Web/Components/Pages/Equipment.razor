@@ -591,6 +591,14 @@
             return false;
         }
 
+        // Child-ноды внутри Equipment-групп являются вторым представлением того же физического оборудования.
+        // Показываем их только когда оператор явно выбрал Type = Equipment; в остальных фильтрах
+        // остается обычный root-node, поэтому список не получает дубликаты.
+        if (equipment.IsEquipmentChildNode && !IsEquipmentTypeFilterActive())
+        {
+            return false;
+        }
+
         if (IsFavoritesTypeFilterActive())
         {
             if (!IsPhysicalEquipment(equipment) || !equipment.IsFavorite)
@@ -771,15 +779,28 @@
                 var nodeId = GetNodeId(child);
                 var hasChildren = childrenByParent.ContainsKey(nodeId);
                 var isExpanded = _expandedNodeIds.Contains(nodeId);
+                var shouldRenderNode = ShouldRenderTreeNode(child);
 
-                result.Add(new TreeRow(child, level, hasChildren, isExpanded));
+                if (shouldRenderNode)
+                {
+                    result.Add(new TreeRow(child, level, hasChildren, isExpanded));
+                }
 
-                if (hasChildren && isExpanded)
+                if (!shouldRenderNode && hasChildren)
+                {
+                    AddChildren(nodeId, level);
+                }
+                else if (hasChildren && isExpanded)
                 {
                     AddChildren(nodeId, level + 1);
                 }
             }
         }
+    }
+
+    private bool ShouldRenderTreeNode(EquipmentDto equipment)
+    {
+        return equipment.TypeGroup != EquipmentTypeGroup.Equipment || IsEquipmentTypeFilterActive();
     }
 
     /// <summary>
