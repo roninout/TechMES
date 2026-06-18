@@ -1,0 +1,53 @@
+.techmes-loading-bar {
+    position: relative;
+    width: 100%;
+    height: 18px;
+    overflow: hidden;
+    border: 1px solid var(--rz-border-color);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--rz-base-200, var(--rz-base-background-color)) 82%, var(--rz-primary) 18%);
+}
+
+.techmes-loading-bar::before {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 42%;
+    content: "";
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in srgb, var(--rz-primary) 18%, transparent) 12%,
+        var(--rz-primary) 50%,
+        color-mix(in srgb, var(--rz-primary) 18%, transparent) 88%,
+        transparent 100%);
+    animation: techmes-loading-bar-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes techmes-loading-bar-slide {
+    from {
+        transform: translateX(-120%);
+    }
+
+    to {
+        transform: translateX(260%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .techmes-loading-bar::before {
+        animation: techmes-loading-bar-pulse 1.4s ease-in-out infinite alternate;
+        transform: none;
+        width: 100%;
+    }
+}
+
+@keyframes techmes-loading-bar-pulse {
+    from {
+        opacity: 0.28;
+    }
+
+    to {
+        opacity: 0.72;
+    }
+}

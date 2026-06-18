@@ -91,7 +91,7 @@
         <div class="equipment-info-tabs">
             @if (_isLoading)
             {
-                <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                <TechMesLoadingBar />
             }
             else if (_info is null)
             {

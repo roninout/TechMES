@@ -1,0 +1,10 @@
+<div class="techmes-loading-bar" role="progressbar" aria-label="@Label" aria-busy="true"></div>
+
+@code {
+    /// <summary>
+    /// Accessible loading label. The visual bar intentionally does not show percent,
+    /// because these loads do not report real progress values.
+    /// </summary>
+    [Parameter]
+    public string Label { get; set; } = "Loading";
+}
