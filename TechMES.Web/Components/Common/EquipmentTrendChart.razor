@@ -229,6 +229,7 @@
     private static string ToAreaFill(string color)
     {
         color = (color ?? "").Trim();
+        color = NormalizeAreaColor(color);
 
         if (color.Length == 7 && color[0] == '#')
         {
@@ -240,6 +241,22 @@
         }
 
         return color;
+    }
+
+    /// <summary>
+    /// Приводит legacy CSS-named colors из ParamDefinitions к HEX,
+    /// чтобы area-заливка оставалась полупрозрачной так же, как у VGA/VGA_EL.
+    /// </summary>
+    private static string NormalizeAreaColor(string color)
+    {
+        return color switch
+        {
+            _ when color.Equals("CornflowerBlue", StringComparison.OrdinalIgnoreCase) => "#6495ED",
+            _ when color.Equals("Green", StringComparison.OrdinalIgnoreCase) => "#2E7D32",
+            _ when color.Equals("Red", StringComparison.OrdinalIgnoreCase) => "#D32F2F",
+            _ when color.Equals("Orange", StringComparison.OrdinalIgnoreCase) => "#F28C00",
+            _ => color
+        };
     }
 
     /// <summary>

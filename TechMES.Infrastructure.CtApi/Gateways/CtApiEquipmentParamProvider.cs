@@ -574,16 +574,27 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         if (string.IsNullOrWhiteSpace(response.ItemName))
             return WriteFailed(response, "Param item name is required.");
 
-        if (!ParamDefinitions.TryGet(equipment.TypeGroup, out var definition))
+        var hasTypeDefinition = ParamDefinitions.TryGet(equipment.TypeGroup, out var definition);
+        var dryRunWriteDefinition = TryGetDryRunWriteDefinition(response.ItemName);
+        var plcReferenceWriteDefinition = await TryGetPlcReferenceWriteDefinitionAsync(
+            equipment.Name,
+            response.ItemName,
+            request.ReferenceSourceEquipmentName,
+            request.ReferenceValueKind,
+            ct);
+
+        if (!hasTypeDefinition && dryRunWriteDefinition is null && plcReferenceWriteDefinition is null)
             return WriteFailed(response, $"Param write is not configured for type group '{equipment.TypeGroup}'.");
 
-        var itemDefinition = definition.Items.FirstOrDefault(item =>
-            item.Name.Equals(response.ItemName, StringComparison.OrdinalIgnoreCase));
+        var itemDefinition = plcReferenceWriteDefinition
+            ?? definition?.Items.FirstOrDefault(item =>
+                item.Name.Equals(response.ItemName, StringComparison.OrdinalIgnoreCase))
+            ?? dryRunWriteDefinition;
 
         if (itemDefinition is null)
             return WriteFailed(response, $"Param item '{response.ItemName}' is not configured for '{equipment.TypeGroup}'.");
 
-        if (!ParamWriteDefinitions.CanWrite(equipment.TypeGroup, itemDefinition.Name))
+        if (plcReferenceWriteDefinition is null && !ParamWriteDefinitions.CanWrite(equipment.TypeGroup, itemDefinition.Name))
             return WriteFailed(response, $"Param item '{itemDefinition.Name}' is read-only.");
 
         var options = _writeOptions.Value;
@@ -1357,6 +1368,101 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
     }
 
     /// <summary>
+    /// Возвращает описание DryRun item-а для write-flow, когда связанное DryRun-оборудование
+    /// имеет не Motor TypeGroup, но реальные DryRun tags все равно доступны через EquipItem.
+    /// </summary>
+    private static ParamItemDefinition? TryGetDryRunWriteDefinition(string itemName)
+    {
+        return ParamWriteDefinitions.IsDryRunWriteItem(itemName)
+            ? DryRunItems.FirstOrDefault(item =>
+                item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase))
+            : null;
+    }
+
+    /// <summary>
+    /// Возвращает временное описание item-а для PLC reference write.
+    /// В отличие от обычного Param write, такие item-ы могут принадлежать оборудованию,
+    /// которого нет в WEB-каталоге, поэтому allow-list строится не по TypeGroup, а по фактической
+    /// строке TabPLC исходного оборудования: target equipment + REFITEM + writable CUSTOM1.
+    /// </summary>
+    private async Task<ParamItemDefinition?> TryGetPlcReferenceWriteDefinitionAsync(
+        string targetEquipmentName,
+        string itemName,
+        string? sourceEquipmentName,
+        ParamValueKind? requestedKind,
+        CancellationToken ct)
+    {
+        targetEquipmentName = (targetEquipmentName ?? "").Trim();
+        itemName = (itemName ?? "").Trim();
+        sourceEquipmentName = (sourceEquipmentName ?? "").Trim();
+
+        if (targetEquipmentName.Length == 0
+            || itemName.Length == 0
+            || sourceEquipmentName.Length == 0
+            || !requestedKind.HasValue)
+        {
+            return null;
+        }
+
+        var refs = await BrowseEquipmentRefsAsync(
+            sourceEquipmentName,
+            category: "TabPLC",
+            equipmentItem: "State",
+            fields: ["REFEQUIP", "REFITEM", "CUSTOM1"],
+            ct);
+
+        foreach (var row in refs)
+        {
+            var refEquipment = CleanRefValue(GetValue(row, "REFEQUIP"));
+            if (!refEquipment.Equals(targetEquipmentName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var type = ParsePlcType(GetValue(row, "CUSTOM1"));
+            if (!IsWritablePlcReferenceType(type))
+                continue;
+
+            var refItem = CleanRefValue(GetValue(row, "REFITEM"));
+            var resolvedItem = GetPlcEquipItemForTagInfo(refItem, type);
+            if (!resolvedItem.Equals(itemName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var expectedKind = GetPlcReferenceValueKind(type);
+            if (requestedKind.Value != expectedKind)
+                continue;
+
+            return new ParamItemDefinition(itemName, expectedKind);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Повторяет writable-логику WPF PlcRefRow.IsWritable для PLC reference page.
+    /// EqDigital/status rows остаются только для просмотра и перехода к оборудованию.
+    /// </summary>
+    private static bool IsWritablePlcReferenceType(ParamPlcType type)
+    {
+        return type is ParamPlcType.EqCheck
+            or ParamPlcType.EqCheckRW
+            or ParamPlcType.EqNumW
+            or ParamPlcType.EqButton
+            or ParamPlcType.EqButtonUp
+            or ParamPlcType.EqButtonDown
+            or ParamPlcType.EqButtonMode
+            or ParamPlcType.EqButtonStartStop;
+    }
+
+    /// <summary>
+    /// Определяет тип write-dialog для PLC reference row.
+    /// </summary>
+    private static ParamValueKind GetPlcReferenceValueKind(ParamPlcType type)
+    {
+        return type == ParamPlcType.EqNumW
+            ? ParamValueKind.Number
+            : ParamValueKind.Boolean;
+    }
+
+    /// <summary>
     /// Приводит пользовательское значение к формату, который безопасно отдавать в CtApi TagWrite.
     /// Boolean пишется как 1/0, number - invariant string без лишнего double-хвоста.
     /// </summary>
@@ -1713,9 +1819,11 @@ internal static class ParamDefinitions
             [
                 B("Mode"), B("Auto"), B("Man"), B("AlarmAEn"), B("AlarmA"), B("TimeWorkAlarmW"),
                 B("TimeWorkAlarmWAck"), B("TimeReset"), B("On"), B("NotTrip"),
-                N("STW"), N("State"), N("TimeWarn"), N("TimeSet"), N("TimeHmi"), N("TimeWork"), N("HashCode")
+                B("DryRunAEn"), B("DryRunA"),
+                N("STW"), N("State"), N("TimeWarn"), N("TimeSet"), N("TimeHmi"), N("TimeWork"),
+                N("DryRunLimToOff"), N("DryRunTimeToOn"), N("DryRunTimeToOff"), N("HashCode")
             ],
-            [T("Man", "CornflowerBlue", 0, 1.1), T("Mode", "Green", 0, 1.5), T("AlarmA", "Red", 0, 2)],
+            [T("Man", "CornflowerBlue", 0, 1), T("Mode", "Green", 0, 1), T("AlarmA", "Red", 0, 1)],
             [ParamPageKind.Plc, ParamPageKind.DiDo, ParamPageKind.Alarm, ParamPageKind.TimeWork, ParamPageKind.DryRun, ParamPageKind.Atv]),
 
         [EquipmentTypeGroup.ATV] = new(
@@ -1786,6 +1894,17 @@ internal static class ParamDefinitions
 internal static class ParamWriteDefinitions
 {
     /// <summary>
+    /// DryRun-настройки физически лежат на связанном reference equipment.
+    /// Его TypeGroup может отличаться от Motor, поэтому эти item-ы разрешаем по имени, а реальную безопасность
+    /// дальше обеспечивает разрешение tag-а и общий ParamWrites/CtApi write-flow.
+    /// </summary>
+    private static readonly HashSet<string> DryRunWritableItems = Names(
+        "DryRunAEn",
+        "DryRunLimToOff",
+        "DryRunTimeToOn",
+        "DryRunTimeToOff");
+
+    /// <summary>
     /// Список разрешенных к записи EquipItem по типам оборудования.
     /// Все отсутствующие здесь параметры считаются read-only независимо от действий WEB UI.
     /// </summary>
@@ -1801,8 +1920,9 @@ internal static class ParamWriteDefinitions
         [EquipmentTypeGroup.DO] = Names("ForceCmd", "ValueForced"),
 
         [EquipmentTypeGroup.Motor] = Names(
-            "Mode", "Man", "AlarmAEn", "TimeReset",
-            "TimeWarn", "TimeSet"),
+            "Mode", "Man", "AlarmAEn", "TimeWorkAlarmWAck", "TimeReset",
+            "TimeWarn", "TimeSet", "DryRunAEn", "DryRunLimToOff",
+            "DryRunTimeToOn", "DryRunTimeToOff"),
 
         [EquipmentTypeGroup.ATV] = Names(
             "Mode", "AlarmLAEn", "AlarmLWEn", "AlarmHWEn", "AlarmHAEn",
@@ -1826,8 +1946,17 @@ internal static class ParamWriteDefinitions
 
     public static bool CanWrite(EquipmentTypeGroup typeGroup, string itemName)
     {
-        return WritableItems.TryGetValue(typeGroup, out var names)
-            && names.Contains(itemName);
+        return IsDryRunWriteItem(itemName)
+            || (WritableItems.TryGetValue(typeGroup, out var names)
+                && names.Contains(itemName));
+    }
+
+    /// <summary>
+    /// Проверяет, относится ли item к writable DryRun settings.
+    /// </summary>
+    public static bool IsDryRunWriteItem(string itemName)
+    {
+        return DryRunWritableItems.Contains(itemName);
     }
 
     private static HashSet<string> Names(params string[] names)

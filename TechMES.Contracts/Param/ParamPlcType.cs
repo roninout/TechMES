@@ -1,29 +1,29 @@
 namespace TechMES.Contracts.Param;
 
 /// <summary>
-/// <summary>
 /// UI-тип строки PLC reference page.
-/// Plant SCADA хранит это значение в EquipRef CUSTOM1.
+/// Plant SCADA хранит это значение в EquipRef поле CUSTOM1, а WEB по нему выбирает
+/// конкретный визуальный элемент: switch, numeric/text field, button или status field.
 /// </summary>
 public enum ParamPlcType
 {
     /// <summary>
-    /// Тип не распознан.
+    /// Тип не распознан или CUSTOM1 пустой.
     /// </summary>
     Unknown = 0,
 
     /// <summary>
-    /// Read-only check.
+    /// Boolean switch, который WPF разрешал редактировать.
     /// </summary>
     EqCheck,
 
     /// <summary>
-    /// Read/write check.
+    /// Boolean read/write switch.
     /// </summary>
     EqCheckRW,
 
     /// <summary>
-    /// Только отображение check-состояния.
+    /// Только отображение boolean switch-состояния.
     /// </summary>
     EqCheckDisplay,
 
@@ -38,47 +38,57 @@ public enum ParamPlcType
     EqNumW,
 
     /// <summary>
-    /// Button-команда.
+    /// Read-only enum/text value. В WPF отображался тем же TextEdit-шаблоном, что EqNumR.
+    /// </summary>
+    EqEnum,
+
+    /// <summary>
+    /// Read-only enum/text display value. В WEB отображается как EqNumR.
+    /// </summary>
+    EqEnumDisplay,
+
+    /// <summary>
+    /// Boolean command button with On/Off text.
     /// </summary>
     EqButton,
 
     /// <summary>
-    /// Button Up-команда.
+    /// Button Up command.
     /// </summary>
     EqButtonUp,
 
     /// <summary>
-    /// Button Down-команда.
+    /// Button Down command.
     /// </summary>
     EqButtonDown,
 
     /// <summary>
-    /// Button Mode-команда.
+    /// Mode button. WPF displayed it as Manual/Auto.
     /// </summary>
     EqButtonMode,
 
     /// <summary>
-    /// Button Start/Stop-команда.
+    /// Start/Stop button.
     /// </summary>
     EqButtonStartStop,
 
     /// <summary>
-    /// Digital state.
+    /// Digital state shown as on/off status rectangle.
     /// </summary>
     EqDigital,
 
     /// <summary>
-    /// Digital input/output state.
+    /// Digital input/output state shown as on/off status rectangle.
     /// </summary>
     EqDigitalInOut,
 
     /// <summary>
-    /// Motor status row.
+    /// Motor status code. WEB maps numeric codes to stop/run/alarm/starting/stopping/waiting.
     /// </summary>
     EqMotorStatus,
 
     /// <summary>
-    /// Valve status row.
+    /// Valve status code. WEB maps numeric codes to closed/opened/opening/closing/alarm.
     /// </summary>
     EqValveStatus
 }

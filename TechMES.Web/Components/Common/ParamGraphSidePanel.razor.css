@@ -28,6 +28,23 @@
     min-width: 220px;
 }
 
+.param-graph-side-panel-motor {
+    width: 180px;
+    min-width: 180px;
+    /* Здесь меняется размер квадратных кнопок Motor-станции.
+       --param-motor-button-size задает ширину/высоту кнопки, --param-motor-button-gap - расстояние между On и Off. */
+    --param-motor-button-size: 100px;
+    --param-motor-button-gap: 22px;
+    /* Здесь меняется рамка кнопочной станции Motor.
+       --param-motor-station-frame-width держит ширину рамки такой же, как у Mode-кнопки ниже.
+       --param-motor-station-frame-padding задает одинаковый внутренний отступ от рамки до On/Off. */
+    --param-motor-station-frame-width: calc(100% - 36px);
+    --param-motor-station-frame-padding: 22px;
+    --param-motor-station-frame-radius: 4px;
+    --param-motor-station-border-color: var(--rz-text-disabled-color);
+    --param-motor-station-border-color: color-mix(in srgb, var(--rz-text-color) 42%, transparent);
+}
+
 /* Для AI фактические границы plot-area приходят из Apache ECharts через CSS-переменные.
    Поэтому верх и низ вертикальных шкал совпадают с линиями области построения,
    а не с полным canvas, включающим подписи оси, dataZoom и legend. */
@@ -62,10 +79,55 @@
 }
 
 .param-graph-side-panel-vga .param-vga-mode-button-shell,
-.param-graph-side-panel-vga-el .param-vga-mode-button-shell {
+.param-graph-side-panel-vga-el .param-vga-mode-button-shell,
+.param-graph-side-panel-motor .param-vga-mode-button-shell {
     position: absolute;
     inset-block-start: calc(100% - var(--param-chart-plot-bottom, 90px) + 34px);
     inset-inline: 18px;
+}
+
+.param-graph-side-panel-motor .param-motor-button-station {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inset-block-start: var(--param-chart-plot-top, 30px);
+    inset-block-end: var(--param-chart-plot-bottom, 90px);
+    inset-inline: 0;
+    min-height: 0;
+}
+
+.param-motor-button-station-frame {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-rows: var(--param-motor-button-size) var(--param-motor-button-size);
+    justify-content: center;
+    gap: var(--param-motor-button-gap);
+    width: var(--param-motor-station-frame-width);
+    padding: var(--param-motor-station-frame-padding);
+    border: 1px solid var(--param-motor-station-border-color);
+    border-radius: var(--param-motor-station-frame-radius);
+    background: var(--rz-base-background-color);
+    background-clip: padding-box;
+}
+
+::deep .param-motor-manual-button {
+    width: var(--param-motor-button-size);
+    min-width: var(--param-motor-button-size);
+    height: var(--param-motor-button-size);
+    min-height: var(--param-motor-button-size);
+    padding: 0;
+    font-weight: 700;
+    border-radius: 4px;
+    box-shadow: none !important;
+}
+
+::deep .param-motor-manual-button.is-active {
+    box-shadow: none !important;
+}
+
+::deep .param-motor-manual-button.is-disabled {
+    opacity: 0.72;
 }
 
 .param-side-stack {

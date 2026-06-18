@@ -47,21 +47,35 @@
                 break;
 
             case EquipmentTypeGroup.Motor:
-                <div class="param-side-stack">
-                    @if (IsOn("TimeWorkAlarmW"))
-                    {
-                        <div class="param-side-warning is-time-work">Time Work!</div>
-                    }
-
-                    <div class="param-side-state">@FormatMotorState(GetNumber("State"))</div>
-
-                    <div class="param-manual-station">
-                        <div class="@GetManualButtonClass(IsOn("Man"), IsOn("Mode"))">On</div>
-                        <div class="@GetManualButtonClass(!IsOn("Man"), IsOn("Mode"))">Off</div>
+                <div class="param-side-stack param-motor-side-stack">
+                    @* Motor повторяет геометрию VGA_EL: в боковой области остается только рабочий орган,
+                       а State и TimeWork выводятся родительской Graph-панелью в верхней строке. *@
+                    <div class="param-motor-button-station">
+                        <div class="param-motor-button-station-frame">
+                            <RadzenButton Text="On"
+                                          ButtonStyle="@GetMotorManualButtonStyle(true)"
+                                          Variant="Variant.Flat"
+                                          Shade="@GetMotorManualButtonShade(true)"
+                                          Disabled="@IsMotorManualButtonDisabled"
+                                          class="@GetMotorManualButtonClass(true)"
+                                          Click="@(() => RequestMotorManualWriteAsync(true))" />
+                            <RadzenButton Text="Off"
+                                          ButtonStyle="@GetMotorManualButtonStyle(false)"
+                                          Variant="Variant.Flat"
+                                          Shade="@GetMotorManualButtonShade(false)"
+                                          Disabled="@IsMotorManualButtonDisabled"
+                                          class="@GetMotorManualButtonClass(false)"
+                                          Click="@(() => RequestMotorManualWriteAsync(false))" />
+                        </div>
                     </div>
 
-                    <div class="param-side-unit">@DisplayUnit</div>
-                    <div class="@GetModeClass()">@FormatMotorMode()</div>
+                    <div class="param-vga-mode-button-shell">
+                        <RadzenButton Text="@FormatMotorMode()"
+                                      ButtonStyle='@(IsOn("Mode") ? ButtonStyle.Success : ButtonStyle.Light)'
+                                      Disabled="@IsModeButtonDisabled"
+                                      class="param-vga-mode-button"
+                                      Click="@RequestModeWriteAsync" />
+                    </div>
                 </div>
                 break;
 
@@ -106,9 +120,9 @@
                     <div class="param-vga-mode-button-shell">
                         <RadzenButton Text="@FormatAutoMode()"
                                       ButtonStyle='@(IsOn("Mode") ? ButtonStyle.Success : ButtonStyle.Light)'
-                                      Disabled="@IsVgaModeButtonDisabled"
+                                      Disabled="@IsModeButtonDisabled"
                                       class="param-vga-mode-button"
-                                      Click="@RequestVgaModeWriteAsync" />
+                                      Click="@RequestModeWriteAsync" />
                     </div>
                 </div>
                 break;
@@ -133,9 +147,9 @@
                     <div class="param-vga-mode-button-shell">
                         <RadzenButton Text="@FormatAutoMode()"
                                       ButtonStyle='@(IsOn("Mode") ? ButtonStyle.Success : ButtonStyle.Light)'
-                                      Disabled="@IsVgaModeButtonDisabled"
+                                      Disabled="@IsModeButtonDisabled"
                                       class="param-vga-mode-button"
-                                      Click="@RequestVgaModeWriteAsync" />
+                                      Click="@RequestModeWriteAsync" />
                     </div>
                 </div>
                 break;
@@ -209,7 +223,8 @@
         EquipmentTypeGroup.VGA => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-vga",
         EquipmentTypeGroup.VGA_EL => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-vga-el",
         EquipmentTypeGroup.DI or EquipmentTypeGroup.DO => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-digital",
-        EquipmentTypeGroup.Motor or EquipmentTypeGroup.VGD => "param-graph-side-panel param-graph-side-panel-manual",
+        EquipmentTypeGroup.Motor => "param-graph-side-panel param-graph-side-panel-aligned-bars param-graph-side-panel-motor",
+        EquipmentTypeGroup.VGD => "param-graph-side-panel param-graph-side-panel-manual",
         _ => "param-graph-side-panel"
     };
 
@@ -358,7 +373,7 @@
     /// </summary>
     private string FormatMotorMode()
     {
-        return IsOn("Mode") ? "Automatic" : "Service";
+        return IsOn("Mode") ? "Auto" : "Service";
     }
 
     /// <summary>
@@ -382,7 +397,13 @@
     /// <summary>
     /// true, когда кнопка Mode не должна открывать запись.
     /// </summary>
-    private bool IsVgaModeButtonDisabled => FindItem("Mode")?.CanWrite != true;
+    private bool IsModeButtonDisabled => FindItem("Mode")?.CanWrite != true;
+
+    /// <summary>
+    /// true, когда кнопки On/Off двигателя не должны запускать запись:
+    /// нет Man item-а, он read-only или двигатель находится в Auto.
+    /// </summary>
+    private bool IsMotorManualButtonDisabled => FindItem("Man")?.CanWrite != true || IsOn("Mode");
 
     /// <summary>
     /// CSS-класс поля Man. В ручном режиме writable-поле выглядит кликабельным, в Auto - приглушенным.
@@ -424,9 +445,68 @@
     }
 
     /// <summary>
+    /// Выбирает Radzen-стиль для Motor-кнопки On/Off по текущему значению Man.
+    /// </summary>
+    private ButtonStyle GetMotorManualButtonStyle(bool requestedValue)
+    {
+        return IsOn("Man") == requestedValue ? ButtonStyle.Success : ButtonStyle.Base;
+    }
+
+    /// <summary>
+    /// Задает оттенок Radzen-кнопки Motor On/Off: активная кнопка получает светлый Success-стиль,
+    /// чтобы внешний вид соответствовал стандартному варианту Variant.Flat + Shade.Light.
+    /// </summary>
+    private Shade GetMotorManualButtonShade(bool requestedValue)
+    {
+        return IsOn("Man") == requestedValue ? Shade.Light : Shade.Default;
+    }
+
+    /// <summary>
+    /// CSS-класс Motor-кнопки On/Off: активная кнопка получает дополнительный класс,
+    /// а в Auto-режиме кнопки визуально остаются заблокированными.
+    /// </summary>
+    private string GetMotorManualButtonClass(bool requestedValue)
+    {
+        var classes = "param-motor-manual-button";
+
+        if (IsOn("Man") == requestedValue)
+            classes += " is-active";
+
+        if (IsMotorManualButtonDisabled)
+            classes += " is-disabled";
+
+        return classes;
+    }
+
+    /// <summary>
+    /// Открывает общий write-flow для Motor Man с уже выбранным новым boolean-состоянием.
+    /// </summary>
+    private async Task RequestMotorManualWriteAsync(bool value)
+    {
+        var item = FindItem("Man");
+
+        if (item is null || !item.CanWrite || IsOn("Mode"))
+            return;
+
+        var request = new ParamWriteDialogRequest
+        {
+            Item = item,
+            InitialBooleanValue = value
+        };
+
+        if (OnBooleanWriteRequested.HasDelegate)
+        {
+            await OnBooleanWriteRequested.InvokeAsync(request);
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
     /// Открывает общий write-dialog для VGA Mode с инверсией текущего Auto/Manual состояния.
     /// </summary>
-    private async Task RequestVgaModeWriteAsync()
+    private async Task RequestModeWriteAsync()
     {
         var item = FindItem("Mode");
 

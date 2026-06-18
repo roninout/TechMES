@@ -1,9 +1,9 @@
-.param-atv-card {
+.param-atv-page {
+    display: grid;
+    gap: 20px;
     min-width: 0;
-    padding: 12px;
-    border: 1px solid var(--rz-border-color);
-    border-radius: 6px;
-    background: #fff;
+    /* Здесь меняется размер всех Arc Gauge во вкладке ATV. */
+    --param-atv-arc-gauge-height: 205px;
 }
 
 .param-atv-header {
@@ -11,27 +11,189 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 10px;
+    min-width: 0;
+    padding: 0;
 }
 
-.param-atv-title {
-    display: grid;
-    grid-template-columns: 33px minmax(0, 1fr);
+.param-atv-title-text {
+    display: flex;
     align-items: center;
+    min-height: var(--rz-input-height);
+    min-width: 0;
+    color: var(--rz-text-color);
+    font-size: 14px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+::deep .param-atv-open-button {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    padding: 0;
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+::deep .param-atv-open-button .rz-button-icon-left {
+    margin: 0;
+    color: var(--rz-text-color);
+    font-size: 20px;
+}
+
+.param-atv-gauge-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+    align-items: start;
+    gap: 26px 46px;
+    min-width: 0;
+    padding: 24px 26px;
+}
+
+.param-atv-gauge-card {
+    display: grid;
+    align-content: start;
+    justify-items: center;
     gap: 8px;
     min-width: 0;
 }
 
-.param-atv-title > div {
+.param-atv-gauge-row-divider {
+    grid-column: 1 / -1;
+    height: 1px;
+    margin: 4px 34px 8px;
+    background: var(--rz-border-color);
+}
+
+.param-atv-gauge-title {
+    color: var(--rz-text-color);
+    font-weight: 700;
+    text-align: center;
+}
+
+.param-atv-gauge-secondary {
+    display: grid;
+    gap: 2px;
+    min-height: 18px;
+    color: var(--rz-text-color);
+    text-align: center;
+}
+
+.param-atv-gauge-secondary span {
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
+}
+
+.param-atv-gauge-setting {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin-top: 4px;
+}
+
+.param-atv-gauge-setting.is-paired {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    align-items: end;
+    justify-content: center;
+    gap: 16px;
+}
+
+.param-atv-gauge-setting-field {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
     min-width: 0;
 }
 
-.param-atv-title span {
-    display: block;
-    overflow: hidden;
-    color: #777;
-    font-size: 12px;
-    line-height: 1.25;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.param-atv-gauge-setting-field > span,
+.param-atv-gauge-setting > span {
+    color: var(--rz-text-color);
+    font-size: 14px;
+}
+
+.param-atv-settings-body {
+    display: grid;
+    align-content: start;
+    gap: 14px;
+    min-height: 190px;
+    min-width: 0;
+    padding: 32px 46px;
+}
+
+.param-atv-setting-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 42px 120px;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.param-atv-setting-label {
+    display: flex;
+    align-items: center;
+    min-height: var(--rz-input-height);
+    min-width: 0;
+    color: var(--rz-text-color);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.param-atv-setting-prefix {
+    color: var(--rz-text-secondary-color);
+    text-align: right;
+}
+
+.param-atv-field-shell {
+    width: 120px;
+    min-width: 0;
+}
+
+.param-atv-field-shell.is-writable {
+    cursor: pointer;
+}
+
+.param-atv-field-shell.is-read-only {
+    cursor: default;
+    opacity: 0.8;
+}
+
+::deep .param-atv-form-field {
+    width: 120px;
+}
+
+::deep .param-atv-value {
+    width: 100%;
+    text-align: right;
+}
+
+.param-atv-field-shell.is-writable ::deep .param-atv-value {
+    cursor: pointer;
+}
+
+@media (max-width: 700px) {
+    .param-atv-gauge-grid {
+        grid-template-columns: minmax(0, 1fr);
+        padding: 20px 16px;
+    }
+
+    .param-atv-gauge-row-divider {
+        display: none;
+    }
+
+    .param-atv-settings-body {
+        min-height: 0;
+        padding: 20px 16px;
+    }
+
+    .param-atv-setting-row {
+        grid-template-columns: minmax(120px, 1fr) 34px 112px;
+        gap: 8px;
+    }
+
+    .param-atv-field-shell,
+    ::deep .param-atv-form-field {
+        width: 112px;
+    }
 }

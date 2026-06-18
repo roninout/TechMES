@@ -187,6 +187,15 @@
     width: var(--param-toolbar-r-width);
 }
 
+.param-toolbar-motor-state-shell {
+    min-height: 36px;
+}
+
+.param-toolbar-motor-state-anchor {
+    width: var(--param-toolbar-r-width);
+    min-height: 36px;
+}
+
 .param-toolbar-vga-el-state-text {
     position: absolute;
     inset-block-start: calc(100% + 8px);
@@ -203,6 +212,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     z-index: 4;
+}
+
+.param-toolbar-motor-state-text {
+    font-size: 14px;
+    line-height: 18px;
+    font-weight: 700;
 }
 
 .param-toolbar-man-field-shell.is-writable {
@@ -248,6 +263,10 @@
 
 ::deep .param-channel-error-alert {
     color: var(--rz-danger);
+}
+
+::deep .param-motor-time-work-alert {
+    color: var(--rz-info);
 }
 
 ::deep .param-graph-alert .rz-alert-content,
@@ -327,6 +346,36 @@
 
 ::deep .param-chart-shell {
     min-width: 0;
+}
+
+.param-motor-all-panels {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+}
+
+::deep .param-motor-all-panel .rz-panel-content {
+    min-width: 0;
+}
+
+.param-reference-panel-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    line-height: 32px;
+    font-weight: 700;
+}
+
+.param-reference-panel-icon-wrapper {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.param-reference-panel-title ::deep .param-reference-panel-icon {
+    font-size: 20px;
+    line-height: 1;
 }
 
 /* Планшетная/узкая раскладка: этот блок включается, когда доступная ширина <= 900px. */

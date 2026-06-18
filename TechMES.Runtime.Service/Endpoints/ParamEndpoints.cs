@@ -1,5 +1,6 @@
 using TechMES.Application.Equipment;
 using TechMES.Application.Param;
+using TechMES.Contracts.Equipment;
 using TechMES.Contracts.Param;
 using TechMES.Runtime.Service.Runtime;
 
@@ -179,7 +180,20 @@ public static class ParamEndpoints
         var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
 
         if (equipment is null)
-            return Results.NotFound();
+        {
+            if (!IsDryRunWriteItem(request.ItemName) && !IsReferenceWriteRequest(request))
+                return Results.NotFound();
+
+            // DryRun/PLC reference settings can be stored on equipment that is not present in the visible WEB catalog.
+            // CtApi can still resolve its EquipItem tag by name; provider-level validation below decides whether the write is allowed.
+            equipment = new EquipmentDto
+            {
+                Name = equipmentName,
+                DisplayName = equipmentName,
+                TypeGroup = EquipmentTypeGroup.Unknown,
+                IsGroup = false
+            };
+        }
 
         request.Actor = string.IsNullOrWhiteSpace(request.Actor)
             ? runtimeContext.DeviceName
@@ -190,5 +204,30 @@ public static class ParamEndpoints
         return result.Success
             ? Results.Ok(result)
             : Results.BadRequest(result);
+    }
+
+    /// <summary>
+    /// Проверяет DryRun write item names на endpoint-уровне, чтобы разрешить запись reference equipment,
+    /// которого может не быть в основном каталоге оборудования.
+    /// </summary>
+    private static bool IsDryRunWriteItem(string? itemName)
+    {
+        return itemName is not null
+            && (itemName.Equals("DryRunAEn", StringComparison.OrdinalIgnoreCase)
+                || itemName.Equals("DryRunLimToOff", StringComparison.OrdinalIgnoreCase)
+                || itemName.Equals("DryRunTimeToOn", StringComparison.OrdinalIgnoreCase)
+                || itemName.Equals("DryRunTimeToOff", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Проверяет, что WEB просит reference-write из PLC вкладки.
+    /// Полное право записи не определяется здесь: CtApi provider заново читает TabPLC
+    /// исходного оборудования и ищет там целевую строку.
+    /// </summary>
+    private static bool IsReferenceWriteRequest(ParamWriteRequest request)
+    {
+        return !string.IsNullOrWhiteSpace(request.ReferenceSourceEquipmentName)
+            && request.ReferenceValueKind.HasValue
+            && !string.IsNullOrWhiteSpace(request.ItemName);
     }
 }

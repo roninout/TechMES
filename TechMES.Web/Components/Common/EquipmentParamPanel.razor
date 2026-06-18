@@ -154,6 +154,18 @@
                                                 </div>
                                             </div>
                                         }
+                                        else if (IsMotorEquipment)
+                                        {
+                                            @* У Motor нет верхнего writable-поля вроде VGA Man, но State должен жить в том же
+                                               месте, что и у VGA_EL: над левой WPF-like зоной, не внутри самой кнопочной станции. *@
+                                            <div class="param-toolbar-vga-el-state-man param-toolbar-motor-state-shell">
+                                                <div class="param-toolbar-motor-state-anchor" aria-hidden="true"></div>
+
+                                                <div class="param-toolbar-vga-el-state-text param-toolbar-motor-state-text">
+                                                    @GetMotorStateDisplayValue()
+                                                </div>
+                                            </div>
+                                        }
                                     </div>
 
                                     @* Пустая колонка между полем R и уведомлением Forced.
@@ -225,6 +237,20 @@
                                                 Close alarm!
                                             </RadzenAlert>
                                         }
+
+                                        @if (IsGraphMotorTimeWorkActive)
+                                        {
+                                            @* Time Work у Motor больше не находится внутри боковой станции:
+                                               предупреждение выводим в общей alert-строке Graph рядом с другими состояниями. *@
+                                            <RadzenAlert AllowClose="false"
+                                                         AlertStyle="AlertStyle.Info"
+                                                         Variant="Variant.Flat"
+                                                         Shade="Shade.Lighter"
+                                                         ShowIcon="true"
+                                                         class="param-graph-alert param-motor-time-work-alert">
+                                                Time Work!
+                                            </RadzenAlert>
+                                        }
                                     </div>
 
                                     <RadzenButton Icon="skip_next"
@@ -269,6 +295,116 @@
                             </div>
                         </RadzenTabsItem>
 
+                        @if (IsMotorEquipment)
+                        {
+                            @* Для Motor порядок вкладок повторяет текущий WEB/WPF-сценарий:
+                               сначала reference pages, затем аварии и в самом конце общий список All. *@
+                            @if (HasPage(ParamPageKind.Plc))
+                            {
+                                <RadzenTabsItem Text="PLC" Icon="developer_board">
+                                    @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.Plc)
+                                    {
+                                        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                    }
+                                    else
+                                    {
+                                        <ParamPlcRefsView Response="@_plcRefs"
+                                                          OnSelectEquipment="@SelectEquipmentByNameAsync"
+                                                          OnWriteRequested="@BeginTargetParamWriteAsync" />
+                                    }
+                                </RadzenTabsItem>
+                            }
+
+                            @if (HasPage(ParamPageKind.Atv))
+                            {
+                                <RadzenTabsItem Text="ATV" Icon="electric_bolt">
+                                    @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.Atv)
+                                    {
+                                        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                    }
+                                    else
+                                    {
+                                        <ParamAtvRefView Response="@_atvRef"
+                                                         OnSelectEquipment="@SelectEquipmentByNameAsync"
+                                                         OnWriteRequested="@BeginTargetParamWriteAsync" />
+                                    }
+                                </RadzenTabsItem>
+                            }
+
+                            @if (HasTimeItems)
+                            {
+                                <RadzenTabsItem Text="TimeWork" Icon="timer">
+                                    <ParamMotorTimeWorkView Items="@_snapshot.Items"
+                                                            OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                            OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                </RadzenTabsItem>
+                            }
+
+                            @if (HasPage(ParamPageKind.DryRun))
+                            {
+                                <RadzenTabsItem Text="DryRun" Icon="speed">
+                                    @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.DryRun)
+                                    {
+                                        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                    }
+                                    else
+                                    {
+                                        <ParamDryRunView Response="@_dryRun"
+                                                         OnSelectEquipment="@SelectEquipmentByNameAsync"
+                                                         OnWriteRequested="@BeginTargetParamWriteAsync" />
+                                    }
+                                </RadzenTabsItem>
+                            }
+
+                            @if (HasPage(ParamPageKind.DiDo))
+                            {
+                                <RadzenTabsItem Text="DI/DO" Icon="settings_input_component">
+                                    @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.DiDo)
+                                    {
+                                        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                    }
+                                    else
+                                    {
+                                        <ParamDiDoRefsView Response="@_diDoRefs"
+                                                           OnSelectEquipment="@SelectEquipmentByNameAsync" />
+                                    }
+                                </RadzenTabsItem>
+                            }
+
+                            @if (HasAlarmItems)
+                            {
+                                <RadzenTabsItem Text="Alarm" Icon="notifications_active">
+                                    <ParamMotorAlarmView Items="@_snapshot.Items"
+                                                         OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                         OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                </RadzenTabsItem>
+                            }
+
+                            <RadzenTabsItem Text="All" Icon="dataset">
+                                <div class="param-motor-all-panels">
+                                    <ParamAiPanel Title="Motor values" Icon="dataset">
+                                        <ParamItemsTable Items="@_snapshot.Items"
+                                                         OnWriteRequested="@BeginParamWriteAsync" />
+                                    </ParamAiPanel>
+
+                                    <ParamAiPanel Title="ATV" Icon="electric_bolt">
+                                        @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.MotorAll)
+                                        {
+                                            <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                        }
+                                        else
+                                        {
+                                            <ParamAtvRefView Response="@_atvRef"
+                                                             TableOnly="true"
+                                                             OnSelectEquipment="@SelectEquipmentByNameAsync"
+                                                             OnWriteRequested="@BeginTargetParamWriteAsync" />
+                                        }
+                                    </ParamAiPanel>
+                                </div>
+                            </RadzenTabsItem>
+                        }
+                        else
+                        {
                         @if (HasSpecializedSettingsItems)
                         {
                             <RadzenTabsItem Text="Settings" Icon="tune">
@@ -299,7 +435,7 @@
                             </RadzenTabsItem>
                         }
 
-                        @if (!UsesSpecializedParamTabs)
+                        @if (!UsesSpecializedParamTabs && !IsMotorEquipment)
                         {
                             <RadzenTabsItem Text="All" Icon="dataset">
                                 <ParamItemsTable Items="@_snapshot.Items"
@@ -310,7 +446,13 @@
                         @if (HasAlarmItems)
                         {
                             <RadzenTabsItem Text="Alarm" Icon="notifications_active">
-                                @if (UsesAnalogSpecializedTabs)
+                                @if (IsMotorEquipment)
+                                {
+                                    <ParamMotorAlarmView Items="@_snapshot.Items"
+                                                         OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                         OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                }
+                                else if (UsesAnalogSpecializedTabs)
                                 {
                                     @if (IsVgaElEquipment)
                                     {
@@ -359,8 +501,17 @@
                         @if (HasTimeItems)
                         {
                             <RadzenTabsItem Text="TimeWork" Icon="timer">
-                                <ParamItemsTable Items="@GetTimeItems()"
-                                                 OnWriteRequested="@BeginParamWriteAsync" />
+                                @if (IsMotorEquipment)
+                                {
+                                    <ParamMotorTimeWorkView Items="@_snapshot.Items"
+                                                            OnWriteRequested="@(item => BeginParamWriteAsync(item))"
+                                                            OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                }
+                                else
+                                {
+                                    <ParamItemsTable Items="@GetTimeItems()"
+                                                     OnWriteRequested="@BeginParamWriteAsync" />
+                                }
                             </RadzenTabsItem>
                         }
 
@@ -374,7 +525,8 @@
                                 else
                                 {
                                     <ParamPlcRefsView Response="@_plcRefs"
-                                                      OnSelectEquipment="@SelectEquipmentByNameAsync" />
+                                                      OnSelectEquipment="@SelectEquipmentByNameAsync"
+                                                      OnWriteRequested="@BeginTargetParamWriteAsync" />
                                 }
                             </RadzenTabsItem>
                         }
@@ -404,7 +556,8 @@
                                 else
                                 {
                                     <ParamDryRunView Response="@_dryRun"
-                                                     OnSelectEquipment="@SelectEquipmentByNameAsync" />
+                                                     OnSelectEquipment="@SelectEquipmentByNameAsync"
+                                                     OnWriteRequested="@BeginTargetParamWriteAsync" />
                                 }
                             </RadzenTabsItem>
                         }
@@ -419,9 +572,39 @@
                                 else
                                 {
                                     <ParamAtvRefView Response="@_atvRef"
-                                                     OnSelectEquipment="@SelectEquipmentByNameAsync" />
+                                                     OnSelectEquipment="@SelectEquipmentByNameAsync"
+                                                     OnWriteRequested="@BeginTargetParamWriteAsync" />
                                 }
                             </RadzenTabsItem>
+                        }
+
+                        @if (IsMotorEquipment)
+                        {
+                            @* Motor оставляет All последней вкладкой. Первая панель показывает весь текущий snapshot,
+                               вторая панель повторяет бывшую вкладку ATV, чтобы связанный привод был рядом с Motor-данными. *@
+                            <RadzenTabsItem Text="All" Icon="dataset">
+                                <div class="param-motor-all-panels">
+                                    <ParamAiPanel Title="Motor values" Icon="dataset">
+                                        <ParamItemsTable Items="@_snapshot.Items"
+                                                         OnWriteRequested="@BeginParamWriteAsync" />
+                                    </ParamAiPanel>
+
+                                    <ParamAiPanel Title="ATV" Icon="electric_bolt">
+                                        @if (_isRefsLoading && SelectedTabKind == ParamPanelTabKind.MotorAll)
+                                        {
+                                            <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                                        }
+                                        else
+                                        {
+                                            <ParamAtvRefView Response="@_atvRef"
+                                                             TableOnly="true"
+                                                             OnSelectEquipment="@SelectEquipmentByNameAsync"
+                                                             OnWriteRequested="@BeginTargetParamWriteAsync" />
+                                        }
+                                    </ParamAiPanel>
+                                </div>
+                            </RadzenTabsItem>
+                        }
                         }
                     </Tabs>
                 </RadzenTabs>
@@ -526,6 +709,18 @@
     /// true, пока выполняется write-запрос в Runtime.Service.
     /// </summary>
     private bool _isWriting;
+
+    /// <summary>
+    /// true, пока открыт Radzen write-dialog.
+    /// Защищает switch-строки от повторного OpenAsync в рамках одного UI-клика.
+    /// </summary>
+    private bool _isWriteDialogOpen;
+
+    /// <summary>
+    /// Длительность импульса для Motor-кнопок Ack/Reset.
+    /// WPF держал единицу около трех секунд, чтобы Citect успел обработать one-shot команду.
+    /// </summary>
+    private static readonly TimeSpan ParamPulseResetDelay = TimeSpan.FromSeconds(3);
 
     /// <summary>
     /// Защита от обновления UI после уничтожения компонента.
@@ -996,6 +1191,24 @@
     }
 
     /// <summary>
+    /// Открывает write-dialog для item-а, который принадлежит связанному target equipment.
+    /// Это нужно DryRun-вкладке: выбран Motor, а настройки DryRun читаются и пишутся через WinOpened reference.
+    /// </summary>
+    private Task BeginTargetParamWriteAsync(ParamTargetWriteDialogRequest request)
+    {
+        return request.Item is null || string.IsNullOrWhiteSpace(request.EquipmentName)
+            ? Task.CompletedTask
+            : BeginParamWriteAsync(
+                request.EquipmentName,
+                request.Item,
+                request.InitialBooleanValue,
+                reloadTargetReference: true,
+                allowReadOnlyItemDialog: request.AllowReadOnlyItemDialog,
+                referenceSourceEquipmentName: request.ReferenceSourceEquipmentName,
+                referenceValueKind: request.ReferenceValueKind);
+    }
+
+    /// <summary>
     /// Открывает Radzen Dialog для ввода нового значения Param item.
     /// initialBooleanValue используется для switch-строк: диалог открывается с уже выбранным новым состоянием.
     /// </summary>
@@ -1013,36 +1226,92 @@
         if (Equipment is null || item is null || !item.CanWrite || _isWriting)
             return;
 
-        var result = await DialogService.OpenAsync<ParamWriteDialog>(
-            $"Write: {item.Name}",
-            new Dictionary<string, object?>
-            {
-                [nameof(ParamWriteDialog.Item)] = item,
-                [nameof(ParamWriteDialog.InitialBooleanValue)] = initialBooleanValue
-            },
-            new DialogOptions
-            {
-                Width = "420px",
-                CloseDialogOnOverlayClick = false,
-                CloseDialogOnEsc = true
-            });
+        await BeginParamWriteAsync(
+            Equipment.Name,
+            item,
+            initialBooleanValue,
+            reloadTargetReference: false);
+    }
+
+    /// <summary>
+    /// Открывает Radzen Dialog для конкретного target equipment.
+    /// target equipment совпадает с выбранным оборудованием для обычного Param и отличается для DryRun settings.
+    /// </summary>
+    private async Task BeginParamWriteAsync(
+        string equipmentName,
+        ParamItemDto item,
+        bool? initialBooleanValue,
+        bool reloadTargetReference,
+        bool allowReadOnlyItemDialog = false,
+        string? referenceSourceEquipmentName = null,
+        ParamValueKind? referenceValueKind = null)
+    {
+        if (Equipment is null
+            || string.IsNullOrWhiteSpace(equipmentName)
+            || item is null
+            || (!item.CanWrite && !allowReadOnlyItemDialog)
+            || _isWriting
+            || _isWriteDialogOpen)
+            return;
+
+        object? result;
+
+        _isWriteDialogOpen = true;
+
+        try
+        {
+            result = await DialogService.OpenAsync<ParamWriteDialog>(
+                $"Write: {item.Name}",
+                new Dictionary<string, object?>
+                {
+                    [nameof(ParamWriteDialog.Item)] = item,
+                    [nameof(ParamWriteDialog.InitialBooleanValue)] = initialBooleanValue
+                },
+                new DialogOptions
+                {
+                    Width = "420px",
+                    CloseDialogOnOverlayClick = false,
+                    CloseDialogOnEsc = true
+                });
+        }
+        finally
+        {
+            _isWriteDialogOpen = false;
+        }
 
         if (result is not ParamWriteDialogResult writeResult)
             return;
 
-        await SaveParamWriteAsync(item, writeResult.Value);
+        await SaveParamWriteAsync(
+            item,
+            writeResult.Value,
+            equipmentName,
+            reloadTargetReference,
+            allowReadOnlyItemDialog,
+            referenceSourceEquipmentName,
+            referenceValueKind);
     }
 
     /// <summary>
     /// Выполняет write-flow после закрытия диалога: опциональный confirm,
     /// POST в Runtime.Service, отображение результата и повторное чтение snapshot.
     /// </summary>
-    private async Task SaveParamWriteAsync(ParamItemDto item, string value)
+    private async Task SaveParamWriteAsync(
+        ParamItemDto item,
+        string value,
+        string? targetEquipmentName = null,
+        bool reloadTargetReference = false,
+        bool allowReadOnlyItemWrite = false,
+        string? referenceSourceEquipmentName = null,
+        ParamValueKind? referenceValueKind = null)
     {
-        if (Equipment is null || item is null || !item.CanWrite || string.IsNullOrWhiteSpace(value))
+        if (Equipment is null || item is null || (!item.CanWrite && !allowReadOnlyItemWrite) || string.IsNullOrWhiteSpace(value))
             return;
 
-        var equipmentName = Equipment.Name;
+        var equipmentName = string.IsNullOrWhiteSpace(targetEquipmentName)
+            ? Equipment.Name
+            : targetEquipmentName;
+        var writesCurrentEquipment = equipmentName.Equals(Equipment.Name, StringComparison.OrdinalIgnoreCase);
         var comment = BuildDefaultWriteComment(item);
 
         if (_confirmWrites && !await ConfirmParamWriteAsync(equipmentName, item, value))
@@ -1058,7 +1327,9 @@
                 {
                     ItemName = item.Name,
                     Value = value,
-                    Comment = comment
+                    Comment = comment,
+                    ReferenceSourceEquipmentName = referenceSourceEquipmentName,
+                    ReferenceValueKind = referenceValueKind
                 },
                 GetActiveLoadToken());
 
@@ -1084,9 +1355,29 @@
                     Duration = 3500
                 });
 
-                ApplyWrittenValueToSnapshot(item, response.WrittenValue ?? value);
-                await InvokeAsync(StateHasChanged);
-                await ReloadAfterWriteAsync(item, response.WrittenValue ?? value);
+                var writtenValue = response.WrittenValue ?? value;
+                var isPulseAction = IsPulseActionWrite(item, writtenValue);
+
+                if (writesCurrentEquipment)
+                {
+                    ApplyWrittenValueToSnapshot(item, writtenValue);
+                    await InvokeAsync(StateHasChanged);
+                }
+
+                if (isPulseAction)
+                {
+                    _ = ResetPulseActionInBackgroundAsync(equipmentName, item, comment);
+                }
+                else if (reloadTargetReference)
+                {
+                    _dryRun = null;
+                    await LoadSelectedReferencePageAsync(GetActiveLoadToken());
+                    await InvokeAsync(StateHasChanged);
+                }
+                else
+                {
+                    await ReloadAfterWriteAsync(item, writtenValue);
+                }
             }
             else
             {
@@ -1118,6 +1409,88 @@
         finally
         {
             _isWriting = false;
+        }
+    }
+
+    /// <summary>
+    /// Определяет Motor-команды, которые в SCADA работают как one-shot pulse.
+    /// Пользователь подтверждает запись 1 в диалоге, а WEB после успешного ответа Runtime.Service сам возвращает тег в 0.
+    /// </summary>
+    private static bool IsPulseActionWrite(ParamItemDto item, string value)
+    {
+        return item.Kind == ParamValueKind.Boolean
+            && TryParseBooleanValue(value, out var boolValue)
+            && boolValue
+            && (item.Name.Equals("TimeWorkAlarmWAck", StringComparison.OrdinalIgnoreCase)
+                || item.Name.Equals("TimeReset", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Фоново завершает one-shot pulse для Ack/Reset: после короткой WPF-like паузы пишет 0.
+    /// Отдельный reset не открывает диалог и не требует подтверждения, потому что это техническое завершение уже подтвержденной команды.
+    /// </summary>
+    private async Task ResetPulseActionInBackgroundAsync(string equipmentName, ParamItemDto item, string comment)
+    {
+        try
+        {
+            await Task.Delay(ParamPulseResetDelay);
+
+            var response = await ParamApi.WriteAsync(
+                equipmentName,
+                new ParamWriteRequest
+                {
+                    ItemName = item.Name,
+                    Value = "0",
+                    Comment = comment
+                },
+                CancellationToken.None);
+
+            if (response.Success)
+            {
+                var resetValue = response.WrittenValue ?? "0";
+
+                if (!_isDisposed)
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        ApplyWrittenValueToSnapshot(item, resetValue);
+                        StateHasChanged();
+                        await ReloadAfterWriteAsync(item, resetValue);
+                    });
+                }
+
+                return;
+            }
+
+            if (!_isDisposed)
+            {
+                await InvokeAsync(() =>
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Warning,
+                        Summary = "Param pulse reset",
+                        Detail = response.Error ?? response.Message ?? $"Cannot reset {item.Name} to 0.",
+                        Duration = 4500
+                    });
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            if (_isDisposed)
+                return;
+
+            await InvokeAsync(() =>
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Param pulse reset",
+                    Detail = $"Cannot reset {item.Name} to 0: {ex.Message}",
+                    Duration = 4500
+                });
+            });
         }
     }
 
@@ -1436,11 +1809,14 @@
 
         var selectedTab = SelectedTabKind;
 
-        if (selectedTab is not (
-            ParamPanelTabKind.Plc
-            or ParamPanelTabKind.DiDo
-            or ParamPanelTabKind.DryRun
-            or ParamPanelTabKind.Atv))
+        var isMotorAllAtvPage = selectedTab == ParamPanelTabKind.MotorAll;
+
+        if (!isMotorAllAtvPage
+            && selectedTab is not (
+                ParamPanelTabKind.Plc
+                or ParamPanelTabKind.DiDo
+                or ParamPanelTabKind.DryRun
+                or ParamPanelTabKind.Atv))
         {
             return;
         }
@@ -1451,6 +1827,7 @@
             ParamPanelTabKind.DiDo => _diDoRefs is null,
             ParamPanelTabKind.DryRun => _dryRun is null,
             ParamPanelTabKind.Atv => _atvRef is null,
+            ParamPanelTabKind.MotorAll => _atvRef is null,
             _ => false
         };
 
@@ -1468,7 +1845,7 @@
             {
                 _dryRun = await ParamApi.GetDryRunAsync(Equipment.Name, ct);
             }
-            else if (selectedTab == ParamPanelTabKind.Atv)
+            else if (selectedTab == ParamPanelTabKind.Atv || isMotorAllAtvPage)
             {
                 _atvRef = await ParamApi.GetAtvRefAsync(Equipment.Name, ct);
             }
@@ -1534,10 +1911,36 @@
         if (index-- == 0)
             return ParamPanelTabKind.Graph;
 
+        if (IsMotorEquipment)
+        {
+            if (HasPage(ParamPageKind.Plc) && index-- == 0)
+                return ParamPanelTabKind.Plc;
+
+            if (HasPage(ParamPageKind.Atv) && index-- == 0)
+                return ParamPanelTabKind.Atv;
+
+            if (HasTimeItems && index-- == 0)
+                return ParamPanelTabKind.TimeWork;
+
+            if (HasPage(ParamPageKind.DryRun) && index-- == 0)
+                return ParamPanelTabKind.DryRun;
+
+            if (HasPage(ParamPageKind.DiDo) && index-- == 0)
+                return ParamPanelTabKind.DiDo;
+
+            if (HasAlarmItems && index-- == 0)
+                return ParamPanelTabKind.Alarm;
+
+            if (index-- == 0)
+                return ParamPanelTabKind.MotorAll;
+
+            return ParamPanelTabKind.None;
+        }
+
         if (HasSpecializedSettingsItems && index-- == 0)
             return ParamPanelTabKind.Settings;
 
-        if (!UsesSpecializedParamTabs && index-- == 0)
+        if (!UsesSpecializedParamTabs && !IsMotorEquipment && index-- == 0)
             return ParamPanelTabKind.Values;
 
         if (HasAlarmItems && index-- == 0)
@@ -1564,6 +1967,9 @@
         if (HasPage(ParamPageKind.Atv) && index-- == 0)
             return ParamPanelTabKind.Atv;
 
+        if (IsMotorEquipment && index-- == 0)
+            return ParamPanelTabKind.MotorAll;
+
         return ParamPanelTabKind.None;
     }
 
@@ -1578,6 +1984,7 @@
             ParamPanelTabKind.DiDo => "DI/DO",
             ParamPanelTabKind.DryRun => "DryRun",
             ParamPanelTabKind.Atv => "ATV",
+            ParamPanelTabKind.MotorAll => "ATV",
             _ => "Param"
         };
     }
@@ -1675,6 +2082,12 @@
     private bool IsVgaElEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.VGA_EL;
 
     /// <summary>
+    /// true, когда выбран двигатель. Motor пока остается generic Param-типом,
+    /// но вкладку All для него переносим в конец и дополняем бывшим ATV-разделом.
+    /// </summary>
+    private bool IsMotorEquipment => Equipment?.TypeGroup == EquipmentTypeGroup.Motor;
+
+    /// <summary>
     /// true, когда выбран цифровой вход или цифровой выход. Для DI/DO показываем Settings с форсированием,
     /// но не показываем Alarm, потому что аварийных настроек у этих типов нет.
     /// </summary>
@@ -1695,6 +2108,8 @@
     private bool HasAlarmItems =>
         IsDiDoEquipment
             ? false
+            : IsMotorEquipment
+            ? _snapshot?.Items.Any(IsMotorAlarmItem) == true
             : IsVgaElEquipment
             ? _snapshot?.Items.Any(IsVgaElAlarmItem) == true
             : UsesAnalogSpecializedTabs
@@ -1754,6 +2169,15 @@
     private static bool IsVgaElAlarmItem(ParamItemDto item)
     {
         return item.Name.Equals("AlarmEn", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Распознает основную настройку аварийной сигнализации Motor.
+    /// В WPF вкладка Alarm для двигателя содержит switch AlarmAEn с подписью Alarm message signaling status.
+    /// </summary>
+    private static bool IsMotorAlarmItem(ParamItemDto item)
+    {
+        return item.Name.Equals("AlarmAEn", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -1819,6 +2243,12 @@
     private bool IsGraphVgaElCloseAlarmActive => IsVgaElEquipment && IsSnapshotItemOn("CloseAl");
 
     /// <summary>
+    /// true, если Motor сообщает о превышении времени работы.
+    /// Это состояние показывается в общей строке уведомлений Graph, а не в кнопочной станции.
+    /// </summary>
+    private bool IsGraphMotorTimeWorkActive => IsMotorEquipment && IsSnapshotItemOn("TimeWorkAlarmW");
+
+    /// <summary>
     /// true, когда VGA находится в ручном режиме. В исходном WPF поле Man было доступно только при Mode=false.
     /// </summary>
     private bool IsVgaManualMode => !IsSnapshotItemOn("Mode");
@@ -1878,6 +2308,50 @@
         }
 
         return GetSnapshotItemDisplayValue("State");
+    }
+
+    /// <summary>
+    /// Возвращает читаемый текст State для Motor в верхней строке Graph.
+    /// Повторяет тот же WPF-конвертер, что используется в боковой панели двигателя.
+    /// </summary>
+    private string GetMotorStateDisplayValue()
+    {
+        var item = FindSnapshotItem("State");
+
+        if (item is null)
+            return "-";
+
+        if (item.NumericValue.HasValue)
+            return FormatMotorState(item.NumericValue.Value);
+
+        if (double.TryParse(
+                item.ValueText?.Replace(',', '.'),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var parsed))
+        {
+            return FormatMotorState(parsed);
+        }
+
+        return GetSnapshotItemDisplayValue("State");
+    }
+
+    /// <summary>
+    /// Преобразует код состояния Motor в короткую строку, как это делал WPF-конвертер PlcMotorStatusToTextConverter.
+    /// </summary>
+    private static string FormatMotorState(double state)
+    {
+        var code = (int)Math.Round(state);
+        return code switch
+        {
+            0 => "stop",
+            1 => "run",
+            2 or 3 => "alarm",
+            4 => "starting",
+            5 => "stopping",
+            6 => "waiting",
+            _ => code.ToString(CultureInfo.InvariantCulture)
+        };
     }
 
     /// <summary>
@@ -2122,6 +2596,7 @@
         Plc,
         DiDo,
         DryRun,
-        Atv
+        Atv,
+        MotorAll
     }
 }

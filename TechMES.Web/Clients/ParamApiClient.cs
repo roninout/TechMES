@@ -184,9 +184,17 @@ public sealed class ParamApiClient
             request,
             ct);
 
-        var result = await response.Content.ReadFromJsonAsync<ParamWriteResponse>(cancellationToken: ct);
-        if (result is not null)
-            return result;
+        try
+        {
+            var result = await response.Content.ReadFromJsonAsync<ParamWriteResponse>(cancellationToken: ct);
+            if (result is not null)
+                return result;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // Runtime.Service normally returns ParamWriteResponse even for BadRequest.
+            // If a proxy/NotFound/empty body is returned, build a structured failure so UI can show the real HTTP reason.
+        }
 
         return new ParamWriteResponse
         {

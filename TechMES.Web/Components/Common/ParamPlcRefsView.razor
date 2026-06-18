@@ -1,3 +1,4 @@
+@using System.Globalization
 @using TechMES.Contracts.Param
 
 @if (Response is null)
@@ -14,70 +15,165 @@ else if (!Response.Supported)
 }
 else
 {
-    <RadzenDataGrid Data="@Response.Rows"
-                    TItem="ParamPlcRefDto"
-                    AllowPaging="false"
-                    AllowSorting="true"
-                    Density="Density.Compact"
-                    class="param-refs-grid">
-        <Columns>
-            <RadzenDataGridColumn TItem="ParamPlcRefDto" Title="Equipment" Width="260px">
-                <Template Context="row">
-                    <RadzenButton Text="@row.EquipmentName"
-                                  ButtonStyle="ButtonStyle.Light"
-                                  Size="ButtonSize.Small"
-                                  class="param-ref-link"
-                                  Click="@(() => SelectEquipmentAsync(row.EquipmentName))" />
-                    @if (!string.IsNullOrWhiteSpace(row.Comment))
-                    {
-                        <div class="param-ref-comment">@row.Comment</div>
-                    }
-                </Template>
-            </RadzenDataGridColumn>
-
-            <RadzenDataGridColumn TItem="ParamPlcRefDto" Property="RefItem" Title="Item" Width="120px" />
-            <RadzenDataGridColumn TItem="ParamPlcRefDto" Property="Type" Title="Type" Width="150px" />
-
-            <RadzenDataGridColumn TItem="ParamPlcRefDto" Title="Value" Width="120px">
-                <Template Context="row">
-                    <span class="@GetValueClass(row)">@FormatValue(row)</span>
-                </Template>
-            </RadzenDataGridColumn>
-
-            <RadzenDataGridColumn TItem="ParamPlcRefDto" Property="Unit" Title="Unit" Width="90px" />
-
-            <RadzenDataGridColumn TItem="ParamPlcRefDto" Title="Forced" Width="90px">
-                <Template Context="row">
-                    @if (row.ForceCmd.HasValue)
-                    {
-                        <span class="@GetForcedClass(row)">
-                            @(row.ForceCmd.Value ? "yes" : "no")
-                        </span>
-                    }
-                    else
-                    {
-                        <span>-</span>
-                    }
-                </Template>
-            </RadzenDataGridColumn>
-
-            <RadzenDataGridColumn TItem="ParamPlcRefDto" Property="TagName" Title="Tag" />
-        </Columns>
-    </RadzenDataGrid>
+    <ParamAiPanel Title="PLC" Icon="developer_board">
+        <div class="param-plc-panel-body">
+            @if (Response.Rows.Count == 0)
+            {
+                <div class="param-plc-empty">No PLC settings available.</div>
+            }
+            else
+            {
+                @foreach (var row in Response.Rows)
+                {
+                    @RenderRow(row)
+                }
+            }
+        </div>
+    </ParamAiPanel>
 }
 
 @code {
     /// <summary>
-    /// Ответ Runtime.Service с PLC references.
+    /// Ответ Runtime.Service с PLC reference rows.
+    /// Каждая строка приходит из Plant SCADA EquipRef category=TabPLC и содержит CUSTOM1,
+    /// по которому WEB выбирает такой же тип редактора, как WPF TemplateSelector.
     /// </summary>
     [Parameter]
     public ParamPlcRefsResponse? Response { get; set; }
 
     /// <summary>
-    /// Событие выбора связанного оборудования из таблицы PLC refs.
+    /// Событие выбора связанного оборудования из PLC reference row.
+    /// Родительская Param-панель переключает общий список оборудования на выбранный элемент.
     /// </summary>
     [Parameter]
     public EventCallback<string> OnSelectEquipment { get; set; }
+
+    /// <summary>
+    /// Событие открытия общего write-dialog для PLC строки.
+    /// Target equipment берется из строки PLC, поэтому та же вкладка может работать для Motor,
+    /// VGA_EL и будущих типов без отдельного компонента на каждый тип оборудования.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamTargetWriteDialogRequest> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Рисует одну WPF-like строку PLC: слева описание, справа динамический контрол и единица измерения.
+    /// В отличие от старой таблицы, колонка Type не показывается оператору, а управляет шаблоном строки.
+    /// </summary>
+    private RenderFragment RenderRow(ParamPlcRefDto row) => @<div class="param-plc-row">
+        <div class="param-plc-title" title="@row.Title">
+            <span class="param-plc-equipment">@row.EquipmentName</span>
+            @if (!string.IsNullOrWhiteSpace(row.Comment))
+            {
+                <span class="param-plc-separator">:</span>
+                <span class="param-plc-comment">@row.Comment</span>
+            }
+        </div>
+
+        <div class="param-plc-value-cell">
+            @RenderValue(row)
+        </div>
+
+        <div class="param-plc-extra-cell">
+            @RenderExtraCell(row)
+        </div>
+    </div>;
+
+    /// <summary>
+    /// Повторяет WPF PlcTypeTemplateSelector: CUSTOM1/ParamPlcType выбирает switch,
+    /// numeric field, button, digital status или статус двигателя/клапана.
+    /// </summary>
+    private RenderFragment RenderValue(ParamPlcRefDto row) => row.Type switch
+    {
+        ParamPlcType.EqCheck or ParamPlcType.EqCheckRW or ParamPlcType.EqCheckDisplay => RenderSwitch(row),
+        ParamPlcType.EqNumR or ParamPlcType.EqNumW or ParamPlcType.EqEnum or ParamPlcType.EqEnumDisplay => RenderNumber(row),
+        ParamPlcType.EqButton or ParamPlcType.EqButtonUp or ParamPlcType.EqButtonDown
+            or ParamPlcType.EqButtonMode or ParamPlcType.EqButtonStartStop => RenderButton(row),
+        ParamPlcType.EqDigital or ParamPlcType.EqDigitalInOut => RenderDigital(row),
+        ParamPlcType.EqMotorStatus => RenderStatus(row, GetMotorStatusText(row), "motor"),
+        ParamPlcType.EqValveStatus => RenderStatus(row, GetValveStatusText(row), "valve"),
+        _ => @<span class="param-plc-unknown">@DisplayValue(row.ValueText)</span>
+    };
+
+    /// <summary>
+    /// PLC EqCheck/EqCheckRW/EqCheckDisplay. Display-тип отключен, остальные открывают write-dialog
+    /// с уже выбранным новым on/off состоянием.
+    /// </summary>
+    private RenderFragment RenderSwitch(ParamPlcRefDto row) => @<div class="@GetSwitchShellClass(row)"
+                                                                        title="@GetSwitchTitle(row)"
+                                                                        @onclick="@(() => RequestSwitchWriteAsync(row))">
+        <RadzenStack Orientation="Orientation.Horizontal"
+                     AlignItems="AlignItems.Center"
+                     Gap="0.5rem"
+                     class="param-plc-switch-stack">
+            <RadzenLabel Text="@FormatOnOff(row)"
+                         Component="@GetSwitchName(row)" />
+            <RadzenSwitch Name="@GetSwitchName(row)"
+                          Value="@GetBooleanValue(row)"
+                          Disabled="@(!IsWritableType(row.Type))" />
+        </RadzenStack>
+    </div>;
+
+    /// <summary>
+    /// PLC EqNumR/EqNumW. Поле остается визуально числовым, но редактирование идет через общий dialog,
+    /// чтобы audit, confirm и backend validation были одинаковыми для всех Param write.
+    /// </summary>
+    private RenderFragment RenderNumber(ParamPlcRefDto row) => @<div class="@GetNumberWrapperClass(row)"
+                                                                    @onclick="@(() => RequestNumberWriteAsync(row))">
+            <RadzenFormField AllowFloatingLabel="false"
+                             Text="@DisplayValue(row.RefItem)"
+                             class="param-plc-number-field">
+                <RadzenTextBox Value="@FormatNumberWithUnit(row)"
+                               ReadOnly="true"
+                               class="param-plc-number" />
+            </RadzenFormField>
+        </div>;
+
+    /// <summary>
+    /// PLC EqButton*. В WPF это ToggleButton с подписью, зависящей от CUSTOM1.
+    /// В WEB сохраняем тот же смысл, но отправляем значение через общий write-dialog.
+    /// </summary>
+    private RenderFragment RenderButton(ParamPlcRefDto row) => @<RadzenButton Text="@GetButtonText(row)"
+                                                                              ButtonStyle="@GetButtonStyle(row)"
+                                                                              Variant="Variant.Flat"
+                                                                              Shade="Shade.Light"
+                                                                              Size="ButtonSize.Small"
+                                                                              Disabled="@(!IsWritableType(row.Type))"
+                                                                              class="param-plc-button"
+                                                                              Click="@(() => RequestSwitchWriteAsync(row))" />;
+
+    /// <summary>
+    /// PLC EqDigital/EqDigitalInOut. Это read-only on/off прямоугольник, клик по нему ведет
+    /// на связанное оборудование, как в WPF PlcDigital_GoToEquip.
+    /// </summary>
+    private RenderFragment RenderDigital(ParamPlcRefDto row) => @<div class="param-plc-digital">
+        <span class="@GetForcedClass(row)">Forced</span>
+        <span class="@GetDigitalClass(row)">
+            @FormatOnOff(row)
+        </span>
+    </div>;
+
+    /// <summary>
+    /// PLC status rows for Motor/Valve. Текст и цвет повторяют WPF converters/styles:
+    /// normal states are solid, transitional/alarm states blink.
+    /// </summary>
+    private RenderFragment RenderStatus(ParamPlcRefDto row, string text, string kind) => @<span class="@GetStatusClass(row, kind)">
+        @text
+    </span>;
+
+    /// <summary>
+    /// Рисует дополнительную правую колонку PLC-строки.
+    /// Для numeric/switch/button единицы уже находятся внутри самого контрола или не нужны,
+    /// а для EqDigital показываем кнопку перехода к связанному оборудованию, как во вкладке DI/DO.
+    /// </summary>
+    private RenderFragment RenderExtraCell(ParamPlcRefDto row) => IsDigitalType(row.Type)
+        ? @<RadzenButton Icon="open_in_new"
+                         ButtonStyle="ButtonStyle.Light"
+                         Size="ButtonSize.Small"
+                         class="param-plc-go-button"
+                         title="Go to equipment"
+                         Click="@(() => SelectEquipmentAsync(row.EquipmentName))" />
+        : @<span class="param-plc-extra-empty"></span>;
 
     /// <summary>
     /// Передает выбранное equipment name родительской Param-панели.
@@ -90,40 +186,325 @@ else
     }
 
     /// <summary>
-    /// Форматирует PLC reference value.
+    /// Открывает write-dialog для boolean PLC строки. Значение берется из UI-события, а не из DTO,
+    /// поэтому повторная запись того же состояния также проходит через общий write-flow.
     /// </summary>
-    private static string FormatValue(ParamPlcRefDto row)
+    private async Task RequestSwitchWriteAsync(ParamPlcRefDto row)
+    {
+        if (!IsWritableType(row.Type))
+            return;
+
+        await RequestWriteAsync(row, ParamValueKind.Boolean, !GetBooleanValue(row));
+    }
+
+    /// <summary>
+    /// Открывает write-dialog для numeric PLC строки. Доступно только для EqNumW.
+    /// </summary>
+    private async Task RequestNumberWriteAsync(ParamPlcRefDto row)
+    {
+        if (!IsWritableType(row.Type))
+            return;
+
+        await RequestWriteAsync(row, ParamValueKind.Number, initialBooleanValue: null);
+    }
+
+    /// <summary>
+    /// Собирает минимальный ParamItemDto из PLC reference row и передает его в общий диалог записи.
+    /// DTO не хранится в snapshot, поэтому AllowReadOnlyItemDialog позволяет открыть dialog,
+    /// а окончательное право записи все равно проверяет Runtime.Service.
+    /// </summary>
+    private async Task RequestWriteAsync(ParamPlcRefDto row, ParamValueKind kind, bool? initialBooleanValue)
+    {
+        if (!OnWriteRequested.HasDelegate || string.IsNullOrWhiteSpace(row.EquipmentName))
+            return;
+
+        var itemName = GetPlcEquipItem(row);
+        if (string.IsNullOrWhiteSpace(itemName))
+            return;
+
+        await OnWriteRequested.InvokeAsync(new ParamTargetWriteDialogRequest
+        {
+            EquipmentName = row.EquipmentName,
+            InitialBooleanValue = initialBooleanValue,
+            AllowReadOnlyItemDialog = true,
+            ReferenceSourceEquipmentName = Response?.EquipmentName,
+            ReferenceValueKind = kind,
+            Item = new ParamItemDto
+            {
+                Name = itemName,
+                Kind = kind,
+                ValueText = row.ValueText,
+                NumericValue = row.NumericValue,
+                BooleanValue = row.BooleanValue,
+                Unit = row.Unit,
+                TagName = row.TagName,
+                CanWrite = true
+            }
+        });
+    }
+
+    /// <summary>
+    /// Определяет EquipItem для чтения/записи PLC строки.
+    /// Логика совпадает с WPF GetPlcEquipItemForTagInfo: REFITEM имеет приоритет,
+    /// для status rows fallback = State, для остальных fallback = Value.
+    /// </summary>
+    private static string GetPlcEquipItem(ParamPlcRefDto row)
+    {
+        if (!string.IsNullOrWhiteSpace(row.RefItem)
+            && !row.RefItem.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            return row.RefItem.Trim();
+        }
+
+        return row.Type is ParamPlcType.EqMotorStatus or ParamPlcType.EqValveStatus
+            ? "State"
+            : "Value";
+    }
+
+    /// <summary>
+    /// Возвращает true для PLC типов, которые WPF PlcRefRow.IsWritable разрешал редактировать.
+    /// EqCheckDisplay, EqNumR, EqDigital и status rows остаются read-only.
+    /// </summary>
+    private static bool IsWritableType(ParamPlcType type)
+    {
+        return type is ParamPlcType.EqCheck
+            or ParamPlcType.EqCheckRW
+            or ParamPlcType.EqNumW
+            or ParamPlcType.EqButton
+            or ParamPlcType.EqButtonUp
+            or ParamPlcType.EqButtonDown
+            or ParamPlcType.EqButtonMode
+            or ParamPlcType.EqButtonStartStop;
+    }
+
+    /// <summary>
+    /// true для PLC digital rows, где справа нужна кнопка перехода вместо единицы измерения.
+    /// </summary>
+    private static bool IsDigitalType(ParamPlcType type)
+    {
+        return type is ParamPlcType.EqDigital or ParamPlcType.EqDigitalInOut;
+    }
+
+    /// <summary>
+    /// Читает boolean состояние из нормализованного DTO.
+    /// </summary>
+    private static bool GetBooleanValue(ParamPlcRefDto row)
     {
         if (row.BooleanValue.HasValue)
-            return row.BooleanValue.Value ? "on" : "off";
+            return row.BooleanValue.Value;
 
-        return string.IsNullOrWhiteSpace(row.ValueText)
-            ? "-"
-            : row.ValueText;
+        return TryParseBoolean(row.ValueText, out var value) && value;
     }
 
     /// <summary>
-    /// CSS-класс для bool-значений PLC reference.
+    /// Форматирует on/off для digital rows.
     /// </summary>
-    private static string GetValueClass(ParamPlcRefDto row)
+    private static string FormatOnOff(ParamPlcRefDto row)
     {
-        if (row.BooleanValue == true)
-            return "param-ref-value-on";
-
-        if (row.BooleanValue == false)
-            return "param-ref-value-off";
-
-        return "";
+        return GetBooleanValue(row) ? "on" : "off";
     }
 
     /// <summary>
-    /// CSS-класс forced-состояния канала.
+    /// Формирует текст numeric поля вместе с единицей измерения.
+    /// Так единица не занимает отдельную колонку и визуально принадлежит значению.
+    /// </summary>
+    private static string FormatNumberWithUnit(ParamPlcRefDto row)
+    {
+        var value = row.NumericValue.HasValue
+            ? row.NumericValue.Value.ToString("0.###", CultureInfo.InvariantCulture)
+            : DisplayValue(row.ValueText);
+
+        return string.IsNullOrWhiteSpace(row.Unit)
+            ? value
+            : $"{value} {row.Unit}";
+    }
+
+    /// <summary>
+    /// Подпись PLC button зависит от CUSTOM1, как в WPF PlcButtonTemplate.
+    /// </summary>
+    private static string GetButtonText(ParamPlcRefDto row)
+    {
+        return row.Type switch
+        {
+            ParamPlcType.EqButtonUp => "▲",
+            ParamPlcType.EqButtonDown => "▼",
+            ParamPlcType.EqButtonMode => GetBooleanValue(row) ? "Auto" : "Manual",
+            ParamPlcType.EqButtonStartStop => GetBooleanValue(row) ? "Start" : "Stop",
+            _ => GetBooleanValue(row) ? "On" : "Off"
+        };
+    }
+
+    /// <summary>
+    /// Цвет PLC button: активное состояние выделяем Success, выключенное оставляем нейтральным.
+    /// </summary>
+    private static ButtonStyle GetButtonStyle(ParamPlcRefDto row)
+    {
+        return GetBooleanValue(row) ? ButtonStyle.Success : ButtonStyle.Base;
+    }
+
+    /// <summary>
+    /// Возвращает текстовый статус клапана по карте WPF PlcValveStatusToTextConverter.
+    /// </summary>
+    private static string GetValveStatusText(ParamPlcRefDto row)
+    {
+        return GetRoundedCode(row) switch
+        {
+            0 => "closed",
+            1 => "opened",
+            2 => "alarm opening",
+            3 => "alarm closure",
+            4 => "opening",
+            5 => "closing",
+            var code => code.ToString(CultureInfo.InvariantCulture)
+        };
+    }
+
+    /// <summary>
+    /// Возвращает текстовый статус двигателя по карте WPF PlcMotorStatusToTextConverter.
+    /// </summary>
+    private static string GetMotorStatusText(ParamPlcRefDto row)
+    {
+        return GetRoundedCode(row) switch
+        {
+            0 => "stop",
+            1 => "run",
+            2 or 3 => "alarm",
+            4 => "starting",
+            5 => "stopping",
+            6 => "waiting",
+            var code => code.ToString(CultureInfo.InvariantCulture)
+        };
+    }
+
+    /// <summary>
+    /// Приводит PLC value к целочисленному коду состояния.
+    /// </summary>
+    private static int GetRoundedCode(ParamPlcRefDto row)
+    {
+        if (row.NumericValue.HasValue)
+            return (int)Math.Round(row.NumericValue.Value);
+
+        return double.TryParse(
+            (row.ValueText ?? "").Replace(',', '.'),
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var value)
+            ? (int)Math.Round(value)
+            : -1;
+    }
+
+    /// <summary>
+    /// CSS-класс numeric wrapper: writable EqNumW получает pointer cursor.
+    /// </summary>
+    private static string GetNumberWrapperClass(ParamPlcRefDto row)
+    {
+        return IsWritableType(row.Type)
+            ? "param-plc-number-wrapper is-writable"
+            : "param-plc-number-wrapper";
+    }
+
+    /// <summary>
+    /// CSS-класс read-only digital прямоугольника.
+    /// </summary>
+    /// <summary>
+    /// CSS-класс switch-контейнера. Writable rows получают pointer cursor так же,
+    /// как switch-строки во вкладках Alarm/Settings.
+    /// </summary>
+    private static string GetSwitchShellClass(ParamPlcRefDto row)
+    {
+        return IsWritableType(row.Type)
+            ? "param-plc-switch is-writable"
+            : "param-plc-switch is-read-only";
+    }
+
+    /// <summary>
+    /// Подсказка для PLC switch: у writable-строк показывает, какое состояние будет предложено в write-dialog.
+    /// </summary>
+    private static string GetSwitchTitle(ParamPlcRefDto row)
+    {
+        return IsWritableType(row.Type)
+            ? $"Write {(GetBooleanValue(row) ? "off" : "on")}"
+            : "Read only";
+    }
+
+    private static string GetDigitalClass(ParamPlcRefDto row)
+    {
+        return GetBooleanValue(row)
+            ? "param-plc-digital-value is-on"
+            : "param-plc-digital-value is-off";
+    }
+
+    /// <summary>
+    /// CSS-класс forced-индикатора. Невидимый вариант сохраняет ширину колонки,
+    /// чтобы строки PLC не прыгали при обновлении ForceCmd.
     /// </summary>
     private static string GetForcedClass(ParamPlcRefDto row)
     {
         return row.ForceCmd == true
-            ? "param-ref-forced-on"
-            : "param-ref-value-off";
+            ? "param-plc-forced is-active"
+            : "param-plc-forced";
+    }
+
+    /// <summary>
+    /// CSS-класс status field для Motor/Valve.
+    /// </summary>
+    private static string GetStatusClass(ParamPlcRefDto row, string kind)
+    {
+        var code = GetRoundedCode(row);
+        var stateClass = code switch
+        {
+            1 => "is-on",
+            2 or 3 => "is-alarm",
+            4 or 6 => "is-running",
+            5 => "is-transition",
+            _ => "is-off"
+        };
+
+        return $"param-plc-status is-{kind} {stateClass}";
+    }
+
+    /// <summary>
+    /// Уникальное имя switch-компонента для Radzen label binding.
+    /// </summary>
+    private static string GetSwitchName(ParamPlcRefDto row)
+    {
+        var safeName = $"{row.EquipmentName}-{GetPlcEquipItem(row)}"
+            .Replace('.', '-')
+            .Replace(' ', '-')
+            .Replace(':', '-');
+
+        return $"plc-{safeName}";
+    }
+
+    /// <summary>
+    /// Разбирает boolean из CtApi/SCADA форматов 1/0, true/false, on/off.
+    /// </summary>
+    private static bool TryParseBoolean(string? raw, out bool value)
+    {
+        raw = (raw ?? "").Trim();
+        if (bool.TryParse(raw, out value))
+            return true;
+
+        if (raw.Equals("on", StringComparison.OrdinalIgnoreCase))
+        {
+            value = true;
+            return true;
+        }
+
+        if (raw.Equals("off", StringComparison.OrdinalIgnoreCase))
+        {
+            value = false;
+            return true;
+        }
+
+        if (double.TryParse(raw.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
+        {
+            value = number > 0.5;
+            return true;
+        }
+
+        value = false;
+        return false;
     }
 
     /// <summary>

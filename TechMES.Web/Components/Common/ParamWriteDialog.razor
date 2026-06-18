@@ -48,7 +48,7 @@
                 <RadzenButton Text="Write"
                               Icon="edit"
                               ButtonStyle="ButtonStyle.Warning"
-                              Disabled="@(!CanSubmit)"
+                              Disabled="@(!CanSubmit || _isSubmitting)"
                               Click="@Submit" />
             </RadzenStack>
         </RadzenStack>
@@ -84,6 +84,12 @@
     /// Числовое значение для RadzenNumeric; хранится отдельно от текста, чтобы компонент не показывал двоичные хвосты double вроде 5.4800000000000004.
     /// </summary>
     private double? _numericValue;
+
+    /// <summary>
+    /// Блокирует повторное нажатие Write, пока Radzen Dialog закрывается.
+    /// Это особенно важно для switch-строк: повторный click не должен запускать вторую запись.
+    /// </summary>
+    private bool _isSubmitting;
 
     /// <summary>
     /// Подготавливает начальное значение диалога из текущего snapshot.
@@ -130,7 +136,7 @@
     /// </summary>
     private void Submit()
     {
-        if (Item is null)
+        if (Item is null || _isSubmitting)
             return;
 
         var value = Item.Kind switch
@@ -142,6 +148,8 @@
 
         if (string.IsNullOrWhiteSpace(value))
             return;
+
+        _isSubmitting = true;
 
         DialogService.Close(new ParamWriteDialogResult
         {

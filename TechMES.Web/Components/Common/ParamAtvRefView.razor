@@ -1,3 +1,4 @@
+@using System.Globalization
 @using TechMES.Contracts.Param
 
 @if (Response is null)
@@ -18,35 +19,58 @@ else if (Response.AtvEquipment is null)
         No ATV data available.
     </RadzenAlert>
 }
+else if (TableOnly)
+{
+    @* Табличный режим нужен для Motor/All: ATV там является справочным разделом рядом с основной таблицей Motor. *@
+    <section class="param-atv-page is-table-only">
+        <ParamItemsTable Items="@GetAtvTableItems()"
+                         OnWriteRequested="@RequestTableWriteAsync" />
+    </section>
+}
 else
 {
-    <section class="param-atv-card">
+    <section class="param-atv-page">
         <div class="param-atv-header">
-            <div class="param-atv-title">
-                <EquipmentTypeBadge TypeGroup="@Response.AtvEquipment.TypeGroup" />
-                <div>
-                    <strong>@Response.AtvEquipment.EquipmentName</strong>
-                    <span>@DisplayValue(Response.AtvEquipment.Description)</span>
-                </div>
+            <div class="param-atv-title-text">
+                @Response.AtvEquipment.EquipmentName : @DisplayValue(Response.AtvEquipment.Description)
             </div>
 
             @if (Response.IsLinkedFromMotor)
             {
-                <RadzenButton Text="Open ATV"
+                <RadzenButton Icon="open_in_new"
                               ButtonStyle="ButtonStyle.Light"
                               Size="ButtonSize.Small"
-                              class="param-ref-link"
+                              class="param-atv-open-button"
+                              title="Open ATV"
                               Click="@(() => SelectEquipmentAsync(Response.AtvEquipment.EquipmentName))" />
             }
         </div>
 
-        <ParamItemsTable Items="@Response.AtvEquipment.Items" />
+        <ParamAiPanel Title="Params" Icon="speed">
+            <div class="param-atv-gauge-grid">
+                @for (var index = 0; index < GaugeDefinitions.Length; index++)
+                {
+                    var gauge = GaugeDefinitions[index];
+
+                    @RenderGauge(gauge)
+
+                    @if (index == 1)
+                    {
+                        <div class="param-atv-gauge-row-divider" aria-hidden="true"></div>
+                    }
+                }
+            </div>
+        </ParamAiPanel>
+
+        @RenderModePanel("Remote mode", "settings_remote", RemoteRows)
+        @RenderModePanel("Local mode", "settings_input_component", LocalRows)
     </section>
 }
 
 @code {
     /// <summary>
     /// Ответ Runtime.Service с ATV reference page.
+    /// Для Motor внутри ответа лежит связанный частотник, для ATV - сам выбранный частотник.
     /// </summary>
     [Parameter]
     public ParamAtvRefResponse? Response { get; set; }
@@ -56,6 +80,153 @@ else
     /// </summary>
     [Parameter]
     public EventCallback<string> OnSelectEquipment { get; set; }
+
+    /// <summary>
+    /// Команда записи item-а в target ATV equipment.
+    /// Используется и отдельной вкладкой ATV, и дубликатом ATV внутри Motor/All.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamTargetWriteDialogRequest> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Включает компактный табличный режим без Gauge/Remote/Local панелей.
+    /// Нужен для вкладки Motor/All, где ATV должен выглядеть как обычная таблица Param items.
+    /// </summary>
+    [Parameter]
+    public bool TableOnly { get; set; }
+
+    /// <summary>
+    /// Шкалы верхней WPF-панели Params: скорость, ток, момент и частота двигателя.
+    /// </summary>
+    private static readonly AtvGaugeDefinition[] GaugeDefinitions =
+    [
+        new("Motor speed", "RpmHmi", "rpm", "NHmi", "%", "NMax", 1000, "Nsp", "Speed nominal", "rpm", "0"),
+        new("Motor current", "IHmi", "A", null, null, "Cli", 100, "Cli", "Current limit", "A", "0.0"),
+        new("Motor torque", "THmi", "%", null, null, null, 100, null, null, null, "0"),
+        new("Motor frequency", "FHmi", "Hz", null, null, null, 100, null, null, null, "0.0")
+    ];
+
+    /// <summary>
+    /// Поля режима Remote mode из WPF AtvSettingsSectionView.
+    /// Пустая подпись оставляет строку на сетке, но убирает дублирующий текст из UI.
+    /// </summary>
+    private static readonly AtvSettingRow[] RemoteRows =
+    [
+        new("", "OutMax", "", "%"),
+        new("Setting the rotation speed", "RemoteSet", "", "%"),
+        new("", "OutMin", "", "%"),
+        new("Acceleration time", "RemoteAcc", "", "sec"),
+        new("Deceleration time", "RemoteDec", "", "sec")
+    ];
+
+    /// <summary>
+    /// Поля режима Local mode из WPF AtvSettingsSectionView.
+    /// </summary>
+    private static readonly AtvSettingRow[] LocalRows =
+    [
+        new("Setting the rotation speed", "NMax", "", "rpm"),
+        new("", "LocalSet", "", "%"),
+        new("Acceleration time", "LocalAcc", "", "sec"),
+        new("Deceleration time", "LocalDec", "", "sec")
+    ];
+
+    /// <summary>
+    /// Рисует одну Arc Gauge карточку верхней панели Params.
+    /// Значения берутся из snapshot связанного ATV, а editable-поля идут через общий write-dialog.
+    /// </summary>
+    private RenderFragment RenderGauge(AtvGaugeDefinition gauge) => @<div class="param-atv-gauge-card">
+        @{
+            var valueItem = FindAtvItem(gauge.ValueItemName);
+            var secondaryItem = string.IsNullOrWhiteSpace(gauge.SecondaryItemName) ? null : FindAtvItem(gauge.SecondaryItemName);
+            var max = GetGaugeMax(gauge);
+            var value = Clamp(GetNumber(valueItem), 0, max);
+        }
+
+        <div class="param-atv-gauge-title">@gauge.Title</div>
+
+        <RadzenArcGauge Style="width: 100%; height: var(--param-atv-arc-gauge-height);">
+            <RadzenArcGaugeScale Step="@GetGaugeStep(max)"
+                                 Min="0"
+                                 Max="@max"
+                                 MinorStep="@GetGaugeMinorStep(max)"
+                                 FormatString="{0:0.#}"
+                                 Radius="1.5"
+                                 TickPosition="GaugeTickPosition.Inside"
+                                 Y="0.9"
+                                 Margin="0">
+                <RadzenArcGaugeScaleValue Value="@value"
+                                          ShowValue="true"
+                                          FormatString="{0:0.#}">
+                    <Template Context="pointer">
+                        <RadzenStack AlignItems="AlignItems.Center"
+                                     Gap="0"
+                                     Style="margin-top: -50%;">
+                            <RadzenText TextStyle="TextStyle.H5" class="rz-m-0">
+                                <strong>@FormatGaugeValue(pointer.Value, gauge.ValueFormat)</strong>
+                            </RadzenText>
+                            <RadzenText TextStyle="TextStyle.Caption">@gauge.ValueUnit</RadzenText>
+                        </RadzenStack>
+                    </Template>
+                </RadzenArcGaugeScaleValue>
+            </RadzenArcGaugeScale>
+        </RadzenArcGauge>
+
+        @if (!string.IsNullOrWhiteSpace(gauge.SettingItemName))
+        {
+            var settingItem = FindAtvItem(gauge.SettingItemName);
+
+            <div class="@GetGaugeSettingClass(secondaryItem)">
+                <div class="param-atv-gauge-setting-field">
+                    <span>@gauge.SettingLabel</span>
+                    @RenderField(settingItem, gauge.SettingItemName, gauge.SettingUnit)
+                </div>
+
+                @if (secondaryItem is not null)
+                {
+                    <div class="param-atv-gauge-setting-field">
+                        <span>Speed real</span>
+                        @RenderField(secondaryItem, gauge.SecondaryItemName ?? secondaryItem.Name, gauge.SecondaryUnit, allowWrite: false)
+                    </div>
+                }
+            </div>
+        }
+    </div>;
+
+    /// <summary>
+    /// Рисует WPF-like панель Remote mode или Local mode.
+    /// </summary>
+    private RenderFragment RenderModePanel(string title, string icon, IReadOnlyList<AtvSettingRow> rows) => @<ParamAiPanel Title="@title" Icon="@icon">
+        <div class="param-atv-settings-body">
+            @foreach (var row in rows)
+            {
+                var item = FindAtvItem(row.ItemName);
+
+                <div class="param-atv-setting-row">
+                    <span class="param-atv-setting-label">@row.Label</span>
+                    <span class="param-atv-setting-prefix">@row.Prefix</span>
+                    @RenderField(item, row.ItemName, row.Unit)
+                </div>
+            }
+        </div>
+    </ParamAiPanel>;
+
+    /// <summary>
+    /// Единый FormField для ATV numeric settings.
+    /// Значение отображается вместе с единицей измерения, а запись выполняется через общий dialog.
+    /// </summary>
+    private RenderFragment RenderField(ParamItemDto? item, string label, string? unit, bool allowWrite = true) => @<div class="@GetFieldShellClass(item, allowWrite)"
+                                                                                                title="@GetFieldTitle(item, allowWrite)"
+                                                                                                @onclick="@(() => RequestWriteAsync(item, allowWrite))">
+        <RadzenFormField AllowFloatingLabel="false"
+                         Text="@label"
+                         Variant="Variant.Outlined"
+                         class="param-atv-form-field">
+            <RadzenTextBox Value="@FormatValueWithUnit(item, unit)"
+                           ReadOnly="true"
+                           Disabled="@(item is null)"
+                           class="param-atv-value" />
+        </RadzenFormField>
+    </div>;
 
     /// <summary>
     /// Передает выбранное ATV equipment name родительской Param-панели.
@@ -68,10 +239,256 @@ else
     }
 
     /// <summary>
+    /// Открывает общий write-dialog для ATV item-а.
+    /// Для Motor target equipment берется из связанного ATV, а не из выбранного Motor.
+    /// </summary>
+    private async Task RequestWriteAsync(ParamItemDto? item, bool allowWrite = true)
+    {
+        var targetEquipmentName = GetAtvTargetEquipmentName();
+        if (item is null
+            || !allowWrite
+            || !IsAtvWritableItem(item)
+            || string.IsNullOrWhiteSpace(targetEquipmentName)
+            || !OnWriteRequested.HasDelegate)
+        {
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(new ParamTargetWriteDialogRequest
+        {
+            EquipmentName = targetEquipmentName,
+            Item = item,
+            AllowReadOnlyItemDialog = true
+        });
+    }
+
+    /// <summary>
+    /// Открывает запись из табличного режима ATV внутри Motor/All.
+    /// </summary>
+    private Task RequestTableWriteAsync(ParamItemDto item)
+    {
+        return RequestWriteAsync(item);
+    }
+
+    /// <summary>
+    /// Возвращает item-ы для таблицы ATV.
+    /// Reference snapshot может прийти без CanWrite, поэтому разрешенные ATV item-ы помечаются writable на уровне UI.
+    /// Финальную проверку права записи всё равно повторяет Runtime.Service.
+    /// </summary>
+    private IReadOnlyList<ParamItemDto> GetAtvTableItems()
+    {
+        return Response?.AtvEquipment?.Items
+            .Select(item => IsAtvWritableItem(item) && !item.CanWrite ? CloneAsWritable(item) : item)
+            .ToList()
+            ?? [];
+    }
+
+    /// <summary>
+    /// Создает копию item-а для таблицы, чтобы стандартный ParamItemsTable показал кнопку записи.
+    /// </summary>
+    private static ParamItemDto CloneAsWritable(ParamItemDto item)
+    {
+        return new ParamItemDto
+        {
+            Name = item.Name,
+            Kind = item.Kind,
+            ValueText = item.ValueText,
+            NumericValue = item.NumericValue,
+            BooleanValue = item.BooleanValue,
+            Unit = item.Unit,
+            TagName = item.TagName,
+            CanWrite = true
+        };
+    }
+
+    /// <summary>
+    /// Возвращает имя оборудования, в которое нужно писать ATV-настройки.
+    /// </summary>
+    private string? GetAtvTargetEquipmentName()
+    {
+        return !string.IsNullOrWhiteSpace(Response?.AtvEquipmentName)
+            ? Response.AtvEquipmentName
+            : Response?.AtvEquipment?.EquipmentName;
+    }
+
+    /// <summary>
+    /// Ищет item внутри snapshot связанного ATV.
+    /// </summary>
+    private ParamItemDto? FindAtvItem(string itemName)
+    {
+        return Response?.AtvEquipment?.Items.FirstOrDefault(item =>
+            item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Возвращает верхнюю границу шкалы. Если уставка не пришла или равна нулю,
+    /// берется WPF-like fallback, чтобы RadzenArcGauge всегда имел валидный диапазон.
+    /// </summary>
+    private double GetGaugeMax(AtvGaugeDefinition gauge)
+    {
+        if (!string.IsNullOrWhiteSpace(gauge.MaxItemName))
+        {
+            var max = GetNumber(FindAtvItem(gauge.MaxItemName));
+            if (max > 0)
+                return max;
+        }
+
+        return gauge.FallbackMax;
+    }
+
+    /// <summary>
+    /// Основной шаг шкалы: пять крупных делений, как в WPF ArcScale MajorIntervalCount=5.
+    /// Округление до 0.1 защищает подписи шкалы от хвостов вроде 1800.6000000000001.
+    /// </summary>
+    private static double GetGaugeStep(double max)
+    {
+        return Math.Max(0.1, Math.Round(max / 5, 1, MidpointRounding.AwayFromZero));
+    }
+
+    /// <summary>
+    /// Мелкий шаг шкалы: делит крупные интервалы на несколько частей.
+    /// </summary>
+    private static double GetGaugeMinorStep(double max)
+    {
+        return Math.Max(0.1, Math.Round(max / 50, 1, MidpointRounding.AwayFromZero));
+    }
+
+    /// <summary>
+    /// Читает числовое значение item-а с fallback на 0.
+    /// </summary>
+    private static double GetNumber(ParamItemDto? item)
+    {
+        if (item?.NumericValue is double value)
+            return value;
+
+        if (double.TryParse(
+            (item?.ValueText ?? "").Replace(',', '.'),
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var parsed))
+        {
+            return parsed;
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Ограничивает значение диапазоном шкалы, чтобы gauge не выходил за пределы.
+    /// </summary>
+    private static double Clamp(double value, double min, double max)
+    {
+        return Math.Min(Math.Max(value, min), max);
+    }
+
+    /// <summary>
+    /// Форматирует значение шкалы.
+    /// </summary>
+    private static string FormatGaugeValue(double value, string format)
+    {
+        return value.ToString(format, CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Форматирует FormField: значение и единица измерения находятся в одном поле.
+    /// </summary>
+    private static string FormatValueWithUnit(ParamItemDto? item, string? unit)
+    {
+        var value = item is null
+            ? "-"
+            : item.NumericValue.HasValue
+                ? item.NumericValue.Value.ToString("0.###", CultureInfo.InvariantCulture)
+                : DisplayValue(item.ValueText);
+
+        return string.IsNullOrWhiteSpace(unit) || value == "-"
+            ? value
+            : $"{value} {unit}";
+    }
+
+    /// <summary>
+    /// CSS-класс блока настроек под Gauge: обычная одиночная строка или пара полей Speed nominal / Speed real.
+    /// </summary>
+    private static string GetGaugeSettingClass(ParamItemDto? secondaryItem)
+    {
+        return secondaryItem is null
+            ? "param-atv-gauge-setting"
+            : "param-atv-gauge-setting is-paired";
+    }
+
+    /// <summary>
+    /// CSS-класс FormField wrapper: writable ATV-поля получают pointer cursor.
+    /// </summary>
+    private static string GetFieldShellClass(ParamItemDto? item, bool allowWrite)
+    {
+        return allowWrite && IsAtvWritableItem(item)
+            ? "param-atv-field-shell is-writable"
+            : "param-atv-field-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Tooltip для writable/read-only ATV поля.
+    /// </summary>
+    private static string GetFieldTitle(ParamItemDto? item, bool allowWrite)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        return allowWrite && IsAtvWritableItem(item) ? "Write value" : "Read only";
+    }
+
+    /// <summary>
+    /// ATV reference item-ы иногда приходят из связанного оборудования.
+    /// Поэтому кликабельность задаем явным allow-list, а backend повторно проверяет право записи.
+    /// </summary>
+    private static bool IsAtvWritableItem(ParamItemDto? item)
+    {
+        if (item is null)
+            return false;
+
+        return item.CanWrite
+            || item.Name.Equals("OutMin", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("OutMax", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("NMax", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("Nsp", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("Cli", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("RemoteSet", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("RemoteAcc", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("RemoteDec", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("LocalSet", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("LocalAcc", StringComparison.OrdinalIgnoreCase)
+            || item.Name.Equals("LocalDec", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Нормализует пустые значения для UI.
     /// </summary>
     private static string DisplayValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? "-" : value;
     }
+
+    /// <summary>
+    /// Описание одной шкалы ATV Params.
+    /// </summary>
+    private sealed record AtvGaugeDefinition(
+        string Title,
+        string ValueItemName,
+        string ValueUnit,
+        string? SecondaryItemName,
+        string? SecondaryUnit,
+        string? MaxItemName,
+        double FallbackMax,
+        string? SettingItemName,
+        string? SettingLabel,
+        string? SettingUnit,
+        string ValueFormat);
+
+    /// <summary>
+    /// Описание одной строки Remote/Local settings.
+    /// </summary>
+    private sealed record AtvSettingRow(
+        string Label,
+        string ItemName,
+        string Prefix,
+        string Unit);
 }

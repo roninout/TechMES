@@ -1,0 +1,526 @@
+@using TechMES.Contracts.Param
+
+<div class="motor-timework-page">
+    <ParamAiPanel Title="TimeWork" Icon="timer">
+        <div class="motor-timework-group-body">
+            @foreach (var row in InfoRows)
+            {
+                var item = FindItem(row.ItemName);
+
+                <div class="@GetRowClass(row)">
+                    <span class="motor-timework-label">@row.Label</span>
+
+                    <div class="motor-timework-control">
+                        @if (row.Kind == MotorTimeWorkRowKind.Action)
+                        {
+                            <RadzenButton Text="@GetActionText(item, row.ActionText)"
+                                          ButtonStyle="ButtonStyle.Base"
+                                          Variant="Variant.Flat"
+                                          Disabled="@IsActionDisabled(item)"
+                                          class="motor-timework-action"
+                                          Click="@(() => RequestActionWriteAsync(item))" />
+                        }
+                        else if (row.ItemName.Equals("TimeHmi", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <RadzenLinearGauge Style="width: 100%; height: 118px;">
+                                <RadzenLinearGaugeScale Step="@GetTimeBeforeSwitchingGaugeStep()"
+                                                        Min="0"
+                                                        Max="@GetTimeBeforeSwitchingGaugeMax()"
+                                                        MinorStep="@GetTimeBeforeSwitchingGaugeMinorStep()"
+                                                        FormatString="{0:0.#}">
+                                    <RadzenLinearGaugeScalePointer Value="@GetTimeBeforeSwitchingGaugeValue()"
+                                                                  ShowValue="true"
+                                                                  Fill="var(--rz-secondary)">
+                                        <Template Context="pointer">
+                                            <RadzenStack AlignItems="AlignItems.Center" Gap="0">
+                                                <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">
+                                                    <strong>@FormatTimeBeforeSwitchingDisplay()</strong>
+                                                </RadzenText>
+                                                <RadzenText TextStyle="TextStyle.Caption">h</RadzenText>
+                                            </RadzenStack>
+                                        </Template>
+                                    </RadzenLinearGaugeScalePointer>
+                                    <RadzenLinearGaugeScaleRange From="0"
+                                                                 To="@GetTimeBeforeSwitchingGaugeGreenTo()"
+                                                                 Fill="var(--rz-success)"
+                                                                 Height="8" />
+                                    <RadzenLinearGaugeScaleRange From="@GetTimeBeforeSwitchingGaugeGreenTo()"
+                                                                 To="@GetTimeBeforeSwitchingGaugeYellowTo()"
+                                                                 Fill="var(--rz-warning)"
+                                                                 Height="8" />
+                                    <RadzenLinearGaugeScaleRange From="@GetTimeBeforeSwitchingGaugeYellowTo()"
+                                                                 To="@GetTimeBeforeSwitchingGaugeMax()"
+                                                                 Fill="var(--rz-danger)"
+                                                                 Height="8" />
+                                </RadzenLinearGaugeScale>
+                            </RadzenLinearGauge>
+                        }
+                        else if (row.ItemName.Equals("TimeWork", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <RadzenLinearGauge Style="width: 100%; height: 118px;">
+                                <RadzenLinearGaugeScale Step="@TotalTimeGaugeStep"
+                                                        Min="0"
+                                                        Max="@TotalTimeGaugeMax"
+                                                        MinorStep="@TotalTimeGaugeMinorStep"
+                                                        FormatString="{0:0.#}">
+                                    <RadzenLinearGaugeScalePointer Value="@GetTotalTimeGaugeValue()"
+                                                                  ShowValue="true"
+                                                                  Fill="var(--rz-secondary)">
+                                        <Template Context="pointer">
+                                            <RadzenStack AlignItems="AlignItems.Center" Gap="0">
+                                                <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">
+                                                    <strong>@FormatTotalTimeDisplay()</strong>
+                                                </RadzenText>
+                                                <RadzenText TextStyle="TextStyle.Caption">h</RadzenText>
+                                            </RadzenStack>
+                                        </Template>
+                                    </RadzenLinearGaugeScalePointer>
+                                    <RadzenLinearGaugeScaleRange From="0"
+                                                                 To="@GetTotalTimeGaugeValue()"
+                                                                 Fill="var(--rz-success)"
+                                                                 Height="8" />
+                                </RadzenLinearGaugeScale>
+                            </RadzenLinearGauge>
+                        }
+                        else
+                        {
+                            <div class="@GetFieldShellClass(item, row.IsWritable)"
+                                 title="@GetFieldTitle(item, row.IsWritable)"
+                                 @onclick="@(() => RequestWriteAsync(item, row.IsWritable))">
+                                <RadzenFormField AllowFloatingLabel="false"
+                                                 Text="@row.ItemName"
+                                                 Variant="Variant.Outlined"
+                                                 class="motor-timework-form-field">
+                                    <RadzenTextBox Value="@FormatDisplayValue(item, row)"
+                                                   ReadOnly="true"
+                                                   Disabled="@(item is null)"
+                                                   class="motor-timework-value" />
+                                </RadzenFormField>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </ParamAiPanel>
+
+    <ParamAiPanel Title="Settings" Icon="tune">
+        <div class="motor-timework-group-body">
+            @foreach (var row in SettingsRows)
+            {
+                var item = FindItem(row.ItemName);
+
+                <div class="motor-timework-row">
+                    <span class="motor-timework-label">@row.Label</span>
+
+                    <div class="motor-timework-control">
+                        @if (row.Kind == MotorTimeWorkRowKind.Action)
+                        {
+                            <RadzenButton Text="@GetActionText(item, row.ActionText)"
+                                          ButtonStyle="ButtonStyle.Base"
+                                          Variant="Variant.Flat"
+                                          Disabled="@IsActionDisabled(item)"
+                                          class="motor-timework-action"
+                                          Click="@(() => RequestActionWriteAsync(item))" />
+                        }
+                        else
+                        {
+                            <div class="@GetFieldShellClass(item, row.IsWritable)"
+                                 title="@GetFieldTitle(item, row.IsWritable)"
+                                 @onclick="@(() => RequestWriteAsync(item, row.IsWritable))">
+                                <RadzenFormField AllowFloatingLabel="false"
+                                                 Text="@row.ItemName"
+                                                 Variant="Variant.Outlined"
+                                                 class="motor-timework-form-field">
+                                    <RadzenTextBox Value="@FormatDisplayValue(item, row)"
+                                                   ReadOnly="true"
+                                                   Disabled="@(item is null)"
+                                                   class="motor-timework-value" />
+                                </RadzenFormField>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </ParamAiPanel>
+</div>
+
+@code {
+    /// <summary>
+    /// Полный snapshot Param item-ов выбранного Motor.
+    /// Компонент не читает backend сам: родительская EquipmentParamPanel передает уже обновленные значения.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<ParamItemDto>? Items { get; set; }
+
+    /// <summary>
+    /// Общая команда записи числового Param item-а.
+    /// Используется строками TimeSet и TimeWarn, где оператор вводит новое значение через общий write-dialog.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Команда записи boolean item-а с заранее выбранным значением.
+    /// Используется action-кнопками Ack/Reset, которые пишут импульсное значение 1 через существующий write-flow.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamWriteDialogRequest> OnBooleanWriteRequested { get; set; }
+
+    /// <summary>
+    /// Верхняя граница шкалы общего времени работы механизма.
+    /// Это фиксированный визуальный диапазон 0..1000 часов, а не уставка из Citect.
+    /// </summary>
+    private const double TotalTimeGaugeMax = 1000;
+
+    /// <summary>
+    /// Крупный шаг шкалы Total time: пять основных делений по 200 часов.
+    /// </summary>
+    private const double TotalTimeGaugeStep = 200;
+
+    /// <summary>
+    /// Мелкий шаг шкалы Total time нужен только для визуальной читаемости LinearGauge.
+    /// </summary>
+    private const double TotalTimeGaugeMinorStep = 50;
+
+    /// <summary>
+    /// Верхняя WPF-панель TimeWork: два read-only значения и кнопка подтверждения сигнала.
+    /// Единицы измерения выводятся прямо в поле ввода, как в VGA_EL Settings.
+    /// </summary>
+    private static readonly MotorTimeWorkRow[] InfoRows =
+    [
+        new("Time before switching", "TimeHmi", "h", MotorTimeWorkRowKind.Value, IsWritable: false),
+        new("Total time of the mechanism", "TimeWork", "h", MotorTimeWorkRowKind.Value, IsWritable: false),
+        new("Confirmation of the operating time signal", "TimeWorkAlarmWAck", null, MotorTimeWorkRowKind.Action, IsWritable: true, ActionText: "Ack")
+    ];
+
+    /// <summary>
+    /// Нижняя WPF-панель Settings: editable уставки TimeSet/TimeWarn и кнопка сброса счетчика.
+    /// </summary>
+    private static readonly MotorTimeWorkRow[] SettingsRows =
+    [
+        new("Setting the time before switching", "TimeSet", "h", MotorTimeWorkRowKind.Value, IsWritable: true),
+        new("Time of message issuance", "TimeWarn", "h", MotorTimeWorkRowKind.Value, IsWritable: true),
+        new("Reset the operating time counter", "TimeReset", null, MotorTimeWorkRowKind.Action, IsWritable: true, ActionText: "Reset")
+    ];
+
+    /// <summary>
+    /// Ищет Param item по имени EquipItem без учета регистра.
+    /// </summary>
+    private ParamItemDto? FindItem(string itemName)
+    {
+        return Items?.FirstOrDefault(item => item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Возвращает CSS-класс строки. Для TimeHmi используем расширенную gauge-разметку,
+    /// потому что LinearGauge занимает больше горизонтального места, чем обычное FormField.
+    /// </summary>
+    private static string GetRowClass(MotorTimeWorkRow row)
+    {
+        return row.ItemName.Equals("TimeHmi", StringComparison.OrdinalIgnoreCase)
+            || row.ItemName.Equals("TimeWork", StringComparison.OrdinalIgnoreCase)
+            ? "motor-timework-row motor-timework-row-gauge"
+            : "motor-timework-row";
+    }
+
+    /// <summary>
+    /// Открывает общий write-dialog для writable числового поля.
+    /// Read-only строки TimeHmi/TimeWork остаются некликабельными.
+    /// </summary>
+    private async Task RequestWriteAsync(ParamItemDto? item, bool isWritable)
+    {
+        if (!isWritable || item is null || !item.CanWrite)
+            return;
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Открывает boolean write-dialog для action-кнопки с уже выбранным значением true.
+    /// Это повторяет WPF-логику pulse-кнопок на уровне текущего универсального WEB write-flow.
+    /// </summary>
+    private async Task RequestActionWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite || GetBooleanValue(item))
+            return;
+
+        var request = new ParamWriteDialogRequest
+        {
+            Item = item,
+            InitialBooleanValue = true
+        };
+
+        if (OnBooleanWriteRequested.HasDelegate)
+        {
+            await OnBooleanWriteRequested.InvokeAsync(request);
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Формирует CSS-класс контейнера FormField с учетом writable/read-only состояния строки.
+    /// </summary>
+    private static string GetFieldShellClass(ParamItemDto? item, bool isWritable)
+    {
+        return item?.CanWrite == true && isWritable
+            ? "motor-timework-field-shell is-writable"
+            : "motor-timework-field-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Tooltip подсказывает оператору, можно ли открыть write-dialog для конкретной строки.
+    /// </summary>
+    private static string GetFieldTitle(ParamItemDto? item, bool isWritable)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        return item.CanWrite && isWritable ? "Write value" : "Read only";
+    }
+
+    /// <summary>
+    /// Для pulse-кнопок показывает Done, когда snapshot уже сообщает активное boolean-состояние.
+    /// </summary>
+    private static string GetActionText(ParamItemDto? item, string? actionText)
+    {
+        if (item is not null && GetBooleanValue(item))
+            return "Done";
+
+        return string.IsNullOrWhiteSpace(actionText) ? "Write" : actionText;
+    }
+
+    /// <summary>
+    /// Action-кнопка недоступна, если item отсутствует, read-only или уже находится в состоянии Done.
+    /// </summary>
+    private static bool IsActionDisabled(ParamItemDto? item)
+    {
+        return item is null || !item.CanWrite || GetBooleanValue(item);
+    }
+
+    /// <summary>
+    /// Максимум шкалы Time before switching берется из TimeSet.
+    /// Если уставка еще не пришла или равна нулю, подставляем 1, чтобы RadzenLinearGauge имел валидный диапазон.
+    /// </summary>
+    private double GetTimeBeforeSwitchingGaugeMax()
+    {
+        var timeSet = GetNumericValue("TimeSet");
+        return timeSet > 0 ? RoundGaugeValue(timeSet) : 1;
+    }
+
+    /// <summary>
+    /// Указатель LinearGauge должен двигаться слева направо.
+    /// Поэтому вместо оставшегося времени TimeHmi на шкалу подается TimeSet - TimeHmi.
+    /// </summary>
+    private double GetTimeBeforeSwitchingGaugeValue()
+    {
+        var max = GetTimeBeforeSwitchingGaugeMax();
+        var timeHmi = GetNumericValue("TimeHmi");
+        return RoundGaugeValue(Math.Clamp(max - timeHmi, 0, max));
+    }
+
+    /// <summary>
+    /// Конец зеленой зоны: первые 70% времени до предельной уставки TimeSet.
+    /// Последние 30% выделяются предупреждающими зонами.
+    /// </summary>
+    private double GetTimeBeforeSwitchingGaugeGreenTo()
+    {
+        return RoundGaugeValue(GetTimeBeforeSwitchingGaugeMax() * 0.7);
+    }
+
+    /// <summary>
+    /// Конец желтой зоны: участок 70-90% шкалы.
+    /// Последние 10% до TimeSet подсвечиваются красным.
+    /// </summary>
+    private double GetTimeBeforeSwitchingGaugeYellowTo()
+    {
+        return RoundGaugeValue(GetTimeBeforeSwitchingGaugeMax() * 0.9);
+    }
+
+    /// <summary>
+    /// Основной шаг шкалы делим примерно на пять крупных делений, как в Radzen-примере.
+    /// </summary>
+    private double GetTimeBeforeSwitchingGaugeStep()
+    {
+        return RoundGaugeValue(Math.Max(GetTimeBeforeSwitchingGaugeMax() / 5, 1));
+    }
+
+    /// <summary>
+    /// MinorStep делает gauge более читаемым для малых диапазонов, но не дает уйти в слишком мелкую сетку.
+    /// </summary>
+    private double GetTimeBeforeSwitchingGaugeMinorStep()
+    {
+        return RoundGaugeValue(Math.Max(GetTimeBeforeSwitchingGaugeStep() / 4, 0.25));
+    }
+
+    /// <summary>
+    /// В подписи указателя показываем именно TimeHmi, потому что это привычное текущее значение
+    /// строки Time before switching, даже если позиция на шкале считается как TimeSet - TimeHmi.
+    /// </summary>
+    private string FormatTimeBeforeSwitchingDisplay()
+    {
+        return FormatGaugeValue(GetNumericValue("TimeHmi"));
+    }
+
+    /// <summary>
+    /// Текущее значение общего времени работы для LinearGauge.
+    /// Значение ограничивается диапазоном 0..1000, чтобы ошибочные или слишком большие данные не ломали шкалу.
+    /// </summary>
+    private double GetTotalTimeGaugeValue()
+    {
+        return RoundGaugeValue(Math.Clamp(GetNumericValue("TimeWork"), 0, TotalTimeGaugeMax));
+    }
+
+    /// <summary>
+    /// Подпись указателя Total time показывает исходное значение TimeWork в часах.
+    /// </summary>
+    private string FormatTotalTimeDisplay()
+    {
+        return FormatGaugeValue(GetNumericValue("TimeWork"));
+    }
+
+    /// <summary>
+    /// Округляет расчетные значения gauge до одного знака, чтобы Radzen не показывал хвосты double
+    /// вроде 35.400000000000006 на делениях шкалы.
+    /// </summary>
+    private static double RoundGaugeValue(double value)
+    {
+        return Math.Round(value, 1, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>
+    /// Форматирует число gauge максимум с одним знаком после запятой.
+    /// </summary>
+    private static string FormatGaugeValue(double value)
+    {
+        return RoundGaugeValue(value).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Читает числовой Param item из NumericValue или строкового ValueText.
+    /// </summary>
+    private double GetNumericValue(string itemName)
+    {
+        var item = FindItem(itemName);
+        if (item is null)
+            return 0;
+
+        if (item.NumericValue.HasValue)
+            return item.NumericValue.Value;
+
+        return double.TryParse(item.ValueText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var invariant)
+            ? invariant
+            : double.TryParse(item.ValueText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out var current)
+                ? current
+                : 0;
+    }
+
+    /// <summary>
+    /// Форматирует значение для read-only поля панели.
+    /// TimeWarn визуально показываем как время выдачи сообщения в формате HH:00,
+    /// но в write-dialog передаем исходный ParamItemDto, поэтому оператор по-прежнему вводит только часы.
+    /// </summary>
+    private static string FormatDisplayValue(ParamItemDto? item, MotorTimeWorkRow row)
+    {
+        return row.ItemName.Equals("TimeWarn", StringComparison.OrdinalIgnoreCase)
+            ? FormatHoursAsTime(item)
+            : FormatValueWithUnit(item, row.Unit);
+    }
+
+    /// <summary>
+    /// Преобразует числовое значение часов в короткое отображение времени, например 11 -> 11:00.
+    /// Дробные значения оставляем с минутами, чтобы 1.5 отображалось как 01:30, если такие данные появятся из Citect.
+    /// </summary>
+    private static string FormatHoursAsTime(ParamItemDto? item)
+    {
+        if (item is null)
+            return "-";
+
+        double hours;
+        if (item.NumericValue.HasValue)
+        {
+            hours = item.NumericValue.Value;
+        }
+        else if (!double.TryParse(
+                item.ValueText?.Replace(',', '.'),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out hours))
+        {
+            return "-";
+        }
+
+        var totalMinutes = (int)Math.Round(hours * 60, MidpointRounding.AwayFromZero);
+        var displayHours = totalMinutes / 60;
+        var displayMinutes = Math.Abs(totalMinutes % 60);
+
+        return $"{displayHours:00}:{displayMinutes:00}";
+    }
+
+    /// <summary>
+    /// Форматирует значение и добавляет единицу измерения внутрь поля ввода.
+    /// </summary>
+    private static string FormatValueWithUnit(ParamItemDto? item, string? unit)
+    {
+        var value = FormatValue(item);
+        return string.IsNullOrWhiteSpace(unit) || value == "-"
+            ? value
+            : $"{value} {unit}";
+    }
+
+    /// <summary>
+    /// Форматирует Param item так же, как общая таблица Param: bool -> on/off, пустое значение -> "-".
+    /// </summary>
+    private static string FormatValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return "-";
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(item.ValueText) ? "-" : item.ValueText;
+    }
+
+    /// <summary>
+    /// Нормализует boolean из bool, numeric и строковых форматов CtApi.
+    /// </summary>
+    private static bool GetBooleanValue(ParamItemDto item)
+    {
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Тип строки TimeWork: обычное поле значения или action-кнопка.
+    /// </summary>
+    private enum MotorTimeWorkRowKind
+    {
+        Value,
+        Action
+    }
+
+    /// <summary>
+    /// Описание одной строки WPF-like TimeWork/Settings панели.
+    /// </summary>
+    private sealed record MotorTimeWorkRow(
+        string Label,
+        string ItemName,
+        string? Unit,
+        MotorTimeWorkRowKind Kind,
+        bool IsWritable,
+        string? ActionText = null);
+}

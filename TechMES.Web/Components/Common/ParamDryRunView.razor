@@ -1,3 +1,4 @@
+@using TechMES.Contracts.Equipment
 @using TechMES.Contracts.Param
 
 @if (Response is null)
@@ -14,100 +15,256 @@ else if (!Response.Supported)
 }
 else
 {
-    <div class="param-dryrun-layout">
-        <section class="param-ref-card">
-            <div class="param-ref-card-header">
-                <span>DryRun settings</span>
-                @if (!string.IsNullOrWhiteSpace(Response.DryRunEquipmentName))
-                {
-                    <RadzenButton Text="@Response.DryRunEquipmentName"
-                                  ButtonStyle="ButtonStyle.Light"
-                                  Size="ButtonSize.Small"
-                                  class="param-ref-link"
-                                  Click="@(() => SelectEquipmentAsync(Response.DryRunEquipmentName!))" />
-                }
-            </div>
-
-            <ParamItemsTable Items="@Response.DryRunEquipment?.Items" />
-        </section>
-
-        <section class="param-ref-card">
-            <div class="param-ref-card-header">
-                <span>DryRun DI</span>
-            </div>
-
-            @if (Response.LinkedDi is null)
-            {
-                <div class="param-ref-empty">No linked DI.</div>
-            }
-            else
-            {
-                <button type="button"
-                        class="param-linked-row"
-                        @onclick="() => SelectEquipmentAsync(Response.LinkedDi.EquipmentName)">
-                    <EquipmentTypeBadge TypeGroup="@Response.LinkedDi.TypeGroup" />
-                    <div class="param-linked-title">
-                        <strong>@Response.LinkedDi.EquipmentName</strong>
-                        <span>@DisplayValue(Response.LinkedDi.Description)</span>
-                    </div>
-                    <span class="@GetDiValueClass(Response.LinkedDi)">@FormatDiValue(Response.LinkedDi)</span>
-                </button>
-
-                <div class="param-linked-meta">
-                    Channel: @DisplayValue(Response.LinkedDi.ChanelShort)
-                    @if (Response.LinkedDi.ForceCmd)
-                    {
-                        <span class="param-ref-forced-on">Forced</span>
-                    }
-                </div>
-            }
-        </section>
-
-        <section class="param-ref-card param-ref-card-wide">
-            <div class="param-ref-card-header">
-                <span>DryRun AI</span>
-                @if (Response.LinkedAi is not null)
-                {
-                    <RadzenButton Text="@Response.LinkedAi.EquipmentName"
-                                  ButtonStyle="ButtonStyle.Light"
-                                  Size="ButtonSize.Small"
-                                  class="param-ref-link"
-                                  Click="@(() => SelectEquipmentAsync(Response.LinkedAi.EquipmentName))" />
-                }
-            </div>
-
-            @if (Response.LinkedAi is null)
-            {
-                <div class="param-ref-empty">No linked AI.</div>
-            }
-            else
-            {
-                <div class="param-linked-heading">
-                    <EquipmentTypeBadge TypeGroup="@Response.LinkedAi.TypeGroup" />
-                    <div>
-                        <strong>@Response.LinkedAi.EquipmentName</strong>
-                        <span>@DisplayValue(Response.LinkedAi.Description)</span>
-                    </div>
-                </div>
-
-                <ParamItemsTable Items="@Response.LinkedAi.Items" />
-            }
-        </section>
+    <div class="param-dryrun-page">
+        @RenderDiPanel()
+        @RenderAiPanel()
+        @RenderSettingsPanel()
     </div>
 }
 
 @code {
     /// <summary>
-    /// Ответ Runtime.Service с DryRun settings и связанными DI/AI.
+    /// Ответ Runtime.Service с DryRun-настройками, связанным DI и связанным AI.
+    /// Компонент только раскладывает готовые данные по WPF-like панелям.
     /// </summary>
     [Parameter]
     public ParamDryRunResponse? Response { get; set; }
 
     /// <summary>
     /// Событие выбора связанного оборудования из DryRun карточек.
+    /// Родительская Param-панель переключает выбранный equipment в общем списке.
     /// </summary>
     [Parameter]
     public EventCallback<string> OnSelectEquipment { get; set; }
+
+    /// <summary>
+    /// Команда записи Param item-а в конкретное связанное оборудование.
+    /// DryRun-настройки лежат не обязательно на выбранном Motor, поэтому вместе с item передаем target equipment name.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamTargetWriteDialogRequest> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Строки панели Settings: две числовые паузы и boolean-разрешение dry run alarm.
+    /// </summary>
+    private static readonly DryRunSettingRow[] SettingsRows =
+    [
+        new("Pause before initialize protection", "DryRunTimeToOn", "sec", DryRunSettingKind.Number),
+        new("Pause false alarm", "DryRunTimeToOff", "sec", DryRunSettingKind.Number),
+        new("Dry run alarm status", "DryRunAEn", null, DryRunSettingKind.Boolean)
+    ];
+
+    /// <summary>
+    /// Рисует панель DI. Разметка повторяет строку DI/DO reference page: title, forced, on/off, channel, переход.
+    /// </summary>
+    private RenderFragment RenderDiPanel() => @<ParamAiPanel Title="DI" Icon="input">
+        <div class="param-dryrun-panel-body">
+            @if (Response?.LinkedDi is null)
+            {
+                <div class="param-ref-empty">No linked DI.</div>
+            }
+            else
+            {
+                @RenderDiRow(Response.LinkedDi)
+            }
+        </div>
+    </ParamAiPanel>;
+
+    /// <summary>
+    /// Рисует одну DI-строку в том же стиле, что вкладка DI/DO для VGA_EL.
+    /// </summary>
+    private RenderFragment RenderDiRow(ParamDiDoRefDto row) => @<div class="param-dryrun-dido-row">
+        <div class="param-dryrun-dido-title" title="@row.Title">
+            <span class="param-dryrun-dido-equipment">@row.EquipmentName</span>
+            @if (!string.IsNullOrWhiteSpace(row.Description))
+            {
+                <span class="param-dryrun-dido-separator">:</span>
+                <span class="param-dryrun-dido-description">@row.Description</span>
+            }
+        </div>
+
+        <span class="@GetForcedClass(row)">Forced</span>
+        <span class="@GetDiValueClass(row)">@FormatDiValue(row)</span>
+        <span class="param-dryrun-dido-channel">@DisplayValue(row.ChanelShort)</span>
+
+        <RadzenButton Icon="open_in_new"
+                      ButtonStyle="ButtonStyle.Light"
+                      Size="ButtonSize.Small"
+                      class="param-dryrun-go-button"
+                      title="Go to equipment"
+                      Click="@(() => SelectEquipmentAsync(row.EquipmentName))" />
+    </div>;
+
+    /// <summary>
+    /// Рисует AI-панель: фактическое значение связанного AI и limit stop из DryRun settings.
+    /// Вертикальные WPF-барграфы здесь заменены на Radzen LinearGauge.
+    /// </summary>
+    private RenderFragment RenderAiPanel() => @<ParamAiPanel Title="AI" Icon="monitoring">
+        <div class="param-dryrun-ai-body">
+            @if (Response?.LinkedAi is null)
+            {
+                <div class="param-ref-empty">No linked AI.</div>
+            }
+            else
+            {
+                var actualItem = FindLinkedAiItem("R");
+                var limitItem = FindDryRunItem("DryRunLimToOff");
+                var min = GetLinkedAiNumber("MinR");
+                var max = GetLinkedAiNumber("MaxR", 100);
+                var unit = GetAiUnit();
+
+                <div class="param-dryrun-ai-heading">
+                    <div class="param-dryrun-ai-title">
+                        <span>@Response.LinkedAi.EquipmentName</span>
+                        <span class="param-dryrun-ai-separator">:</span>
+                        <span class="param-dryrun-ai-description">@DisplayValue(Response.LinkedAi.Description)</span>
+                    </div>
+
+                    <div class="param-dryrun-ai-actions">
+                        <div class="param-dryrun-field-shell is-read-only param-dryrun-actual-field"
+                             title="Read only">
+                            <RadzenFormField AllowFloatingLabel="false"
+                                             Text="Actual value"
+                                             Variant="Variant.Outlined"
+                                             class="param-dryrun-form-field">
+                                <RadzenTextBox Value="@FormatValueWithUnit(actualItem, unit)"
+                                               ReadOnly="true"
+                                               Disabled="@(actualItem is null)"
+                                               class="param-dryrun-field-value" />
+                            </RadzenFormField>
+                        </div>
+
+                        <RadzenButton Icon="open_in_new"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Size="ButtonSize.Small"
+                                      class="param-dryrun-go-button"
+                                      title="Go to equipment"
+                                      Click="@(() => SelectEquipmentAsync(Response.LinkedAi.EquipmentName))" />
+                    </div>
+                </div>
+
+                @RenderRadialGauge(actualItem, limitItem, unit, min, max)
+                @RenderLimitRow(limitItem, unit)
+            }
+        </div>
+    </ParamAiPanel>;
+
+    /// <summary>
+    /// Рисует круглую шкалу DryRun AI: красная зона до limit stop, зеленая зона после limit stop.
+    /// Pointer показывает фактическое значение связанного AI.
+    /// </summary>
+    private RenderFragment RenderRadialGauge(
+        ParamItemDto? actualItem,
+        ParamItemDto? limitItem,
+        string? unit,
+        double min,
+        double max) => @<div class="param-dryrun-radial-row">
+        <RadzenRadialGauge Style="width: 100%; height: 300px;">
+            <RadzenRadialGaugeScale StartAngle="-150"
+                                    EndAngle="150"
+                                    Step="@GetGaugeStep(min, max)"
+                                    Min="@min"
+                                    Max="@max"
+                                    MinorStep="@GetGaugeMinorStep(min, max)"
+                                    FormatString="{0:0.#}"
+                                    TickPosition="GaugeTickPosition.Inside">
+                <RadzenRadialGaugeScalePointer Value="@ClampGaugeValue(actualItem, min, max)"
+                                               Length="0.6"
+                                               ShowValue="true"
+                                               Fill="var(--rz-primary)">
+                    <Template Context="pointer">
+                        <RadzenStack AlignItems="AlignItems.Center" Gap="0" class="rz-mt-4">
+                            <RadzenText TextStyle="TextStyle.H5" class="rz-m-0">
+                                <strong>@FormatNumber(GetNumericValue(actualItem))</strong>
+                            </RadzenText>
+                            @if (!string.IsNullOrWhiteSpace(unit))
+                            {
+                                <RadzenText TextStyle="TextStyle.Caption">@unit</RadzenText>
+                            }
+                        </RadzenStack>
+                    </Template>
+                </RadzenRadialGaugeScalePointer>
+                <RadzenRadialGaugeScaleRange From="@min"
+                                             To="@ClampGaugeValue(limitItem, min, max)"
+                                             Fill="var(--rz-danger)"
+                                             StrokeWidth="8" />
+                <RadzenRadialGaugeScaleRange From="@ClampGaugeValue(limitItem, min, max)"
+                                             To="@max"
+                                             Fill="var(--rz-success)"
+                                             StrokeWidth="8" />
+            </RadzenRadialGaugeScale>
+        </RadzenRadialGauge>
+    </div>;
+
+    /// <summary>
+    /// Рисует отдельную строку редактирования Limit value for stop под круглой шкалой.
+    /// </summary>
+    private RenderFragment RenderLimitRow(ParamItemDto? limitItem, string? unit) => @<div class="param-dryrun-limit-row">
+        <span class="param-dryrun-setting-label">Limit value for stop</span>
+        <div class="@GetGaugeFieldShellClass(limitItem, true)"
+             title="@GetFieldTitle(limitItem, true)"
+             @onclick="@(() => RequestWriteAsync(limitItem, true))">
+            <RadzenFormField AllowFloatingLabel="false"
+                             Text="Limit value for stop"
+                             Variant="Variant.Outlined"
+                             class="param-dryrun-form-field">
+                <RadzenTextBox Value="@FormatValueWithUnit(limitItem, unit)"
+                               ReadOnly="true"
+                               Disabled="@(limitItem is null)"
+                               class="param-dryrun-field-value" />
+            </RadzenFormField>
+        </div>
+    </div>;
+
+    /// <summary>
+    /// Рисует Settings-панель: две числовые строки через FormField и одну boolean-строку через RadzenSwitch.
+    /// </summary>
+    private RenderFragment RenderSettingsPanel() => @<ParamAiPanel Title="Settings" Icon="tune">
+        <div class="param-dryrun-settings-body">
+            @foreach (var row in SettingsRows)
+            {
+                var item = FindDryRunItem(row.ItemName);
+
+                <div class="param-dryrun-setting-row">
+                    <span class="param-dryrun-setting-label">@row.Label</span>
+
+                    @if (row.Kind == DryRunSettingKind.Boolean)
+                    {
+                        <div class="@GetSwitchShellClass(item)"
+                             title="@GetFieldTitle(item, true)"
+                             @onclick="@(() => RequestSwitchWriteAsync(item))">
+                            <RadzenStack Orientation="Orientation.Horizontal"
+                                         AlignItems="AlignItems.Center"
+                                         Gap="0.5rem"
+                                         class="param-dryrun-switch-stack">
+                                <RadzenLabel Text="@GetSwitchText(item)"
+                                             Component="@row.ItemName" />
+                                <RadzenSwitch Value="@GetBooleanValue(item)"
+                                              Disabled="@(item is null)"
+                                              Name="@row.ItemName" />
+                            </RadzenStack>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="@GetSettingFieldShellClass(item)"
+                             title="@GetFieldTitle(item, true)"
+                             @onclick="@(() => RequestWriteAsync(item, true))">
+                            <RadzenFormField AllowFloatingLabel="false"
+                                             Text="@row.ItemName"
+                                             Variant="Variant.Outlined"
+                                             class="param-dryrun-form-field">
+                                <RadzenTextBox Value="@FormatValueWithUnit(item, row.Unit)"
+                                               ReadOnly="true"
+                                               Disabled="@(item is null)"
+                                               class="param-dryrun-field-value" />
+                            </RadzenFormField>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </ParamAiPanel>;
 
     /// <summary>
     /// Передает выбранное equipment name родительской Param-панели.
@@ -120,30 +277,293 @@ else
     }
 
     /// <summary>
-    /// Форматирует значение связанного DI.
+    /// Открывает общий write-dialog для DryRun item-а.
+    /// Target equipment берем из Response.DryRunEquipmentName, потому что настройки читаются со связанного DryRun-оборудования.
+    /// </summary>
+    private async Task RequestWriteAsync(ParamItemDto? item, bool isWritable)
+    {
+        var targetEquipmentName = GetDryRunTargetEquipmentName();
+        if (!isWritable || item is null || !IsDryRunWritableItem(item) || string.IsNullOrWhiteSpace(targetEquipmentName))
+            return;
+
+        await OnWriteRequested.InvokeAsync(new ParamTargetWriteDialogRequest
+        {
+            EquipmentName = targetEquipmentName,
+            Item = item,
+            AllowReadOnlyItemDialog = true
+        });
+    }
+
+    /// <summary>
+    /// Открывает общий write-dialog для switch-а уже с противоположным boolean-значением.
+    /// </summary>
+    private async Task RequestSwitchWriteAsync(ParamItemDto? item)
+    {
+        var targetEquipmentName = GetDryRunTargetEquipmentName();
+        if (item is null || !IsDryRunWritableItem(item) || string.IsNullOrWhiteSpace(targetEquipmentName))
+            return;
+
+        await OnWriteRequested.InvokeAsync(new ParamTargetWriteDialogRequest
+        {
+            EquipmentName = targetEquipmentName,
+            Item = item,
+            InitialBooleanValue = !GetBooleanValue(item),
+            AllowReadOnlyItemDialog = true
+        });
+    }
+
+    /// <summary>
+    /// Возвращает имя оборудования, в которое нужно писать DryRun-настройки.
+    /// Основной источник - DryRunEquipmentName, fallback нужен для старых/неполных reference ответов.
+    /// </summary>
+    private string? GetDryRunTargetEquipmentName()
+    {
+        return !string.IsNullOrWhiteSpace(Response?.DryRunEquipmentName)
+            ? Response.DryRunEquipmentName
+            : Response?.DryRunEquipment?.EquipmentName;
+    }
+
+    /// <summary>
+    /// Ищет item внутри snapshot связанного DryRun-оборудования.
+    /// </summary>
+    private ParamItemDto? FindDryRunItem(string itemName)
+    {
+        return Response?.DryRunEquipment?.Items.FirstOrDefault(item =>
+            item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ищет item внутри snapshot связанного AI-оборудования.
+    /// </summary>
+    private ParamItemDto? FindLinkedAiItem(string itemName)
+    {
+        return Response?.LinkedAi?.Items.FirstOrDefault(item =>
+            item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Читает числовое значение связанного AI item-а с fallback.
+    /// </summary>
+    private double GetLinkedAiNumber(string itemName, double fallback = 0)
+    {
+        var item = FindLinkedAiItem(itemName);
+        return item is null ? fallback : GetNumericValue(item, fallback);
+    }
+
+    /// <summary>
+    /// Возвращает единицу измерения AI: сначала из item R, затем из LinkedAi.Unit.
+    /// </summary>
+    private string? GetAiUnit()
+    {
+        return FindLinkedAiItem("R")?.Unit ?? Response?.LinkedAi?.Unit;
+    }
+
+    /// <summary>
+    /// Форматирует DI value в компактный on/off или исходный текст, если значение не boolean.
     /// </summary>
     private static string FormatDiValue(ParamDiDoRefDto row)
     {
         if (row.BooleanValue.HasValue)
             return row.BooleanValue.Value ? "on" : "off";
 
-        return string.IsNullOrWhiteSpace(row.ValueText)
-            ? "-"
-            : row.ValueText;
+        return string.IsNullOrWhiteSpace(row.ValueText) ? "-" : row.ValueText;
     }
 
     /// <summary>
-    /// CSS-класс для значения связанного DI.
+    /// CSS-класс read-only прямоугольника DI value.
     /// </summary>
     private static string GetDiValueClass(ParamDiDoRefDto row)
     {
         if (row.BooleanValue == true)
-            return "param-ref-value-on";
+            return "param-dryrun-dido-value is-on";
 
         if (row.BooleanValue == false)
-            return "param-ref-value-off";
+            return "param-dryrun-dido-value is-off";
 
-        return "";
+        return "param-dryrun-dido-value";
+    }
+
+    /// <summary>
+    /// CSS-класс forced-индикатора. Невидимый вариант сохраняет ширину колонки, чтобы строка не прыгала.
+    /// </summary>
+    private static string GetForcedClass(ParamDiDoRefDto row)
+    {
+        return row.ForceCmd || row.ValueForced
+            ? "param-dryrun-dido-forced is-active"
+            : "param-dryrun-dido-forced";
+    }
+
+    /// <summary>
+    /// CSS-класс числового поля Settings.
+    /// </summary>
+    private static string GetSettingFieldShellClass(ParamItemDto? item)
+    {
+        return IsDryRunWritableItem(item)
+            ? "param-dryrun-field-shell is-writable"
+            : "param-dryrun-field-shell is-read-only";
+    }
+
+    /// <summary>
+    /// CSS-класс поля gauge: writable limit выглядит кликабельным, actual остается read-only.
+    /// </summary>
+    private static string GetGaugeFieldShellClass(ParamItemDto? item, bool isWritable)
+    {
+        return isWritable && IsDryRunWritableItem(item)
+            ? "param-dryrun-field-shell is-writable"
+            : "param-dryrun-field-shell is-read-only";
+    }
+
+    /// <summary>
+    /// CSS-класс switch-контейнера Settings.
+    /// </summary>
+    private static string GetSwitchShellClass(ParamItemDto? item)
+    {
+        return IsDryRunWritableItem(item)
+            ? "param-dryrun-switch-shell is-writable"
+            : "param-dryrun-switch-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Tooltip помогает отличать writable поле от отсутствующего или read-only item-а.
+    /// </summary>
+    private static string GetFieldTitle(ParamItemDto? item, bool isWritable)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        return IsDryRunWritableItem(item) && isWritable ? "Write value" : "Read only";
+    }
+
+    /// <summary>
+    /// DryRun-поля лежат на связанном оборудовании и иногда приходят без CanWrite.
+    /// Поэтому кликабельность на фронте задаем по явному allow-list, а backend повторно проверяет запись.
+    /// </summary>
+    private static bool IsDryRunWritableItem(ParamItemDto? item)
+    {
+        return item is not null
+            && (item.CanWrite
+                || item.Name.Equals("DryRunLimToOff", StringComparison.OrdinalIgnoreCase)
+                || item.Name.Equals("DryRunTimeToOn", StringComparison.OrdinalIgnoreCase)
+                || item.Name.Equals("DryRunTimeToOff", StringComparison.OrdinalIgnoreCase)
+                || item.Name.Equals("DryRunAEn", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Текст рядом со switch: on/off вместо WPF Disabled.
+    /// </summary>
+    private static string GetSwitchText(ParamItemDto? item)
+    {
+        return GetBooleanValue(item) ? "on" : "off";
+    }
+
+    /// <summary>
+    /// Возвращает boolean из bool, numeric или строкового значения.
+    /// </summary>
+    private static bool GetBooleanValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return false;
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Читает numeric value из ParamItemDto.
+    /// </summary>
+    private static double GetNumericValue(ParamItemDto? item, double fallback = 0)
+    {
+        if (item is null)
+            return fallback;
+
+        if (item.NumericValue.HasValue)
+            return item.NumericValue.Value;
+
+        return double.TryParse(
+            item.ValueText?.Replace(',', '.'),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var value)
+            ? value
+            : fallback;
+    }
+
+    /// <summary>
+    /// Ограничивает значение gauge рабочим диапазоном шкалы.
+    /// </summary>
+    private static double ClampGaugeValue(ParamItemDto? item, double min, double max)
+    {
+        if (max <= min)
+            return min;
+
+        return Math.Clamp(GetNumericValue(item, min), min, max);
+    }
+
+    /// <summary>
+    /// Основной шаг шкалы LinearGauge делит диапазон примерно на четыре части.
+    /// </summary>
+    private static double GetGaugeStep(double min, double max)
+    {
+        return RoundGaugeValue(Math.Max((max - min) / 4, 1));
+    }
+
+    /// <summary>
+    /// MinorStep делает шкалу мягче, но без слишком мелких делений.
+    /// </summary>
+    private static double GetGaugeMinorStep(double min, double max)
+    {
+        return RoundGaugeValue(Math.Max(GetGaugeStep(min, max) / 4, 0.25));
+    }
+
+    /// <summary>
+    /// Форматирует значение и добавляет единицу измерения внутрь поля ввода.
+    /// </summary>
+    private static string FormatValueWithUnit(ParamItemDto? item, string? unit)
+    {
+        var value = FormatItemValue(item);
+        return string.IsNullOrWhiteSpace(unit) || value == "-"
+            ? value
+            : $"{value} {unit}";
+    }
+
+    /// <summary>
+    /// Форматирует Param item так же, как остальные Param-панели.
+    /// </summary>
+    private static string FormatItemValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return "-";
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value ? "on" : "off";
+
+        return string.IsNullOrWhiteSpace(item.ValueText) ? "-" : item.ValueText;
+    }
+
+    /// <summary>
+    /// Округляет расчетные значения gauge до одного знака.
+    /// </summary>
+    private static double RoundGaugeValue(double value)
+    {
+        return Math.Round(value, 1, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>
+    /// Форматирует число без лишних хвостов double.
+    /// </summary>
+    private static string FormatNumber(double value)
+    {
+        return RoundGaugeValue(value).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -153,4 +573,22 @@ else
     {
         return string.IsNullOrWhiteSpace(value) ? "-" : value;
     }
+
+    /// <summary>
+    /// Вид строки Settings.
+    /// </summary>
+    private enum DryRunSettingKind
+    {
+        Number,
+        Boolean
+    }
+
+    /// <summary>
+    /// Описание одной строки Settings-панели.
+    /// </summary>
+    private sealed record DryRunSettingRow(
+        string Label,
+        string ItemName,
+        string? Unit,
+        DryRunSettingKind Kind);
 }

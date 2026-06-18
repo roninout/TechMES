@@ -1,35 +1,262 @@
-::deep .param-refs-grid {
+.param-plc-panel-body {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    min-height: 220px;
+    min-width: 0;
+    padding: 24px 28px;
+}
+
+.param-plc-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px 48px;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    min-height: 42px;
+}
+
+.param-plc-title {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--rz-text-color);
+    font-size: 14px;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+
+.param-plc-equipment {
+    flex: 0 0 auto;
+}
+
+.param-plc-separator {
+    flex: 0 0 auto;
+    margin-inline: 2px;
+}
+
+.param-plc-comment {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.param-plc-value-cell {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.param-plc-extra-cell {
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+}
+
+.param-plc-extra-empty {
+    display: inline-block;
+    width: 32px;
+    height: 1px;
+}
+
+.param-plc-unit {
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.param-plc-switch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 92px;
+    color: var(--rz-text-color);
+    font-size: 13px;
+}
+
+.param-plc-switch.is-writable {
+    cursor: pointer;
+}
+
+.param-plc-switch ::deep .rz-switch {
+    pointer-events: none;
+}
+
+.param-plc-number-wrapper {
+    width: 130px;
+}
+
+.param-plc-number-wrapper.is-writable {
+    cursor: pointer;
+}
+
+::deep .param-plc-number-field {
+    width: 130px;
+}
+
+::deep .param-plc-number {
     width: 100%;
 }
 
-::deep .param-ref-link {
-    height: 24px;
-    min-height: 24px;
+::deep .param-plc-number .rz-inputtext {
+    text-align: right;
+}
+
+::deep .param-plc-number {
+    text-align: right;
+}
+
+::deep .param-plc-button {
+    width: 96px;
+    min-width: 96px;
+    height: 34px;
+    font-weight: 700;
+}
+
+.param-plc-digital {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.param-plc-forced {
+    color: #f28c00;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    visibility: hidden;
+}
+
+.param-plc-forced.is-active {
+    animation: param-plc-forced-blink 900ms ease-in-out infinite alternate;
+    visibility: visible;
+}
+
+.param-plc-digital-value,
+.param-plc-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    min-height: 28px;
+    border: 1px solid var(--rz-text-color);
+    border-radius: 2px;
+    background: var(--rz-base-300);
+    color: var(--rz-text-color);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+}
+
+.param-plc-digital-value {
+    cursor: default;
+}
+
+.param-plc-digital-value.is-on,
+.param-plc-status.is-on {
+    background: #8ee58f;
+    color: #063d0c;
+}
+
+.param-plc-digital-value.is-off,
+.param-plc-status.is-off,
+.param-plc-status.is-transition {
+    background: var(--rz-base-300);
+    color: var(--rz-text-color);
+}
+
+.param-plc-status.is-running {
+    background: #d6ffd6;
+    color: #063d0c;
+    border-color: #07851b;
+    animation: param-plc-status-blink 900ms ease-in-out infinite alternate;
+}
+
+.param-plc-status.is-alarm {
+    background: #ffd0d0;
+    color: #7a0000;
+    border-color: #b00000;
+    animation: param-plc-status-blink 900ms ease-in-out infinite alternate;
+}
+
+.param-plc-unknown {
+    color: var(--rz-text-secondary-color);
+}
+
+.param-plc-empty {
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
+    padding: 8px 0;
+}
+
+::deep .param-plc-go-button {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
     padding: 0;
     background: transparent !important;
     border-color: transparent !important;
     box-shadow: none !important;
-    color: var(--rz-primary) !important;
-    font-weight: 600;
 }
 
-.param-ref-comment {
-    color: #777;
-    font-size: 12px;
-    line-height: 1.25;
-    margin-top: 2px;
+::deep .param-plc-go-button:hover {
+    background: var(--rz-base-200) !important;
+    border-color: transparent !important;
 }
 
-.param-ref-value-on {
-    color: #178a3d;
-    font-weight: 600;
+::deep .param-plc-go-button .rz-button-icon-left {
+    margin: 0;
+    color: var(--rz-text-color);
+    font-size: 20px;
 }
 
-.param-ref-value-off {
-    color: #777;
+@media (max-width: 760px) {
+    .param-plc-panel-body {
+        padding: 18px 14px;
+    }
+
+    .param-plc-row {
+        grid-template-columns: minmax(0, 1fr) 124px 36px;
+        gap: 6px;
+    }
+
+    .param-plc-number-wrapper,
+    ::deep .param-plc-number-field {
+        width: 112px;
+    }
+
+    .param-plc-switch {
+        gap: 5px;
+        min-width: 86px;
+    }
+
+    ::deep .param-plc-button {
+        width: 82px;
+        min-width: 82px;
+    }
 }
 
-.param-ref-forced-on {
-    color: #c47b00;
-    font-weight: 600;
+@keyframes param-plc-forced-blink {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0.25;
+    }
+}
+
+@keyframes param-plc-status-blink {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0.55;
+    }
 }

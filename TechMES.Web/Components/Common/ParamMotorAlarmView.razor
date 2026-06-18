@@ -1,0 +1,135 @@
+@using TechMES.Contracts.Param
+
+<ParamAiPanel Title="Alarm settings" Icon="notifications_active">
+    <div class="motor-alarm-body">
+        @{
+            var alarmItem = FindItem("AlarmAEn");
+        }
+
+        <div class="motor-alarm-row">
+            <div class="@GetSwitchShellClass(alarmItem)"
+                 title="@GetFieldTitle(alarmItem)"
+                 @onclick="@(() => RequestSwitchWriteAsync(alarmItem))">
+                <RadzenStack Orientation="Orientation.Horizontal"
+                             AlignItems="AlignItems.Center"
+                             Gap="0.5rem"
+                             class="motor-alarm-switch-stack">
+                    <RadzenLabel Text="@GetSwitchText(alarmItem)"
+                                 Component="AlarmAEn" />
+                    <RadzenSwitch Value="@GetSwitchValue(alarmItem)"
+                                  Disabled="@(alarmItem is null)"
+                                  Name="AlarmAEn" />
+                </RadzenStack>
+            </div>
+
+            <span class="motor-alarm-description">Alarm message signaling status</span>
+        </div>
+    </div>
+</ParamAiPanel>
+
+@code {
+    /// <summary>
+    /// Полный snapshot Param item-ов выбранного Motor.
+    /// Вкладка Alarm берет из него только AlarmAEn, но принимает весь список ради единого контракта
+    /// с остальными специализированными Param-вкладками.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<ParamItemDto>? Items { get; set; }
+
+    /// <summary>
+    /// Общая команда записи Param item-а. Для switch-строки обычно используется boolean-flow ниже,
+    /// но callback оставлен для совместимости с родительской EquipmentParamPanel.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamItemDto> OnWriteRequested { get; set; }
+
+    /// <summary>
+    /// Команда записи boolean item-а с уже выбранным новым состоянием.
+    /// Нужна, чтобы клик по switch открывал write-dialog сразу с противоположным значением.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ParamWriteDialogRequest> OnBooleanWriteRequested { get; set; }
+
+    /// <summary>
+    /// Ищет Param item по имени EquipItem без учета регистра.
+    /// </summary>
+    private ParamItemDto? FindItem(string itemName)
+    {
+        return Items?.FirstOrDefault(item => item.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Открывает write-dialog для switch-а с инверсией текущего boolean-состояния.
+    /// Сам RadzenSwitch не меняет модель напрямую: запись выполняется только после подтверждения Write.
+    /// </summary>
+    private async Task RequestSwitchWriteAsync(ParamItemDto? item)
+    {
+        if (item is null || !item.CanWrite)
+            return;
+
+        var request = new ParamWriteDialogRequest
+        {
+            Item = item,
+            InitialBooleanValue = !GetSwitchValue(item)
+        };
+
+        if (OnBooleanWriteRequested.HasDelegate)
+        {
+            await OnBooleanWriteRequested.InvokeAsync(request);
+            return;
+        }
+
+        await OnWriteRequested.InvokeAsync(item);
+    }
+
+    /// <summary>
+    /// Возвращает текущее boolean-состояние AlarmAEn с учетом bool, numeric и строковых форматов CtApi.
+    /// </summary>
+    private static bool GetSwitchValue(ParamItemDto? item)
+    {
+        if (item is null)
+            return false;
+
+        if (item.BooleanValue.HasValue)
+            return item.BooleanValue.Value;
+
+        if (item.NumericValue.HasValue)
+            return Math.Abs(item.NumericValue.Value) > double.Epsilon;
+
+        var text = item.ValueText?.Trim();
+        return text is not null
+            && (text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Текст рядом со switch показывает фактическое on/off-состояние.
+    /// </summary>
+    private static string GetSwitchText(ParamItemDto? item)
+    {
+        return GetSwitchValue(item) ? "on" : "off";
+    }
+
+    /// <summary>
+    /// CSS-класс контейнера switch с учетом доступности записи.
+    /// </summary>
+    private static string GetSwitchShellClass(ParamItemDto? item)
+    {
+        return item?.CanWrite == true
+            ? "motor-alarm-switch-shell is-writable"
+            : "motor-alarm-switch-shell is-read-only";
+    }
+
+    /// <summary>
+    /// Tooltip подсказывает оператору, можно ли открыть write-dialog для AlarmAEn.
+    /// </summary>
+    private static string GetFieldTitle(ParamItemDto? item)
+    {
+        if (item is null)
+            return "Param item is not available";
+
+        return item.CanWrite ? "Write value" : "Read only";
+    }
+}
