@@ -377,6 +377,7 @@
     {
         NavigationManager.LocationChanged += OnLocationChanged;
         QrScannerState.Scanned += SelectEquipmentFromQrAsync;
+        RememberEquipmentMode(NavigationManager.Uri);
         await LoadAsync();
     }
 
@@ -385,6 +386,7 @@
     /// </summary>
     private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
     {
+        RememberEquipmentMode(args.Location);
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -405,7 +407,39 @@
             ? "/equipment/param"
             : "/equipment";
 
+        SelectedEquipmentState.SetEquipmentMode(string.Equals(mode, ParamModeValue, StringComparison.OrdinalIgnoreCase));
         NavigationManager.NavigateTo(targetRoute);
+    }
+
+    /// <summary>
+    /// Запоминает последний Info/Param route только когда пользователь действительно находится
+    /// внутри Equipment-модуля. При уходе в журналы режим не перезаписывается.
+    /// </summary>
+    private void RememberEquipmentMode(string absoluteUri)
+    {
+        var relativePath = NavigationManager.ToBaseRelativePath(absoluteUri);
+        if (!IsEquipmentRoute(relativePath))
+            return;
+
+        SelectedEquipmentState.SetEquipmentMode(IsEquipmentParamRoute(relativePath));
+    }
+
+    /// <summary>
+    /// true, если route относится к странице Equipment.
+    /// </summary>
+    private static bool IsEquipmentRoute(string relativePath)
+    {
+        return string.IsNullOrWhiteSpace(relativePath)
+            || relativePath.Equals("equipment", StringComparison.OrdinalIgnoreCase)
+            || relativePath.StartsWith("equipment/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// true, если route открывает Param-режим страницы Equipment.
+    /// </summary>
+    private static bool IsEquipmentParamRoute(string relativePath)
+    {
+        return relativePath.StartsWith("equipment/param", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -1,5 +1,7 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject QrScannerState QrScannerState
+@inject SelectedEquipmentState SelectedEquipmentState
 
 <RadzenLayout>
     <RadzenHeader class="app-header">
@@ -12,7 +14,9 @@
                 @* Верхний пункт Equipment теперь ведет в общий модуль оборудования.
                    Переключение Info/Param вынесено в локальный SelectBar на странице Equipment,
                    поэтому отдельная кнопка Param в глобальном меню больше не нужна. *@
-                <NavLink class="top-nav-link" href="/equipment" Match="NavLinkMatch.Prefix">
+                <NavLink class="top-nav-link"
+                         href="@SelectedEquipmentState.EquipmentRoute"
+                         Match="NavLinkMatch.Prefix">
                     <RadzenIcon Icon="precision_manufacturing" />
                     <span>Equipment</span>
                 </NavLink>
@@ -114,6 +118,23 @@
     private bool _isFooterVisible;
 
     /// <summary>
+    /// Подписывается на состояние Equipment, чтобы верхняя кнопка Equipment
+    /// сразу вела в последний выбранный режим: Info или Param.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        SelectedEquipmentState.Changed += OnSelectedEquipmentStateChanged;
+    }
+
+    /// <summary>
+    /// Обновляет Header после смены выбранного оборудования или режима Equipment.
+    /// </summary>
+    private void OnSelectedEquipmentStateChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
     /// Возвращает CSS-классы рабочей области с учетом состояния Footer.
     /// Когда Footer скрыт, дополнительный класс разрешает содержимому занять освободившуюся высоту окна.
     /// </summary>
@@ -150,5 +171,13 @@
     private Task OnQrScannedAsync(string qrText)
     {
         return QrScannerState.NotifyScannedAsync(qrText);
+    }
+
+    /// <summary>
+    /// Отписывается от состояния Equipment при уничтожении layout.
+    /// </summary>
+    public void Dispose()
+    {
+        SelectedEquipmentState.Changed -= OnSelectedEquipmentStateChanged;
     }
 }
