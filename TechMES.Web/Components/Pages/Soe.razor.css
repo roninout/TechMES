@@ -12,8 +12,95 @@
     gap: 8px;
     min-width: 0;
     overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.soe-toolbar-spacer {
+    flex: 1 1 auto;
+    min-width: 16px;
+}
+
+.soe-toolbar-stats {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+    margin-left: auto;
+    line-height: 1;
+}
+
+.soe-loaded-text {
+    color: var(--rz-text-secondary-color);
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
 }
 
 ::deep .soe-grid {
     min-height: 0;
+}
+
+/* WPF GridControl показывал SOE плотными строками; эти размеры держат такой же ритм в WEB. */
+::deep .soe-grid .rz-grid-table th {
+    height: 40px;
+    padding: 8px 10px;
+    vertical-align: middle;
+}
+
+::deep .soe-grid .rz-grid-table td {
+    height: 36px;
+    padding: 6px 8px;
+    vertical-align: middle;
+}
+
+::deep .soe-grid .rz-cell-data {
+    line-height: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+::deep .soe-event-cell {
+    display: block;
+    min-height: 36px;
+    margin: -6px -8px;
+    padding: 6px 8px;
+    overflow: hidden;
+    line-height: 24px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+::deep .soe-event-off {
+    background: #e0e0e0;
+}
+
+::deep .soe-event-enable {
+    background: #bbdefb;
+}
+
+::deep .soe-event-forced {
+    background: #c8f0ff;
+}
+
+::deep .soe-event-on {
+    background: #c8e6c9;
+}
+
+::deep .soe-event-warning {
+    background: #fff4b3;
+}
+
+::deep .soe-event-danger {
+    background: #ffc7c7;
+}
+
+::deep .soe-event-off,
+::deep .soe-event-enable,
+::deep .soe-event-forced,
+::deep .soe-event-on,
+::deep .soe-event-warning,
+::deep .soe-event-danger {
+    color: #1f2933;
 }

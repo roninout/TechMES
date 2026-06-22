@@ -17,14 +17,16 @@
                       Disabled="@_isLoading"
                       Click="@LoadAsync" />
 
-        <RadzenBadge Text="@($"Count: {_rows.Count}")" BadgeStyle="BadgeStyle.Light" />
+        <div class="soe-toolbar-spacer"></div>
 
-        @if (_loadedAt is not null)
-        {
-            <RadzenText Text="@($"Loaded: {_loadedAt.Value:HH:mm:ss}")"
-                        TextStyle="TextStyle.Caption"
-                        Style="color: gray;" />
-        }
+        <div class="soe-toolbar-stats">
+            <RadzenBadge Text="@($"Count: {_rows.Count}")" BadgeStyle="BadgeStyle.Light" />
+
+            @if (_loadedAt is not null)
+            {
+                <span class="soe-loaded-text">Loaded: @_loadedAt.Value.ToString("HH:mm:ss")</span>
+            }
+        </div>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(_statusText))
@@ -50,23 +52,34 @@
                     Density="Density.Compact"
                     class="soe-grid">
         <Columns>
-            <RadzenDataGridColumn TItem="SoeEventDto" Title="Time" Width="170px">
+            @* Колонки повторяют WPF SOE GridControl: Date, Time, Type, Equipment и подсвеченный Event. *@
+            <RadzenDataGridColumn TItem="SoeEventDto" Title="Date" Width="90px">
                 <Template Context="row">
-                    @row.TimeLocal.ToString("yyyy-MM-dd HH:mm:ss")
+                    @row.TimeLocal.ToString("dd.MM.yyyy")
                 </Template>
             </RadzenDataGridColumn>
 
-            <RadzenDataGridColumn TItem="SoeEventDto" Title="Type" Width="80px">
+            <RadzenDataGridColumn TItem="SoeEventDto" Title="Time" Width="90px">
+                <Template Context="row">
+                    @row.TimeLocal.ToString("HH:mm:ss")
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="SoeEventDto" Title="Type" Width="110px">
                 <Template Context="row">
                     <EquipmentTypeBadge TypeGroup="@row.TypeGroup" />
                 </Template>
             </RadzenDataGridColumn>
 
             <RadzenDataGridColumn TItem="SoeEventDto" Property="Equipment" Title="Equipment" Width="160px" />
-            <RadzenDataGridColumn TItem="SoeEventDto" Property="Event" Title="Event" />
-            <RadzenDataGridColumn TItem="SoeEventDto" Property="BitCode" Title="Code" Width="90px" />
-            <RadzenDataGridColumn TItem="SoeEventDto" Property="TrendValue" Title="Trend" Width="110px" />
-            <RadzenDataGridColumn TItem="SoeEventDto" Property="ValueQuality" Title="Quality" Width="110px" />
+
+            <RadzenDataGridColumn TItem="SoeEventDto" Title="Event">
+                <Template Context="row">
+                    <div class="@($"soe-event-cell {GetEventCellClass(row.EventKey)}")" title="@row.Event">
+                        @row.Event
+                    </div>
+                </Template>
+            </RadzenDataGridColumn>
         </Columns>
     </RadzenDataGrid>
 </div>
@@ -161,5 +174,59 @@
         {
             _isLoading = false;
         }
+    }
+
+    /// <summary>
+    /// Повторяет WPF-подсветку Event-ячейки по ключу события из SOE mapper.
+    /// </summary>
+    private static string GetEventCellClass(string? eventKey)
+    {
+        var key = (eventKey ?? "").Trim();
+        if (key.Length == 0)
+            return "";
+
+        if (key.EndsWith("_Off", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith("_Down", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith("_Man", StringComparison.OrdinalIgnoreCase))
+        {
+            return "soe-event-off";
+        }
+
+        if (key.Contains("_EN_On", StringComparison.OrdinalIgnoreCase))
+            return "soe-event-enable";
+
+        if (key.Equals("VALUE_TRUE_On", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("VALUE_FORCED_On", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("FORCE_CMD_On", StringComparison.OrdinalIgnoreCase))
+        {
+            return "soe-event-forced";
+        }
+
+        if (key.Equals("MODE_Auto", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("VALUE_On", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("CMD_On", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("MAN_On", StringComparison.OrdinalIgnoreCase))
+        {
+            return "soe-event-on";
+        }
+
+        if (key.Equals("AL_LW_Up", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("AL_HW_Up", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("AL_W_Up", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("T_WORK_AL_On", StringComparison.OrdinalIgnoreCase))
+        {
+            return "soe-event-warning";
+        }
+
+        if (key.Equals("AL_LA_Up", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("AL_HA_Up", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("AL_A_Up", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("AL_HEALTH_Up", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("AL_On", StringComparison.OrdinalIgnoreCase))
+        {
+            return "soe-event-danger";
+        }
+
+        return "";
     }
 }

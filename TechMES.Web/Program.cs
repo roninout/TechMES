@@ -29,6 +29,7 @@ builder.Services.AddRadzenComponents();
 // Настройки адреса Runtime Service берём из appsettings.json.
 builder.Services.Configure<RuntimeServiceOptions>(builder.Configuration.GetSection("RuntimeService"));
 builder.Services.Configure<ParamUiOptions>(builder.Configuration.GetSection("Param"));
+builder.Services.Configure<MessagesUiOptions>(builder.Configuration.GetSection("Messages"));
 
 // Именованный HttpClient для Runtime Service.
 // WEB не знает, где физически БД или CtApi — он вызывает Runtime Service по HTTP.

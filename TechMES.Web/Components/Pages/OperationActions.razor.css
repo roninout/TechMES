@@ -14,6 +14,41 @@
     overflow-x: auto;
 }
 
+.event-log-toolbar-spacer {
+    flex: 1 1 auto;
+    min-width: 16px;
+}
+
+.event-log-toolbar-stats {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    margin-left: auto;
+}
+
 ::deep .event-log-grid {
     min-height: 0;
+}
+
+/* WPF GridControl показывал журналы плотными однострочными строками.
+   Эти размеры удерживают одинаковую высоту заголовка и строк в WEB-таблице. */
+::deep .event-log-grid .rz-grid-table th {
+    height: 40px;
+    padding: 8px 10px;
+    vertical-align: middle;
+}
+
+::deep .event-log-grid .rz-grid-table td {
+    height: 36px;
+    padding: 6px 8px;
+    vertical-align: middle;
+}
+
+::deep .event-log-grid .rz-cell-data {
+    line-height: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }

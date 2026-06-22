@@ -1799,7 +1799,7 @@ internal static class ParamDefinitions
                 N("Value"), N("Hmi"), N("HmiTrue"), N("HmiForced"), N("SetLA"), N("SetLW"),
                 N("SetHW"), N("SetHA"), N("SetHyst"), N("R"), N("HashCode")
             ],
-            [T("R", "#2E7D32")],
+            [T("R", "#4F81BD")],
             []),
 
         [EquipmentTypeGroup.DI] = new(

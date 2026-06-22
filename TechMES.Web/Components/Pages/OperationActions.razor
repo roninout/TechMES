@@ -22,7 +22,11 @@
                       Disabled="@_isLoading"
                       Click="@LoadAsync" />
 
-        <RadzenBadge Text="@($"Count: {_rows.Count}")" BadgeStyle="BadgeStyle.Light" />
+        <div class="event-log-toolbar-spacer"></div>
+
+        <div class="event-log-toolbar-stats">
+            <RadzenBadge Text="@($"Count: {_rows.Count}")" BadgeStyle="BadgeStyle.Light" />
+        </div>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(_statusText))
@@ -48,19 +52,12 @@
                     Density="Density.Compact"
                     class="event-log-grid">
         <Columns>
-            <RadzenDataGridColumn TItem="OperatorActionDto" Title="Time" Width="170px">
-                <Template Context="row">
-                    @row.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")
-                </Template>
-            </RadzenDataGridColumn>
-
-            <RadzenDataGridColumn TItem="OperatorActionDto" Property="Type" Title="Type" Width="80px" />
-            <RadzenDataGridColumn TItem="OperatorActionDto" Property="User" Title="User" Width="130px" />
-            <RadzenDataGridColumn TItem="OperatorActionDto" Property="Client" Title="Client" Width="130px" />
-            <RadzenDataGridColumn TItem="OperatorActionDto" Property="Equip" Title="Equip" Width="150px" />
-            <RadzenDataGridColumn TItem="OperatorActionDto" Property="Tag" Title="Tag" Width="190px" />
-            <RadzenDataGridColumn TItem="OperatorActionDto" Property="Page" Title="Page" Width="160px" />
-            <RadzenDataGridColumn TItem="OperatorActionDto" Property="Comment" Title="Comment" />
+            @* Колонки повторяют WPF GridControl: показываем только операторски полезные поля,
+               а Type/Client/Tag/Page остаются в DTO, но не занимают место в таблице. *@
+            <RadzenDataGridColumn TItem="OperatorActionDto" Property="Time" Title="Time" Width="80px" />
+            <RadzenDataGridColumn TItem="OperatorActionDto" Property="User" Title="User" Width="100px" />
+            <RadzenDataGridColumn TItem="OperatorActionDto" Property="Equip" Title="Equip" Width="200px" />
+            <RadzenDataGridColumn TItem="OperatorActionDto" Property="Desc" Title="Desc" />
             <RadzenDataGridColumn TItem="OperatorActionDto" Property="OldValue" Title="Old" Width="100px" />
             <RadzenDataGridColumn TItem="OperatorActionDto" Property="NewValue" Title="New" Width="100px" />
         </Columns>

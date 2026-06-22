@@ -22,7 +22,11 @@
                       Disabled="@_isLoading"
                       Click="@LoadAsync" />
 
-        <RadzenBadge Text="@($"Count: {_rows.Count}")" BadgeStyle="BadgeStyle.Light" />
+        <div class="event-log-toolbar-spacer"></div>
+
+        <div class="event-log-toolbar-stats">
+            <RadzenBadge Text="@($"Count: {_rows.Count}")" BadgeStyle="BadgeStyle.Light" />
+        </div>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(_statusText))
@@ -48,19 +52,15 @@
                     Density="Density.Compact"
                     class="event-log-grid">
         <Columns>
-            <RadzenDataGridColumn TItem="AlarmHistoryDto" Title="Time" Width="170px">
-                <Template Context="row">
-                    @row.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")
-                </Template>
-            </RadzenDataGridColumn>
-
-            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="State" Title="State" Width="110px" />
-            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Category" Title="Category" Width="180px" />
-            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Equipment" Title="Equipment" Width="160px" />
-            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Item" Title="Item" Width="160px" />
-            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="User" Title="User" Width="150px" />
-            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Location" Title="Location" Width="160px" />
+            @* Набор и порядок колонок повторяют WPF Alarm history.
+               Location остается в DTO для будущих фильтров/деталей, но в таблице не выводится. *@
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Time" Title="Time" Width="80px" />
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Category" Title="Category" Width="120px" />
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="User" Title="User" Width="140px" />
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Equipment" Title="Equipment" Width="200px" />
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Item" Title="Item" Width="110px" />
             <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="Comment" Title="Comment" />
+            <RadzenDataGridColumn TItem="AlarmHistoryDto" Property="State" Title="State" Width="150px" />
         </Columns>
     </RadzenDataGrid>
 </div>

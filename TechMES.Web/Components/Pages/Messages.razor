@@ -1,6 +1,7 @@
 @page "/messages"
 @inject MessageApiClient MessageApi
 @inject Microsoft.Extensions.Options.IOptions<RuntimeServiceOptions> RuntimeOptions
+@inject Microsoft.Extensions.Options.IOptions<MessagesUiOptions> MessagesOptions
 @inject DialogService DialogService
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
@@ -8,44 +9,6 @@
 <PageTitle>Messages</PageTitle>
 
 <RadzenStack Gap="12px">
-    <RadzenStack Orientation="Orientation.Horizontal"
-                 AlignItems="AlignItems.Center"
-                 JustifyContent="JustifyContent.SpaceBetween">
-        <RadzenStack Gap="2px">
-            <RadzenText Text="Messages" TextStyle="TextStyle.H5" />
-            <RadzenText Text="WEB получает эти данные из Runtime Service через HTTP API, а live-изменения — через SignalR."
-                        TextStyle="TextStyle.Caption"
-                        Style="color: gray;" />
-        </RadzenStack>
-
-        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
-            <RadzenBadge Text="@($"Active: {_activeMessageCount}")" BadgeStyle="BadgeStyle.Info" />
-
-            <RadzenBadge Text="@(_isRealtimeConnected ? "Live" : "Offline live")"
-                         BadgeStyle="@(_isRealtimeConnected ? BadgeStyle.Success : BadgeStyle.Warning)" />
-
-            <RadzenText Text="@_lastRealtimeEventText"
-                        TextStyle="TextStyle.Caption"
-                        Style="color: gray;" />
-
-            <RadzenCheckBox TValue="bool"
-                            Value="@_includeInactive"
-                            Change="@OnIncludeInactiveChangedAsync" />
-            <RadzenLabel Text="Show inactive" />
-
-            <RadzenButton Text="Refresh"
-                          Icon="refresh"
-                          ButtonStyle="ButtonStyle.Light"
-                          Disabled="@_isCommandRunning"
-                          Click="@RefreshAsync" />
-
-            <RadzenButton Text="New"
-                          Icon="add"
-                          ButtonStyle="ButtonStyle.Primary"
-                          Disabled="@_isCommandRunning"
-                          Click="@AddNew" />
-        </RadzenStack>
-    </RadzenStack>
 
     @if (!string.IsNullOrWhiteSpace(_statusText))
     {
@@ -69,8 +32,30 @@
         <TechMesLoadingBar />
     }
 
-    <RadzenSplitter Style="height: calc(100vh - 185px); min-height: 520px;">
+    <RadzenSplitter Style="height: calc(100vh - 165px); min-height: 520px;">
         <RadzenSplitterPane Size="38%" Min="320px">
+            <div class="messages-list-toolbar">
+                <RadzenButton Text="New"
+                              Icon="add"
+                              ButtonStyle="ButtonStyle.Secondary"
+                              Disabled="@_isCommandRunning"
+                              Click="@AddNew"
+                              class="messages-new-button" />
+
+                <div class="messages-toolbar-spacer" aria-hidden="true"></div>
+
+                <RadzenStack Orientation="Orientation.Horizontal"
+                             AlignItems="AlignItems.Center"
+                             Gap="0.5rem"
+                             class="messages-show-inactive">
+                    <RadzenLabel Text="Show inactive" Component="messagesShowInactive" />
+                    <RadzenSwitch Name="messagesShowInactive"
+                                  Value="@_includeInactive"
+                                  Change="@OnIncludeInactiveChangedAsync"
+                                  Disabled="@_isCommandRunning" />
+                </RadzenStack>
+            </div>
+
             @if (_messages.Count == 0 && !_isLoading)
             {
                 <RadzenCard>
@@ -86,7 +71,7 @@
             {
                 <RadzenDataList Data="@_messages"
                                 TItem="EquipmentMessageDto"
-                                Style="height: 100%; overflow:auto; padding-right: 8px;">
+                                Style="height: calc(100% - 48px); overflow:auto; padding-right: 8px;">
                     <Template Context="message">
                         <RadzenCard Style="@GetCardStyle(message)"
                                     @onclick="() => SelectMessageAsync(message)">
@@ -108,7 +93,9 @@
                                 <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
                                     @if (message.IsActive)
                                     {
-                                        <RadzenBadge Text="Active" BadgeStyle="BadgeStyle.Success" />
+                                        <RadzenBadge Text="Active"
+                                                     BadgeStyle="BadgeStyle.Success"
+                                                     class="messages-active-badge" />
                                     }
                                     else
                                     {
@@ -133,6 +120,23 @@
         </RadzenSplitterPane>
 
         <RadzenSplitterPane>
+            <div class="messages-detail-toolbar">
+                <RadzenButton Text="Refresh"
+                              Icon="refresh"
+                              ButtonStyle="ButtonStyle.Light"
+                              Disabled="@_isCommandRunning"
+                              Click="@RefreshAsync" />
+
+                <div class="messages-status-row">
+                    <div class="messages-status-badges">
+                        <RadzenBadge Text="@(_isRealtimeConnected ? "Live" : "Offline live")"
+                                     BadgeStyle="@(_isRealtimeConnected ? BadgeStyle.Success : BadgeStyle.Warning)" />
+
+                        <RadzenBadge Text="@($"Active: {_activeMessageCount}")" BadgeStyle="BadgeStyle.Info" />
+                    </div>
+                </div>
+            </div>
+
             @if (_isEditMode)
             {
                 <RadzenCard>
@@ -195,68 +199,79 @@
             }
             else
             {
-                <RadzenCard>
-                    <RadzenStack Gap="12px">
-                        <RadzenStack Orientation="Orientation.Horizontal"
-                                     AlignItems="AlignItems.Center"
-                                     JustifyContent="JustifyContent.SpaceBetween">
-                            <RadzenStack Gap="4px">
-                                <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
-                                    <RadzenText Text="@_selectedMessage.MessageSubject" TextStyle="TextStyle.H6" />
+                <RadzenCard class="messages-detail-card">
+                    <div class="messages-detail-view">
+                        <div class="messages-detail-header">
+                            <div class="messages-detail-title-block">
+                                <div class="messages-detail-title-line">
                                     <RadzenBadge Text="@_selectedMessage.MessageType.ToString()"
                                                  BadgeStyle="@GetBadgeStyle(_selectedMessage.MessageType)" />
 
+                                    <RadzenText Text="@_selectedMessage.MessageSubject"
+                                                TextStyle="TextStyle.H6"
+                                                class="messages-detail-title" />
+                                </div>
+
+                                <div class="messages-detail-id-row">
+                                    <span class="messages-detail-id">Id: @_selectedMessage.Id</span>
+
                                     @if (_selectedMessage.IsActive)
                                     {
-                                        <RadzenBadge Text="Active" BadgeStyle="BadgeStyle.Success" />
+                                        <RadzenBadge Text="Active"
+                                                     BadgeStyle="BadgeStyle.Success"
+                                                     class="messages-active-badge" />
                                     }
                                     else
                                     {
                                         <RadzenBadge Text="Inactive" BadgeStyle="BadgeStyle.Light" />
                                     }
-                                </RadzenStack>
+                                </div>
+                            </div>
 
-                                <RadzenText Text="@($"Id: {_selectedMessage.Id}")"
-                                            TextStyle="TextStyle.Caption"
-                                            Style="color: gray;" />
-                            </RadzenStack>
+                            <RadzenButton Text="@(_selectedMessage.IsActive ? "Deactivate" : "Activate")"
+                                          Icon="power_settings_new"
+                                          ButtonStyle="ButtonStyle.Warning"
+                                          Disabled="@_isCommandRunning"
+                                          Click="@ToggleActiveAsync"
+                                          class="messages-action-button messages-toggle-button" />
+                        </div>
 
-                            <RadzenStack Orientation="Orientation.Horizontal" Gap="8px">
+                        <div class="messages-detail-body">
+                            @_selectedMessage.MessageText
+                        </div>
+
+                        <div class="messages-detail-footer">
+                            <div class="messages-detail-meta">
+                                <div>Created by @_selectedMessage.CreatedBy at @_selectedMessage.CreatedAt.ToString("dd.MM.yyyy HH:mm")</div>
+
+                                @if (_selectedMessage.UpdatedAt is not null)
+                                {
+                                    <div>Updated by @_selectedMessage.UpdatedBy at @_selectedMessage.UpdatedAt.Value.ToString("dd.MM.yyyy HH:mm")</div>
+                                }
+
+                                <div>Viewed by: @_selectedMessage.ViewedByText</div>
+                            </div>
+
+                            <div class="messages-detail-actions">
                                 <RadzenButton Text="Edit"
                                               Icon="edit"
                                               ButtonStyle="ButtonStyle.Light"
                                               Disabled="@_isCommandRunning"
-                                              Click="@BeginEdit" />
+                                              Click="@BeginEdit"
+                                              class="messages-action-button messages-small-action-button messages-edit-button" />
 
-                                <RadzenButton Text="@(_selectedMessage.IsActive ? "Deactivate" : "Activate")"
-                                              Icon="power_settings_new"
-                                              ButtonStyle="@(_selectedMessage.IsActive ? ButtonStyle.Warning : ButtonStyle.Success)"
-                                              Disabled="@_isCommandRunning"
-                                              Click="@ToggleActiveAsync" />
-
-                                <RadzenButton Text="Delete"
-                                              Icon="delete"
-                                              ButtonStyle="ButtonStyle.Danger"
-                                              Disabled="@_isCommandRunning"
-                                              Click="@DeleteAsync" />
-                            </RadzenStack>
-                        </RadzenStack>
-
-                        <div style="white-space: pre-wrap; font-size: 15px;">
-                            @_selectedMessage.MessageText
+                                @if (MessagesOptions.Value.ShowDeleteButton)
+                                {
+                                    <RadzenButton Text="Delete"
+                                                  Icon="delete"
+                                                  ButtonStyle="ButtonStyle.Danger"
+                                                  Disabled="@_isCommandRunning"
+                                                  Click="@DeleteAsync"
+                                                  class="messages-action-button messages-small-action-button messages-delete-button" />
+                                }
+                            </div>
                         </div>
-
-                        <RadzenStack Gap="2px" Style="color: gray; font-size: 13px;">
-                            <div>Created by @_selectedMessage.CreatedBy at @_selectedMessage.CreatedAt.ToString("dd.MM.yyyy HH:mm")</div>
-
-                            @if (_selectedMessage.UpdatedAt is not null)
-                            {
-                                <div>Updated by @_selectedMessage.UpdatedBy at @_selectedMessage.UpdatedAt.Value.ToString("dd.MM.yyyy HH:mm")</div>
-                            }
-
-                            <div>Viewed by: @_selectedMessage.ViewedByText</div>
-                        </RadzenStack>
-                    </RadzenStack>
+                    </div>
                 </RadzenCard>
             }
         </RadzenSplitterPane>
