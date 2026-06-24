@@ -2,14 +2,22 @@ using Radzen;
 using Microsoft.Net.Http.Headers;
 using TechMES.Web.Clients;
 using TechMES.Web.Components;
+using TechMES.Web.Logging;
 using TechMES.Web.Settings;
 using TechMES.Web.State;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// В published-режиме WEB запускается как Windows Service и обслуживается Kestrel.
+builder.Host.UseWindowsService(options =>
+{
+    options.ServiceName = "TechMES.Web";
+});
+
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
+builder.Logging.AddSimpleFile(builder.Configuration);
 
 // Blazor Web App + Interactive Server.
 // Компоненты выполняются на сервере, а браузер общается с ними через SignalR-соединение.
@@ -74,16 +82,64 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+// HTTPS можно подготовить из TechMES.Maintenance, но редирект оставляем управляемым настройкой.
+// Так HTTP остается рабочим fallback-каналом, пока CER-файл не установлен как доверенный на планшетах.
+if (app.Configuration.GetValue("HttpsRedirection:Enabled", false))
+    app.UseHttpsRedirection();
 app.UseAntiforgery();
 app.MapStaticAssets();
 
+app.MapGet("/api/health", GetWebHealth);
+app.MapGet("/api/server/public-certificate", GetPublicCertificate);
 app.MapGet("/api/runtime/info/files/{kind}/{id:long}", ProxyRuntimeInfoFileAsync);
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+/// <summary>
+/// Легкий health endpoint самого WEB-приложения.
+/// Maintenance использует его вместо корневой Blazor-страницы, чтобы проверка не зависела от prerender/SignalR.
+/// </summary>
+static IResult GetWebHealth()
+{
+    return Results.Ok(new
+    {
+        Service = "TechMES.Web",
+        Status = "OK",
+        Timestamp = DateTimeOffset.Now
+    });
+}
+
+/// <summary>
+/// Отдает публичный CER-файл HTTPS-сертификата.
+/// Браузер может скачать этот файл, но установить его как доверенный сертификат может только пользователь,
+/// администратор, Group Policy или MDM-профиль устройства.
+/// </summary>
+static IResult GetPublicCertificate(IConfiguration configuration)
+{
+    var certificatePath = configuration["Kestrel:Endpoints:Https:Certificate:PublicPath"];
+
+    if (string.IsNullOrWhiteSpace(certificatePath))
+    {
+        var pfxPath = configuration["Kestrel:Endpoints:Https:Certificate:Path"];
+
+        if (!string.IsNullOrWhiteSpace(pfxPath))
+            certificatePath = Path.ChangeExtension(pfxPath, ".cer");
+    }
+
+    if (string.IsNullOrWhiteSpace(certificatePath))
+        return Results.NotFound("HTTPS certificate path is not configured.");
+
+    if (!File.Exists(certificatePath))
+        return Results.NotFound("Public certificate file was not found.");
+
+    return Results.File(
+        certificatePath,
+        "application/x-x509-ca-cert",
+        Path.GetFileName(certificatePath));
+}
 
 /// <summary>
 /// Проксирует файлы Info-модуля через WEB-приложение.

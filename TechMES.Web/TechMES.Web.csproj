@@ -9,6 +9,7 @@
   <ItemGroup>
 	<!-- SignalR Client нужен WEB-приложению, чтобы получать live-события от Runtime.Service. -->    
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.8" />
 	<!-- Radzen — библиотека UI-компонентов для Blazor: кнопки, списки, формы, layout. -->
     <PackageReference Include="Radzen.Blazor" Version="10.4.3" />
     <PackageReference Include="QRCoder" Version="1.7.0" />

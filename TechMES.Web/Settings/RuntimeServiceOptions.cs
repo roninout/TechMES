@@ -12,7 +12,7 @@ public sealed class RuntimeServiceOptions
     /// <summary>
     /// Базовый адрес Runtime.Service.
     /// </summary>
-    public string BaseUrl { get; set; } = "https://localhost:7101/";
+    public string BaseUrl { get; set; } = "http://localhost:5101/";
 
     /// <summary>
     /// Таймаут обычных HTTP-запросов.

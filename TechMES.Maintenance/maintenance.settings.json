@@ -1,0 +1,59 @@
+{
+  "Services": [
+    {
+      "Key": "runtime",
+      "DisplayName": "TechMes Runtime Service",
+      "ServiceName": "TechMES.Runtime.Service",
+      "ProjectPath": "TechMES.Runtime.Service\\TechMES.Runtime.Service.csproj",
+      "PublishFolderName": "Runtime.Service",
+      "ExecutableName": "TechMES.Runtime.Service.exe",
+      "WindowsServiceDescription": "TechMES backend service for PostgreSQL, CtApi and WEB API.",
+      "HealthUrl": "http://localhost:5101/api/health"
+    },
+    {
+      "Key": "web",
+      "DisplayName": "TechMes WEB",
+      "ServiceName": "TechMES.Web",
+      "ProjectPath": "TechMES.Web\\TechMES.Web.csproj",
+      "PublishFolderName": "Web",
+      "ExecutableName": "TechMES.Web.exe",
+      "WindowsServiceDescription": "TechMES Blazor WEB interface.",
+      "HealthUrl": "https://localhost:7163/api/health"
+    }
+  ],
+  "SettingsFiles": [
+    {
+      "DisplayName": "Runtime appsettings",
+      "RelativePath": "TechMES.Runtime.Service\\appsettings.json"
+    },
+    {
+      "DisplayName": "WEB appsettings",
+      "RelativePath": "TechMES.Web\\appsettings.json"
+    }
+  ],
+  "LogSearchRoots": [
+    "_runlogs",
+    "TechMES.Runtime.Service",
+    "TechMES.Web"
+  ],
+  "Deployment": {
+    "PublishRoot": "C:\\TechMES",
+    "Configuration": "Release",
+    "RuntimeIdentifier": "win-x64",
+    "SelfContained": false,
+    "AutoStart": true
+  },
+  "Server": {
+    "WebPort": 5163,
+    "HttpsPort": 7163,
+    "RuntimePort": 5101,
+    "FirewallRuleName": "TechMES WEB 5163",
+    "HttpsFirewallRuleName": "TechMES WEB HTTPS 7163",
+    "CertificateDirectory": "C:\\TechMES\\certs",
+    "CertificateFileName": "techmes-web.pfx",
+    "PublicCertificateFileName": "techmes-web.cer",
+    "CertificatePassword": "TechMES-local-dev",
+    "CertificateSubject": "TechMES WEB",
+    "EnableHttpsRedirection": false
+  }
+}

@@ -7,6 +7,7 @@ using TechMES.Infrastructure.CtApi.Gateways;
 using TechMES.Infrastructure.PostgreSql;
 using TechMES.Runtime.Service.Endpoints;
 using TechMES.Runtime.Service.Equipment;
+using TechMES.Runtime.Service.Logging;
 using TechMES.Runtime.Service.Messages;
 using TechMES.Runtime.Service.Runtime;
 using TechMES.Runtime.Service.Settings;
@@ -14,9 +15,16 @@ using TechMES.Runtime.Service.Workers;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Runtime.Service рассчитан на запуск как Windows Service на промышленном сервере.
+builder.Host.UseWindowsService(options =>
+{
+    options.ServiceName = "TechMES.Runtime.Service";
+});
+
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
+builder.Logging.AddSimpleFile(builder.Configuration);
 
 // Runtime Service — будущий Windows Service.
 // Сейчас запускаем его как обычный Web API, чтобы удобно тестировать WEB ↔ Service.

@@ -5,4 +5,5 @@
   <Project Path="TechMES.Infrastructure.PostgreSql/TechMES.Infrastructure.PostgreSql.csproj" />
   <Project Path="TechMES.Runtime.Service/TechMES.Runtime.Service.csproj" />
   <Project Path="TechMES.Web/TechMES.Web.csproj" />
+  <Project Path="TechMES.Maintenance/TechMES.Maintenance.csproj" />
 </Solution>
