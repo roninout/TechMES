@@ -37,6 +37,21 @@ public sealed class MaintenanceConfiguration
     public ServerOptions Server { get; set; } = new();
 
     /// <summary>
+    /// Настройки очистки старых логов, side-backup файлов и backup-снимков.
+    /// </summary>
+    public CleanupOptions Cleanup { get; set; } = new();
+
+    /// <summary>
+    /// Профиль целевой серверной машины.
+    /// </summary>
+    public TargetMachineOptions TargetMachine { get; set; } = new();
+
+    /// <summary>
+    /// Профиль будущей операторской безопасности и write-режима.
+    /// </summary>
+    public SecurityOptions Security { get; set; } = new();
+
+    /// <summary>
     /// Возвращает безопасную конфигурацию по умолчанию, если maintenance.settings.json отсутствует
     /// или временно поврежден.
     /// </summary>
@@ -81,6 +96,9 @@ public sealed class MaintenanceConfiguration
             "TechMES.Web"
         ],
         Deployment = new DeploymentOptions(),
-        Server = new ServerOptions()
+        Server = new ServerOptions(),
+        Cleanup = new CleanupOptions(),
+        TargetMachine = new TargetMachineOptions(),
+        Security = new SecurityOptions()
     };
 }

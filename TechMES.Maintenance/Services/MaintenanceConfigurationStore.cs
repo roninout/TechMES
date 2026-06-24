@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using TechMES.Maintenance.Models;
 
 namespace TechMES.Maintenance.Services;
@@ -18,7 +19,8 @@ public sealed class MaintenanceConfigurationStore(DirectoryInfo repositoryRoot)
         // maintenance.settings.json часто редактируется вручную.
         // Разрешаем JSONC-комментарии и trailing comma, чтобы временно отключать строки через // без сброса на дефолт.
         ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true
+        AllowTrailingCommas = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
     };
 
     /// <summary>

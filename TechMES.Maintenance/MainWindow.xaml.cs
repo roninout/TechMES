@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using System.Windows;
 using System.Windows.Controls;
 using TechMES.Maintenance.Models;
@@ -21,7 +22,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 {
     private static readonly JsonSerializerOptions TypedAppSettingsJsonOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
     };
 
     private readonly DirectoryInfo _repositoryRoot;
@@ -37,6 +39,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private readonly HttpsCertificateManager _httpsCertificateManager;
     private readonly WebHttpsConfigurator _webHttpsConfigurator;
     private readonly BackupRestoreService _backupRestoreService;
+    private readonly CleanupService _cleanupService;
+    private readonly PostgreSqlProbeService _postgreSqlProbeService = new();
 
     private string _diagnosticsText = "";
     private string _deploymentLogText = "";
@@ -54,6 +58,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private string _serverProfileLastUpdated = "";
     private string _backupRoot = "";
     private string _backupStatusText = "No backup operation has been started.";
+    private string _cleanupStatusText = "Cleanup scan has not been started.";
     private BackupItemViewModel? _selectedBackup;
 
     /// <summary>
@@ -99,6 +104,17 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     /// поэтому оператор видит только валидные и понятные снимки конфигурации.
     /// </summary>
     public ObservableCollection<BackupItemViewModel> BackupItems { get; } = [];
+
+    /// <summary>
+    /// Кандидаты на безопасную ручную очистку: старые логи, side-backup appsettings и старые backup-папки.
+    /// Удаление запускается только кнопкой оператора, автоматической очистки нет.
+    /// </summary>
+    public ObservableCollection<CleanupItemViewModel> CleanupItems { get; } = [];
+
+    /// <summary>
+    /// Свободное место на дисках, где находятся репозиторий, publish root и backup root.
+    /// </summary>
+    public ObservableCollection<DiskStatusViewModel> DiskStatuses { get; } = [];
 
     /// <summary>
     /// Typed-поля для appsettings WEB и Runtime.
@@ -213,6 +229,22 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
             _backupStatusText = value;
             OnPropertyChanged(nameof(BackupStatusText));
+        }
+    }
+
+    /// <summary>
+    /// Короткий итог последнего сканирования или удаления во вкладке Service actions.
+    /// </summary>
+    public string CleanupStatusText
+    {
+        get => _cleanupStatusText;
+        set
+        {
+            if (_cleanupStatusText == value)
+                return;
+
+            _cleanupStatusText = value;
+            OnPropertyChanged(nameof(CleanupStatusText));
         }
     }
 
@@ -416,6 +448,200 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     /// Полный путь к CER-файлу, который нужно доверить на клиентском устройстве.
     /// </summary>
     public string ServerPublicCertificatePath => HttpsCertificateManager.GetPublicCertificatePath(_configuration.Server);
+
+    /// <summary>
+    /// Сколько дней хранить опубликованные log-файлы перед ручной очисткой.
+    /// </summary>
+    public int CleanupLogRetentionDays
+    {
+        get => _configuration.Cleanup.LogRetentionDays;
+        set
+        {
+            if (_configuration.Cleanup.LogRetentionDays == value)
+                return;
+
+            _configuration.Cleanup.LogRetentionDays = value;
+            OnPropertyChanged(nameof(CleanupLogRetentionDays));
+        }
+    }
+
+    /// <summary>
+    /// Сколько дней хранить служебные .bak и .restore-backup файлы appsettings.
+    /// </summary>
+    public int CleanupAppSettingsBackupRetentionDays
+    {
+        get => _configuration.Cleanup.AppSettingsBackupRetentionDays;
+        set
+        {
+            if (_configuration.Cleanup.AppSettingsBackupRetentionDays == value)
+                return;
+
+            _configuration.Cleanup.AppSettingsBackupRetentionDays = value;
+            OnPropertyChanged(nameof(CleanupAppSettingsBackupRetentionDays));
+        }
+    }
+
+    /// <summary>
+    /// Сколько дней хранить backup-снимки Maintenance перед ручной очисткой.
+    /// </summary>
+    public int CleanupBackupRetentionDays
+    {
+        get => _configuration.Cleanup.BackupRetentionDays;
+        set
+        {
+            if (_configuration.Cleanup.BackupRetentionDays == value)
+                return;
+
+            _configuration.Cleanup.BackupRetentionDays = value;
+            OnPropertyChanged(nameof(CleanupBackupRetentionDays));
+        }
+    }
+
+    /// <summary>
+    /// Человекочитаемое имя целевого сервера.
+    /// </summary>
+    public string TargetMachineDisplayName
+    {
+        get => _configuration.TargetMachine.DisplayName;
+        set
+        {
+            if (_configuration.TargetMachine.DisplayName == value)
+                return;
+
+            _configuration.TargetMachine.DisplayName = value;
+            OnPropertyChanged(nameof(TargetMachineDisplayName));
+        }
+    }
+
+    /// <summary>
+    /// Ожидаемое имя Windows-машины, чтобы Maintenance мог предупредить о запуске не на том сервере.
+    /// </summary>
+    public string TargetMachineHostName
+    {
+        get => _configuration.TargetMachine.HostName;
+        set
+        {
+            if (_configuration.TargetMachine.HostName == value)
+                return;
+
+            _configuration.TargetMachine.HostName = value;
+            OnPropertyChanged(nameof(TargetMachineHostName));
+        }
+    }
+
+    /// <summary>
+    /// Ожидаемый IPv4-адрес WEB-сервера для планшетов и клиентских машин.
+    /// </summary>
+    public string TargetMachineIpAddress
+    {
+        get => _configuration.TargetMachine.IpAddress;
+        set
+        {
+            if (_configuration.TargetMachine.IpAddress == value)
+                return;
+
+            _configuration.TargetMachine.IpAddress = value;
+            OnPropertyChanged(nameof(TargetMachineIpAddress));
+        }
+    }
+
+    /// <summary>
+    /// Минимальная ожидаемая major-версия PostgreSQL, например 14 или 16.
+    /// </summary>
+    public string TargetMachineMinimumPostgreSqlVersion
+    {
+        get => _configuration.TargetMachine.MinimumPostgreSqlVersion;
+        set
+        {
+            if (_configuration.TargetMachine.MinimumPostgreSqlVersion == value)
+                return;
+
+            _configuration.TargetMachine.MinimumPostgreSqlVersion = value;
+            OnPropertyChanged(nameof(TargetMachineMinimumPostgreSqlVersion));
+        }
+    }
+
+    /// <summary>
+    /// Свободная заметка о целевом сервере: где стоит, кто обслуживает, особенности доступа.
+    /// </summary>
+    public string TargetMachineNotes
+    {
+        get => _configuration.TargetMachine.Notes;
+        set
+        {
+            if (_configuration.TargetMachine.Notes == value)
+                return;
+
+            _configuration.TargetMachine.Notes = value;
+            OnPropertyChanged(nameof(TargetMachineNotes));
+        }
+    }
+
+    /// <summary>
+    /// Включен ли будущий режим проверки Windows-пользователей.
+    /// Пока это профиль готовности, а не enforcement внутри WEB/Runtime.
+    /// </summary>
+    public bool SecurityWindowsUsersEnabled
+    {
+        get => _configuration.Security.WindowsUsersEnabled;
+        set
+        {
+            if (_configuration.Security.WindowsUsersEnabled == value)
+                return;
+
+            _configuration.Security.WindowsUsersEnabled = value;
+            OnPropertyChanged(nameof(SecurityWindowsUsersEnabled));
+        }
+    }
+
+    /// <summary>
+    /// Windows-группы, которым в будущем будет разрешен write-режим.
+    /// </summary>
+    public string SecurityWriteGroups
+    {
+        get => _configuration.Security.WriteGroups;
+        set
+        {
+            if (_configuration.Security.WriteGroups == value)
+                return;
+
+            _configuration.Security.WriteGroups = value;
+            OnPropertyChanged(nameof(SecurityWriteGroups));
+        }
+    }
+
+    /// <summary>
+    /// Требовать ли подтверждение write-операции в WEB.
+    /// Поле сверяется с реальным WEB appsettings во вкладке Checks.
+    /// </summary>
+    public bool SecurityRequireWriteConfirmation
+    {
+        get => _configuration.Security.RequireWriteConfirmation;
+        set
+        {
+            if (_configuration.Security.RequireWriteConfirmation == value)
+                return;
+
+            _configuration.Security.RequireWriteConfirmation = value;
+            OnPropertyChanged(nameof(SecurityRequireWriteConfirmation));
+        }
+    }
+
+    /// <summary>
+    /// Требовать ли SCADA-аудит write-операций через SaveActionOperators.
+    /// </summary>
+    public bool SecurityRequireScadaAudit
+    {
+        get => _configuration.Security.RequireScadaAudit;
+        set
+        {
+            if (_configuration.Security.RequireScadaAudit == value)
+                return;
+
+            _configuration.Security.RequireScadaAudit = value;
+            OnPropertyChanged(nameof(SecurityRequireScadaAudit));
+        }
+    }
 
     /// <summary>
     /// Health URL Runtime.Service в Dashboard.
@@ -668,6 +894,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         _webHttpsConfigurator = new WebHttpsConfigurator(_repositoryRoot);
         _logFileService = new LogFileService(_repositoryRoot);
         _backupRestoreService = new BackupRestoreService(_repositoryRoot);
+        _cleanupService = new CleanupService(_repositoryRoot);
         BackupRoot = Path.Combine(_repositoryRoot.FullName, "TechMES.Maintenance", "backups");
 
         DataContext = this;
@@ -680,6 +907,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         RefreshServerProfile();
         RefreshLogRows();
         RefreshBackupRows();
+        RefreshDiskStatuses();
     }
 
     /// <summary>
@@ -1130,9 +1358,13 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
         await AddPostgresTcpCheckAsync("Main PostgreSQL", TypedAppSettings.RuntimeDatabaseConnectionString);
         await AddPostgresTcpCheckAsync("Event PostgreSQL", TypedAppSettings.RuntimeEventDatabaseConnectionString);
+        await AddPostgresAuthCheckAsync("Main PostgreSQL", TypedAppSettings.RuntimeDatabaseConnectionString);
+        await AddPostgresAuthCheckAsync("Event PostgreSQL", TypedAppSettings.RuntimeEventDatabaseConnectionString);
 
         AddCtApiConfigurationChecks();
         AddFileSystemChecks();
+        AddTargetMachineChecks();
+        AddWriteSafetyChecks();
 
         var errors = DependencyChecks.Count(check => check.Status == "Error");
         var warnings = DependencyChecks.Count(check => check.Status == "Warning");
@@ -1194,6 +1426,128 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         {
             AddDependencyCheck("PostgreSQL", name, "Error", $"{host}:{port}, database '{database}': {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Проверяет PostgreSQL глубже TCP: логин, пароль, выбранную БД, текущего пользователя и версию сервера.
+    /// Это безопасный read-only запрос, который помогает увидеть проблему авторизации до запуска Runtime.Service.
+    /// </summary>
+    private async Task AddPostgresAuthCheckAsync(
+        string name,
+        string connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            AddDependencyCheck("PostgreSQL auth", name, "Warning", "Connection string is empty.");
+            return;
+        }
+
+        var result = await _postgreSqlProbeService.ProbeAsync(connectionString);
+        if (!result.Success)
+        {
+            AddDependencyCheck("PostgreSQL auth", name, "Error", result.Error);
+            return;
+        }
+
+        var status = "OK";
+        var details = $"DB '{result.Database}', user '{result.User}', {ShortenPostgreSqlVersion(result.Version)}.";
+
+        if (TryGetMinimumPostgreSqlMajorVersion(out var minimumMajor) &&
+            TryGetPostgreSqlMajorVersion(result.Version, out var actualMajor) &&
+            actualMajor < minimumMajor)
+        {
+            status = "Warning";
+            details += $" Minimum configured major version is {minimumMajor}.";
+        }
+
+        AddDependencyCheck("PostgreSQL auth", name, status, details);
+    }
+
+    /// <summary>
+    /// Проверяет, что Maintenance запущен на ожидаемой машине и видит ожидаемый IP.
+    /// Пустые поля профиля считаются предупреждением: сервер работает, но профиль еще не заполнен.
+    /// </summary>
+    private void AddTargetMachineChecks()
+    {
+        AddDependencyCheck(
+            "Target machine",
+            "Display name",
+            string.IsNullOrWhiteSpace(_configuration.TargetMachine.DisplayName) ? "Warning" : "OK",
+            string.IsNullOrWhiteSpace(_configuration.TargetMachine.DisplayName)
+                ? "Target machine display name is empty."
+                : _configuration.TargetMachine.DisplayName);
+
+        var expectedHost = _configuration.TargetMachine.HostName;
+        var actualHost = Environment.MachineName;
+        AddDependencyCheck(
+            "Target machine",
+            "Host name",
+            string.IsNullOrWhiteSpace(expectedHost)
+                ? "Warning"
+                : string.Equals(expectedHost, actualHost, StringComparison.OrdinalIgnoreCase) ? "OK" : "Error",
+            string.IsNullOrWhiteSpace(expectedHost)
+                ? $"Expected host is empty. Current host: {actualHost}."
+                : $"Expected: {expectedHost}; current: {actualHost}.");
+
+        var expectedIp = _configuration.TargetMachine.IpAddress;
+        var currentIps = ServerAddresses.Select(address => address.Address).ToList();
+        AddDependencyCheck(
+            "Target machine",
+            "IPv4 address",
+            string.IsNullOrWhiteSpace(expectedIp)
+                ? "Warning"
+                : currentIps.Contains(expectedIp, StringComparer.OrdinalIgnoreCase) ? "OK" : "Error",
+            string.IsNullOrWhiteSpace(expectedIp)
+                ? $"Expected IP is empty. Current IPs: {string.Join(", ", currentIps)}."
+                : $"Expected: {expectedIp}; current IPs: {string.Join(", ", currentIps)}.");
+    }
+
+    /// <summary>
+    /// Проверяет профиль будущей Windows-безопасности write-режима и его соответствие Runtime/Web appsettings.
+    /// Enforcement еще будет подключаться отдельно в WEB/Runtime, но Maintenance уже показывает расхождения.
+    /// </summary>
+    private void AddWriteSafetyChecks()
+    {
+        var currentUser = $"{Environment.UserDomainName}\\{Environment.UserName}";
+        AddDependencyCheck(
+            "Write safety",
+            "Current Windows user",
+            "OK",
+            currentUser);
+
+        AddDependencyCheck(
+            "Write safety",
+            "Windows users profile",
+            _configuration.Security.WindowsUsersEnabled ? "OK" : "Warning",
+            _configuration.Security.WindowsUsersEnabled
+                ? "Windows user profile is enabled."
+                : "Windows user profile is disabled.");
+
+        AddDependencyCheck(
+            "Write safety",
+            "Write groups",
+            string.IsNullOrWhiteSpace(_configuration.Security.WriteGroups) ? "Warning" : "OK",
+            string.IsNullOrWhiteSpace(_configuration.Security.WriteGroups)
+                ? "Write groups are empty."
+                : _configuration.Security.WriteGroups);
+
+        AddDependencyCheck(
+            "Write safety",
+            "Runtime writes",
+            TypedAppSettings.ParamWritesEnabled && !TypedAppSettings.ParamWritesDryRun ? "OK" : "Warning",
+            $"Enabled: {TypedAppSettings.ParamWritesEnabled}; dry run: {TypedAppSettings.ParamWritesDryRun}; CtApi writes: {TypedAppSettings.CtApiAllowWrites}.");
+
+        AddDependencyCheck(
+            "Write safety",
+            "Write confirmation",
+            TypedAppSettings.WebConfirmWrites == _configuration.Security.RequireWriteConfirmation ? "OK" : "Warning",
+            $"Profile: {_configuration.Security.RequireWriteConfirmation}; WEB appsettings: {TypedAppSettings.WebConfirmWrites}.");
+
+        AddDependencyCheck(
+            "Write safety",
+            "SCADA audit",
+            !_configuration.Security.RequireScadaAudit || TypedAppSettings.ParamWritesAuditEnabled ? "OK" : "Warning",
+            $"Profile requires SCADA audit: {_configuration.Security.RequireScadaAudit}; Runtime audit enabled: {TypedAppSettings.ParamWritesAuditEnabled}.");
     }
 
     /// <summary>
@@ -1383,6 +1737,58 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     }
 
     /// <summary>
+    /// Возвращает короткую строку версии PostgreSQL без длинного хвоста компилятора и ОС.
+    /// </summary>
+    private static string ShortenPostgreSqlVersion(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+            return "version is empty";
+
+        var separatorIndex = version.IndexOf(" on ", StringComparison.OrdinalIgnoreCase);
+        return separatorIndex > 0
+            ? version[..separatorIndex]
+            : version;
+    }
+
+    /// <summary>
+    /// Читает из профиля минимальную major-версию PostgreSQL.
+    /// Пустое поле означает, что проверка версии не ограничивает сервер.
+    /// </summary>
+    private bool TryGetMinimumPostgreSqlMajorVersion(out int major)
+    {
+        major = 0;
+        var text = _configuration.TargetMachine.MinimumPostgreSqlVersion;
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var dotIndex = text.IndexOf('.');
+        var majorText = dotIndex > 0 ? text[..dotIndex] : text;
+        return int.TryParse(majorText, out major);
+    }
+
+    /// <summary>
+    /// Извлекает major-версию из строки PostgreSQL version().
+    /// Например, из "PostgreSQL 16.2 ..." вернет 16.
+    /// </summary>
+    private static bool TryGetPostgreSqlMajorVersion(
+        string version,
+        out int major)
+    {
+        major = 0;
+        const string prefix = "PostgreSQL ";
+        var index = version.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+            return false;
+
+        var start = index + prefix.Length;
+        var end = start;
+        while (end < version.Length && char.IsDigit(version[end]))
+            end++;
+
+        return end > start && int.TryParse(version[start..end], out major);
+    }
+
+    /// <summary>
     /// Обновляет сетевые адреса, локальные TCP-порты и состояние firewall-правила.
     /// Это быстрая проверка серверного режима без изменения настроек Windows.
     /// </summary>
@@ -1448,6 +1854,38 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             ipAddresses.Count == 0 ? "No IPv4 address found for tablet access." : "Use one of these addresses from tablet/clients.");
 
         AddServerProfileItem(
+            "Target",
+            "Display name",
+            string.IsNullOrWhiteSpace(_configuration.TargetMachine.DisplayName) ? "-" : _configuration.TargetMachine.DisplayName,
+            string.IsNullOrWhiteSpace(_configuration.TargetMachine.DisplayName) ? "Warning" : "OK",
+            "Operator-friendly target server name.");
+
+        AddServerProfileItem(
+            "Target",
+            "Expected host",
+            string.IsNullOrWhiteSpace(_configuration.TargetMachine.HostName) ? "-" : _configuration.TargetMachine.HostName,
+            string.IsNullOrWhiteSpace(_configuration.TargetMachine.HostName)
+                ? "Warning"
+                : string.Equals(_configuration.TargetMachine.HostName, Environment.MachineName, StringComparison.OrdinalIgnoreCase) ? "OK" : "Error",
+            $"Current host: {Environment.MachineName}.");
+
+        AddServerProfileItem(
+            "Target",
+            "Expected IP",
+            string.IsNullOrWhiteSpace(_configuration.TargetMachine.IpAddress) ? "-" : _configuration.TargetMachine.IpAddress,
+            string.IsNullOrWhiteSpace(_configuration.TargetMachine.IpAddress)
+                ? "Warning"
+                : ipAddresses.Contains(_configuration.TargetMachine.IpAddress, StringComparer.OrdinalIgnoreCase) ? "OK" : "Error",
+            $"Current IPs: {(ipAddresses.Count == 0 ? "-" : string.Join(", ", ipAddresses))}.");
+
+        AddServerProfileItem(
+            "Target",
+            "Minimum PostgreSQL",
+            string.IsNullOrWhiteSpace(_configuration.TargetMachine.MinimumPostgreSqlVersion) ? "-" : _configuration.TargetMachine.MinimumPostgreSqlVersion,
+            string.IsNullOrWhiteSpace(_configuration.TargetMachine.MinimumPostgreSqlVersion) ? "Warning" : "OK",
+            "Checks tab compares this value with real PostgreSQL version.");
+
+        AddServerProfileItem(
             "Ports",
             "HTTP",
             _configuration.Server.WebPort.ToString(),
@@ -1495,6 +1933,44 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             _configuration.Deployment.PublishRoot,
             Directory.Exists(_configuration.Deployment.PublishRoot) ? "OK" : "Error",
             Directory.Exists(_configuration.Deployment.PublishRoot) ? "Directory exists." : "Publish directory does not exist.");
+
+        foreach (var disk in _cleanupService.GetDiskStatuses(_configuration, BackupRoot))
+        {
+            AddServerProfileItem(
+                "Storage",
+                disk.Name,
+                disk.FreeText,
+                disk.Status,
+                $"Drive: {disk.Drive}; total: {disk.TotalText}; path: {disk.Path}");
+        }
+
+        AddServerProfileItem(
+            "Security",
+            "Windows users",
+            _configuration.Security.WindowsUsersEnabled ? "Enabled" : "Disabled",
+            _configuration.Security.WindowsUsersEnabled ? "OK" : "Warning",
+            $"Current user: {Environment.UserDomainName}\\{Environment.UserName}.");
+
+        AddServerProfileItem(
+            "Security",
+            "Write groups",
+            string.IsNullOrWhiteSpace(_configuration.Security.WriteGroups) ? "-" : _configuration.Security.WriteGroups,
+            string.IsNullOrWhiteSpace(_configuration.Security.WriteGroups) ? "Warning" : "OK",
+            "Future WEB/Runtime write-mode authorization groups.");
+
+        AddServerProfileItem(
+            "Security",
+            "Write confirmation",
+            _configuration.Security.RequireWriteConfirmation ? "Required" : "Not required",
+            "OK",
+            "Checks tab compares profile with WEB appsettings.");
+
+        AddServerProfileItem(
+            "Security",
+            "SCADA audit",
+            _configuration.Security.RequireScadaAudit ? "Required" : "Not required",
+            "OK",
+            "Runtime write flow should call SaveActionOperators when enabled.");
 
         foreach (var service in ServiceStatuses)
         {
@@ -1566,6 +2042,18 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
         if (!Directory.Exists(_configuration.Deployment.PublishRoot))
             issues.Add("Publish root does not exist");
+
+        if (!string.IsNullOrWhiteSpace(_configuration.TargetMachine.HostName) &&
+            !string.Equals(_configuration.TargetMachine.HostName, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+        {
+            issues.Add($"Current host is {Environment.MachineName}, expected {_configuration.TargetMachine.HostName}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(_configuration.TargetMachine.IpAddress) &&
+            !ServerAddresses.Select(address => address.Address).Contains(_configuration.TargetMachine.IpAddress, StringComparer.OrdinalIgnoreCase))
+        {
+            issues.Add($"Expected IP {_configuration.TargetMachine.IpAddress} was not found on this machine");
+        }
 
         foreach (var service in ServiceStatuses)
         {
@@ -1881,6 +2369,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             _configurationStore.Save(_configuration);
             RefreshDeploymentPaths();
             RefreshServerAddressRows();
+            RefreshDiskStatuses();
+            RefreshServerProfile();
 
             foreach (var service in ServiceStatuses)
                 service.RefreshDefinitionBindings();
@@ -2337,6 +2827,95 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         BackupStatusText = BackupItems.Count == 0
             ? "No backups found yet."
             : $"Loaded {BackupItems.Count} backup(s).";
+    }
+
+    /// <summary>
+    /// Обновляет таблицу свободного места для дисков, где лежат репозиторий, публикация и backup.
+    /// Это отдельная быстрая операция: она не сканирует файлы и ничего не удаляет.
+    /// </summary>
+    private void RefreshDiskStatuses()
+    {
+        DiskStatuses.Clear();
+
+        foreach (var status in _cleanupService.GetDiskStatuses(_configuration, BackupRoot))
+            DiskStatuses.Add(status);
+    }
+
+    /// <summary>
+    /// Сканирует безопасные кандидаты на очистку: старые .log, side-backup appsettings и старые backup-папки.
+    /// Сканирование не удаляет файлы, а только показывает оператору список.
+    /// </summary>
+    private void OnScanCleanupClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            CleanupItems.Clear();
+            RefreshDiskStatuses();
+
+            foreach (var item in _cleanupService.Scan(_configuration, BackupRoot))
+                CleanupItems.Add(item);
+
+            CleanupStatusText = CleanupItems.Count == 0
+                ? "No cleanup candidates found."
+                : $"Found {CleanupItems.Count} cleanup candidate(s). Review the list before delete.";
+
+            AppendDiagnostics($"Cleanup scan finished: {CleanupItems.Count} candidate(s).");
+        }
+        catch (Exception ex)
+        {
+            CleanupStatusText = $"Cleanup scan failed: {ex.Message}";
+            AppendDiagnostics(CleanupStatusText);
+        }
+    }
+
+    /// <summary>
+    /// Удаляет текущий список кандидатов. Автоматической очистки нет:
+    /// оператор сначала сканирует, смотрит таблицу, затем вручную подтверждает кнопкой Delete.
+    /// </summary>
+    private void OnDeleteCleanupCandidatesClick(object sender, RoutedEventArgs e)
+    {
+        if (CleanupItems.Count == 0)
+        {
+            CleanupStatusText = "Scan cleanup candidates first.";
+            return;
+        }
+
+        try
+        {
+            var items = CleanupItems.ToList();
+            CleanupStatusText = _cleanupService.Delete(items);
+            CleanupItems.Clear();
+            RefreshDiskStatuses();
+            RefreshLogRows();
+            RefreshBackupRows();
+            AppendDiagnostics($"Cleanup delete finished: {CleanupStatusText}");
+        }
+        catch (Exception ex)
+        {
+            CleanupStatusText = $"Cleanup delete failed: {ex.Message}";
+            AppendDiagnostics(CleanupStatusText);
+        }
+    }
+
+    /// <summary>
+    /// Сохраняет профиль целевой машины, security-настройки и retention-политику.
+    /// Это та же maintenance.settings.json, но кнопка вынесена рядом с эксплуатационными действиями.
+    /// </summary>
+    private void OnSaveMaintenanceProfileClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _configurationStore.Save(_configuration);
+            RefreshDiskStatuses();
+            RefreshServerProfile();
+            CleanupStatusText = "Maintenance profile saved.";
+            AppendDiagnostics("Maintenance profile saved.");
+        }
+        catch (Exception ex)
+        {
+            CleanupStatusText = $"Maintenance profile save failed: {ex.Message}";
+            AppendDiagnostics(CleanupStatusText);
+        }
     }
 
     /// <summary>

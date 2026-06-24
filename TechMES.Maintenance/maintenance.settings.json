@@ -55,5 +55,23 @@
     "CertificatePassword": "TechMES-local-dev",
     "CertificateSubject": "TechMES WEB",
     "EnableHttpsRedirection": false
+  },
+  "Cleanup": {
+    "LogRetentionDays": 14,
+    "AppSettingsBackupRetentionDays": 30,
+    "BackupRetentionDays": 60
+  },
+  "TargetMachine": {
+    "DisplayName": "Local TechMES server",
+    "HostName": "",
+    "IpAddress": "",
+    "MinimumPostgreSqlVersion": "",
+    "Notes": ""
+  },
+  "Security": {
+    "WindowsUsersEnabled": true,
+    "WriteGroups": "TechMES-Operators;TechMES-Engineers",
+    "RequireWriteConfirmation": false,
+    "RequireScadaAudit": true
   }
 }

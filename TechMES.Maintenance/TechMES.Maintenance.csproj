@@ -14,4 +14,9 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Maintenance сам выполняет короткую PostgreSQL-проверку авторизации и версии сервера. -->
+    <PackageReference Include="Npgsql" Version="10.0.2" />
+  </ItemGroup>
+
 </Project>

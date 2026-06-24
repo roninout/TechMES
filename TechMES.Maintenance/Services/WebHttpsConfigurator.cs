@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using TechMES.Maintenance.Models;
 
 namespace TechMES.Maintenance.Services;
@@ -13,7 +14,8 @@ public sealed class WebHttpsConfigurator(DirectoryInfo repositoryRoot)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
     };
 
     /// <summary>

@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using TechMES.Maintenance.Models;
 using TechMES.Maintenance.ViewModels;
 
@@ -16,7 +17,8 @@ public sealed class BackupRestoreService(DirectoryInfo repositoryRoot)
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
     };
 
     /// <summary>
