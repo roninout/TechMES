@@ -24,6 +24,11 @@ public sealed class ParamWriteResponse
     public string ItemName { get; set; } = "";
 
     /// <summary>
+    /// Windows-пользователь или служебный actor, от имени которого пришел write-запрос.
+    /// </summary>
+    public string? Actor { get; set; }
+
+    /// <summary>
     /// Разрешенное имя Plant SCADA tag.
     /// </summary>
     public string? TagName { get; set; }

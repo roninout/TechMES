@@ -1,9 +1,8 @@
 namespace TechMES.Maintenance.Models;
 
 /// <summary>
-/// Профиль будущей операторской безопасности.
-/// Пока WEB/Runtime продолжают работать по текущей схеме, но Maintenance уже показывает,
-/// какие Windows-группы и write-флаги считаются правильной серверной конфигурацией.
+/// Профиль операторской безопасности.
+/// Maintenance использует его как эталон для Runtime/Web appsettings, где включается Windows write-enforcement.
 /// </summary>
 public sealed class SecurityOptions
 {
@@ -13,7 +12,7 @@ public sealed class SecurityOptions
     public bool WindowsUsersEnabled { get; set; } = true;
 
     /// <summary>
-    /// Windows-группы, которым в будущем будет разрешен write-режим.
+    /// Windows-группы, которым разрешен write-режим.
     /// </summary>
     public string WriteGroups { get; set; } = "TechMES-Operators;TechMES-Engineers";
 

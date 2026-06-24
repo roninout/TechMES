@@ -1,4 +1,8 @@
 using System.Net.Http.Json;
+using System.Runtime.Versioning;
+using System.Security.Claims;
+using System.Security.Principal;
+using Microsoft.AspNetCore.Components.Authorization;
 using TechMES.Contracts.Param;
 
 namespace TechMES.Web.Clients;
@@ -15,11 +19,28 @@ public sealed class ParamApiClient
     private readonly IHttpClientFactory _httpClientFactory;
 
     /// <summary>
+    /// Источник текущего Windows/Blazor пользователя.
+    /// При включенном Negotiate здесь будет реальный пользователь браузера.
+    /// </summary>
+    private readonly AuthenticationStateProvider _authenticationStateProvider;
+
+    /// <summary>
+    /// Дополнительный доступ к HttpContext для ранних HTTP-запросов.
+    /// В Blazor Server он не всегда доступен во время SignalR-событий, поэтому используется как fallback.
+    /// </summary>
+    private readonly IHttpContextAccessor _httpContextAccessor;
+
+    /// <summary>
     /// Создает клиент Param API. Сам HttpClient живет в DI и переиспользуется фабрикой.
     /// </summary>
-    public ParamApiClient(IHttpClientFactory httpClientFactory)
+    public ParamApiClient(
+        IHttpClientFactory httpClientFactory,
+        AuthenticationStateProvider authenticationStateProvider,
+        IHttpContextAccessor httpContextAccessor)
     {
         _httpClientFactory = httpClientFactory;
+        _authenticationStateProvider = authenticationStateProvider;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     /// <summary>
@@ -178,6 +199,7 @@ public sealed class ParamApiClient
     {
         var client = CreateClient();
         var encodedName = Uri.EscapeDataString(equipmentName);
+        await EnrichWriteActorAsync(request);
 
         using var response = await client.PostAsJsonAsync(
             $"api/param/{encodedName}/write",
@@ -200,6 +222,7 @@ public sealed class ParamApiClient
         {
             EquipmentName = equipmentName,
             ItemName = request.ItemName,
+            Actor = request.Actor,
             Success = false,
             Error = response.IsSuccessStatusCode
                 ? "Runtime Service returned empty Param write response."
@@ -213,6 +236,141 @@ public sealed class ParamApiClient
     private HttpClient CreateClient()
     {
         return _httpClientFactory.CreateClient("RuntimeService");
+    }
+
+    /// <summary>
+    /// Добавляет к write-запросу Windows-пользователя и группы.
+    /// Runtime.Service использует эти данные для allow-list enforcement, а WEB остается только транспортным слоем.
+    /// </summary>
+    private async Task EnrichWriteActorAsync(ParamWriteRequest request)
+    {
+        var principal = await ReadCurrentPrincipalAsync();
+        var actor = ReadActorName(principal);
+
+        request.Actor = string.IsNullOrWhiteSpace(actor)
+            ? $"{Environment.UserDomainName}\\{Environment.UserName}"
+            : actor;
+
+        request.ActorGroups = ReadActorGroups(principal)
+            .Where(group => !string.IsNullOrWhiteSpace(group))
+            .Select(group => group!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Читает текущий ClaimsPrincipal сначала из Blazor authentication state, затем из HttpContext.
+    /// </summary>
+    private async Task<ClaimsPrincipal?> ReadCurrentPrincipalAsync()
+    {
+        var authenticationState = await _authenticationStateProvider.GetAuthenticationStateAsync();
+        if (authenticationState.User.Identity?.IsAuthenticated == true)
+            return authenticationState.User;
+
+        var httpUser = _httpContextAccessor.HttpContext?.User;
+        return httpUser?.Identity?.IsAuthenticated == true
+            ? httpUser
+            : null;
+    }
+
+    /// <summary>
+    /// Возвращает имя Windows-пользователя в формате DOMAIN\User, если оно доступно.
+    /// </summary>
+    private static string? ReadActorName(ClaimsPrincipal? principal)
+    {
+        return principal?.Identity?.IsAuthenticated == true
+            ? principal.Identity.Name
+            : null;
+    }
+
+    /// <summary>
+    /// Собирает Windows-группы из WindowsIdentity и claims.
+    /// SID-группы переводятся в DOMAIN\Group, чтобы appsettings оставался читаемым.
+    /// </summary>
+    private static IEnumerable<string> ReadActorGroups(ClaimsPrincipal? principal)
+    {
+        if (OperatingSystem.IsWindows() && principal?.Identity is WindowsIdentity windowsIdentity)
+        {
+            foreach (var group in ReadWindowsIdentityGroups(windowsIdentity))
+                yield return group;
+        }
+
+        if (principal is null)
+            yield break;
+
+        foreach (var claim in principal.Claims)
+        {
+            if (claim.Type == ClaimTypes.Role
+                || claim.Type == ClaimTypes.GroupSid
+                || claim.Type.EndsWith("/groupsid", StringComparison.OrdinalIgnoreCase))
+            {
+                var translated = OperatingSystem.IsWindows()
+                    ? TryTranslateSid(claim.Value)
+                    : null;
+                yield return translated ?? claim.Value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Безопасно читает группы WindowsIdentity: некоторые SID могут не переводиться на локальной машине.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static IEnumerable<string> ReadWindowsIdentityGroups(WindowsIdentity windowsIdentity)
+    {
+        if (windowsIdentity.Groups is null)
+            yield break;
+
+        foreach (var group in windowsIdentity.Groups)
+        {
+            var translated = TryTranslateIdentityReference(group);
+            if (!string.IsNullOrWhiteSpace(translated))
+                yield return translated;
+        }
+    }
+
+    /// <summary>
+    /// Переводит SID-строку в DOMAIN\Name, если Windows может ее разрешить.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static string? TryTranslateSid(string value)
+    {
+        try
+        {
+            return new SecurityIdentifier(value).Translate(typeof(NTAccount)).Value;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        catch (IdentityNotMappedException)
+        {
+            return null;
+        }
+        catch (SystemException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Переводит IdentityReference в читаемое имя Windows-группы.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static string? TryTranslateIdentityReference(IdentityReference reference)
+    {
+        try
+        {
+            return reference.Translate(typeof(NTAccount)).Value;
+        }
+        catch (IdentityNotMappedException)
+        {
+            return reference.Value;
+        }
+        catch (SystemException)
+        {
+            return reference.Value;
+        }
     }
 
     /// <summary>

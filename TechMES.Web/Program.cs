@@ -1,4 +1,6 @@
 using Radzen;
+using Microsoft.AspNetCore.Authentication.Negotiate;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Net.Http.Headers;
 using TechMES.Web.Clients;
 using TechMES.Web.Components;
@@ -7,6 +9,7 @@ using TechMES.Web.Settings;
 using TechMES.Web.State;
 
 var builder = WebApplication.CreateBuilder(args);
+var windowsAuthenticationEnabled = builder.Configuration.GetValue("WindowsAuthentication:Enabled", false);
 
 // В published-режиме WEB запускается как Windows Service и обслуживается Kestrel.
 builder.Host.UseWindowsService(options =>
@@ -30,9 +33,22 @@ builder.Services
     });
 
 builder.Services.AddAntiforgery();
+builder.Services.AddCascadingAuthenticationState();
+
+// Windows Authentication включается настройкой WindowsAuthentication:Enabled.
+// В выключенном режиме WEB продолжает работать как раньше, а Param write использует service-account fallback.
+if (windowsAuthenticationEnabled)
+{
+    builder.Services
+        .AddAuthentication(NegotiateDefaults.AuthenticationScheme)
+        .AddNegotiate();
+
+    builder.Services.AddAuthorization();
+}
 
 // Сервисы Radzen: нужны для Dialog, Notification, ContextMenu и других UI-компонентов.
 builder.Services.AddRadzenComponents();
+builder.Services.AddHttpContextAccessor();
 
 // Настройки адреса Runtime Service берём из appsettings.json.
 builder.Services.Configure<RuntimeServiceOptions>(builder.Configuration.GetSection("RuntimeService"));
@@ -86,6 +102,11 @@ if (!app.Environment.IsDevelopment())
 // Так HTTP остается рабочим fallback-каналом, пока CER-файл не установлен как доверенный на планшетах.
 if (app.Configuration.GetValue("HttpsRedirection:Enabled", false))
     app.UseHttpsRedirection();
+if (windowsAuthenticationEnabled)
+{
+    app.UseAuthentication();
+    app.UseAuthorization();
+}
 app.UseAntiforgery();
 app.MapStaticAssets();
 
@@ -93,8 +114,11 @@ app.MapGet("/api/health", GetWebHealth);
 app.MapGet("/api/server/public-certificate", GetPublicCertificate);
 app.MapGet("/api/runtime/info/files/{kind}/{id:long}", ProxyRuntimeInfoFileAsync);
 
-app.MapRazorComponents<App>()
+var razorComponents = app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+if (windowsAuthenticationEnabled)
+    razorComponents.RequireAuthorization();
 
 app.Run();
 

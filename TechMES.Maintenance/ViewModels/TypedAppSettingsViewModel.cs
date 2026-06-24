@@ -31,6 +31,10 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     private bool _paramWritesDryRun;
     private bool _paramWritesRequireComment;
     private bool _paramWritesAuditEnabled;
+    private bool _paramWritesAuthorizationEnabled;
+    private bool _paramWritesRequireWindowsUser = true;
+    private string _paramWritesAllowedUsers = "";
+    private string _paramWritesAllowedGroups = "";
     private bool _runtimeFileLoggingEnabled;
     private string _runtimeFileLoggingMinimumLevel = "";
     private string _runtimeFileLoggingDirectory = "";
@@ -46,6 +50,7 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     private bool _webConfirmWrites;
     private bool _webShowDeleteButton;
     private bool _webHttpsRedirectionEnabled;
+    private bool _webWindowsAuthenticationEnabled;
     private bool _webFileLoggingEnabled;
     private string _webFileLoggingMinimumLevel = "";
     private string _webFileLoggingDirectory = "";
@@ -259,6 +264,42 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Включает Runtime enforcement Windows allow-list для Param write.
+    /// </summary>
+    public bool ParamWritesAuthorizationEnabled
+    {
+        get => _paramWritesAuthorizationEnabled;
+        set => SetProperty(ref _paramWritesAuthorizationEnabled, value);
+    }
+
+    /// <summary>
+    /// Требовать Windows-пользователя в каждом write-запросе.
+    /// </summary>
+    public bool ParamWritesRequireWindowsUser
+    {
+        get => _paramWritesRequireWindowsUser;
+        set => SetProperty(ref _paramWritesRequireWindowsUser, value);
+    }
+
+    /// <summary>
+    /// Allow-list Windows-пользователей, которым разрешен write.
+    /// </summary>
+    public string ParamWritesAllowedUsers
+    {
+        get => _paramWritesAllowedUsers;
+        set => SetProperty(ref _paramWritesAllowedUsers, value);
+    }
+
+    /// <summary>
+    /// Allow-list Windows-групп, которым разрешен write.
+    /// </summary>
+    public string ParamWritesAllowedGroups
+    {
+        get => _paramWritesAllowedGroups;
+        set => SetProperty(ref _paramWritesAllowedGroups, value);
+    }
+
+    /// <summary>
     /// Включает файловые логи Runtime.
     /// </summary>
     public bool RuntimeFileLoggingEnabled
@@ -391,6 +432,15 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     {
         get => _webHttpsRedirectionEnabled;
         set => SetProperty(ref _webHttpsRedirectionEnabled, value);
+    }
+
+    /// <summary>
+    /// Включает Windows Authentication в WEB через Negotiate.
+    /// </summary>
+    public bool WebWindowsAuthenticationEnabled
+    {
+        get => _webWindowsAuthenticationEnabled;
+        set => SetProperty(ref _webWindowsAuthenticationEnabled, value);
     }
 
     /// <summary>

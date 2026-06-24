@@ -1049,6 +1049,10 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             TypedAppSettings.ParamWritesDryRun = GetBool(runtime, true, "ParamWrites", "DryRun");
             TypedAppSettings.ParamWritesRequireComment = GetBool(runtime, false, "ParamWrites", "RequireComment");
             TypedAppSettings.ParamWritesAuditEnabled = GetBool(runtime, true, "ParamWrites", "AuditEnabled");
+            TypedAppSettings.ParamWritesAuthorizationEnabled = GetBool(runtime, false, "ParamWrites", "Authorization", "Enabled");
+            TypedAppSettings.ParamWritesRequireWindowsUser = GetBool(runtime, true, "ParamWrites", "Authorization", "RequireWindowsUser");
+            TypedAppSettings.ParamWritesAllowedUsers = GetString(runtime, "ParamWrites", "Authorization", "AllowedUsers");
+            TypedAppSettings.ParamWritesAllowedGroups = GetString(runtime, "ParamWrites", "Authorization", "AllowedGroups");
             TypedAppSettings.RuntimeFileLoggingEnabled = GetBool(runtime, true, "FileLogging", "Enabled");
             TypedAppSettings.RuntimeFileLoggingMinimumLevel = GetString(runtime, "FileLogging", "MinimumLevel");
             TypedAppSettings.RuntimeFileLoggingDirectory = GetString(runtime, "FileLogging", "Directory");
@@ -1065,6 +1069,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             TypedAppSettings.WebConfirmWrites = GetBool(web, false, "Param", "ConfirmWrites");
             TypedAppSettings.WebShowDeleteButton = GetBool(web, true, "Messages", "ShowDeleteButton");
             TypedAppSettings.WebHttpsRedirectionEnabled = GetBool(web, false, "HttpsRedirection", "Enabled");
+            TypedAppSettings.WebWindowsAuthenticationEnabled = GetBool(web, false, "WindowsAuthentication", "Enabled");
             TypedAppSettings.WebFileLoggingEnabled = GetBool(web, true, "FileLogging", "Enabled");
             TypedAppSettings.WebFileLoggingMinimumLevel = GetString(web, "FileLogging", "MinimumLevel");
             TypedAppSettings.WebFileLoggingDirectory = GetString(web, "FileLogging", "Directory");
@@ -1159,6 +1164,10 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         SetValue(root, TypedAppSettings.ParamWritesDryRun, "ParamWrites", "DryRun");
         SetValue(root, TypedAppSettings.ParamWritesRequireComment, "ParamWrites", "RequireComment");
         SetValue(root, TypedAppSettings.ParamWritesAuditEnabled, "ParamWrites", "AuditEnabled");
+        SetValue(root, TypedAppSettings.ParamWritesAuthorizationEnabled, "ParamWrites", "Authorization", "Enabled");
+        SetValue(root, TypedAppSettings.ParamWritesRequireWindowsUser, "ParamWrites", "Authorization", "RequireWindowsUser");
+        SetValue(root, TypedAppSettings.ParamWritesAllowedUsers, "ParamWrites", "Authorization", "AllowedUsers");
+        SetValue(root, TypedAppSettings.ParamWritesAllowedGroups, "ParamWrites", "Authorization", "AllowedGroups");
         SetValue(root, TypedAppSettings.RuntimeFileLoggingEnabled, "FileLogging", "Enabled");
         SetValue(root, TypedAppSettings.RuntimeFileLoggingMinimumLevel, "FileLogging", "MinimumLevel");
         SetValue(root, TypedAppSettings.RuntimeFileLoggingDirectory, "FileLogging", "Directory");
@@ -1182,6 +1191,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         SetValue(root, TypedAppSettings.WebConfirmWrites, "Param", "ConfirmWrites");
         SetValue(root, TypedAppSettings.WebShowDeleteButton, "Messages", "ShowDeleteButton");
         SetValue(root, TypedAppSettings.WebHttpsRedirectionEnabled, "HttpsRedirection", "Enabled");
+        SetValue(root, TypedAppSettings.WebWindowsAuthenticationEnabled, "WindowsAuthentication", "Enabled");
         SetValue(root, TypedAppSettings.WebFileLoggingEnabled, "FileLogging", "Enabled");
         SetValue(root, TypedAppSettings.WebFileLoggingMinimumLevel, "FileLogging", "MinimumLevel");
         SetValue(root, TypedAppSettings.WebFileLoggingDirectory, "FileLogging", "Directory");
@@ -1503,8 +1513,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     }
 
     /// <summary>
-    /// Проверяет профиль будущей Windows-безопасности write-режима и его соответствие Runtime/Web appsettings.
-    /// Enforcement еще будет подключаться отдельно в WEB/Runtime, но Maintenance уже показывает расхождения.
+    /// Проверяет Windows-безопасность write-режима и ее соответствие Runtime/Web appsettings.
+    /// Runtime выполняет allow-list enforcement, а WEB отвечает за получение Windows identity через Negotiate.
     /// </summary>
     private void AddWriteSafetyChecks()
     {
@@ -1525,11 +1535,31 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
         AddDependencyCheck(
             "Write safety",
+            "Runtime authorization",
+            TypedAppSettings.ParamWritesAuthorizationEnabled == _configuration.Security.WindowsUsersEnabled ? "OK" : "Warning",
+            $"Profile: {_configuration.Security.WindowsUsersEnabled}; Runtime appsettings: {TypedAppSettings.ParamWritesAuthorizationEnabled}.");
+
+        AddDependencyCheck(
+            "Write safety",
+            "WEB Windows auth",
+            TypedAppSettings.WebWindowsAuthenticationEnabled == _configuration.Security.WindowsUsersEnabled ? "OK" : "Warning",
+            $"Profile: {_configuration.Security.WindowsUsersEnabled}; WEB appsettings: {TypedAppSettings.WebWindowsAuthenticationEnabled}.");
+
+        AddDependencyCheck(
+            "Write safety",
             "Write groups",
             string.IsNullOrWhiteSpace(_configuration.Security.WriteGroups) ? "Warning" : "OK",
             string.IsNullOrWhiteSpace(_configuration.Security.WriteGroups)
                 ? "Write groups are empty."
                 : _configuration.Security.WriteGroups);
+
+        AddDependencyCheck(
+            "Write safety",
+            "Runtime allowed groups",
+            string.Equals(TypedAppSettings.ParamWritesAllowedGroups, _configuration.Security.WriteGroups, StringComparison.OrdinalIgnoreCase)
+                ? "OK"
+                : "Warning",
+            $"Profile: {_configuration.Security.WriteGroups}; Runtime appsettings: {TypedAppSettings.ParamWritesAllowedGroups}.");
 
         AddDependencyCheck(
             "Write safety",

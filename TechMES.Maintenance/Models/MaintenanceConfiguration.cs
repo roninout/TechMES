@@ -47,7 +47,7 @@ public sealed class MaintenanceConfiguration
     public TargetMachineOptions TargetMachine { get; set; } = new();
 
     /// <summary>
-    /// Профиль будущей операторской безопасности и write-режима.
+    /// Профиль операторской безопасности и write-режима.
     /// </summary>
     public SecurityOptions Security { get; set; } = new();
 

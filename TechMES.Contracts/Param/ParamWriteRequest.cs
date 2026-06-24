@@ -40,4 +40,10 @@ public sealed class ParamWriteRequest
     /// Имя клиента/устройства. Если WEB не передал Actor, Runtime.Service подставляет DeviceName.
     /// </summary>
     public string? Actor { get; set; }
+
+    /// <summary>
+    /// Windows-группы текущего пользователя.
+    /// WEB заполняет список из Windows identity, а Runtime.Service использует его для allow-list проверки.
+    /// </summary>
+    public List<string> ActorGroups { get; set; } = [];
 }

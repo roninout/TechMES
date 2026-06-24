@@ -3,6 +3,7 @@ using TechMES.Application.Param;
 using TechMES.Contracts.Equipment;
 using TechMES.Contracts.Param;
 using TechMES.Runtime.Service.Runtime;
+using Microsoft.Extensions.Options;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
@@ -175,6 +176,7 @@ public static class ParamEndpoints
         IEquipmentCatalogProvider equipmentCatalog,
         IEquipmentParamProvider paramProvider,
         IAppRuntimeContext runtimeContext,
+        IOptions<ParamWriteOptions> writeOptions,
         CancellationToken ct)
     {
         var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
@@ -197,13 +199,122 @@ public static class ParamEndpoints
 
         request.Actor = string.IsNullOrWhiteSpace(request.Actor)
             ? runtimeContext.DeviceName
-            : request.Actor;
+            : request.Actor.Trim();
+
+        var authorizationFailure = AuthorizeWrite(equipment, request, writeOptions.Value);
+        if (authorizationFailure is not null)
+            return Results.Json(authorizationFailure, statusCode: StatusCodes.Status403Forbidden);
 
         var result = await paramProvider.WriteAsync(equipment, request, ct);
+        result.Actor = request.Actor;
 
         return result.Success
             ? Results.Ok(result)
             : Results.BadRequest(result);
+    }
+
+    /// <summary>
+    /// Выполняет Runtime-side enforcement Windows-пользователей и групп.
+    /// WEB передает Actor/ActorGroups из Windows identity, но окончательное решение всегда остается здесь.
+    /// </summary>
+    private static ParamWriteResponse? AuthorizeWrite(
+        EquipmentDto equipment,
+        ParamWriteRequest request,
+        ParamWriteOptions options)
+    {
+        var authorization = options.Authorization;
+        if (!authorization.Enabled)
+            return null;
+
+        if (authorization.RequireWindowsUser && string.IsNullOrWhiteSpace(request.Actor))
+        {
+            return BuildAuthorizationFailure(
+                equipment,
+                request,
+                "Param write is denied: Windows user was not provided.");
+        }
+
+        var allowedUsers = SplitAllowList(authorization.AllowedUsers);
+        var allowedGroups = SplitAllowList(authorization.AllowedGroups);
+
+        if (allowedUsers.Count == 0 && allowedGroups.Count == 0)
+        {
+            return BuildAuthorizationFailure(
+                equipment,
+                request,
+                "Param write is denied: Windows authorization is enabled, but allowed users/groups are empty.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Actor)
+            && allowedUsers.Any(allowedUser => PrincipalMatches(request.Actor, allowedUser)))
+        {
+            return null;
+        }
+
+        if (request.ActorGroups.Any(actorGroup =>
+                allowedGroups.Any(allowedGroup => PrincipalMatches(actorGroup, allowedGroup))))
+        {
+            return null;
+        }
+
+        return BuildAuthorizationFailure(
+            equipment,
+            request,
+            $"Param write is denied for Windows user '{request.Actor}'.");
+    }
+
+    /// <summary>
+    /// Формирует единый ответ отказа, чтобы WEB показывал оператору ту же структуру, что и при CtApi-ошибках.
+    /// </summary>
+    private static ParamWriteResponse BuildAuthorizationFailure(
+        EquipmentDto equipment,
+        ParamWriteRequest request,
+        string error)
+    {
+        return new ParamWriteResponse
+        {
+            EquipmentName = equipment.Name,
+            TypeGroup = equipment.TypeGroup,
+            ItemName = request.ItemName,
+            Actor = request.Actor,
+            Success = false,
+            DryRun = false,
+            Error = error,
+            Message = "Param write was blocked by Windows authorization."
+        };
+    }
+
+    /// <summary>
+    /// Разбирает ';' и ',' allow-list строки из appsettings.
+    /// </summary>
+    private static List<string> SplitAllowList(string? value)
+    {
+        return (value ?? "")
+            .Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Сравнивает Windows principal с учетом полного DOMAIN\Name и короткого Name.
+    /// Это удобно, когда группа локальная на сервере, а в настройке указан только ее короткий alias.
+    /// </summary>
+    private static bool PrincipalMatches(string actual, string expected)
+    {
+        if (string.IsNullOrWhiteSpace(actual) || string.IsNullOrWhiteSpace(expected))
+            return false;
+
+        var normalizedActual = actual.Trim();
+        var normalizedExpected = expected.Trim();
+
+        if (normalizedActual.Equals(normalizedExpected, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var actualShortName = normalizedActual.Split('\\').LastOrDefault() ?? normalizedActual;
+        var expectedShortName = normalizedExpected.Split('\\').LastOrDefault() ?? normalizedExpected;
+
+        return actualShortName.Equals(expectedShortName, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

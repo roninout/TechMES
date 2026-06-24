@@ -1144,7 +1144,7 @@
                                             <TextBlock Grid.Row="4"
                                                        Grid.Column="4"
                                                        Grid.ColumnSpan="2"
-                                                       Text="Пока это профиль готовности; enforcement Windows-ролей подключается следующим крупным шагом."
+                                                       Text="Этот профиль используется для Runtime/Web enforcement Windows write-режима."
                                                        Style="{StaticResource MutedText}"
                                                        TextWrapping="Wrap" />
                                         </Grid>
@@ -1460,6 +1460,10 @@
                                                         <RowDefinition Height="Auto" />
                                                         <RowDefinition Height="8" />
                                                         <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="8" />
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="8" />
+                                                        <RowDefinition Height="Auto" />
                                                     </Grid.RowDefinitions>
 
                                                     <CheckBox Content="Writes enabled"
@@ -1475,17 +1479,41 @@
                                                               IsChecked="{Binding TypedAppSettings.ParamWritesAuditEnabled}" />
 
                                                     <CheckBox Grid.Row="2"
+                                                              Content="Authorization"
+                                                              IsChecked="{Binding TypedAppSettings.ParamWritesAuthorizationEnabled}" />
+                                                    <CheckBox Grid.Row="2"
+                                                              Grid.Column="1"
+                                                              Grid.ColumnSpan="2"
+                                                              Content="Require Windows user"
+                                                              IsChecked="{Binding TypedAppSettings.ParamWritesRequireWindowsUser}" />
+
+                                                    <TextBlock Grid.Row="4"
+                                                               Text="Allowed users"
+                                                               VerticalAlignment="Center" />
+                                                    <TextBox Grid.Row="4"
+                                                             Grid.Column="1"
+                                                             Text="{Binding TypedAppSettings.ParamWritesAllowedUsers, UpdateSourceTrigger=PropertyChanged}"
+                                                             Margin="0,0,8,0" />
+                                                    <TextBlock Grid.Row="4"
+                                                               Grid.Column="2"
+                                                               Text="Allowed groups"
+                                                               VerticalAlignment="Center" />
+                                                    <TextBox Grid.Row="4"
+                                                             Grid.Column="3"
+                                                             Text="{Binding TypedAppSettings.ParamWritesAllowedGroups, UpdateSourceTrigger=PropertyChanged}" />
+
+                                                    <CheckBox Grid.Row="6"
                                                               Content="Runtime file log"
                                                               IsChecked="{Binding TypedAppSettings.RuntimeFileLoggingEnabled}" />
-                                                    <TextBox Grid.Row="2"
+                                                    <TextBox Grid.Row="6"
                                                              Grid.Column="1"
                                                              Text="{Binding TypedAppSettings.RuntimeFileLoggingMinimumLevel, UpdateSourceTrigger=PropertyChanged}"
                                                              Margin="0,0,8,0" />
-                                                    <TextBox Grid.Row="2"
+                                                    <TextBox Grid.Row="6"
                                                              Grid.Column="2"
                                                              Text="{Binding TypedAppSettings.RuntimeFileLoggingDirectory, UpdateSourceTrigger=PropertyChanged}"
                                                              Margin="0,0,8,0" />
-                                                    <TextBox Grid.Row="2"
+                                                    <TextBox Grid.Row="6"
                                                              Grid.Column="3"
                                                              Text="{Binding TypedAppSettings.RuntimeFileLoggingPrefix, UpdateSourceTrigger=PropertyChanged}" />
                                                 </Grid>
@@ -1578,9 +1606,12 @@
                                                               IsChecked="{Binding TypedAppSettings.WebShowDeleteButton}" />
                                                     <CheckBox Grid.Row="8"
                                                               Grid.Column="2"
-                                                              Grid.ColumnSpan="2"
                                                               Content="HTTP -> HTTPS redirect"
                                                               IsChecked="{Binding TypedAppSettings.WebHttpsRedirectionEnabled}" />
+                                                    <CheckBox Grid.Row="8"
+                                                              Grid.Column="3"
+                                                              Content="Windows auth"
+                                                              IsChecked="{Binding TypedAppSettings.WebWindowsAuthenticationEnabled}" />
 
                                                     <CheckBox Grid.Row="10"
                                                               Content="WEB file log"
@@ -1738,10 +1769,10 @@
                             <TextBlock TextWrapping="Wrap"
                                        FontSize="14"
                                        LineHeight="22">
-                                Готово: Dashboard со статусами Windows Services, publish/install/start/deploy, typed-редактор Maintenance, typed-редактор Runtime/Web appsettings, просмотр логов, серверная диагностика HTTP/HTTPS, firewall-правила, подготовка HTTPS-сертификата, Server profile, Checks, Backup / Restore, Service actions для очистки и профиль целевой машины с PostgreSQL auth/version проверками.&#x0a;&#x0a;
+                                Готово: Dashboard со статусами Windows Services, publish/install/start/deploy, typed-редактор Maintenance, typed-редактор Runtime/Web appsettings, просмотр логов, серверная диагностика HTTP/HTTPS, firewall-правила, подготовка HTTPS-сертификата, Server profile, Checks, Backup / Restore, Service actions для очистки, профиль целевой машины с PostgreSQL auth/version проверками и Runtime/Web enforcement Windows write-режима.&#x0a;&#x0a;
                                 1. Добавить экспорт backup в zip-архив и импорт zip-архива, чтобы переносить настройки между машинами.&#x0a;
                                 2. Добавить экспорт публичного CER и краткую инструкцию для планшета прямо из Maintenance.&#x0a;
-                                3. Подключить реальный enforcement Windows-пользователей и групп write-режима в WEB/Runtime. Сейчас Maintenance уже хранит профиль и показывает расхождения, но не блокирует действия в WEB.&#x0a;
+                                3. Добавить отдельную диагностику Windows auth: текущий WEB-пользователь, группы, результат allow-list и подсказки по настройке браузеров.&#x0a;
                                 4. Расширить диагностику действий оператора: связать write-профиль, SCADA audit SaveActionOperators и отображение Operation actions в единую проверку готовности.&#x0a;
                                 5. После стабилизации интерфейса добавить сценарий «подготовить новый сервер одной кнопкой»: publish, certificate, firewall, install services, probe, backup baseline.
                             </TextBlock>
