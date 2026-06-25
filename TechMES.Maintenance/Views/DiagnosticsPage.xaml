@@ -176,6 +176,150 @@
                         </DataGrid>
                     </Grid>
         </TabItem>
+        <TabItem>
+            <TabItem.Header>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72E;" FontSize="18" Margin="0,0,8,0" />
+                    <TextBlock Text="Windows auth" />
+                </StackPanel>
+            </TabItem.Header>
+                    <Grid Margin="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0"
+                                Background="{StaticResource TechMesPanelBrush}"
+                                BorderBrush="{StaticResource TechMesBorderBrush}"
+                                BorderThickness="1"
+                                Padding="12"
+                                Margin="0,0,0,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel>
+                                    <TextBlock Text="Windows auth diagnostics"
+                                               Style="{StaticResource SectionTitleText}" />
+                                    <TextBlock Text="Показывает текущего Windows-пользователя Maintenance, его группы, состояние WEB Windows Authentication и результат проверки Runtime allow-list."
+                                               Style="{StaticResource MutedText}"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding WindowsAuthDiagnosticsStatusText}"
+                                               Margin="0,8,0,0"
+                                               FontWeight="SemiBold" />
+                                </StackPanel>
+
+                                <Button Grid.Column="1"
+                                        Content="Refresh auth"
+                                        VerticalAlignment="Center"
+                                        Click="OnRefreshWindowsAuthDiagnosticsClick" />
+                            </Grid>
+                        </Border>
+
+                        <DataGrid Grid.Row="1"
+                                  ItemsSource="{Binding WindowsAuthDiagnostics}"
+                                  RowStyle="{StaticResource DiagnosticsStatusRowStyle}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  CanUserAddRows="False"
+                                  HeadersVisibility="Column"
+                                  GridLinesVisibility="Horizontal"
+                                  Background="{StaticResource TechMesPanelBrush}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Category"
+                                                    Binding="{Binding Category}"
+                                                    Width="130" />
+                                <DataGridTextColumn Header="Name"
+                                                    Binding="{Binding Name}"
+                                                    Width="220" />
+                                <DataGridTextColumn Header="Status"
+                                                    Binding="{Binding Status}"
+                                                    Width="110" />
+                                <DataGridTextColumn Header="Details"
+                                                    Binding="{Binding Details}"
+                                                    Width="*" />
+                                <DataGridTextColumn Header="Checked"
+                                                    Binding="{Binding CheckedAt, StringFormat={}{0:HH:mm:ss}}"
+                                                    Width="100" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+        </TabItem>
+        <TabItem>
+            <TabItem.Header>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7C3;" FontSize="18" Margin="0,0,8,0" />
+                    <TextBlock Text="Operator actions" />
+                </StackPanel>
+            </TabItem.Header>
+                    <Grid Margin="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0"
+                                Background="{StaticResource TechMesPanelBrush}"
+                                BorderBrush="{StaticResource TechMesBorderBrush}"
+                                BorderThickness="1"
+                                Padding="12"
+                                Margin="0,0,0,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel>
+                                    <TextBlock Text="Operator actions readiness"
+                                               Style="{StaticResource SectionTitleText}" />
+                                    <TextBlock Text="Проверяет связку Param write, CtApi write, SCADA audit SaveActionOperators, Event DB и страницу Operation actions."
+                                               Style="{StaticResource MutedText}"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding OperatorActionDiagnosticsStatusText}"
+                                               Margin="0,8,0,0"
+                                               FontWeight="SemiBold" />
+                                </StackPanel>
+
+                                <Button Grid.Column="1"
+                                        Content="Refresh actions"
+                                        VerticalAlignment="Center"
+                                        Click="OnRefreshOperatorActionDiagnosticsClick" />
+                            </Grid>
+                        </Border>
+
+                        <DataGrid Grid.Row="1"
+                                  ItemsSource="{Binding OperatorActionDiagnostics}"
+                                  RowStyle="{StaticResource DiagnosticsStatusRowStyle}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  CanUserAddRows="False"
+                                  HeadersVisibility="Column"
+                                  GridLinesVisibility="Horizontal"
+                                  Background="{StaticResource TechMesPanelBrush}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Category"
+                                                    Binding="{Binding Category}"
+                                                    Width="130" />
+                                <DataGridTextColumn Header="Name"
+                                                    Binding="{Binding Name}"
+                                                    Width="220" />
+                                <DataGridTextColumn Header="Status"
+                                                    Binding="{Binding Status}"
+                                                    Width="110" />
+                                <DataGridTextColumn Header="Details"
+                                                    Binding="{Binding Details}"
+                                                    Width="*" />
+                                <DataGridTextColumn Header="Checked"
+                                                    Binding="{Binding CheckedAt, StringFormat={}{0:HH:mm:ss}}"
+                                                    Width="100" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+        </TabItem>
     </TabControl>
                 
 </views:MaintenancePageControl>

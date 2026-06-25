@@ -71,6 +71,8 @@ public class MaintenancePageControl : UserControl
     public void OnScanCleanupClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnDeleteCleanupCandidatesClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnRunDependencyChecksClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnRefreshWindowsAuthDiagnosticsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnRefreshOperatorActionDiagnosticsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnSaveDeploymentProfileClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnPublishAllClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnInstallAllClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);

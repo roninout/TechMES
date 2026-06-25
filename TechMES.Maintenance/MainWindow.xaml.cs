@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
+using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
@@ -56,6 +57,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private string _serverCertificateStatus = "";
     private string _serverLogText = "";
     private string _dependencyCheckStatusText = "";
+    private string _windowsAuthDiagnosticsStatusText = "Not checked.";
+    private string _operatorActionDiagnosticsStatusText = "Not checked.";
     private string _serverProfileReadinessStatus = "Not checked";
     private string _serverProfileReadinessDetails = "Refresh server profile to calculate readiness.";
     private string _serverProfileLastUpdated = "";
@@ -95,6 +98,16 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     /// Эти проверки ничего не меняют в системе: они только помогают понять, готов ли сервер к работе.
     /// </summary>
     public ObservableCollection<DependencyCheckViewModel> DependencyChecks { get; } = [];
+
+    /// <summary>
+    /// Read-only Windows-auth diagnostics split out from the generic Checks tab.
+    /// </summary>
+    public ObservableCollection<DependencyCheckViewModel> WindowsAuthDiagnostics { get; } = [];
+
+    /// <summary>
+    /// Read-only diagnostics for the Param write audit chain and Operation actions visibility.
+    /// </summary>
+    public ObservableCollection<DependencyCheckViewModel> OperatorActionDiagnostics { get; } = [];
 
     /// <summary>
     /// Понятный профиль текущего сервера: сеть, порты, сертификат, firewall, publish и Windows Services.
@@ -138,6 +151,38 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
             _dependencyCheckStatusText = value;
             OnPropertyChanged(nameof(DependencyCheckStatusText));
+        }
+    }
+
+    /// <summary>
+    /// Short status text for the Windows auth diagnostics tab.
+    /// </summary>
+    public string WindowsAuthDiagnosticsStatusText
+    {
+        get => _windowsAuthDiagnosticsStatusText;
+        set
+        {
+            if (_windowsAuthDiagnosticsStatusText == value)
+                return;
+
+            _windowsAuthDiagnosticsStatusText = value;
+            OnPropertyChanged(nameof(WindowsAuthDiagnosticsStatusText));
+        }
+    }
+
+    /// <summary>
+    /// Short status text for the Operator actions diagnostics tab.
+    /// </summary>
+    public string OperatorActionDiagnosticsStatusText
+    {
+        get => _operatorActionDiagnosticsStatusText;
+        set
+        {
+            if (_operatorActionDiagnosticsStatusText == value)
+                return;
+
+            _operatorActionDiagnosticsStatusText = value;
+            OnPropertyChanged(nameof(OperatorActionDiagnosticsStatusText));
         }
     }
 
@@ -945,6 +990,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         LoadTypedAppSettings();
         RefreshServerAddressRows();
         RefreshServerProfile();
+        RefreshWindowsAuthDiagnostics();
+        RefreshOperatorActionDiagnostics();
         RefreshLogRows();
         RefreshBackupRows();
         RefreshDiskStatuses();
@@ -1620,6 +1667,179 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             $"Profile requires SCADA audit: {_configuration.Security.RequireScadaAudit}; Runtime audit enabled: {TypedAppSettings.ParamWritesAuditEnabled}.");
     }
 
+    private void RefreshWindowsAuthDiagnostics()
+    {
+        WindowsAuthDiagnostics.Clear();
+
+        var currentUser = GetCurrentWindowsUser();
+        var currentGroups = GetCurrentWindowsGroups();
+        var configuredUsers = SplitPrincipalList(TypedAppSettings.ParamWritesAllowedUsers);
+        var configuredGroups = SplitPrincipalList(TypedAppSettings.ParamWritesAllowedGroups);
+        var profileGroups = SplitPrincipalList(_configuration.Security.WriteGroups);
+
+        AddDiagnosticsRow(
+            WindowsAuthDiagnostics,
+            "Windows auth",
+            "Current Maintenance user",
+            "OK",
+            currentUser);
+
+        AddDiagnosticsRow(
+            WindowsAuthDiagnostics,
+            "Windows auth",
+            "Current Windows groups",
+            currentGroups.Count == 0 ? "Warning" : "OK",
+            FormatPrincipalList(currentGroups, 18));
+
+        AddDiagnosticsRow(
+            WindowsAuthDiagnostics,
+            "WEB",
+            "Windows Authentication",
+            TypedAppSettings.WebWindowsAuthenticationEnabled == _configuration.Security.WindowsUsersEnabled ? "OK" : "Warning",
+            $"Maintenance profile: {_configuration.Security.WindowsUsersEnabled}; WEB appsettings: {TypedAppSettings.WebWindowsAuthenticationEnabled}.");
+
+        AddDiagnosticsRow(
+            WindowsAuthDiagnostics,
+            "Runtime",
+            "Write authorization",
+            TypedAppSettings.ParamWritesAuthorizationEnabled == _configuration.Security.WindowsUsersEnabled ? "OK" : "Warning",
+            $"Maintenance profile: {_configuration.Security.WindowsUsersEnabled}; Runtime appsettings: {TypedAppSettings.ParamWritesAuthorizationEnabled}; require Windows user: {TypedAppSettings.ParamWritesRequireWindowsUser}.");
+
+        AddDiagnosticsRow(
+            WindowsAuthDiagnostics,
+            "Allow-list",
+            "Profile write groups",
+            profileGroups.Count == 0 ? "Warning" : "OK",
+            profileGroups.Count == 0 ? "No write groups are configured in maintenance.settings.json." : string.Join("; ", profileGroups));
+
+        AddDiagnosticsRow(
+            WindowsAuthDiagnostics,
+            "Allow-list",
+            "Runtime allowed principals",
+            configuredUsers.Count == 0 && configuredGroups.Count == 0 ? "Error" : "OK",
+            $"Users: {FormatPrincipalList(configuredUsers, 10)}; groups: {FormatPrincipalList(configuredGroups, 10)}.");
+
+        AddDiagnosticsRow(
+            WindowsAuthDiagnostics,
+            "Allow-list",
+            "Profile vs Runtime groups",
+            PrincipalListsMatch(profileGroups, configuredGroups) ? "OK" : "Warning",
+            $"Profile: {FormatPrincipalList(profileGroups, 10)}; Runtime: {FormatPrincipalList(configuredGroups, 10)}.");
+
+        var currentUserAllowed = IsPrincipalAllowed(currentUser, currentGroups, configuredUsers, configuredGroups);
+        AddDiagnosticsRow(
+            WindowsAuthDiagnostics,
+            "Allow-list",
+            "Current user simulation",
+            !TypedAppSettings.ParamWritesAuthorizationEnabled ? "Warning" : currentUserAllowed ? "OK" : "Warning",
+            !TypedAppSettings.ParamWritesAuthorizationEnabled
+                ? "Runtime allow-list enforcement is disabled, so the current user is not checked."
+                : currentUserAllowed
+                    ? "The current Windows user or one of its groups matches Runtime allow-list."
+                    : "The current Maintenance user does not match Runtime allow-list. This may be normal if WEB is tested from another Windows account.");
+
+        AddDiagnosticsRow(
+            WindowsAuthDiagnostics,
+            "Browser",
+            "Integrated auth hints",
+            TypedAppSettings.WebWindowsAuthenticationEnabled ? "OK" : "Warning",
+            "Chrome/Edge can pass Windows credentials for intranet/trusted hosts. If a browser prompts for credentials, configure the host as trusted or use the browser AuthServerAllowlist policy.");
+
+        UpdateDiagnosticsStatus(WindowsAuthDiagnostics, value => WindowsAuthDiagnosticsStatusText = value);
+    }
+
+    private void RefreshOperatorActionDiagnostics()
+    {
+        OperatorActionDiagnostics.Clear();
+
+        var eventDbConfigured = !string.IsNullOrWhiteSpace(TypedAppSettings.RuntimeEventDatabaseConnectionString);
+        var eventDbEndpoint = TryGetPostgresEndpoint(
+            TypedAppSettings.RuntimeEventDatabaseConnectionString,
+            out var eventHost,
+            out var eventPort,
+            out var eventDatabase,
+            out var eventReason)
+                ? $"{eventHost}:{eventPort}/{eventDatabase}"
+                : eventReason;
+
+        AddDiagnosticsRow(
+            OperatorActionDiagnostics,
+            "Write flow",
+            "Param writes",
+            TypedAppSettings.ParamWritesEnabled ? "OK" : "Warning",
+            $"Enabled: {TypedAppSettings.ParamWritesEnabled}; dry run: {TypedAppSettings.ParamWritesDryRun}; WEB confirmation: {TypedAppSettings.WebConfirmWrites}.");
+
+        AddDiagnosticsRow(
+            OperatorActionDiagnostics,
+            "Write flow",
+            "CtApi writes",
+            TypedAppSettings.CtApiAllowWrites ? "OK" : "Warning",
+            $"CtApi AllowWrites: {TypedAppSettings.CtApiAllowWrites}; CtApi server: {TypedAppSettings.CtApiServer}; user: {TypedAppSettings.CtApiUser}.");
+
+        AddDiagnosticsRow(
+            OperatorActionDiagnostics,
+            "Audit",
+            "SCADA audit switch",
+            TypedAppSettings.ParamWritesAuditEnabled ? "OK" : _configuration.Security.RequireScadaAudit ? "Error" : "Warning",
+            $"Maintenance profile requires audit: {_configuration.Security.RequireScadaAudit}; Runtime ParamWrites:AuditEnabled: {TypedAppSettings.ParamWritesAuditEnabled}.");
+
+        AddDiagnosticsRow(
+            OperatorActionDiagnostics,
+            "Audit",
+            "SaveActionOperators",
+            TypedAppSettings.ParamWritesAuditEnabled ? "OK" : "Warning",
+            "Runtime write-flow should call Cicode SaveActionOperators(name, current, new, description, deviceName) after successful real writes.");
+
+        AddDiagnosticsRow(
+            OperatorActionDiagnostics,
+            "Audit",
+            "Runtime device name",
+            string.IsNullOrWhiteSpace(TypedAppSettings.RuntimeDeviceName) ? "Warning" : "OK",
+            string.IsNullOrWhiteSpace(TypedAppSettings.RuntimeDeviceName)
+                ? "Runtime device name is empty; operator actions will be harder to identify."
+                : TypedAppSettings.RuntimeDeviceName);
+
+        AddDiagnosticsRow(
+            OperatorActionDiagnostics,
+            "Event DB",
+            "Connection string",
+            eventDbConfigured ? "OK" : "Error",
+            eventDbConfigured ? eventDbEndpoint : "Runtime EventDatabase:ConnectionString is empty.");
+
+        AddDiagnosticsRow(
+            OperatorActionDiagnostics,
+            "Operation actions",
+            "Runtime endpoint",
+            eventDbConfigured ? "OK" : "Error",
+            eventDbConfigured
+                ? "Runtime exposes /api/event-log/operator-actions and reads existing EventPicker/PostgreSQL tables."
+                : "Operation actions cannot be loaded without Event DB connection string.");
+
+        AddDiagnosticsRow(
+            OperatorActionDiagnostics,
+            "Operation actions",
+            "WEB page",
+            eventDbConfigured ? "OK" : "Warning",
+            "WEB page Operation actions reads Runtime API. No duplicate audit tables are created by WEB.");
+
+        var ready = TypedAppSettings.ParamWritesEnabled
+            && !TypedAppSettings.ParamWritesDryRun
+            && TypedAppSettings.CtApiAllowWrites
+            && TypedAppSettings.ParamWritesAuditEnabled
+            && eventDbConfigured;
+
+        AddDiagnosticsRow(
+            OperatorActionDiagnostics,
+            "Readiness",
+            "Operator action chain",
+            ready ? "OK" : "Warning",
+            ready
+                ? "Real writes, CtApi writes, SCADA audit and Event DB are configured."
+                : "One or more parts are not ready: Param writes, dry-run, CtApi writes, SCADA audit or Event DB.");
+
+        UpdateDiagnosticsStatus(OperatorActionDiagnostics, value => OperatorActionDiagnosticsStatusText = value);
+    }
+
     /// <summary>
     /// Проверяет обязательные поля CtApi.
     /// Сам вызов Citect из Maintenance пока не выполняем, чтобы не добавлять второй SCADA-клиент рядом с Runtime.Service.
@@ -1729,7 +1949,17 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         string status,
         string details)
     {
-        DependencyChecks.Add(new DependencyCheckViewModel
+        AddDiagnosticsRow(DependencyChecks, category, name, status, details);
+    }
+
+    private static void AddDiagnosticsRow(
+        ObservableCollection<DependencyCheckViewModel> target,
+        string category,
+        string name,
+        string status,
+        string details)
+    {
+        target.Add(new DependencyCheckViewModel
         {
             Category = category,
             Name = name,
@@ -1737,6 +1967,116 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             Details = details,
             CheckedAt = DateTime.Now
         });
+    }
+
+    private static void UpdateDiagnosticsStatus(
+        ObservableCollection<DependencyCheckViewModel> rows,
+        Action<string> applyStatus)
+    {
+        var errors = rows.Count(check => check.Status == "Error");
+        var warnings = rows.Count(check => check.Status == "Warning");
+        var ok = rows.Count(check => check.Status == "OK");
+
+        applyStatus($"Checked: OK {ok}, warnings {warnings}, errors {errors}.");
+    }
+
+    private static string GetCurrentWindowsUser()
+    {
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            if (!string.IsNullOrWhiteSpace(identity.Name))
+                return identity.Name;
+        }
+        catch
+        {
+            // Environment fallback is enough for a read-only diagnostic row.
+        }
+
+        return $"{Environment.UserDomainName}\\{Environment.UserName}";
+    }
+
+    private static List<string> GetCurrentWindowsGroups()
+    {
+        var result = new List<string>();
+
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            if (identity.Groups is null)
+                return result;
+
+            foreach (var group in identity.Groups)
+            {
+                try
+                {
+                    result.Add(group.Translate(typeof(NTAccount)).Value);
+                }
+                catch
+                {
+                    result.Add(group.Value);
+                }
+            }
+        }
+        catch
+        {
+            return result;
+        }
+
+        return result
+            .Where(group => !string.IsNullOrWhiteSpace(group))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<string> SplitPrincipalList(string? value)
+    {
+        return (value ?? "")
+            .Split([';', ',', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool IsPrincipalAllowed(
+        string currentUser,
+        IReadOnlyCollection<string> currentGroups,
+        IReadOnlyCollection<string> allowedUsers,
+        IReadOnlyCollection<string> allowedGroups)
+    {
+        return allowedUsers.Any(allowed => PrincipalMatches(currentUser, allowed))
+            || currentGroups.Any(group => allowedGroups.Any(allowed => PrincipalMatches(group, allowed)));
+    }
+
+    private static bool PrincipalListsMatch(
+        IReadOnlyCollection<string> first,
+        IReadOnlyCollection<string> second)
+    {
+        return first.Count == second.Count
+            && first.All(item => second.Any(other => PrincipalMatches(item, other)));
+    }
+
+    private static bool PrincipalMatches(string actual, string allowed)
+    {
+        if (string.Equals(actual, allowed, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (allowed.Contains('\\', StringComparison.Ordinal))
+            return false;
+
+        return actual.EndsWith("\\" + allowed, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatPrincipalList(IReadOnlyCollection<string> items, int maxItems)
+    {
+        if (items.Count == 0)
+            return "-";
+
+        var visible = items.Take(maxItems).ToList();
+        var suffix = items.Count > visible.Count ? $" ... (+{items.Count - visible.Count})" : "";
+
+        return string.Join("; ", visible) + suffix;
     }
 
     /// <summary>
@@ -2235,6 +2575,16 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         await RefreshServerAsync();
     }
 
+    private void OnRefreshWindowsAuthDiagnosticsClick(object sender, RoutedEventArgs e)
+    {
+        RefreshWindowsAuthDiagnostics();
+    }
+
+    private void OnRefreshOperatorActionDiagnosticsClick(object sender, RoutedEventArgs e)
+    {
+        RefreshOperatorActionDiagnostics();
+    }
+
     private async void OnRefreshServerClick(object sender, RoutedEventArgs e)
     {
         await RefreshServerAsync();
@@ -2496,6 +2846,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             RefreshServerAddressRows();
             RefreshDiskStatuses();
             RefreshServerProfile();
+            RefreshWindowsAuthDiagnostics();
+            RefreshOperatorActionDiagnostics();
 
             foreach (var service in ServiceStatuses)
                 service.RefreshDefinitionBindings();
@@ -2523,6 +2875,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private void OnReloadTypedRuntimeWebAppSettingsClick(object sender, RoutedEventArgs e)
     {
         LoadTypedAppSettings();
+        RefreshWindowsAuthDiagnostics();
+        RefreshOperatorActionDiagnostics();
         AppendDiagnostics(TypedAppSettings.Status);
     }
 
@@ -2536,6 +2890,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         try
         {
             SaveTypedRuntimeWebAppSettings();
+            RefreshWindowsAuthDiagnostics();
+            RefreshOperatorActionDiagnostics();
         }
         catch (Exception ex)
         {
@@ -2551,6 +2907,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private void OnReloadAllTypedSettingsClick(object sender, RoutedEventArgs e)
     {
         LoadTypedAppSettings();
+        RefreshWindowsAuthDiagnostics();
+        RefreshOperatorActionDiagnostics();
         AppendDiagnostics(TypedAppSettings.Status);
     }
 

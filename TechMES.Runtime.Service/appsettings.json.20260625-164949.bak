@@ -89,7 +89,7 @@
     "Authorization": {
       "Enabled": true,
       "RequireWindowsUser": true,
-      "AllowedUsers": "Kovalchuk_a",
+      "AllowedUsers": "",
       "AllowedGroups": "TechMES-Operators;TechMES-Engineers"
     }
   },
