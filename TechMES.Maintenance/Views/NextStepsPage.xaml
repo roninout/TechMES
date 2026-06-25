@@ -1,0 +1,38 @@
+﻿<views:MaintenancePageControl x:Class="TechMES.Maintenance.Views.NextStepsPage"
+                              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                              xmlns:views="clr-namespace:TechMES.Maintenance.Views"
+                              mc:Ignorable="d">
+    <TabControl HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch">
+        <TabItem>
+            <TabItem.Header>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8FD;" FontSize="18" Margin="0,0,8,0" />
+                    <TextBlock Text="Next steps" />
+                </StackPanel>
+            </TabItem.Header>
+                    <ScrollViewer Margin="12"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch">
+                        <StackPanel>
+                            <TextBlock Text="Maintenance: что готово и что делаем дальше"
+                                       Style="{StaticResource SectionTitleText}" />
+                            <TextBlock TextWrapping="Wrap"
+                                       FontSize="14"
+                                       LineHeight="22">
+                                Готово: Dashboard со статусами Windows Services, publish/install/start/deploy, typed-редактор Maintenance, typed-редактор Runtime/Web appsettings, просмотр логов, серверная диагностика HTTP/HTTPS, firewall-правила, подготовка HTTPS-сертификата, Server profile, Checks, Backup / Restore, Service actions для очистки, профиль целевой машины с PostgreSQL auth/version проверками и Runtime/Web enforcement Windows write-режима.&#x0a;&#x0a;
+                                1. Добавить экспорт backup в zip-архив и импорт zip-архива, чтобы переносить настройки между машинами.&#x0a;
+                                2. Добавить экспорт публичного CER и краткую инструкцию для планшета прямо из Maintenance.&#x0a;
+                                3. Добавить отдельную диагностику Windows auth: текущий WEB-пользователь, группы, результат allow-list и подсказки по настройке браузеров.&#x0a;
+                                4. Расширить диагностику действий оператора: связать write-профиль, SCADA audit SaveActionOperators и отображение Operation actions в единую проверку готовности.&#x0a;
+                                5. После стабилизации интерфейса добавить сценарий «подготовить новый сервер одной кнопкой»: publish, certificate, firewall, install services, probe, backup baseline.
+                            </TextBlock>
+                        </StackPanel>
+                    </ScrollViewer>
+        </TabItem>
+    </TabControl>
+                
+</views:MaintenancePageControl>

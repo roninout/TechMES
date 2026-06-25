@@ -63,8 +63,8 @@
   },
   "TargetMachine": {
     "DisplayName": "Local TechMES server",
-    "HostName": "",
-    "IpAddress": "",
+    "HostName": "techmes",
+    "IpAddress": "192.168.1.118",
     "MinimumPostgreSqlVersion": "",
     "Notes": ""
   },

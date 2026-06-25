@@ -4,6 +4,47 @@
              xmlns:local="clr-namespace:TechMES.Maintenance"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+        <SolidColorBrush x:Key="TechMesBlueBrush" Color="#2563EB" />
+        <SolidColorBrush x:Key="TechMesTextBrush" Color="#1F2937" />
+        <SolidColorBrush x:Key="TechMesMutedBrush" Color="#6B7280" />
+        <SolidColorBrush x:Key="TechMesPanelBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="TechMesBorderBrush" Color="#D1D5DB" />
+        <SolidColorBrush x:Key="TechMesShellBrush" Color="#F3F4F6" />
+
+        <Style TargetType="Button">
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+        </Style>
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TechMesTextBrush}" />
+        </Style>
+
+        <Style x:Key="SectionTitleText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+
+        <Style x:Key="MutedText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TechMesMutedBrush}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+
+        <Style x:Key="MaintenanceMenuTabItemStyle" TargetType="TabItem">
+            <Setter Property="Width" Value="220" />
+            <Setter Property="MinHeight" Value="58" />
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+
+        <Style TargetType="TabItem">
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="FontSize" Value="14" />
+        </Style>
     </Application.Resources>
 </Application>

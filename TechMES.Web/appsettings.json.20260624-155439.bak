@@ -7,7 +7,7 @@
   },
   "App": {
     "DeviceName": "WEB-CLIENT-01",
-    "Title": "TechMES"
+    "Title": "TechMES WEB"
   },
   "Param": {
     "TrendWindowMinutes": 30,
@@ -21,7 +21,7 @@
     "Enabled": false
   },
   "WindowsAuthentication": {
-    "Enabled": true
+    "Enabled": false
   },
   "FileLogging": {
     "Enabled": true,

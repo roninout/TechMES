@@ -1,0 +1,157 @@
+﻿<views:MaintenancePageControl x:Class="TechMES.Maintenance.Views.ServerPage"
+                              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                              xmlns:views="clr-namespace:TechMES.Maintenance.Views"
+                              mc:Ignorable="d">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="150" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                                Background="{StaticResource TechMesPanelBrush}"
+                                BorderBrush="{StaticResource TechMesBorderBrush}"
+                                BorderThickness="1"
+                                Padding="12"
+                                Margin="0,0,0,10">
+            <Grid>
+                <StackPanel>
+                    <TextBlock Text="Server access" Style="{StaticResource SectionTitleText}" />
+                    <TextBlock Text="WEB должен быть доступен по одному из адресов ниже." Style="{StaticResource MutedText}" />
+                    <TextBlock Text="Runtime Service остается локальным и наружу не открывается. HTTPS нужен для камеры, QR-сканера и браузерных API." Style="{StaticResource MutedText}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                                    Background="{StaticResource TechMesPanelBrush}"
+                                    BorderBrush="{StaticResource TechMesBorderBrush}"
+                                    BorderThickness="1"
+                                    Padding="10">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top"
+                                               Text="Tablet URLs"
+                                               Style="{StaticResource SectionTitleText}" />
+                    <DataGrid ItemsSource="{Binding ServerAddresses}"
+                                              AutoGenerateColumns="False"
+                                              IsReadOnly="True"
+                                              CanUserAddRows="False"
+                                              HeadersVisibility="Column"
+                                              GridLinesVisibility="Horizontal"
+                                              Background="{StaticResource TechMesPanelBrush}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Adapter"
+                                                                Binding="{Binding AdapterName}"
+                                                                Width="220" />
+                            <DataGridTextColumn Header="IP"
+                                                                Binding="{Binding Address}"
+                                                                Width="150" />
+                            <DataGridTextColumn Header="WEB URL"
+                                                                Binding="{Binding WebUrl}"
+                                                                Width="*" />
+                            <DataGridTextColumn Header="HTTPS URL"
+                                                                Binding="{Binding HttpsUrl}"
+                                                                Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="2"
+                                    Background="{StaticResource TechMesPanelBrush}"
+                                    BorderBrush="{StaticResource TechMesBorderBrush}"
+                                    BorderThickness="1"
+                                    Padding="10">
+                <DockPanel LastChildFill="True">
+                    <Grid DockPanel.Dock="Bottom"
+                          Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0"
+                                Content="Prepare server"
+                                HorizontalAlignment="Left"
+                                MinWidth="120"
+                                Click="OnPrepareServerClick" />
+                        <Button Grid.Column="1"
+                                Content="Refresh server"
+                                HorizontalAlignment="Right"
+                                MinWidth="120"
+                                Click="OnRefreshServerClick" />
+                    </Grid>
+
+                    <StackPanel>
+                        <TextBlock Text="Server checks"
+                                   Style="{StaticResource SectionTitleText}" />
+
+                    <TextBlock Text="WEB port"
+                                               Style="{StaticResource MutedText}" />
+                    <TextBlock Text="{Binding ServerWebPortLine}"
+                                               Margin="0,0,0,8"
+                                               FontWeight="SemiBold" />
+
+                    <TextBlock Text="HTTPS port"
+                                               Style="{StaticResource MutedText}" />
+                    <TextBlock Text="{Binding ServerHttpsPortLine}"
+                                               Margin="0,0,0,8"
+                                               FontWeight="SemiBold" />
+
+                    <TextBlock Text="Runtime port"
+                                               Style="{StaticResource MutedText}" />
+                    <TextBlock Text="{Binding ServerRuntimePortLine}"
+                                               Margin="0,0,0,8"
+                                               FontWeight="SemiBold" />
+
+                    <TextBlock Text="FirewallRule"
+                                               Style="{StaticResource MutedText}" />
+                    <TextBlock Text="{Binding ServerFirewallRuleLine}"
+                                               FontWeight="SemiBold"
+                                               TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding ServerHttpsFirewallRuleLine}"
+                                               Margin="0,2,0,8"
+                                               FontWeight="SemiBold"
+                                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="Certificate"
+                                               Style="{StaticResource MutedText}"
+                                               Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding ServerCertificateStatus}"
+                                               FontWeight="SemiBold"
+                                               TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding ServerCertificatePfxPath}"
+                                               Style="{StaticResource MutedText}"
+                                               TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding ServerPublicCertificatePath}"
+                                   Style="{StaticResource MutedText}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <GroupBox Grid.Row="2"
+                                  Header="Server log"
+                                  Margin="0,12,0,0">
+            <TextBox Text="{Binding ServerLogText}"
+                                     IsReadOnly="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     FontFamily="Consolas"
+                                     BorderThickness="0"
+                                     Padding="8" />
+        </GroupBox>
+    </Grid>
+</views:MaintenancePageControl>

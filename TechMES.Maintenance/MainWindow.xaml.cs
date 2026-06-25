@@ -48,6 +48,9 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private LogFileViewModel? _selectedLogFile;
     private string _selectedLogText = "";
     private string _serverPortStatus = "";
+    private string _serverWebPortState = "Not checked";
+    private string _serverHttpsPortState = "Not checked";
+    private string _serverRuntimePortState = "Not checked";
     private string _serverFirewallStatus = "";
     private string _serverHttpsFirewallStatus = "";
     private string _serverCertificateStatus = "";
@@ -259,6 +262,11 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     public string RepositoryRootText => $"Repository: {_repositoryRoot.FullName}";
 
     /// <summary>
+    /// Полный путь к корню репозитория без префикса, удобный для отображения в настройках.
+    /// </summary>
+    public string RepositoryRootPath => _repositoryRoot.FullName;
+
+    /// <summary>
     /// WEB-порт серверного режима.
     /// </summary>
     public int ServerWebPort
@@ -271,6 +279,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
             _configuration.Server.WebPort = value;
             OnPropertyChanged(nameof(ServerWebPort));
+            OnPropertyChanged(nameof(ServerWebPortLine));
             RefreshServerAddressRows();
         }
     }
@@ -288,6 +297,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
             _configuration.Server.RuntimePort = value;
             OnPropertyChanged(nameof(ServerRuntimePort));
+            OnPropertyChanged(nameof(ServerRuntimePortLine));
         }
     }
 
@@ -304,6 +314,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
             _configuration.Server.FirewallRuleName = value;
             OnPropertyChanged(nameof(ServerFirewallRuleName));
+            OnPropertyChanged(nameof(ServerFirewallRuleLine));
         }
     }
 
@@ -320,6 +331,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
             _configuration.Server.HttpsPort = value;
             OnPropertyChanged(nameof(ServerHttpsPort));
+            OnPropertyChanged(nameof(ServerHttpsPortLine));
             RefreshServerAddressRows();
         }
     }
@@ -337,6 +349,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
             _configuration.Server.HttpsFirewallRuleName = value;
             OnPropertyChanged(nameof(ServerHttpsFirewallRuleName));
+            OnPropertyChanged(nameof(ServerHttpsFirewallRuleLine));
         }
     }
 
@@ -675,6 +688,31 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     }
 
     /// <summary>
+    /// Отдельная строка состояния HTTP-порта WEB в блоке Server checks.
+    /// </summary>
+    public string ServerWebPortLine => $"{ServerWebPort} : {_serverWebPortState}";
+
+    /// <summary>
+    /// Отдельная строка состояния HTTPS-порта WEB в блоке Server checks.
+    /// </summary>
+    public string ServerHttpsPortLine => $"{ServerHttpsPort} : {_serverHttpsPortState}";
+
+    /// <summary>
+    /// Отдельная строка состояния Runtime-порта в блоке Server checks.
+    /// </summary>
+    public string ServerRuntimePortLine => $"{ServerRuntimePort} : {_serverRuntimePortState}";
+
+    /// <summary>
+    /// HTTP firewall-правило вместе с текущим статусом.
+    /// </summary>
+    public string ServerFirewallRuleLine => $"{ServerFirewallRuleName} : {(string.IsNullOrWhiteSpace(ServerFirewallStatus) ? "Not checked" : ServerFirewallStatus)}";
+
+    /// <summary>
+    /// HTTPS firewall-правило вместе с текущим статусом.
+    /// </summary>
+    public string ServerHttpsFirewallRuleLine => $"{ServerHttpsFirewallRuleName} : {(string.IsNullOrWhiteSpace(ServerHttpsFirewallStatus) ? "Not checked" : ServerHttpsFirewallStatus)}";
+
+    /// <summary>
     /// Статус входящего правила Windows Firewall для WEB-порта.
     /// </summary>
     public string ServerFirewallStatus
@@ -684,6 +722,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         {
             _serverFirewallStatus = value;
             OnPropertyChanged(nameof(ServerFirewallStatus));
+            OnPropertyChanged(nameof(ServerFirewallRuleLine));
         }
     }
 
@@ -697,6 +736,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         {
             _serverHttpsFirewallStatus = value;
             OnPropertyChanged(nameof(ServerHttpsFirewallStatus));
+            OnPropertyChanged(nameof(ServerHttpsFirewallRuleLine));
         }
     }
 
@@ -1830,10 +1870,17 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         var httpsListening = _serverNetworkService.IsTcpPortListening(_configuration.Server.HttpsPort);
         var runtimeListening = _serverNetworkService.IsTcpPortListening(_configuration.Server.RuntimePort);
 
+        _serverWebPortState = webListening ? "Listening" : "Not listening";
+        _serverHttpsPortState = httpsListening ? "Listening" : "Not listening";
+        _serverRuntimePortState = runtimeListening ? "Listening" : "Not listening";
+        OnPropertyChanged(nameof(ServerWebPortLine));
+        OnPropertyChanged(nameof(ServerHttpsPortLine));
+        OnPropertyChanged(nameof(ServerRuntimePortLine));
+
         ServerPortStatus =
-            $"WEB {_configuration.Server.WebPort}: {(webListening ? "Listening" : "Not listening")}; " +
-            $"HTTPS {_configuration.Server.HttpsPort}: {(httpsListening ? "Listening" : "Not listening")}; " +
-            $"Runtime {_configuration.Server.RuntimePort}: {(runtimeListening ? "Listening" : "Not listening")}";
+            $"WEB {ServerWebPortLine}; " +
+            $"HTTPS {ServerHttpsPortLine}; " +
+            $"Runtime {ServerRuntimePortLine}";
 
         var firewall = await _firewallManager.QueryInboundTcpRuleAsync(
             _configuration.Server.FirewallRuleName,
@@ -2199,6 +2246,18 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     /// </summary>
     private async void OnOpenWebFirewallClick(object sender, RoutedEventArgs e)
     {
+        var result = MessageBox.Show(
+            this,
+            $"Maintenance создаст или обновит входящее правило Windows Firewall '{_configuration.Server.FirewallRuleName}' для TCP-порта {_configuration.Server.WebPort}.\n\nПродолжить?",
+            "Open WEB firewall",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Information);
+        if (result != MessageBoxResult.OK)
+        {
+            AppendServerLog("WEB firewall update cancelled by user.");
+            return;
+        }
+
         await EnsureWebFirewallAsync();
         await RefreshServerAsync();
     }
@@ -2209,6 +2268,18 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     /// </summary>
     private async void OnCreateHttpsCertificateClick(object sender, RoutedEventArgs e)
     {
+        var result = MessageBox.Show(
+            this,
+            "Maintenance создаст или заменит локальный HTTPS-сертификат WEB, обновит PFX/CER файлы и затем перечитает серверный статус.\n\nПродолжить?",
+            "Create/replace HTTPS certificate",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Information);
+        if (result != MessageBoxResult.OK)
+        {
+            AppendServerLog("Certificate create/replace cancelled by user.");
+            return;
+        }
+
         CreateHttpsCertificate();
         await RefreshServerAsync();
     }
@@ -2219,6 +2290,18 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     /// </summary>
     private async void OnApplyHttpsConfigClick(object sender, RoutedEventArgs e)
     {
+        var result = MessageBox.Show(
+            this,
+            $"Maintenance пропишет в WEB appsettings HTTPS endpoint на порту {_configuration.Server.HttpsPort} и путь к PFX-сертификату:\n{ServerCertificatePfxPath}\n\nПосле применения нужно перезапустить TechMES WEB.\n\nПродолжить?",
+            "Apply HTTPS",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Information);
+        if (result != MessageBoxResult.OK)
+        {
+            AppendServerLog("WEB HTTPS configuration update cancelled by user.");
+            return;
+        }
+
         ApplyWebHttpsConfiguration();
         await RefreshServerAsync();
     }
@@ -2228,6 +2311,18 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     /// </summary>
     private async void OnOpenHttpsFirewallClick(object sender, RoutedEventArgs e)
     {
+        var result = MessageBox.Show(
+            this,
+            $"Maintenance создаст или обновит входящее правило Windows Firewall '{_configuration.Server.HttpsFirewallRuleName}' для TCP-порта {_configuration.Server.HttpsPort}.\n\nПродолжить?",
+            "Open HTTPS firewall",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Information);
+        if (result != MessageBoxResult.OK)
+        {
+            AppendServerLog("HTTPS firewall update cancelled by user.");
+            return;
+        }
+
         await EnsureHttpsFirewallAsync();
         await RefreshServerAsync();
     }
@@ -2447,6 +2542,26 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             TypedAppSettings.Status = $"Runtime/Web appsettings save failed: {ex.Message}";
             AppendDiagnostics(TypedAppSettings.Status);
         }
+    }
+
+    /// <summary>
+    /// Перечитывает typed-настройки Runtime/Web appsettings для новой страницы Settings.
+    /// Maintenance-профиль остается в текущем экземпляре окна: его поля уже редактируются напрямую через binding.
+    /// </summary>
+    private void OnReloadAllTypedSettingsClick(object sender, RoutedEventArgs e)
+    {
+        LoadTypedAppSettings();
+        AppendDiagnostics(TypedAppSettings.Status);
+    }
+
+    /// <summary>
+    /// Сохраняет все typed-настройки из Settings: Maintenance profile и Runtime/Web appsettings.
+    /// Это общая кнопка Save под вкладками Settings, чтобы оператору не приходилось помнить разные кнопки сохранения.
+    /// </summary>
+    private void OnSaveAllTypedSettingsClick(object sender, RoutedEventArgs e)
+    {
+        OnSaveTypedSettingsClick(sender, e);
+        OnSaveTypedRuntimeWebAppSettingsClick(sender, e);
     }
 
     private async void OnPublishAllClick(object sender, RoutedEventArgs e)

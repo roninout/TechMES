@@ -1,5 +1,6 @@
-{
+﻿{
   "Urls": "http://127.0.0.1:5101",
+
   "Runtime": {
     "DeviceName": "RUNTIME-SERVICE",
     "UserName": "Runtime user"
@@ -9,6 +10,7 @@
     "CtApiTableName": "EQUIP",
     "CtApiFilter": "",
     "CtApiCluster": "",
+
     "NameField": "NAME",
     "ScadaTypeField": "TYPE",
     "ScadaTypeFieldCandidates": [
@@ -20,7 +22,9 @@
     ],
     "CommentField": "COMMENT",
     "ParentField": "",
+
     "UseCtApiTypeFilter": true,
+
     "ScadaAllowedTypes": [
       "Equipment",
       "DigitalIn",
@@ -41,23 +45,32 @@
       "Atv",
       "AtvSiemens"
     ],
+
     "TypeAliases": {
       "Equipment": "Equipment",
+
       "DigitalIn": "DI",
       "DigitalInSiemens": "DI",
+
       "DigitalOut": "DO",
       "DigitalOutSiemens": "DO",
+
       "Motor": "Motor",
       "MotorSiemens": "Motor",
+
       "AnalogIn": "AI",
       "AnalogInSiemens": "AI",
       "AnalogInCalc": "AI",
       "AnalogInCalcSiemens": "AI",
+
       "ValveA": "VGA",
       "ValveASiemens": "VGA",
+
       "ValveA_EL": "VGA_EL",
+
       "ValveD": "VGD",
       "ValveDSiemens": "VGD",
+
       "Atv": "ATV",
       "AtvSiemens": "ATV"
     }
@@ -89,7 +102,7 @@
     "Authorization": {
       "Enabled": true,
       "RequireWindowsUser": true,
-      "AllowedUsers": "",
+      "AllowedUsers": "TestUser",
       "AllowedGroups": "TechMES-Operators;TechMES-Engineers"
     }
   },

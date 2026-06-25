@@ -70,7 +70,7 @@
     "Password": "Rht0kRht0k",
     "HealthCheckPeriodSeconds": 10,
     "TagReadParallelism": 4,
-    "AllowWrites": true,
+    "AllowWrites": false,
     "HealthCheckTag": "sWndTitle"
   },
   "Messages": {
@@ -87,7 +87,7 @@
     "RequireComment": true,
     "AuditEnabled": true,
     "Authorization": {
-      "Enabled": true,
+      "Enabled": false,
       "RequireWindowsUser": true,
       "AllowedUsers": "",
       "AllowedGroups": "TechMES-Operators;TechMES-Engineers"

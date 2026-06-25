@@ -1,0 +1,1213 @@
+﻿<views:MaintenancePageControl x:Class="TechMES.Maintenance.Views.SettingsPage"
+                              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                              xmlns:views="clr-namespace:TechMES.Maintenance.Views"
+                              mc:Ignorable="d">
+    <views:MaintenancePageControl.Resources>
+        <Style x:Key="SettingsFieldLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,14,0" />
+        </Style>
+        <Style x:Key="SettingsTextBox" TargetType="TextBox">
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="6,3" />
+        </Style>
+        <Style x:Key="SettingsHintText" TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
+            <Setter Property="Margin" Value="0,3,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style TargetType="GroupBox">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+        <Style TargetType="ScrollViewer">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+        </Style>
+    </views:MaintenancePageControl.Resources>
+
+    <Grid Margin="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TabControl Grid.Row="0"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    VerticalContentAlignment="Stretch">
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE968;" FontSize="18" Margin="0,0,8,0" />
+                        <TextBlock Text="Server" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <GroupBox Header="Repository" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Repository path" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding RepositoryRootPath, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Workspace root used by Maintenance for publish, appsettings, logs and backup operations." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Settings folder" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <Button Content="Open settings folder"
+                                                MinWidth="160"
+                                                HorizontalAlignment="Left"
+                                                Click="OnOpenMaintenanceFolderClick" />
+                                        <TextBlock Text="Opens the TechMES.Maintenance folder with maintenance.settings.json and local maintenance files." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="Deploy profile" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Publish root" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding DeploymentPublishRoot, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Folder where published Runtime and WEB service files are placed." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Configuration" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding DeploymentConfigurationName, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Build configuration used by dotnet publish." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Runtime identifier" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding DeploymentRuntimeIdentifier, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Target runtime for published Windows service binaries, for example win-x64." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Self contained" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding DeploymentSelfContained}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Publishes the .NET runtime together with the service files." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Auto start services" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding DeploymentAutoStart}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Starts services automatically after install/update actions." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Deploy profile actions" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <Button Content="Save profile"
+                                                Width="160"
+                                                HorizontalAlignment="Left"
+                                                Click="OnSaveDeploymentProfileClick" />
+                                        <TextBlock Text="Saves only the publish profile fields used by Deploy actions." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="Ports" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="WEB HTTP port" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding ServerWebPort, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Plain HTTP port for the WEB service." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="WEB HTTPS port" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding ServerHttpsPort, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="HTTPS port used by browser clients, camera access and QR scanning." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Runtime HTTP port" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding ServerRuntimePort, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Local Runtime Service API port; normally it remains on the server only." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Apply HTTPS" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <Button Content="Apply HTTPS"
+                                                Width="160"
+                                                HorizontalAlignment="Left"
+                                                Click="OnApplyHttpsConfigClick" />
+                                        <TextBlock Text="Writes WEB Kestrel HTTPS endpoint and certificate settings into appsettings. Restart TechMES WEB after applying." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="Firewall" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="HTTP firewall rule" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding ServerFirewallRuleName, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Windows Firewall inbound rule name for the WEB HTTP port." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="HTTPS firewall rule" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding ServerHttpsFirewallRuleName, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Windows Firewall inbound rule name for the WEB HTTPS port." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Open WEB firewall" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <Button Content="Open WEB firewall"
+                                                Width="160"
+                                                HorizontalAlignment="Left"
+                                                Click="OnOpenWebFirewallClick" />
+                                        <TextBlock Text="Creates or updates the inbound Windows Firewall rule for the WEB HTTP port." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Open HTTPS firewall" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <Button Content="Open HTTPS firewall"
+                                                Width="160"
+                                                HorizontalAlignment="Left"
+                                                Click="OnOpenHttpsFirewallClick" />
+                                        <TextBlock Text="Creates or updates the inbound Windows Firewall rule for the WEB HTTPS port." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="Runtime and WEB endpoints" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Runtime URLs" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeUrls, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="ASPNETCORE_URLS value for TechMES Runtime Service." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Runtime device name" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeDeviceName, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Device name written into runtime-side operator actions and diagnostics." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Runtime user name" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeUserName, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Service user name stored in Runtime appsettings for service-originated records." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="WEB URLs" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.WebUrls, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="ASPNETCORE_URLS value for TechMES WEB; include HTTP and HTTPS listeners here." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Runtime base URL" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.WebRuntimeBaseUrl, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Base URL used by WEB when it calls Runtime Service HTTP API." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Runtime timeout, sec" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.WebRuntimeTimeoutSeconds, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="HTTP timeout for WEB requests to Runtime Service." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Messages hub path" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.WebMessagesHubPath, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="SignalR hub path used by WEB message live updates." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="WEB device name" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.WebDeviceName, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Client/device name shown in WEB-created messages and actions." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="WEB title" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.WebTitle, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Browser application title and header name for the WEB interface." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="Target machine" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Display name" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TargetMachineDisplayName, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Human-readable server profile name shown in Maintenance." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Host name" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TargetMachineHostName, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="DNS/Windows host name of the target TechMES server." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="IP address" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TargetMachineIpAddress, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Main LAN IP address used by tablets and server checks." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Notes" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TargetMachineNotes, UpdateSourceTrigger=PropertyChanged}" Width="640" Style="{StaticResource SettingsTextBox}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70"/>
+                                        <TextBlock Text="Free-form deployment notes for this server profile." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE71C;" FontSize="18" Margin="0,0,8,0" />
+                        <TextBlock Text="CtApi" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <GroupBox Header="Equipment catalog" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Provider" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeEquipmentProvider, UpdateSourceTrigger=PropertyChanged}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Equipment catalog source used by Runtime Service, for example CtApi or InMemory." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="CtApi table" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeCtApiTableName, UpdateSourceTrigger=PropertyChanged}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="CtApi equipment table name used to read the equipment catalog." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="CtApi cluster" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeCtApiCluster, UpdateSourceTrigger=PropertyChanged}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="CtApi cluster name used for catalog and tag reads." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="CtApi filter" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeCtApiFilter, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Optional filter applied when Runtime reads equipment from CtApi." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Use CtApi type filter" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.RuntimeUseCtApiTypeFilter}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Restricts catalog loading to configured TechMES equipment type aliases." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="CtApi connection" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Path" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.CtApiPath, UpdateSourceTrigger=PropertyChanged}" Width="640" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Path to the local CtApi/Citect native client binaries." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Server" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.CtApiServer, UpdateSourceTrigger=PropertyChanged}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Citect/CtApi server address used by Runtime Service." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="User" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.CtApiUser, UpdateSourceTrigger=PropertyChanged}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="CtApi user name used by Runtime Service connection." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Password" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.CtApiPassword, UpdateSourceTrigger=PropertyChanged}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="CtApi password used by Runtime Service connection." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Health check tag" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.CtApiHealthCheckTag, UpdateSourceTrigger=PropertyChanged}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Tag read periodically to confirm CtApi connection health." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Health period, sec" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.CtApiHealthCheckPeriodSeconds, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Interval in seconds between Runtime health tag checks." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Read parallelism" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.CtApiTagReadParallelism, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Maximum number of parallel CtApi tag read operations." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Allow CtApi writes" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.CtApiAllowWrites}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Master switch that allows Runtime Service to write values through CtApi." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="WEB Param behavior" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Trend window, min" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.WebTrendWindowMinutes, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Default visible trend window in minutes for WEB graphs." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Trend history, min" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.WebTrendHistoryMinutes, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="History range loaded behind the visible trend window for smooth scrolling." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" FontSize="18" Margin="0,0,8,0" />
+                        <TextBlock Text="Param Writes" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <GroupBox Header="Runtime Param writes" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Writes enabled" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.ParamWritesEnabled}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Global Runtime switch for parameter write requests from WEB." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Dry run" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.ParamWritesDryRun}" VerticalAlignment="Center" />
+                                        <TextBlock Text="When enabled, Runtime validates write requests but does not send values to CtApi." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Require comment" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.ParamWritesRequireComment}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Requires a non-empty comment in Runtime write requests." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Audit enabled" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.ParamWritesAuditEnabled}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Writes operator actions through the SCADA audit Cicode flow after parameter writes." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="CtApi" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Allow CtApi writes" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.CtApiAllowWrites}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Duplicate safety switch for CtApi write access, also shown on the CtApi tab." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="WEB Param behavior" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Confirm writes in WEB" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.WebConfirmWrites}" VerticalAlignment="Center" />
+                                        <TextBlock Text="When enabled, WEB asks for confirmation before sending a write request." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8F1;" FontSize="18" Margin="0,0,8,0" />
+                        <TextBlock Text="Data base" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <GroupBox Header="PostgreSQL" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Main DB connection string" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeDatabaseConnectionString, UpdateSourceTrigger=PropertyChanged}" Width="682" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="PostgreSQL connection string used for equipment info, messages and main data." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Event DB connection string" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeEventDatabaseConnectionString, UpdateSourceTrigger=PropertyChanged}" Width="682" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="PostgreSQL/EventPicker connection string used for SOE and event history." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Minimum PostgreSQL version" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TargetMachineMinimumPostgreSqlVersion, UpdateSourceTrigger=PropertyChanged}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Minimum supported PostgreSQL major version; Checks compares it with the target database server version." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72E;" FontSize="18" Margin="0,0,8,0" />
+                        <TextBlock Text="Authentication" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <GroupBox Header="Maintenance security profile" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Windows users enabled" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding SecurityWindowsUsersEnabled}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Enables Windows-user based security settings in the Maintenance profile." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Write groups" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding SecurityWriteGroups, UpdateSourceTrigger=PropertyChanged}" Width="640" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Comma-separated Windows groups allowed to write parameters." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Require write confirmation" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding SecurityRequireWriteConfirmation}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Maintenance-side security flag documenting whether write confirmation is expected." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Require SCADA audit" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding SecurityRequireScadaAudit}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Maintenance-side security flag documenting that SCADA audit is required for writes." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="Runtime write authorization" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Authorization enabled" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.ParamWritesAuthorizationEnabled}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Enables Runtime authorization checks for parameter write requests." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Require Windows user" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.ParamWritesRequireWindowsUser}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Rejects write requests that do not contain a resolved Windows user." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Allowed users" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.ParamWritesAllowedUsers, UpdateSourceTrigger=PropertyChanged}" Width="640" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Comma-separated Windows users allowed to write parameters." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Allowed groups" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.ParamWritesAllowedGroups, UpdateSourceTrigger=PropertyChanged}" Width="640" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Comma-separated Windows groups allowed to write parameters." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="WEB authentication" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Windows authentication" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.WebWindowsAuthenticationEnabled}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Enables Windows authentication settings for the WEB host." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8D7;" FontSize="18" Margin="0,0,8,0" />
+                        <TextBlock Text="Certificate" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <GroupBox Header="HTTPS certificate" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Certificate directory" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding ServerCertificateDirectory, UpdateSourceTrigger=PropertyChanged}" Width="640" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Folder where Maintenance stores generated PFX and CER certificate files." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="PFX file name" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBox Text="{Binding ServerCertificateFileName, UpdateSourceTrigger=PropertyChanged}" Width="250" Style="{StaticResource SettingsTextBox}" />
+                                            <TextBlock Text="PFX path" Style="{StaticResource SettingsFieldLabel}" Width="70" Margin="20,0,0,0"/>
+                                            <TextBox Text="{Binding ServerCertificatePfxPath, Mode=OneWay}" Width="300" Style="{StaticResource SettingsTextBox}" IsReadOnly="True" />
+                                        </StackPanel>
+                                        <TextBlock Text="PFX is used by Kestrel to serve HTTPS." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="CER file name" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBox Text="{Binding ServerPublicCertificateFileName, UpdateSourceTrigger=PropertyChanged}" Width="250" Style="{StaticResource SettingsTextBox}" />
+                                            <TextBlock Text="CER path" Style="{StaticResource SettingsFieldLabel}" Width="70" Margin="20,0,0,0"/>
+                                            <TextBox Text="{Binding ServerPublicCertificatePath, Mode=OneWay}" Width="300" Style="{StaticResource SettingsTextBox}" IsReadOnly="True" />
+                                        </StackPanel>
+                                        <TextBlock Text="CER is imported into client machines/tablets as a trusted certificate." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Subject" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding ServerCertificateSubject, UpdateSourceTrigger=PropertyChanged}" Width="640" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Certificate subject/common name shown in the generated certificate." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Password" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding ServerCertificatePassword, UpdateSourceTrigger=PropertyChanged}" Width="640" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Password used to protect the generated PFX file." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Enable HTTPS redirection" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding ServerEnableHttpsRedirection}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Redirects HTTP browser requests to HTTPS when WEB starts." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+
+                            </StackPanel>
+                        </GroupBox>
+                        <Grid Margin="0,0,0,12">
+                            <Button Content="Create/replace cert"
+                                    HorizontalAlignment="Right"
+                                    Click="OnCreateHttpsCertificateClick" />
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8A5;" FontSize="18" Margin="0,0,8,0" />
+                        <TextBlock Text="Logs" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <GroupBox Header="Cleanup retention" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Log retention days" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding CleanupLogRetentionDays, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Number of days to keep service log files before they become cleanup candidates." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Appsettings backup retention days" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding CleanupAppSettingsBackupRetentionDays, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Number of days to keep automatic appsettings backup files." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Backup folder retention days" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding CleanupBackupRetentionDays, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Number of days to keep full Maintenance backup folders." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="Runtime file logging" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Enabled" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.RuntimeFileLoggingEnabled}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Enables file logging for TechMES Runtime Service." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Minimum level" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeFileLoggingMinimumLevel, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Minimum Runtime log level, for example Information, Warning or Error." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Directory" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeFileLoggingDirectory, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Runtime log directory, relative to service folder or absolute path." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="File name prefix" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.RuntimeFileLoggingPrefix, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Runtime log file name prefix." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="WEB file logging" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Enabled" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox Content="Enabled" IsChecked="{Binding TypedAppSettings.WebFileLoggingEnabled}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Enables file logging for TechMES WEB." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Minimum level" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.WebFileLoggingMinimumLevel, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Minimum WEB log level, for example Information, Warning or Error." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Directory" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.WebFileLoggingDirectory, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="WEB log directory, relative to service folder or absolute path." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="File name prefix" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBox Text="{Binding TypedAppSettings.WebFileLoggingPrefix, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="WEB log file name prefix." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8A5;" FontSize="18" Margin="0,0,8,0" />
+                        <TextBlock Text="Raw settings" />
+                    </StackPanel>
+                </TabItem.Header>
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="300" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                                        Background="{StaticResource TechMesPanelBrush}"
+                                        BorderBrush="{StaticResource TechMesBorderBrush}"
+                                        BorderThickness="1"
+                                        Padding="10">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top"
+                                                   Text="appsettings files"
+                                                   Style="{StaticResource SectionTitleText}" />
+                            <ListBox ItemsSource="{Binding SettingsFiles}"
+                                                 SelectedItem="{Binding SelectedSettingsFile}"
+                                                 DisplayMemberPath="DisplayName"
+                                                 SelectionChanged="OnSettingsFileSelected" />
+                        </DockPanel>
+                    </Border>
+
+                    <Grid Grid.Column="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <DockPanel Grid.Row="0"
+                                               Margin="0,0,0,8">
+                            <StackPanel DockPanel.Dock="Right"
+                                                    Orientation="Horizontal">
+                                <Button Content="Reload"
+                                                    Click="OnReloadSettingsClick" />
+                                <Button Content="Save with backup"
+                                                    Click="OnSaveSettingsClick" />
+                            </StackPanel>
+
+                            <StackPanel>
+                                <TextBlock Text="{Binding SelectedSettingsFile.DisplayName}"
+                                                       FontSize="18"
+                                                       FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedSettingsFile.FullPath}"
+                                                       Style="{StaticResource MutedText}" />
+                            </StackPanel>
+                        </DockPanel>
+
+                        <TextBox Grid.Row="1"
+                                             Text="{Binding SelectedSettingsFile.Content, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                             AcceptsReturn="True"
+                                             AcceptsTab="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             HorizontalScrollBarVisibility="Auto"
+                                             FontFamily="Consolas"
+                                             FontSize="13"
+                                             Padding="10"
+                                             TextWrapping="NoWrap" />
+
+                        <TextBlock Grid.Row="2"
+                                               Text="{Binding SelectedSettingsFile.Status}"
+                                               Style="{StaticResource MutedText}"
+                                               Margin="0,8,0,0" />
+                    </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <Grid Grid.Row="1" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button Content="Reload"
+                    MinWidth="110"
+                    Click="OnReloadAllTypedSettingsClick" />
+            <TextBlock Grid.Column="1"
+                       Text="{Binding TypedAppSettings.Status}"
+                       Style="{StaticResource MutedText}"
+                       TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       VerticalAlignment="Center"
+                       Margin="12,0" />
+            <Button Grid.Column="2"
+                    Content="Save"
+                    MinWidth="130"
+                    Click="OnSaveAllTypedSettingsClick" />
+        </Grid>
+    </Grid>
+</views:MaintenancePageControl>
+

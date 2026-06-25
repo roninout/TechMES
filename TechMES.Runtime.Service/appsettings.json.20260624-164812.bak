@@ -1,4 +1,4 @@
-{
+﻿{
   "Urls": "http://127.0.0.1:5101",
   "Runtime": {
     "DeviceName": "RUNTIME-SERVICE",
@@ -87,9 +87,9 @@
     "RequireComment": true,
     "AuditEnabled": true,
     "Authorization": {
-      "Enabled": true,
+      "Enabled": false,
       "RequireWindowsUser": true,
-      "AllowedUsers": "",
+      "AllowedUsers": "Kovalchuk_a",
       "AllowedGroups": "TechMES-Operators;TechMES-Engineers"
     }
   },
