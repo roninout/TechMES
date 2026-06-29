@@ -7,8 +7,8 @@ using TechMES.Maintenance.Models;
 namespace TechMES.Maintenance.Services;
 
 /// <summary>
-/// Прописывает HTTPS endpoint Kestrel в appsettings TechMES.Web.
-/// Maintenance обновляет исходный appsettings и опубликованный appsettings, если WEB уже опубликован в C:\TechMES\Web.
+/// Прописывает HTTPS endpoint Kestrel в рабочий appsettings TechMES.Web.
+/// Если WEB уже опубликован, меняем published appsettings; иначе меняем исходный appsettings проекта.
 /// </summary>
 public sealed class WebHttpsConfigurator(DirectoryInfo repositoryRoot)
 {
@@ -49,7 +49,7 @@ public sealed class WebHttpsConfigurator(DirectoryInfo repositoryRoot)
     }
 
     /// <summary>
-    /// Возвращает исходный и опубликованный WEB appsettings.
+    /// Возвращает один рабочий WEB appsettings.
     /// Опубликованный путь вычисляем из того же Deployment-профиля, которым пользуется вкладка Deploy.
     /// </summary>
     private IReadOnlyList<string> GetCandidateAppsettingsPaths(MaintenanceConfiguration configuration)
@@ -69,7 +69,9 @@ public sealed class WebHttpsConfigurator(DirectoryInfo repositoryRoot)
             publishFolderName,
             "appsettings.json");
 
-        return [sourcePath, publishedPath];
+        return File.Exists(publishedPath)
+            ? [publishedPath]
+            : [sourcePath];
     }
 
     /// <summary>

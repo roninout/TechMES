@@ -23,10 +23,9 @@
                             <TextBlock TextWrapping="Wrap"
                                        FontSize="14"
                                        LineHeight="22">
-                                Готово: Dashboard со статусами Windows Services, publish/install/start/deploy, typed-редактор Maintenance, typed-редактор Runtime/Web appsettings, просмотр логов, серверная диагностика HTTP/HTTPS, firewall-правила, подготовка HTTPS-сертификата, Server profile, Checks, Backup / Restore, Service actions для очистки, профиль целевой машины с PostgreSQL auth/version проверками, Runtime/Web enforcement Windows write-режима, отдельная Windows auth diagnostics и Operator actions readiness.&#x0a;&#x0a;
-                                1. Добавить экспорт backup в zip-архив и импорт zip-архива, чтобы переносить настройки между машинами.&#x0a;
-                                2. Добавить экспорт публичного CER и краткую инструкцию для планшета прямо из Maintenance.&#x0a;
-                                3. После стабилизации интерфейса добавить сценарий «подготовить новый сервер одной кнопкой»: publish, certificate, firewall, install services, probe, backup baseline.
+                                Готово: Dashboard со статусами Windows Services, publish/install/start/deploy, typed-редактор Maintenance, typed-редактор Runtime/Web appsettings, просмотр логов с фильтром по дате, серверная диагностика HTTP/HTTPS, firewall-правила, подготовка HTTPS-сертификата, Server profile, Checks, Backup / Restore с выбором папки и ZIP import/export, Service actions для очистки, профиль целевой машины, Runtime/Web enforcement Windows write-режима, отдельная Windows auth diagnostics и Operator actions readiness.&#x0a;&#x0a;
+                                1. Добавить экспорт публичного CER и краткую инструкцию для планшета прямо из Maintenance.&#x0a;
+                                2. После стабилизации интерфейса добавить сценарий «подготовить новый сервер одной кнопкой»: publish, certificate, firewall, install services, probe, backup baseline.
                             </TextBlock>
                         </StackPanel>
                     </ScrollViewer>

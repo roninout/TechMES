@@ -6,7 +6,7 @@ namespace TechMES.Maintenance.Services;
 
 /// <summary>
 /// Читает и сохраняет appsettings-файлы WEB/Runtime.
-/// Перед записью проверяет JSON и создает backup рядом с исходным файлом.
+/// Основной путь сохранения проверяет JSON и пишет файл напрямую; явные снимки делает вкладка Backup / Restore.
 /// </summary>
 public sealed class SettingsFileService
 {
@@ -21,10 +21,10 @@ public sealed class SettingsFileService
     }
 
     /// <summary>
-    /// Проверяет JSON, создает backup и сохраняет новый текст.
-    /// Возвращает путь к backup-файлу для отображения пользователю.
+    /// Проверяет JSON и сохраняет файл напрямую, без создания соседнего .bak-файла.
+    /// Явные снимки конфигурации теперь делаются вкладкой Backup / Restore.
     /// </summary>
-    public string Save(string path, string content)
+    public void SaveWithoutBackup(string path, string content)
     {
         using (JsonDocument.Parse(content))
         {
@@ -32,13 +32,6 @@ public sealed class SettingsFileService
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
-
-        var backupPath = path + "." + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".bak";
-
-        if (File.Exists(path))
-            File.Copy(path, backupPath, overwrite: false);
-
         File.WriteAllText(path, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-        return backupPath;
     }
 }

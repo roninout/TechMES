@@ -197,13 +197,16 @@ public static class ParamEndpoints
             };
         }
 
-        request.Actor = string.IsNullOrWhiteSpace(request.Actor)
-            ? runtimeContext.DeviceName
-            : request.Actor.Trim();
+        var requestedActor = request.Actor?.Trim();
+        request.Actor = requestedActor;
 
         var authorizationFailure = AuthorizeWrite(equipment, request, writeOptions.Value);
         if (authorizationFailure is not null)
             return Results.Json(authorizationFailure, statusCode: StatusCodes.Status403Forbidden);
+
+        request.Actor = string.IsNullOrWhiteSpace(requestedActor)
+            ? runtimeContext.DeviceName
+            : requestedActor;
 
         var result = await paramProvider.WriteAsync(equipment, request, ct);
         result.Actor = request.Actor;

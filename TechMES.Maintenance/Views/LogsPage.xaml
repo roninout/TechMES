@@ -27,6 +27,37 @@
                                 BorderThickness="1"
                                 Padding="10">
                             <DockPanel>
+                                <StackPanel DockPanel.Dock="Top"
+                                            Margin="0,0,0,8">
+                                    <TextBlock Text="Log date"
+                                               Style="{StaticResource MutedText}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="42" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="82" />
+                                            <ColumnDefinition Width="42" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Content="&#xE72B;"
+                                                FontFamily="Segoe MDL2 Assets"
+                                                ToolTip="Previous day"
+                                                Click="OnPreviousLogDateClick" />
+                                        <DatePicker Grid.Column="1"
+                                                    SelectedDate="{Binding LogSelectedDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                    SelectedDateChanged="OnLogDateSelected"
+                                                    Height="32"
+                                                    FontSize="14"
+                                                    Margin="6,0" />
+                                        <Button Grid.Column="2"
+                                                Content="Today"
+                                                Click="OnTodayLogDateClick" />
+                                        <Button Grid.Column="3"
+                                                Content="&#xE72A;"
+                                                FontFamily="Segoe MDL2 Assets"
+                                                ToolTip="Next day"
+                                                Click="OnNextLogDateClick" />
+                                    </Grid>
+                                </StackPanel>
                                 <Button DockPanel.Dock="Top"
                                         Content="Refresh logs"
                                         Margin="0,0,0,8"
@@ -56,6 +87,7 @@
                             <TextBox Grid.Row="1"
                                      Text="{Binding SelectedLogText}"
                                      IsReadOnly="True"
+                                     TextChanged="OnAutoScrollLogTextChanged"
                                      VerticalScrollBarVisibility="Auto"
                                      HorizontalScrollBarVisibility="Auto"
                                      FontFamily="Consolas"

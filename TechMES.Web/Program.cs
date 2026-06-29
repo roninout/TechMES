@@ -1,10 +1,12 @@
 using Radzen;
-using Microsoft.AspNetCore.Authentication.Negotiate;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Net.Http.Headers;
 using TechMES.Web.Clients;
 using TechMES.Web.Components;
 using TechMES.Web.Logging;
+using TechMES.Web.Security;
 using TechMES.Web.Settings;
 using TechMES.Web.State;
 
@@ -40,8 +42,15 @@ builder.Services.AddCascadingAuthenticationState();
 if (windowsAuthenticationEnabled)
 {
     builder.Services
-        .AddAuthentication(NegotiateDefaults.AuthenticationScheme)
-        .AddNegotiate();
+        .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+        .AddCookie(options =>
+        {
+            options.Cookie.Name = "TechMES.WebAuth";
+            options.LoginPath = "/";
+            options.AccessDeniedPath = "/";
+            options.SlidingExpiration = true;
+            options.ExpireTimeSpan = TimeSpan.FromHours(12);
+        });
 
     builder.Services.AddAuthorization();
 }
@@ -49,6 +58,12 @@ if (windowsAuthenticationEnabled)
 // Сервисы Radzen: нужны для Dialog, Notification, ContextMenu и других UI-компонентов.
 builder.Services.AddRadzenComponents();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<OptionalWindowsAuthenticationStateProvider>();
+builder.Services.AddScoped<AuthenticationStateProvider>(sp =>
+    sp.GetRequiredService<OptionalWindowsAuthenticationStateProvider>());
+builder.Services.AddScoped<IHostEnvironmentAuthenticationStateProvider>(sp =>
+    sp.GetRequiredService<OptionalWindowsAuthenticationStateProvider>());
+builder.Services.AddSingleton<WindowsCredentialValidator>();
 
 // Настройки адреса Runtime Service берём из appsettings.json.
 builder.Services.Configure<RuntimeServiceOptions>(builder.Configuration.GetSection("RuntimeService"));
@@ -111,16 +126,151 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 
 app.MapGet("/api/health", GetWebHealth);
+app.MapGet("/api/auth/me", GetCurrentAuthState);
+app.MapGet("/auth/login", (string? returnUrl = null) => Results.Redirect(NormalizeLocalReturnUrl(returnUrl)));
+app.MapPost("/auth/login", LoginAsync);
+app.MapGet("/auth/logout", Logout);
 app.MapGet("/api/server/public-certificate", GetPublicCertificate);
 app.MapGet("/api/runtime/info/files/{kind}/{id:long}", ProxyRuntimeInfoFileAsync);
 
-var razorComponents = app.MapRazorComponents<App>()
+app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-if (windowsAuthenticationEnabled)
-    razorComponents.RequireAuthorization();
-
 app.Run();
+
+/// <summary>
+/// Возвращает эффективное состояние входа для Header-кнопки.
+/// Read-only cookie специально скрывает Windows identity от UI, чтобы оператор мог смотреть сайт без режима записи.
+/// </summary>
+static IResult GetCurrentAuthState(HttpContext httpContext)
+{
+    var readOnlyMode = OptionalWindowsAuthenticationStateProvider.IsReadOnlyRequest(httpContext);
+    var isAuthenticated = !readOnlyMode && httpContext.User.Identity?.IsAuthenticated == true;
+
+    return Results.Ok(new
+    {
+        IsAuthenticated = isAuthenticated,
+        UserName = isAuthenticated ? httpContext.User.Identity?.Name : null,
+        AuthenticationType = isAuthenticated ? httpContext.User.Identity?.AuthenticationType : null,
+        ReadOnly = !isAuthenticated
+    });
+}
+
+/// <summary>
+/// Проверяет введенные в WEB-форму Windows credentials и создает cookie-сессию.
+/// Это работает предсказуемее, чем browser Negotiate prompt, особенно при доступе по IP с планшета.
+/// </summary>
+static async Task<IResult> LoginAsync(
+    HttpContext httpContext,
+    IConfiguration configuration,
+    WindowsCredentialValidator credentialValidator)
+{
+    var form = await httpContext.Request.ReadFormAsync();
+    var returnUrl = form["returnUrl"].ToString();
+    var localReturnUrl = NormalizeLocalReturnUrl(returnUrl);
+
+    if (!configuration.GetValue("WindowsAuthentication:Enabled", false))
+        return Results.Redirect(localReturnUrl);
+
+    var validation = credentialValidator.Validate(
+        form["username"].ToString(),
+        form["password"].ToString());
+
+    if (!validation.Success || validation.Principal is null)
+        return BuildLoginFailurePage(localReturnUrl, validation.Error ?? "Windows login failed.");
+
+    await httpContext.SignInAsync(
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        validation.Principal,
+        new AuthenticationProperties
+        {
+            IsPersistent = true,
+            AllowRefresh = true,
+            ExpiresUtc = DateTimeOffset.UtcNow.AddHours(12)
+        });
+
+    httpContext.Response.Cookies.Delete(OptionalWindowsAuthenticationStateProvider.ReadOnlyCookieName);
+
+    return Results.Redirect(localReturnUrl);
+}
+
+/// <summary>
+/// Переводит текущий браузер в read-only режим.
+/// WEB удаляет auth cookie и запоминает read-only выбор отдельной cookie.
+/// </summary>
+static async Task<IResult> Logout(HttpContext httpContext, string? returnUrl = null)
+{
+    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+    httpContext.Response.Cookies.Append(
+        OptionalWindowsAuthenticationStateProvider.ReadOnlyCookieName,
+        "1",
+        new CookieOptions
+        {
+            HttpOnly = true,
+            SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax,
+            Secure = httpContext.Request.IsHttps,
+            Expires = DateTimeOffset.UtcNow.AddDays(30)
+        });
+
+    return Results.Redirect(NormalizeLocalReturnUrl(returnUrl));
+}
+
+/// <summary>
+/// Показывает простую страницу ошибки, если Windows не принял логин/пароль.
+/// </summary>
+static IResult BuildLoginFailurePage(string returnUrl, string error)
+{
+    var encodedReturnUrl = System.Net.WebUtility.HtmlEncode(returnUrl);
+    var encodedError = System.Net.WebUtility.HtmlEncode(error);
+
+    return Results.Content(
+        $$"""
+        <!doctype html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>TechMES login failed</title>
+            <style>
+                body { font-family: Segoe UI, Arial, sans-serif; margin: 32px; color: #242424; }
+                .box { max-width: 560px; border: 1px solid #ddd; border-radius: 8px; padding: 20px; }
+                .error { color: #c62828; font-weight: 700; }
+                a { display: inline-block; margin-top: 16px; }
+            </style>
+        </head>
+        <body>
+            <div class="box">
+                <h2>TechMES login failed</h2>
+                <p class="error">{{encodedError}}</p>
+                <p>Check the Windows user name and password. You can use <b>Web</b>, <b>.\Web</b> or <b>{{System.Net.WebUtility.HtmlEncode(Environment.MachineName)}}\Web</b>.</p>
+                <a href="{{encodedReturnUrl}}">Back to TechMES</a>
+            </div>
+        </body>
+        </html>
+        """,
+        "text/html; charset=utf-8");
+}
+
+/// <summary>
+/// Защищает redirect после Login/Logout от внешних URL.
+/// </summary>
+static string NormalizeLocalReturnUrl(string? returnUrl)
+{
+    if (string.IsNullOrWhiteSpace(returnUrl))
+        return "/";
+
+    if (!returnUrl.StartsWith('/'))
+        return "/";
+
+    if (returnUrl.StartsWith("//", StringComparison.Ordinal)
+        || returnUrl.StartsWith("/\\", StringComparison.Ordinal))
+    {
+        return "/";
+    }
+
+    return returnUrl;
+}
 
 /// <summary>
 /// Легкий health endpoint самого WEB-приложения.

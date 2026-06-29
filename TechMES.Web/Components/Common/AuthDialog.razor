@@ -1,0 +1,134 @@
+@inject DialogService DialogService
+@inject NavigationManager NavigationManager
+
+<RadzenStack Gap="1rem" class="auth-dialog">
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
+        <RadzenIcon Icon="@StatusIcon" class="auth-dialog-status-icon" />
+        <RadzenStack Gap="0.15rem">
+            <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">@StatusTitle</RadzenText>
+            <RadzenText TextStyle="TextStyle.Body2" class="auth-dialog-subtitle">@StatusText</RadzenText>
+        </RadzenStack>
+    </RadzenStack>
+
+    <RadzenAlert AllowClose="false"
+                 AlertStyle="@AlertStyle"
+                 Variant="Variant.Flat"
+                 Shade="Shade.Lighter">
+        @AlertText
+    </RadzenAlert>
+
+    @if (IsAuthenticated)
+    {
+        <RadzenStack Orientation="Orientation.Horizontal"
+                     JustifyContent="JustifyContent.End"
+                     AlignItems="AlignItems.Center"
+                     Gap="0.75rem"
+                     class="auth-dialog-actions">
+            <RadzenButton Text="Close"
+                          Icon="close"
+                          ButtonStyle="ButtonStyle.Light"
+                          Variant="Variant.Flat"
+                          Click="@Close" />
+
+            <RadzenButton Text="Logout"
+                          Icon="logout"
+                          ButtonStyle="ButtonStyle.Warning"
+                          Variant="Variant.Flat"
+                          Click="@Logout" />
+        </RadzenStack>
+    }
+    else
+    {
+        <form method="post" action="/auth/login" class="auth-dialog-form">
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+
+            <label class="auth-dialog-label" for="techmes-login-user">Username</label>
+            <input id="techmes-login-user"
+                   name="username"
+                   class="rz-inputtext auth-dialog-input"
+                   autocomplete="username" />
+
+            <label class="auth-dialog-label" for="techmes-login-password">Password</label>
+            <input id="techmes-login-password"
+                   name="password"
+                   class="rz-inputtext auth-dialog-input"
+                   type="password"
+                   autocomplete="current-password" />
+
+            <RadzenStack Orientation="Orientation.Horizontal"
+                         JustifyContent="JustifyContent.End"
+                         AlignItems="AlignItems.Center"
+                         Gap="0.75rem"
+                         class="auth-dialog-actions">
+                <RadzenButton Text="Close"
+                              Icon="close"
+                              ButtonStyle="ButtonStyle.Light"
+                              Variant="Variant.Flat"
+                              ButtonType="ButtonType.Button"
+                              Click="@Close" />
+
+                <RadzenButton Text="Login"
+                              Icon="login"
+                              ButtonStyle="ButtonStyle.Primary"
+                              Variant="Variant.Flat"
+                              ButtonType="ButtonType.Submit" />
+            </RadzenStack>
+        </form>
+    }
+</RadzenStack>
+
+@code {
+    /// <summary>
+    /// True, если Blazor видит Windows identity и сессия не переведена в read-only cookie.
+    /// </summary>
+    [Parameter]
+    public bool IsAuthenticated { get; set; }
+
+    /// <summary>
+    /// Имя Windows-пользователя, которое будет передаваться в Runtime.Service при Param write.
+    /// </summary>
+    [Parameter]
+    public string? UserName { get; set; }
+
+    /// <summary>
+    /// Локальный URL, куда нужно вернуться после Login или Logout.
+    /// </summary>
+    [Parameter]
+    public string ReturnUrl { get; set; } = "/";
+
+    private string StatusIcon => IsAuthenticated ? "account_circle" : "visibility";
+
+    private string StatusTitle => IsAuthenticated
+        ? "Windows login active"
+        : "Read-only mode";
+
+    private string StatusText => IsAuthenticated
+        ? UserName ?? "Windows user"
+        : "Login is not required for viewing data.";
+
+    private AlertStyle AlertStyle => IsAuthenticated
+        ? AlertStyle.Success
+        : AlertStyle.Info;
+
+    private string AlertText => IsAuthenticated
+        ? "Param write requests will use this Windows identity. Runtime.Service still checks allowed users and groups."
+        : "You can browse equipment, trends, messages and diagnostics. Enter Windows credentials only when Param write access is needed.";
+
+    /// <summary>
+    /// Закрывает Radzen dialog без изменения режима авторизации.
+    /// </summary>
+    private void Close()
+    {
+        DialogService.Close();
+    }
+
+    /// <summary>
+    /// Переводит браузер в read-only режим через серверный endpoint.
+    /// </summary>
+    private void Logout()
+    {
+        NavigationManager.NavigateTo(
+            $"/auth/logout?returnUrl={Uri.EscapeDataString(ReturnUrl)}",
+            forceLoad: true);
+    }
+}

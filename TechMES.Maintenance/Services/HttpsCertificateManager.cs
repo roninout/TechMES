@@ -62,7 +62,7 @@ public sealed class HttpsCertificateManager(ServerNetworkService networkService)
     /// <summary>
     /// Создает новый PFX/CER комплект. Старые файлы перезаписываются, потому что IP-адреса могли измениться.
     /// </summary>
-    public HttpsCertificateInfo CreateOrReplaceCertificate(ServerOptions options)
+    public HttpsCertificateInfo CreateOrReplaceCertificate(ServerOptions options, string? hostAlias = null)
     {
         Directory.CreateDirectory(options.CertificateDirectory);
 
@@ -94,7 +94,7 @@ public sealed class HttpsCertificateManager(ServerNetworkService networkService)
         request.CertificateExtensions.Add(
             new X509EnhancedKeyUsageExtension(serverAuthentication, critical: false));
 
-        request.CertificateExtensions.Add(BuildSubjectAlternativeNames());
+        request.CertificateExtensions.Add(BuildSubjectAlternativeNames(hostAlias));
 
         var notBefore = DateTimeOffset.Now.AddDays(-1);
         var notAfter = DateTimeOffset.Now.AddYears(CertificateLifetimeYears);
@@ -129,25 +129,65 @@ public sealed class HttpsCertificateManager(ServerNetworkService networkService)
     /// <summary>
     /// Собирает SAN-расширение сертификата: браузер сверяет именно эти DNS/IP значения с URL.
     /// </summary>
-    private X509Extension BuildSubjectAlternativeNames()
+    private X509Extension BuildSubjectAlternativeNames(string? hostAlias)
     {
         var builder = new SubjectAlternativeNameBuilder();
-        builder.AddDnsName("localhost");
-        builder.AddDnsName(Environment.MachineName);
+        var dnsNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddDnsName(builder, dnsNames, "localhost");
+        AddDnsName(builder, dnsNames, Environment.MachineName);
 
         try
         {
-            builder.AddDnsName(Dns.GetHostName());
+            AddDnsName(builder, dnsNames, Dns.GetHostName());
         }
         catch
         {
             // Имя хоста не критично: сертификат все равно будет содержать localhost и IP-адреса.
         }
 
+        AddDnsOrIp(builder, dnsNames, hostAlias);
+
         foreach (var (_, address) in networkService.GetLocalIPv4Addresses())
             builder.AddIpAddress(address);
 
         builder.AddIpAddress(IPAddress.Loopback);
         return builder.Build();
+    }
+
+    /// <summary>
+    /// Добавляет значение в SAN как IP или DNS-имя. Это нужно для короткого имени вида techmes.
+    /// </summary>
+    private static void AddDnsOrIp(
+        SubjectAlternativeNameBuilder builder,
+        ISet<string> dnsNames,
+        string? value)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return;
+
+        if (IPAddress.TryParse(trimmed, out var ipAddress))
+        {
+            builder.AddIpAddress(ipAddress);
+            return;
+        }
+
+        AddDnsName(builder, dnsNames, trimmed);
+    }
+
+    /// <summary>
+    /// Добавляет DNS-имя в SAN один раз, чтобы X509 builder не получал дубликаты.
+    /// </summary>
+    private static void AddDnsName(
+        SubjectAlternativeNameBuilder builder,
+        ISet<string> dnsNames,
+        string? value)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) || !dnsNames.Add(trimmed))
+            return;
+
+        builder.AddDnsName(trimmed);
     }
 }

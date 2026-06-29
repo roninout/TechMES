@@ -51,7 +51,19 @@
                                             Margin="0,0,12,0">
                                     <TextBlock Text="Backup root"
                                                Style="{StaticResource MutedText}" />
-                                    <TextBox Text="{Binding BackupRoot, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding BackupRoot, UpdateSourceTrigger=PropertyChanged}"
+                                                 LostFocus="OnBackupRootLostFocus" />
+                                        <Button Grid.Column="2"
+                                                Content="Browse..."
+                                                MinWidth="96"
+                                                Click="OnBrowseBackupRootClick" />
+                                    </Grid>
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="2"
@@ -60,10 +72,6 @@
                                             VerticalAlignment="Bottom">
                                     <Button Content="Create backup"
                                             Click="OnCreateBackupClick" />
-                                    <Button Content="Refresh backups"
-                                            Click="OnRefreshBackupsClick" />
-                                    <Button Content="Restore selected"
-                                            Click="OnRestoreBackupClick" />
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -99,15 +107,37 @@
                             </DataGrid.Columns>
                         </DataGrid>
 
-                        <Border Grid.Row="2"
-                                Background="{StaticResource TechMesPanelBrush}"
-                                BorderBrush="{StaticResource TechMesBorderBrush}"
-                                BorderThickness="1"
-                                Padding="10"
-                                Margin="0,10,0,0">
-                            <TextBlock Text="{Binding BackupStatusText}"
-                                       TextWrapping="Wrap" />
-                        </Border>
+                        <Grid Grid.Row="2"
+                              Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0"
+                                    Background="{StaticResource TechMesPanelBrush}"
+                                    BorderBrush="{StaticResource TechMesBorderBrush}"
+                                    BorderThickness="1"
+                                    Padding="10"
+                                    Margin="0,0,12,0">
+                                <TextBlock Text="{Binding BackupStatusText}"
+                                           TextWrapping="Wrap" />
+                            </Border>
+
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Center">
+                                <Button Content="Refresh backups"
+                                        Click="OnRefreshBackupsClick" />
+                                <Button Content="Restore selected"
+                                        Click="OnRestoreBackupClick" />
+                                <Button Content="Export ZIP"
+                                        Click="OnExportBackupZipClick" />
+                                <Button Content="Import ZIP"
+                                        Click="OnImportBackupZipClick" />
+                            </StackPanel>
+                        </Grid>
                     </Grid>
         </TabItem>
     </TabControl>

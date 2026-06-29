@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using TechMES.Maintenance.Models;
@@ -142,6 +143,51 @@ public sealed class BackupRestoreService(DirectoryInfo repositoryRoot)
     }
 
     /// <summary>
+    /// Упаковывает выбранный backup-снимок в zip рядом с папкой backup root.
+    /// Это удобно для переноса настроек на другой сервер или архивного хранения.
+    /// </summary>
+    public string ExportBackupZip(string backupFolder)
+    {
+        if (string.IsNullOrWhiteSpace(backupFolder) || !Directory.Exists(backupFolder))
+            throw new DirectoryNotFoundException("Backup folder was not found.");
+
+        var backupRoot = Path.GetDirectoryName(backupFolder)
+            ?? throw new InvalidOperationException("Cannot resolve backup root.");
+        var baseFileName = Path.GetFileName(backupFolder);
+        var zipPath = BuildUniqueZipPath(backupRoot, baseFileName);
+
+        ZipFile.CreateFromDirectory(backupFolder, zipPath, CompressionLevel.Optimal, includeBaseDirectory: false);
+        return zipPath;
+    }
+
+    /// <summary>
+    /// Импортирует zip-архив backup-снимка в выбранный backup root.
+    /// Если папка с таким именем уже есть, добавляет числовой суффикс.
+    /// </summary>
+    public BackupItemViewModel ImportBackupZip(
+        string zipPath,
+        string backupRoot)
+    {
+        if (string.IsNullOrWhiteSpace(zipPath) || !File.Exists(zipPath))
+            throw new FileNotFoundException("Backup zip file was not found.", zipPath);
+
+        if (string.IsNullOrWhiteSpace(backupRoot))
+            throw new InvalidOperationException("Backup root is empty.");
+
+        Directory.CreateDirectory(backupRoot);
+
+        var folderName = Path.GetFileNameWithoutExtension(zipPath);
+        var destination = BuildUniqueFolderPath(backupRoot, folderName);
+        Directory.CreateDirectory(destination);
+        ZipFile.ExtractToDirectory(zipPath, destination);
+
+        if (!File.Exists(Path.Combine(destination, ManifestFileName)))
+            throw new InvalidOperationException("Imported zip does not contain a TechMES backup manifest.");
+
+        return ReadBackupItem(destination);
+    }
+
+    /// <summary>
     /// Добавляет файл в backup и manifest. Если исходного файла нет, manifest все равно сохраняет ожидаемый путь.
     /// </summary>
     private static void AddBackupFile(
@@ -266,6 +312,47 @@ public sealed class BackupRestoreService(DirectoryInfo repositoryRoot)
         {
             var candidate = $"{safetyPath}-{index}";
             if (!File.Exists(candidate))
+                return candidate;
+        }
+    }
+
+    /// <summary>
+    /// Возвращает свободное имя zip-файла, чтобы экспорт не перезатер старый архив.
+    /// </summary>
+    private static string BuildUniqueZipPath(
+        string folder,
+        string baseFileName)
+    {
+        var candidate = Path.Combine(folder, $"{baseFileName}.zip");
+        if (!File.Exists(candidate))
+            return candidate;
+
+        for (var index = 2; ; index++)
+        {
+            candidate = Path.Combine(folder, $"{baseFileName}-{index}.zip");
+            if (!File.Exists(candidate))
+                return candidate;
+        }
+    }
+
+    /// <summary>
+    /// Возвращает свободное имя папки для импортируемого backup.
+    /// </summary>
+    private static string BuildUniqueFolderPath(
+        string folder,
+        string baseFolderName)
+    {
+        var safeName = string.IsNullOrWhiteSpace(baseFolderName)
+            ? DateTime.Now.ToString("yyyyMMdd-HHmmss")
+            : baseFolderName;
+        var candidate = Path.Combine(folder, safeName);
+        if (!Directory.Exists(candidate))
+            return candidate;
+
+        for (var index = 2; ; index++)
+        {
+            candidate = Path.Combine(folder, $"{safeName}-{index}");
+            if (!Directory.Exists(candidate))
                 return candidate;
         }
     }

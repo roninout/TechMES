@@ -247,9 +247,14 @@ public sealed class ParamApiClient
         var principal = await ReadCurrentPrincipalAsync();
         var actor = ReadActorName(principal);
 
-        request.Actor = string.IsNullOrWhiteSpace(actor)
-            ? $"{Environment.UserDomainName}\\{Environment.UserName}"
-            : actor;
+        if (string.IsNullOrWhiteSpace(actor))
+        {
+            request.Actor = null;
+            request.ActorGroups = [];
+            return;
+        }
+
+        request.Actor = actor.Trim();
 
         request.ActorGroups = ReadActorGroups(principal)
             .Where(group => !string.IsNullOrWhiteSpace(group))

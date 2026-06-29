@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using TechMES.Maintenance.Models;
 
 namespace TechMES.Maintenance.Services;
@@ -89,11 +90,34 @@ public sealed class DeploymentManager(
             arguments.Add(options.SelfContained ? "true" : "false");
         }
 
-        return await processRunner.RunAsync(
+        var publishedAppsettingsPath = Path.Combine(publishDirectory, "appsettings.json");
+        var preservedPublishedAppsettings = File.Exists(publishedAppsettingsPath)
+            ? File.ReadAllText(publishedAppsettingsPath, Encoding.UTF8)
+            : null;
+
+        var result = await processRunner.RunAsync(
             "dotnet",
             arguments,
             PublishTimeout,
             cancellationToken);
+
+        if (preservedPublishedAppsettings is not null)
+        {
+            File.WriteAllText(publishedAppsettingsPath, preservedPublishedAppsettings, Encoding.UTF8);
+            var standardOutput = string.IsNullOrWhiteSpace(result.StandardOutput)
+                ? $"Preserved published appsettings: {publishedAppsettingsPath}"
+                : result.StandardOutput + Environment.NewLine + $"Preserved published appsettings: {publishedAppsettingsPath}";
+
+            return new ProcessResult
+            {
+                ExitCode = result.ExitCode,
+                StandardOutput = standardOutput,
+                StandardError = result.StandardError,
+                TimedOut = result.TimedOut
+            };
+        }
+
+        return result;
     }
 
     /// <summary>

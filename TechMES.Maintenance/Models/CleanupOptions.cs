@@ -8,6 +8,12 @@ namespace TechMES.Maintenance.Models;
 public sealed class CleanupOptions
 {
     /// <summary>
+    /// Папка, в которой Maintenance хранит backup-снимки и zip-экспорты.
+    /// Если поле пустое, приложение использует TechMES.Maintenance\backups внутри репозитория.
+    /// </summary>
+    public string BackupRoot { get; set; } = "";
+
+    /// <summary>
     /// Сколько дней хранить log-файлы Runtime/Web.
     /// </summary>
     public int LogRetentionDays { get; set; } = 14;

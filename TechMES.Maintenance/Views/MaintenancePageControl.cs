@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -13,6 +15,8 @@ namespace TechMES.Maintenance.Views;
 /// </summary>
 public class MaintenancePageControl : UserControl
 {
+    private readonly Dictionary<DataGrid, (INotifyCollectionChanged Source, NotifyCollectionChangedEventHandler Handler)> _autoScrollDataGrids = [];
+
     /// <summary>
     /// Передает обычное RoutedEvent-событие в одноименный метод MainWindow.
     /// </summary>
@@ -60,9 +64,12 @@ public class MaintenancePageControl : UserControl
     public void OnRefreshServerClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenMaintenanceFolderClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenWebFirewallClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnOpenFirewallAdvancedClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnCreateHttpsCertificateClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnOpenCertificateManagerClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnApplyHttpsConfigClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenHttpsFirewallClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnOpenLocalUsersAndGroupsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnRefreshServerProfileClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnCreateBackupClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnRefreshBackupsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
@@ -90,4 +97,60 @@ public class MaintenancePageControl : UserControl
     public void OnSaveSettingsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnRefreshLogsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnLogFileSelected(object sender, SelectionChangedEventArgs e) => ForwardSelectionChangedEvent(sender, e);
+    public void OnLogDateSelected(object sender, SelectionChangedEventArgs e) => ForwardSelectionChangedEvent(sender, e);
+    public void OnPreviousLogDateClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnTodayLogDateClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnNextLogDateClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnBackupRootLostFocus(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnBrowseBackupRootClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnExportBackupZipClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnImportBackupZipClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+
+    /// <summary>
+    /// Прокручивает read-only TextBox с логами вниз при появлении новых строк.
+    /// </summary>
+    public void OnAutoScrollLogTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (sender is TextBox textBox)
+            textBox.ScrollToEnd();
+    }
+
+    /// <summary>
+    /// Подписывает DataGrid на изменения коллекции, чтобы диагностические таблицы показывали последнюю строку.
+    /// </summary>
+    public void OnAutoScrollDataGridLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not DataGrid grid || grid.ItemsSource is not INotifyCollectionChanged source)
+            return;
+
+        OnAutoScrollDataGridUnloaded(sender, e);
+
+        NotifyCollectionChangedEventHandler handler = (_, _) => ScrollDataGridToLast(grid);
+        source.CollectionChanged += handler;
+        _autoScrollDataGrids[grid] = (source, handler);
+        ScrollDataGridToLast(grid);
+    }
+
+    /// <summary>
+    /// Отписывает DataGrid от источника при выгрузке страницы.
+    /// </summary>
+    public void OnAutoScrollDataGridUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not DataGrid grid || !_autoScrollDataGrids.Remove(grid, out var subscription))
+            return;
+
+        subscription.Source.CollectionChanged -= subscription.Handler;
+    }
+
+    /// <summary>
+    /// Выполняет ScrollIntoView после того, как WPF успел создать визуальную строку.
+    /// </summary>
+    private static void ScrollDataGridToLast(DataGrid grid)
+    {
+        grid.Dispatcher.BeginInvoke(() =>
+        {
+            if (grid.Items.Count > 0)
+                grid.ScrollIntoView(grid.Items[^1]);
+        });
+    }
 }

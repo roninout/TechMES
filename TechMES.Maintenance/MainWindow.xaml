@@ -6,10 +6,10 @@
         xmlns:views="clr-namespace:TechMES.Maintenance.Views"
         mc:Ignorable="d"
         Title="TechMES Maintenance"
-        Height="760"
-        Width="1300"
-        MinHeight="620"
-        MinWidth="960"
+        Height="800"
+        Width="1320"
+        MinHeight="740"
+        MinWidth="980"
         Loaded="OnLoaded">
     <Window.Resources>
         <SolidColorBrush x:Key="TechMesBlueBrush" Color="#2563EB" />

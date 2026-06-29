@@ -23,11 +23,6 @@ public sealed class TargetMachineOptions
     public string IpAddress { get; set; } = "";
 
     /// <summary>
-    /// Минимальная желательная версия PostgreSQL. Пустое значение отключает сравнение версии.
-    /// </summary>
-    public string MinimumPostgreSqlVersion { get; set; } = "";
-
-    /// <summary>
     /// Свободная заметка оператора обслуживания.
     /// </summary>
     public string Notes { get; set; } = "";

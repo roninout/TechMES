@@ -5,17 +5,18 @@ namespace TechMES.Maintenance.Services;
 
 /// <summary>
 /// Ищет и читает log-файлы проекта.
-/// На первом этапе это простой просмотрщик последних строк, без привязки к конкретному logging provider.
+/// На первом этапе это простой просмотрщик последних строк без привязки к конкретному logging provider.
 /// </summary>
 public sealed class LogFileService(DirectoryInfo repositoryRoot)
 {
     /// <summary>
     /// Ищет log/txt-файлы в заданных папках относительно корня репозитория.
-    /// Ограничиваем список, чтобы случайно не просканировать слишком большой каталог.
+    /// Список ограничен, чтобы случайно не просканировать слишком большой каталог.
     /// </summary>
     public IReadOnlyList<LogFileViewModel> FindLogs(
         IEnumerable<string> relativeRoots,
-        string? publishRoot)
+        string? publishRoot,
+        DateTime? selectedDate)
     {
         var files = new List<FileInfo>();
 
@@ -28,8 +29,11 @@ public sealed class LogFileService(DirectoryInfo repositoryRoot)
             files.AddRange(EnumerateFilesSafe(fullRoot, "*.txt"));
         }
 
+        var selectedDay = selectedDate?.Date;
+
         return files
             .DistinctBy(file => file.FullName)
+            .Where(file => selectedDay is null || file.LastWriteTime.Date == selectedDay.Value)
             .OrderByDescending(file => file.LastWriteTime)
             .Take(100)
             .Select(file => new LogFileViewModel

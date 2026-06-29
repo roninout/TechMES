@@ -1,0 +1,30 @@
+.auth-dialog {
+    min-width: 0;
+}
+
+.auth-dialog-status-icon {
+    color: var(--rz-primary);
+    font-size: 2rem;
+}
+
+.auth-dialog-subtitle {
+    color: var(--rz-text-secondary-color);
+}
+
+.auth-dialog-actions {
+    padding-top: 0.25rem;
+}
+
+.auth-dialog-form {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.auth-dialog-label {
+    font-weight: 600;
+}
+
+.auth-dialog-input {
+    box-sizing: border-box;
+    width: 100%;
+}

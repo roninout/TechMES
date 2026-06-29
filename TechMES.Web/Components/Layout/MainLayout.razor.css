@@ -48,8 +48,8 @@
    не позволяя иконкам менять размер при сжатии основного меню. */
 .header-actions {
     /* Отступы логотипа от соседних кнопок можно независимо подкорректировать здесь. */
-    --app-logo-margin-left: 20px;
-    --app-logo-margin-right: 10px;
+    --app-logo-margin-left: 10px;
+    --app-logo-margin-right: 0px;
 
     display: flex;
     align-items: center;
@@ -89,8 +89,12 @@
     font-size: 21px;
 }
 
-::deep .header-qr-button {
-    flex: 0 0 auto;
+::deep .header-auth-button.authenticated {
+    color: var(--rz-success) !important;
+}
+
+::deep .header-auth-button.anonymous {
+    color: var(--rz-text-secondary-color) !important;
 }
 
 .app-logo {
@@ -125,6 +129,31 @@
 ::deep .top-nav-link.active {
     background: var(--rz-primary);
     color: var(--rz-on-primary);
+}
+
+.top-nav-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--rz-text-color);
+    font: inherit;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.top-nav-button:hover {
+    background: var(--rz-base-200);
+}
+
+.top-nav-button:focus-visible {
+    outline: 2px solid var(--rz-primary);
+    outline-offset: 2px;
 }
 
 .app-footer {

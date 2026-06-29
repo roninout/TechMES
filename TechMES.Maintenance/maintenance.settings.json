@@ -57,15 +57,15 @@
     "EnableHttpsRedirection": false
   },
   "Cleanup": {
+    "BackupRoot": "C:\\TechMES\\TechMES.Maintenance\\backups",
     "LogRetentionDays": 14,
     "AppSettingsBackupRetentionDays": 30,
     "BackupRetentionDays": 60
   },
   "TargetMachine": {
     "DisplayName": "Local TechMES server",
-    "HostName": "techmes",
+    "HostName": "techmes.com",
     "IpAddress": "192.168.1.118",
-    "MinimumPostgreSqlVersion": "",
     "Notes": ""
   },
   "Security": {

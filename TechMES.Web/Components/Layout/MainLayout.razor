@@ -2,6 +2,9 @@
 @implements IDisposable
 @inject QrScannerState QrScannerState
 @inject SelectedEquipmentState SelectedEquipmentState
+@inject DialogService DialogService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <RadzenLayout>
     <RadzenHeader class="app-header">
@@ -40,6 +43,15 @@
                     <RadzenIcon Icon="mail" />
                     <span>Messages</span>
                 </NavLink>
+
+                <button type="button"
+                        class="top-nav-link top-nav-button"
+                        title="Scan QR"
+                        aria-label="Scan QR"
+                        @onclick="OpenQrScannerAsync">
+                    <RadzenIcon Icon="qr_code_scanner" />
+                    <span>Scan QR</span>
+                </button>
             </nav>
 
             <div class="header-spacer"></div>
@@ -47,19 +59,13 @@
             @* Все глобальные действия собраны справа в одном flex-контейнере:
                переключение темы и Footer не влияют на ширину основного меню. *@
             <div class="header-actions">
-                <RadzenButton Icon="qr_code_scanner"
+                <RadzenButton Icon="@GetAuthButtonIcon()"
                               ButtonStyle="ButtonStyle.Light"
                               Variant="Variant.Text"
-                              class="header-icon-button header-qr-button"
-                              title="Scan QR"
-                              aria-label="Scan QR"
-                              Click="@OpenQrScannerAsync" />
-
-                @* PNG используется как прозрачная маска, а цвет логотипа задается активной темой.
-                   Благодаря этому один и тот же файл остается читаемым и в светлом, и в темном режиме. *@
-                <span class="app-logo"
-                      role="img"
-                      aria-label="Techinservice Intelligence"></span>
+                              class="@GetAuthButtonCssClass()"
+                              title="@GetAuthButtonTitle()"
+                              aria-label="@GetAuthButtonTitle()"
+                              Click="@OpenAuthDialogAsync" />
 
                 <RadzenAppearanceToggle LightTheme="standard"
                                         DarkTheme="standard-dark"
@@ -77,6 +83,12 @@
                               title="@(_isFooterVisible ? "Hide footer" : "Show footer")"
                               aria-label="@(_isFooterVisible ? "Hide footer" : "Show footer")"
                               Click="@ToggleFooter" />
+
+                @* PNG используется как прозрачная маска, а цвет логотипа задается активной темой.
+                   Благодаря этому один и тот же файл остается читаемым и в светлом, и в темном режиме. *@
+                <span class="app-logo"
+                      role="img"
+                      aria-label="Techinservice Intelligence"></span>
             </div>
         </div>
     </RadzenHeader>
@@ -109,6 +121,8 @@
 
 @code {
     private QrScannerDialog? _qrScannerDialog;
+    private bool _isAuthenticated;
+    private string? _authUserName;
 
     /// <summary>
     /// Определяет, отображается ли диагностическая Footer-зона.
@@ -124,6 +138,15 @@
     protected override void OnInitialized()
     {
         SelectedEquipmentState.Changed += OnSelectedEquipmentStateChanged;
+    }
+
+    /// <summary>
+    /// Читает эффективное состояние авторизации для Header-кнопки.
+    /// Без Windows login сайт остается доступным, но WEB показывает read-only режим.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAuthStateAsync();
     }
 
     /// <summary>
@@ -162,6 +185,71 @@
     private Task OpenQrScannerAsync()
     {
         return _qrScannerDialog?.OpenAsync() ?? Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Открывает явный диалог Login/Logout вместо системного prompt при входе на сайт.
+    /// </summary>
+    private async Task OpenAuthDialogAsync()
+    {
+        await RefreshAuthStateAsync();
+
+        await DialogService.OpenAsync<AuthDialog>(
+            "Authentication",
+            new Dictionary<string, object?>
+            {
+                ["IsAuthenticated"] = _isAuthenticated,
+                ["UserName"] = _authUserName ?? "",
+                ["ReturnUrl"] = GetCurrentLocalUrl()
+            },
+            new DialogOptions
+            {
+                Width = "430px",
+                Resizable = false,
+                Draggable = false
+            });
+    }
+
+    /// <summary>
+    /// Обновляет имя пользователя, которое Blazor видит после optional Windows authentication.
+    /// </summary>
+    private async Task RefreshAuthStateAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _isAuthenticated = authenticationState.User.Identity?.IsAuthenticated == true;
+        _authUserName = _isAuthenticated
+            ? authenticationState.User.Identity?.Name
+            : null;
+    }
+
+    /// <summary>
+    /// Возвращает локальный путь текущей страницы для возврата после Login/Logout.
+    /// </summary>
+    private string GetCurrentLocalUrl()
+    {
+        var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        return string.IsNullOrWhiteSpace(relativePath)
+            ? "/"
+            : "/" + relativePath;
+    }
+
+    private string GetAuthButtonIcon()
+    {
+        return _isAuthenticated ? "account_circle" : "login";
+    }
+
+    private string GetAuthButtonTitle()
+    {
+        return _isAuthenticated
+            ? $"Logged in: {_authUserName}"
+            : "Read-only mode. Click to login.";
+    }
+
+    private string GetAuthButtonCssClass()
+    {
+        return _isAuthenticated
+            ? "header-icon-button header-auth-button authenticated"
+            : "header-icon-button header-auth-button anonymous";
     }
 
     /// <summary>

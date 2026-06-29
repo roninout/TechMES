@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Security.Principal;
 using System.Text.Json;
@@ -8,6 +9,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Win32;
 using TechMES.Maintenance.Models;
 using TechMES.Maintenance.Services;
 using TechMES.Maintenance.ViewModels;
@@ -48,6 +50,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private SettingsFileViewModel? _selectedSettingsFile;
     private LogFileViewModel? _selectedLogFile;
     private string _selectedLogText = "";
+    private DateTime? _logSelectedDate = DateTime.Today;
     private string _serverPortStatus = "";
     private string _serverWebPortState = "Not checked";
     private string _serverHttpsPortState = "Not checked";
@@ -66,6 +69,15 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private string _backupStatusText = "No backup operation has been started.";
     private string _cleanupStatusText = "Cleanup scan has not been started.";
     private BackupItemViewModel? _selectedBackup;
+
+    /// <summary>
+    /// Результат проверки DNS/hosts-алиаса сервера.
+    /// Используется в Checks и Server profile, чтобы обе вкладки одинаково трактовали поле Host name.
+    /// </summary>
+    private sealed record HostResolutionStatus(
+        string Status,
+        string Details,
+        IReadOnlyList<string> ResolvedIps);
 
     /// <summary>
     /// Событие WPF binding для свойств окна.
@@ -247,7 +259,25 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
                 return;
 
             _backupRoot = value;
+            _configuration.Cleanup.BackupRoot = value;
             OnPropertyChanged(nameof(BackupRoot));
+        }
+    }
+
+    /// <summary>
+    /// День, за который показываются log-файлы во вкладке Logs.
+    /// По умолчанию выбран сегодняшний день, чтобы оператор сразу видел актуальные журналы.
+    /// </summary>
+    public DateTime? LogSelectedDate
+    {
+        get => _logSelectedDate;
+        set
+        {
+            if (_logSelectedDate == value)
+                return;
+
+            _logSelectedDate = value;
+            OnPropertyChanged(nameof(LogSelectedDate));
         }
     }
 
@@ -600,22 +630,6 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
             _configuration.TargetMachine.IpAddress = value;
             OnPropertyChanged(nameof(TargetMachineIpAddress));
-        }
-    }
-
-    /// <summary>
-    /// Минимальная ожидаемая major-версия PostgreSQL, например 14 или 16.
-    /// </summary>
-    public string TargetMachineMinimumPostgreSqlVersion
-    {
-        get => _configuration.TargetMachine.MinimumPostgreSqlVersion;
-        set
-        {
-            if (_configuration.TargetMachine.MinimumPostgreSqlVersion == value)
-                return;
-
-            _configuration.TargetMachine.MinimumPostgreSqlVersion = value;
-            OnPropertyChanged(nameof(TargetMachineMinimumPostgreSqlVersion));
         }
     }
 
@@ -980,7 +994,9 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         _logFileService = new LogFileService(_repositoryRoot);
         _backupRestoreService = new BackupRestoreService(_repositoryRoot);
         _cleanupService = new CleanupService(_repositoryRoot);
-        BackupRoot = Path.Combine(_repositoryRoot.FullName, "TechMES.Maintenance", "backups");
+        BackupRoot = string.IsNullOrWhiteSpace(_configuration.Cleanup.BackupRoot)
+            ? GetDefaultBackupRoot()
+            : _configuration.Cleanup.BackupRoot;
 
         DataContext = this;
 
@@ -1004,6 +1020,14 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     {
         await RefreshAllAsync();
         await RefreshServerAsync();
+    }
+
+    /// <summary>
+    /// Возвращает путь backup по умолчанию, если оператор еще не сохранил свой каталог.
+    /// </summary>
+    private string GetDefaultBackupRoot()
+    {
+        return Path.Combine(_repositoryRoot.FullName, "TechMES.Maintenance", "backups");
     }
 
     /// <summary>
@@ -1109,8 +1133,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     {
         try
         {
-            var runtime = ReadJsonObject(GetSourceAppsettingsPath(@"TechMES.Runtime.Service\appsettings.json"));
-            var web = ReadJsonObject(GetSourceAppsettingsPath(@"TechMES.Web\appsettings.json"));
+            var runtime = ReadJsonObject(GetPreferredAppsettingsPath("runtime", @"TechMES.Runtime.Service\appsettings.json", "Runtime.Service"));
+            var web = ReadJsonObject(GetPreferredAppsettingsPath("web", @"TechMES.Web\appsettings.json", "Web"));
 
             TypedAppSettings.RuntimeUrls = GetString(runtime, "Urls");
             TypedAppSettings.RuntimeDeviceName = GetString(runtime, "Runtime", "DeviceName");
@@ -1172,15 +1196,19 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     }
 
     /// <summary>
-    /// Сохраняет typed-поля appsettings в исходные файлы и в опубликованные файлы, если они уже существуют.
+    /// Сохраняет typed-поля appsettings в один рабочий файл: published appsettings, если служба уже опубликована,
+    /// иначе исходный appsettings проекта. Это не создает .bak рядом с файлом.
     /// После сохранения службам нужен restart, потому что appsettings читаются на старте процесса.
     /// </summary>
     private void SaveTypedRuntimeWebAppSettings()
     {
+        NormalizeAuthenticationSettingsForSave();
+        TypedAppSettings.ParamWritesDryRun = false;
+
         var updatedPaths = new List<string>();
         var skippedPaths = new List<string>();
 
-        foreach (var path in GetCandidateAppsettingsPaths("runtime", @"TechMES.Runtime.Service\appsettings.json", "Runtime.Service"))
+        foreach (var path in GetWritableAppsettingsPaths("runtime", @"TechMES.Runtime.Service\appsettings.json", "Runtime.Service"))
         {
             if (!File.Exists(path))
             {
@@ -1190,11 +1218,11 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
             var root = ReadJsonObject(path);
             ApplyRuntimeTypedSettings(root);
-            SaveJsonWithBackup(path, root);
+            SaveJson(path, root);
             updatedPaths.Add(path);
         }
 
-        foreach (var path in GetCandidateAppsettingsPaths("web", @"TechMES.Web\appsettings.json", "Web"))
+        foreach (var path in GetWritableAppsettingsPaths("web", @"TechMES.Web\appsettings.json", "Web"))
         {
             if (!File.Exists(path))
             {
@@ -1204,12 +1232,12 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
             var root = ReadJsonObject(path);
             ApplyWebTypedSettings(root);
-            SaveJsonWithBackup(path, root);
+            SaveJson(path, root);
             updatedPaths.Add(path);
         }
 
         TypedAppSettings.Status =
-            $"Runtime/Web appsettings saved: {updatedPaths.Count} file(s), skipped missing: {skippedPaths.Count}. Restart services to apply.";
+            $"Runtime/Web appsettings saved without backup: {updatedPaths.Count} file(s), skipped missing: {skippedPaths.Count}. Restart services to apply.";
 
         AppendDiagnostics(TypedAppSettings.Status);
         AppendServerLog(TypedAppSettings.Status);
@@ -1219,6 +1247,21 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             if (updatedPaths.Contains(settingsFile.FullPath, StringComparer.OrdinalIgnoreCase))
                 LoadSettingsFile(settingsFile);
         }
+    }
+
+    /// <summary>
+    /// Сводит упрощенную вкладку Authentication к полному набору внутренних настроек.
+    /// В интерфейсе оператор видит только один список групп и основные флаги,
+    /// а Maintenance/Runtime/Web получают согласованные значения без ручного дублирования.
+    /// </summary>
+    private void NormalizeAuthenticationSettingsForSave()
+    {
+        SecurityWindowsUsersEnabled = TypedAppSettings.WebWindowsAuthenticationEnabled;
+        SecurityWriteGroups = TypedAppSettings.ParamWritesAllowedGroups;
+        SecurityRequireWriteConfirmation = TypedAppSettings.WebConfirmWrites;
+        SecurityRequireScadaAudit = TypedAppSettings.ParamWritesAuditEnabled;
+
+        TypedAppSettings.ParamWritesRequireWindowsUser = TypedAppSettings.ParamWritesAuthorizationEnabled;
     }
 
     /// <summary>
@@ -1248,7 +1291,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         SetValue(root, TypedAppSettings.RuntimeDatabaseConnectionString, "Database", "ConnectionString");
         SetValue(root, TypedAppSettings.RuntimeEventDatabaseConnectionString, "EventDatabase", "ConnectionString");
         SetValue(root, TypedAppSettings.ParamWritesEnabled, "ParamWrites", "Enabled");
-        SetValue(root, TypedAppSettings.ParamWritesDryRun, "ParamWrites", "DryRun");
+        SetValue(root, false, "ParamWrites", "DryRun");
         SetValue(root, TypedAppSettings.ParamWritesRequireComment, "ParamWrites", "RequireComment");
         SetValue(root, TypedAppSettings.ParamWritesAuditEnabled, "ParamWrites", "AuditEnabled");
         SetValue(root, TypedAppSettings.ParamWritesAuthorizationEnabled, "ParamWrites", "Authorization", "Enabled");
@@ -1292,32 +1335,39 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         Path.Combine(_repositoryRoot.FullName, relativePath);
 
     /// <summary>
-    /// Возвращает исходный и опубликованный appsettings для выбранной службы.
-    /// Если published-файла еще нет, сохранение его просто пропустит.
+    /// Возвращает список рабочих appsettings для сохранения.
+    /// Сейчас это один файл: published appsettings, если он есть, иначе исходный appsettings проекта.
     /// </summary>
-    private IReadOnlyList<string> GetCandidateAppsettingsPaths(
+    private IReadOnlyList<string> GetWritableAppsettingsPaths(
         string serviceKey,
         string sourceRelativePath,
         string fallbackPublishFolderName)
     {
-        var paths = new List<string>
-        {
-            GetSourceAppsettingsPath(sourceRelativePath)
-        };
+        return [GetPreferredAppsettingsPath(serviceKey, sourceRelativePath, fallbackPublishFolderName)];
+    }
 
+    /// <summary>
+    /// Возвращает рабочий appsettings: published-файл, если сервис уже опубликован, иначе исходный файл проекта.
+    /// Так Settings меняет один понятный файл и не расходится между source и publish root.
+    /// </summary>
+    private string GetPreferredAppsettingsPath(
+        string serviceKey,
+        string sourceRelativePath,
+        string fallbackPublishFolderName)
+    {
         var service = GetServiceDefinition(serviceKey);
         var publishFolderName = string.IsNullOrWhiteSpace(service?.PublishFolderName)
             ? fallbackPublishFolderName
             : service.PublishFolderName!;
 
-        paths.Add(Path.Combine(
+        var publishedPath = Path.Combine(
             _configuration.Deployment.PublishRoot,
             publishFolderName,
-            "appsettings.json"));
+            "appsettings.json");
 
-        return paths
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return File.Exists(publishedPath)
+            ? publishedPath
+            : GetSourceAppsettingsPath(sourceRelativePath);
     }
 
     /// <summary>
@@ -1332,15 +1382,10 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     }
 
     /// <summary>
-    /// Создает backup рядом с appsettings и записывает форматированный JSON.
+    /// Записывает форматированный JSON без соседнего .bak-файла.
     /// </summary>
-    private static void SaveJsonWithBackup(string path, JsonObject root)
+    private static void SaveJson(string path, JsonObject root)
     {
-        var backupPath = path + "." + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".bak";
-
-        if (File.Exists(path))
-            File.Copy(path, backupPath, overwrite: false);
-
         File.WriteAllText(path, root.ToJsonString(TypedAppSettingsJsonOptions));
     }
 
@@ -1546,18 +1591,52 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             return;
         }
 
-        var status = "OK";
         var details = $"DB '{result.Database}', user '{result.User}', {ShortenPostgreSqlVersion(result.Version)}.";
+        AddDependencyCheck("PostgreSQL auth", name, "OK", details);
+    }
 
-        if (TryGetMinimumPostgreSqlMajorVersion(out var minimumMajor) &&
-            TryGetPostgreSqlMajorVersion(result.Version, out var actualMajor) &&
-            actualMajor < minimumMajor)
+    /// <summary>
+    /// Проверяет DNS/hosts-алиас целевого сервера: имя должно резолвиться в ожидаемый IP или в один из IP текущего сервера.
+    /// Это не проверка Windows machine name: короткое имя вроде techmes обычно задается в DNS или hosts.
+    /// </summary>
+    private HostResolutionStatus GetTargetHostResolutionStatus(IReadOnlyList<string> currentIps)
+    {
+        var hostName = _configuration.TargetMachine.HostName?.Trim() ?? "";
+
+        if (string.IsNullOrWhiteSpace(hostName))
+            return new HostResolutionStatus("Warning", "Host alias is empty.", []);
+
+        try
         {
-            status = "Warning";
-            details += $" Minimum configured major version is {minimumMajor}.";
-        }
+            var resolvedIps = Dns.GetHostAddresses(hostName)
+                .Where(address => address.AddressFamily == AddressFamily.InterNetwork)
+                .Select(address => address.ToString())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
-        AddDependencyCheck("PostgreSQL auth", name, status, details);
+            if (resolvedIps.Length == 0)
+                return new HostResolutionStatus("Error", $"Host '{hostName}' resolved, but no IPv4 address was returned.", resolvedIps);
+
+            var expectedIp = _configuration.TargetMachine.IpAddress?.Trim() ?? "";
+            if (!string.IsNullOrWhiteSpace(expectedIp))
+            {
+                var matchesExpectedIp = resolvedIps.Contains(expectedIp, StringComparer.OrdinalIgnoreCase);
+                return new HostResolutionStatus(
+                    matchesExpectedIp ? "OK" : "Error",
+                    $"Host '{hostName}' -> {string.Join(", ", resolvedIps)}; expected IP: {expectedIp}.",
+                    resolvedIps);
+            }
+
+            var matchesCurrentMachine = resolvedIps.Any(ip => currentIps.Contains(ip, StringComparer.OrdinalIgnoreCase));
+            return new HostResolutionStatus(
+                matchesCurrentMachine ? "OK" : "Warning",
+                $"Host '{hostName}' -> {string.Join(", ", resolvedIps)}; current server IPs: {string.Join(", ", currentIps)}.",
+                resolvedIps);
+        }
+        catch (Exception ex)
+        {
+            return new HostResolutionStatus("Error", $"Host '{hostName}' cannot be resolved by Windows DNS/hosts: {ex.Message}", []);
+        }
     }
 
     /// <summary>
@@ -1575,19 +1654,18 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
                 : _configuration.TargetMachine.DisplayName);
 
         var expectedHost = _configuration.TargetMachine.HostName;
-        var actualHost = Environment.MachineName;
+        var currentIps = ServerAddresses.Select(address => address.Address).ToList();
+        var hostResolution = GetTargetHostResolutionStatus(currentIps);
+
         AddDependencyCheck(
             "Target machine",
-            "Host name",
+            "Host alias",
+            hostResolution.Status,
             string.IsNullOrWhiteSpace(expectedHost)
-                ? "Warning"
-                : string.Equals(expectedHost, actualHost, StringComparison.OrdinalIgnoreCase) ? "OK" : "Error",
-            string.IsNullOrWhiteSpace(expectedHost)
-                ? $"Expected host is empty. Current host: {actualHost}."
-                : $"Expected: {expectedHost}; current: {actualHost}.");
+                ? $"Host alias is empty. Windows machine name: {Environment.MachineName}."
+                : hostResolution.Details);
 
         var expectedIp = _configuration.TargetMachine.IpAddress;
-        var currentIps = ServerAddresses.Select(address => address.Address).ToList();
         AddDependencyCheck(
             "Target machine",
             "IPv4 address",
@@ -1651,8 +1729,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         AddDependencyCheck(
             "Write safety",
             "Runtime writes",
-            TypedAppSettings.ParamWritesEnabled && !TypedAppSettings.ParamWritesDryRun ? "OK" : "Warning",
-            $"Enabled: {TypedAppSettings.ParamWritesEnabled}; dry run: {TypedAppSettings.ParamWritesDryRun}; CtApi writes: {TypedAppSettings.CtApiAllowWrites}.");
+            TypedAppSettings.ParamWritesEnabled && TypedAppSettings.CtApiAllowWrites ? "OK" : "Warning",
+            $"Enabled: {TypedAppSettings.ParamWritesEnabled}; CtApi writes: {TypedAppSettings.CtApiAllowWrites}.");
 
         AddDependencyCheck(
             "Write safety",
@@ -1767,7 +1845,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             "Write flow",
             "Param writes",
             TypedAppSettings.ParamWritesEnabled ? "OK" : "Warning",
-            $"Enabled: {TypedAppSettings.ParamWritesEnabled}; dry run: {TypedAppSettings.ParamWritesDryRun}; WEB confirmation: {TypedAppSettings.WebConfirmWrites}.");
+            $"Enabled: {TypedAppSettings.ParamWritesEnabled}; WEB confirmation: {TypedAppSettings.WebConfirmWrites}.");
 
         AddDiagnosticsRow(
             OperatorActionDiagnostics,
@@ -1823,7 +1901,6 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             "WEB page Operation actions reads Runtime API. No duplicate audit tables are created by WEB.");
 
         var ready = TypedAppSettings.ParamWritesEnabled
-            && !TypedAppSettings.ParamWritesDryRun
             && TypedAppSettings.CtApiAllowWrites
             && TypedAppSettings.ParamWritesAuditEnabled
             && eventDbConfigured;
@@ -1835,7 +1912,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             ready ? "OK" : "Warning",
             ready
                 ? "Real writes, CtApi writes, SCADA audit and Event DB are configured."
-                : "One or more parts are not ready: Param writes, dry-run, CtApi writes, SCADA audit or Event DB.");
+                : "One or more parts are not ready: Param writes, CtApi writes, SCADA audit or Event DB.");
 
         UpdateDiagnosticsStatus(OperatorActionDiagnostics, value => OperatorActionDiagnosticsStatusText = value);
     }
@@ -2161,44 +2238,6 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     }
 
     /// <summary>
-    /// Читает из профиля минимальную major-версию PostgreSQL.
-    /// Пустое поле означает, что проверка версии не ограничивает сервер.
-    /// </summary>
-    private bool TryGetMinimumPostgreSqlMajorVersion(out int major)
-    {
-        major = 0;
-        var text = _configuration.TargetMachine.MinimumPostgreSqlVersion;
-        if (string.IsNullOrWhiteSpace(text))
-            return false;
-
-        var dotIndex = text.IndexOf('.');
-        var majorText = dotIndex > 0 ? text[..dotIndex] : text;
-        return int.TryParse(majorText, out major);
-    }
-
-    /// <summary>
-    /// Извлекает major-версию из строки PostgreSQL version().
-    /// Например, из "PostgreSQL 16.2 ..." вернет 16.
-    /// </summary>
-    private static bool TryGetPostgreSqlMajorVersion(
-        string version,
-        out int major)
-    {
-        major = 0;
-        const string prefix = "PostgreSQL ";
-        var index = version.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
-        if (index < 0)
-            return false;
-
-        var start = index + prefix.Length;
-        var end = start;
-        while (end < version.Length && char.IsDigit(version[end]))
-            end++;
-
-        return end > start && int.TryParse(version[start..end], out major);
-    }
-
-    /// <summary>
     /// Обновляет сетевые адреса, локальные TCP-порты и состояние firewall-правила.
     /// Это быстрая проверка серверного режима без изменения настроек Windows.
     /// </summary>
@@ -2277,14 +2316,16 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             string.IsNullOrWhiteSpace(_configuration.TargetMachine.DisplayName) ? "Warning" : "OK",
             "Operator-friendly target server name.");
 
+        var hostResolution = GetTargetHostResolutionStatus(ipAddresses);
+
         AddServerProfileItem(
             "Target",
-            "Expected host",
+            "Host alias",
             string.IsNullOrWhiteSpace(_configuration.TargetMachine.HostName) ? "-" : _configuration.TargetMachine.HostName,
+            hostResolution.Status,
             string.IsNullOrWhiteSpace(_configuration.TargetMachine.HostName)
-                ? "Warning"
-                : string.Equals(_configuration.TargetMachine.HostName, Environment.MachineName, StringComparison.OrdinalIgnoreCase) ? "OK" : "Error",
-            $"Current host: {Environment.MachineName}.");
+                ? $"Host alias is empty. Windows machine name: {Environment.MachineName}."
+                : hostResolution.Details);
 
         AddServerProfileItem(
             "Target",
@@ -2294,13 +2335,6 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
                 ? "Warning"
                 : ipAddresses.Contains(_configuration.TargetMachine.IpAddress, StringComparer.OrdinalIgnoreCase) ? "OK" : "Error",
             $"Current IPs: {(ipAddresses.Count == 0 ? "-" : string.Join(", ", ipAddresses))}.");
-
-        AddServerProfileItem(
-            "Target",
-            "Minimum PostgreSQL",
-            string.IsNullOrWhiteSpace(_configuration.TargetMachine.MinimumPostgreSqlVersion) ? "-" : _configuration.TargetMachine.MinimumPostgreSqlVersion,
-            string.IsNullOrWhiteSpace(_configuration.TargetMachine.MinimumPostgreSqlVersion) ? "Warning" : "OK",
-            "Checks tab compares this value with real PostgreSQL version.");
 
         AddServerProfileItem(
             "Ports",
@@ -2460,14 +2494,15 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         if (!Directory.Exists(_configuration.Deployment.PublishRoot))
             issues.Add("Publish root does not exist");
 
-        if (!string.IsNullOrWhiteSpace(_configuration.TargetMachine.HostName) &&
-            !string.Equals(_configuration.TargetMachine.HostName, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+        var currentIps = ServerAddresses.Select(address => address.Address).ToList();
+        var hostResolution = GetTargetHostResolutionStatus(currentIps);
+        if (hostResolution.Status == "Error")
         {
-            issues.Add($"Current host is {Environment.MachineName}, expected {_configuration.TargetMachine.HostName}");
+            issues.Add(hostResolution.Details);
         }
 
         if (!string.IsNullOrWhiteSpace(_configuration.TargetMachine.IpAddress) &&
-            !ServerAddresses.Select(address => address.Address).Contains(_configuration.TargetMachine.IpAddress, StringComparer.OrdinalIgnoreCase))
+            !currentIps.Contains(_configuration.TargetMachine.IpAddress, StringComparer.OrdinalIgnoreCase))
         {
             issues.Add($"Expected IP {_configuration.TargetMachine.IpAddress} was not found on this machine");
         }
@@ -2588,6 +2623,46 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private async void OnRefreshServerClick(object sender, RoutedEventArgs e)
     {
         await RefreshServerAsync();
+    }
+
+    /// <summary>
+    /// Opens a Windows management console from Maintenance and writes the result to diagnostics.
+    /// </summary>
+    private void OpenWindowsManagementTool(string fileName, string displayName)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(fileName)
+            {
+                UseShellExecute = true
+            });
+            AppendDiagnostics($"{displayName}: opened.");
+        }
+        catch (Exception ex)
+        {
+            AppendDiagnostics($"{displayName}: open failed: {ex.Message}");
+            MessageBox.Show(
+                this,
+                $"Не удалось открыть {displayName}.\n\n{ex.Message}",
+                "TechMES Maintenance",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private void OnOpenCertificateManagerClick(object sender, RoutedEventArgs e)
+    {
+        OpenWindowsManagementTool("certmgr.msc", "Certificate Manager");
+    }
+
+    private void OnOpenFirewallAdvancedClick(object sender, RoutedEventArgs e)
+    {
+        OpenWindowsManagementTool("wf.msc", "Windows Defender Firewall with Advanced Security");
+    }
+
+    private void OnOpenLocalUsersAndGroupsClick(object sender, RoutedEventArgs e)
+    {
+        OpenWindowsManagementTool("lusrmgr.msc", "Local Users and Groups");
     }
 
     /// <summary>
@@ -2781,7 +2856,9 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         try
         {
             AppendServerLog("Creating HTTPS certificate...");
-            var certificate = _httpsCertificateManager.CreateOrReplaceCertificate(_configuration.Server);
+            var certificate = _httpsCertificateManager.CreateOrReplaceCertificate(
+                _configuration.Server,
+                _configuration.TargetMachine.HostName);
 
             ServerCertificateStatus = certificate.Status;
             AppendServerLog($"Certificate: {certificate.Status}");
@@ -2841,6 +2918,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     {
         try
         {
+            NormalizeAuthenticationSettingsForSave();
             _configurationStore.Save(_configuration);
             RefreshDeploymentPaths();
             RefreshServerAddressRows();
@@ -3211,7 +3289,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     }
 
     /// <summary>
-    /// Сохраняет выбранный appsettings, предварительно создав backup.
+    /// Сохраняет выбранный appsettings напрямую, без соседнего .bak-файла.
     /// </summary>
     private void OnSaveSettingsClick(object sender, RoutedEventArgs e)
     {
@@ -3220,13 +3298,13 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
         try
         {
-            var backupPath = _settingsFileService.Save(
+            _settingsFileService.SaveWithoutBackup(
                 SelectedSettingsFile.FullPath,
                 SelectedSettingsFile.Content);
 
             SelectedSettingsFile.IsDirty = false;
-            SelectedSettingsFile.Status = $"Saved. Backup: {backupPath}";
-            AppendDiagnostics($"{SelectedSettingsFile.DisplayName}: saved with backup.");
+            SelectedSettingsFile.Status = "Saved.";
+            AppendDiagnostics($"{SelectedSettingsFile.DisplayName}: saved.");
         }
         catch (Exception ex)
         {
@@ -3263,6 +3341,42 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     }
 
     /// <summary>
+    /// Применяет выбранную дату просмотра логов.
+    /// DatePicker меняет только фильтр списка, сами log-файлы не изменяются.
+    /// </summary>
+    private void OnLogDateSelected(object sender, SelectionChangedEventArgs e)
+    {
+        RefreshLogRows();
+    }
+
+    /// <summary>
+    /// Переключает журнал на предыдущий день и сразу обновляет список найденных log-файлов.
+    /// </summary>
+    private void OnPreviousLogDateClick(object sender, RoutedEventArgs e)
+    {
+        LogSelectedDate = (LogSelectedDate ?? DateTime.Today).Date.AddDays(-1);
+        RefreshLogRows();
+    }
+
+    /// <summary>
+    /// Возвращает фильтр журналов на сегодняшний день.
+    /// </summary>
+    private void OnTodayLogDateClick(object sender, RoutedEventArgs e)
+    {
+        LogSelectedDate = DateTime.Today;
+        RefreshLogRows();
+    }
+
+    /// <summary>
+    /// Переключает журнал на следующий день и сразу обновляет список найденных log-файлов.
+    /// </summary>
+    private void OnNextLogDateClick(object sender, RoutedEventArgs e)
+    {
+        LogSelectedDate = (LogSelectedDate ?? DateTime.Today).Date.AddDays(1);
+        RefreshLogRows();
+    }
+
+    /// <summary>
     /// Читает хвост выбранного log-файла.
     /// </summary>
     private void OnLogFileSelected(object sender, SelectionChangedEventArgs e)
@@ -3292,7 +3406,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
         foreach (var logFile in _logFileService.FindLogs(
             _configuration.LogSearchRoots,
-            _configuration.Deployment.PublishRoot))
+            _configuration.Deployment.PublishRoot,
+            LogSelectedDate))
         {
             LogFiles.Add(logFile);
         }
@@ -3307,6 +3422,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         {
             SelectedLogText =
                 "No log files found yet." + Environment.NewLine +
+                $"Selected date: {(LogSelectedDate is null ? "all dates" : LogSelectedDate.Value.ToString("dd.MM.yyyy"))}" + Environment.NewLine +
                 "Expected locations:" + Environment.NewLine +
                 $"- {_configuration.Deployment.PublishRoot}\\Runtime.Service\\logs" + Environment.NewLine +
                 $"- {_configuration.Deployment.PublishRoot}\\Web\\logs" + Environment.NewLine +
@@ -3330,6 +3446,66 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         BackupStatusText = BackupItems.Count == 0
             ? "No backups found yet."
             : $"Loaded {BackupItems.Count} backup(s).";
+    }
+
+    /// <summary>
+    /// Сохраняет выбранный backup root в maintenance.settings.json.
+    /// </summary>
+    private void PersistBackupRoot()
+    {
+        if (string.IsNullOrWhiteSpace(BackupRoot))
+            BackupRoot = GetDefaultBackupRoot();
+
+        _configuration.Cleanup.BackupRoot = BackupRoot;
+        _configurationStore.Save(_configuration);
+        RefreshDiskStatuses();
+    }
+
+    /// <summary>
+    /// Запоминает путь backup после редактирования поля во вкладке Backup / Restore.
+    /// </summary>
+    private void OnBackupRootLostFocus(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            PersistBackupRoot();
+            RefreshBackupRows();
+            BackupStatusText = $"Backup root saved: {BackupRoot}";
+        }
+        catch (Exception ex)
+        {
+            BackupStatusText = $"Backup root save failed: {ex.Message}";
+            AppendDiagnostics(BackupStatusText);
+        }
+    }
+
+    /// <summary>
+    /// Открывает стандартный системный выбор папки для корня Backup / Restore.
+    /// </summary>
+    private void OnBrowseBackupRootClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Select TechMES backup folder",
+            InitialDirectory = Directory.Exists(BackupRoot) ? BackupRoot : GetDefaultBackupRoot()
+        };
+
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        try
+        {
+            BackupRoot = dialog.FolderName;
+            PersistBackupRoot();
+            RefreshBackupRows();
+            BackupStatusText = $"Backup root saved: {BackupRoot}";
+            AppendDiagnostics(BackupStatusText);
+        }
+        catch (Exception ex)
+        {
+            BackupStatusText = $"Backup root save failed: {ex.Message}";
+            AppendDiagnostics(BackupStatusText);
+        }
     }
 
     /// <summary>
@@ -3428,6 +3604,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     {
         try
         {
+            PersistBackupRoot();
             var backup = _backupRestoreService.CreateBackup(_configuration, BackupRoot);
             RefreshBackupRows();
             SelectedBackup = BackupItems.FirstOrDefault(item => item.FullPath == backup.FullPath) ?? BackupItems.FirstOrDefault();
@@ -3448,6 +3625,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     {
         try
         {
+            PersistBackupRoot();
             RefreshBackupRows();
             AppendDiagnostics("Backup list refreshed.");
         }
@@ -3472,6 +3650,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
         try
         {
+            PersistBackupRoot();
             BackupStatusText = _backupRestoreService.RestoreBackup(SelectedBackup.FullPath);
             LoadTypedAppSettings();
             RefreshServerAddressRows();
@@ -3483,6 +3662,62 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         {
             BackupStatusText = $"Restore failed: {ex.Message}";
             AppendDiagnostics($"Backup restore failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Экспортирует выбранный backup-снимок в zip-архив рядом с backup root.
+    /// </summary>
+    private void OnExportBackupZipClick(object sender, RoutedEventArgs e)
+    {
+        if (SelectedBackup is null)
+        {
+            BackupStatusText = "Select backup first.";
+            return;
+        }
+
+        try
+        {
+            PersistBackupRoot();
+            var zipPath = _backupRestoreService.ExportBackupZip(SelectedBackup.FullPath);
+            BackupStatusText = $"Backup exported: {zipPath}";
+            AppendDiagnostics($"Backup exported to zip: {zipPath}");
+        }
+        catch (Exception ex)
+        {
+            BackupStatusText = $"Export failed: {ex.Message}";
+            AppendDiagnostics($"Backup export failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Импортирует backup-снимок из zip-архива в текущий backup root.
+    /// </summary>
+    private void OnImportBackupZipClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import TechMES backup zip",
+            Filter = "ZIP backup (*.zip)|*.zip|All files (*.*)|*.*",
+            CheckFileExists = true
+        };
+
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        try
+        {
+            PersistBackupRoot();
+            var imported = _backupRestoreService.ImportBackupZip(dialog.FileName, BackupRoot);
+            RefreshBackupRows();
+            SelectedBackup = BackupItems.FirstOrDefault(item => item.FullPath == imported.FullPath) ?? BackupItems.FirstOrDefault();
+            BackupStatusText = $"Backup imported: {imported.DisplayName}";
+            AppendDiagnostics($"Backup imported from zip: {dialog.FileName}");
+        }
+        catch (Exception ex)
+        {
+            BackupStatusText = $"Import failed: {ex.Message}";
+            AppendDiagnostics($"Backup import failed: {ex.Message}");
         }
     }
 
