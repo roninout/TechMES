@@ -2665,6 +2665,11 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         OpenWindowsManagementTool("lusrmgr.msc", "Local Users and Groups");
     }
 
+    private void OnOpenServicesConsoleClick(object sender, RoutedEventArgs e)
+    {
+        OpenWindowsManagementTool("services.msc", "Windows Services");
+    }
+
     /// <summary>
     /// Создает или обновляет входящее firewall-правило для WEB-порта.
     /// Для успешного выполнения Maintenance должен быть запущен от имени администратора.

@@ -60,6 +60,7 @@ public class MaintenancePageControl : UserControl
     public void OnRestartServiceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnProbeServiceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnRefreshAllClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnOpenServicesConsoleClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnPrepareServerClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnRefreshServerClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenMaintenanceFolderClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);

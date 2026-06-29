@@ -619,7 +619,7 @@
             <TabItem>
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" FontSize="18" Margin="0,0,8,0" />
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE70F;" FontSize="18" Margin="0,0,8,0" />
                         <TextBlock Text="Param Writes" />
                     </StackPanel>
                 </TabItem.Header>

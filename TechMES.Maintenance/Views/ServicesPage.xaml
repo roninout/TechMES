@@ -12,7 +12,7 @@
         <TabItem>
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE80F;" FontSize="18" Margin="0,0,8,0" />
+                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE9F5;" FontSize="18" Margin="0,0,8,0" />
                     <TextBlock Text="Services" />
                 </StackPanel>
             </TabItem.Header>
@@ -33,15 +33,20 @@
                             <StackPanel>
                                 <TextBlock Text="Services"
                                            Style="{StaticResource SectionTitleText}" />
-                                <TextBlock Text="Статусы читаются из Windows Service Control Manager через sc.exe. Если службы еще не установлены, это нормально: Maintenance покажет Not installed."
+                                <TextBlock Text="Статусы читаются из Windows Service Control Manager через sc.exe. Если службы еще не установлены, это нормально."
                                            Style="{StaticResource MutedText}" />
                             </StackPanel>
 
-                            <Button Grid.Column="1"
-                                    Content="Refresh all"
-                                    MinWidth="90"
-                                    VerticalAlignment="Center"
-                                    Click="OnRefreshAllClick" />
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <Button Content="Refresh all"
+                                        MinWidth="90"
+                                        Click="OnRefreshAllClick" />
+                                <Button Content=" Open services"
+                                        MinWidth="90"
+                                        Click="OnOpenServicesConsoleClick" />
+                            </StackPanel>
                         </Grid>
 
                         <DataGrid Grid.Row="1"
