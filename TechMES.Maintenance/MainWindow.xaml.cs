@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -9,6 +10,8 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Input;
 using Microsoft.Win32;
 using TechMES.Maintenance.Models;
 using TechMES.Maintenance.Services;
@@ -44,6 +47,8 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private readonly BackupRestoreService _backupRestoreService;
     private readonly CleanupService _cleanupService;
     private readonly PostgreSqlProbeService _postgreSqlProbeService = new();
+    private readonly InfoImportEditStore _infoImportEditStore = new();
+    private readonly RuntimeCatalogClient _runtimeCatalogClient = new();
 
     private string _diagnosticsText = "";
     private string _deploymentLogText = "";
@@ -68,6 +73,11 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private string _backupRoot = "";
     private string _backupStatusText = "No backup operation has been started.";
     private string _cleanupStatusText = "Cleanup scan has not been started.";
+    private string _ordersPdfSourceRoot = "";
+    private string _importSupplierStatusText = "Supplier table has not been loaded.";
+    private string _importOrderStatusText = "Orders table has not been loaded.";
+    private string _importRuntimeStatusText = "Runtime catalog has not been loaded yet.";
+    private RuntimeCatalogSnapshot? _importRuntimeCatalog;
     private BackupItemViewModel? _selectedBackup;
 
     /// <summary>
@@ -138,6 +148,16 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     /// Удаление запускается только кнопкой оператора, автоматической очистки нет.
     /// </summary>
     public ObservableCollection<CleanupItemViewModel> CleanupItems { get; } = [];
+
+    /// <summary>
+    /// Строки SUPPLIER для ручного редактирования поставщиков и логотипов.
+    /// </summary>
+    public ObservableCollection<ImportSupplierRowViewModel> ImportSuppliers { get; } = [];
+
+    /// <summary>
+    /// Строки ORDERS для ручного редактирования product code, supplier и источников PDF/изображений.
+    /// </summary>
+    public ObservableCollection<ImportOrderRowViewModel> ImportOrders { get; } = [];
 
     /// <summary>
     /// Свободное место на дисках, где находятся репозиторий, publish root и backup root.
@@ -261,6 +281,72 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
             _backupRoot = value;
             _configuration.Cleanup.BackupRoot = value;
             OnPropertyChanged(nameof(BackupRoot));
+        }
+    }
+
+    /// <summary>
+    /// Папка-источник для PDF-файлов вкладки ORDERS.
+    /// Значение хранится в maintenance.settings.json, поэтому оператор не выбирает папку заново после перезапуска Maintenance.
+    /// </summary>
+    public string OrdersPdfSourceRoot
+    {
+        get => _ordersPdfSourceRoot;
+        set
+        {
+            if (_ordersPdfSourceRoot == value)
+                return;
+
+            _ordersPdfSourceRoot = value;
+            _configuration.ImportEdit.OrdersPdfSourceRoot = value;
+            OnPropertyChanged(nameof(OrdersPdfSourceRoot));
+        }
+    }
+
+    /// <summary>
+    /// Короткий статус последней операции SUPPLIER.
+    /// </summary>
+    public string ImportSupplierStatusText
+    {
+        get => _importSupplierStatusText;
+        set
+        {
+            if (_importSupplierStatusText == value)
+                return;
+
+            _importSupplierStatusText = value;
+            OnPropertyChanged(nameof(ImportSupplierStatusText));
+        }
+    }
+
+    /// <summary>
+    /// Короткий статус последней операции ORDERS.
+    /// </summary>
+    public string ImportOrderStatusText
+    {
+        get => _importOrderStatusText;
+        set
+        {
+            if (_importOrderStatusText == value)
+                return;
+
+            _importOrderStatusText = value;
+            OnPropertyChanged(nameof(ImportOrderStatusText));
+        }
+    }
+
+    /// <summary>
+    /// Статус загрузки Runtime-каталога для будущих вкладок INSTRUCTION/SCHEME.
+    /// </summary>
+    public string ImportRuntimeStatusText
+    {
+        get => _importRuntimeStatusText;
+        set
+        {
+            if (_importRuntimeStatusText == value)
+                return;
+
+            _importRuntimeStatusText = value;
+            OnPropertyChanged(nameof(ImportRuntimeStatusText));
         }
     }
 
@@ -997,6 +1083,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         BackupRoot = string.IsNullOrWhiteSpace(_configuration.Cleanup.BackupRoot)
             ? GetDefaultBackupRoot()
             : _configuration.Cleanup.BackupRoot;
+        OrdersPdfSourceRoot = _configuration.ImportEdit.OrdersPdfSourceRoot;
 
         DataContext = this;
 
@@ -2655,6 +2742,81 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         OpenWindowsManagementTool("certmgr.msc", "Certificate Manager");
     }
 
+    private void OnExportPublicCertificateClick(object sender, RoutedEventArgs e)
+    {
+        var sourcePath = ServerPublicCertificatePath;
+        if (!File.Exists(sourcePath))
+        {
+            MessageBox.Show(
+                this,
+                "CER-файл еще не создан. Сначала выполните Create/replace cert или Prepare new server.",
+                "Export CER",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export TechMES public certificate",
+            FileName = Path.GetFileName(sourcePath),
+            InitialDirectory = Directory.Exists(ServerCertificateDirectory)
+                ? ServerCertificateDirectory
+                : Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            Filter = "Certificate (*.cer)|*.cer|All files (*.*)|*.*",
+            OverwritePrompt = true
+        };
+
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        try
+        {
+            var sourceFullPath = Path.GetFullPath(sourcePath);
+            var targetFullPath = Path.GetFullPath(dialog.FileName);
+
+            if (!string.Equals(sourceFullPath, targetFullPath, StringComparison.OrdinalIgnoreCase))
+                File.Copy(sourceFullPath, targetFullPath, overwrite: true);
+
+            var host = !string.IsNullOrWhiteSpace(_configuration.TargetMachine.HostName)
+                ? _configuration.TargetMachine.HostName
+                : !string.IsNullOrWhiteSpace(_configuration.TargetMachine.IpAddress)
+                    ? _configuration.TargetMachine.IpAddress
+                    : "localhost";
+            var webUrl = $"https://{host}:{_configuration.Server.HttpsPort}/";
+
+            var instruction =
+                $"CER exported:\n{targetFullPath}\n\n" +
+                "Инструкция для планшета/клиентского ПК:\n" +
+                "1. Передайте этот .cer файл на устройство.\n" +
+                "2. Импортируйте его как доверенный корневой сертификат.\n" +
+                "3. Откройте WEB по адресу:\n" +
+                webUrl + "\n\n" +
+                "Если используется IP вместо host name, сертификат все равно должен быть создан/доверен для текущего серверного профиля.";
+
+            AppendDiagnostics($"CER exported: {targetFullPath}");
+            AppendServerLog($"CER exported: {targetFullPath}");
+
+            MessageBox.Show(
+                this,
+                instruction,
+                "Export CER / tablet guide",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            AppendDiagnostics($"CER export failed: {ex.Message}");
+            AppendServerLog($"CER export failed: {ex.Message}");
+            MessageBox.Show(
+                this,
+                $"CER export failed: {ex.Message}",
+                "Export CER",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
     private void OnOpenFirewallAdvancedClick(object sender, RoutedEventArgs e)
     {
         OpenWindowsManagementTool("wf.msc", "Windows Defender Firewall with Advanced Security");
@@ -2788,6 +2950,45 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
         AppendServerLog("Prepare server finished.");
         AppendDeploymentLog("Prepare server finished.");
+    }
+
+    private async void OnPrepareNewServerClick(object sender, RoutedEventArgs e)
+    {
+        AppendServerLog("Prepare new server started.");
+        AppendDeploymentLog("Prepare new server started from Deploy tab.");
+
+        try
+        {
+            _configurationStore.Save(_configuration);
+            AppendServerLog("Maintenance configuration saved.");
+        }
+        catch (Exception ex)
+        {
+            AppendServerLog($"Maintenance configuration save failed: {ex.Message}");
+        }
+
+        EnsureHttpsCertificate();
+        ApplyWebHttpsConfiguration();
+        await EnsureWebFirewallAsync();
+        await EnsureHttpsFirewallAsync();
+        await DeployAllServicesAsync();
+
+        try
+        {
+            CreateBackupSnapshot("Baseline backup created", "Baseline backup created");
+        }
+        catch (Exception ex)
+        {
+            BackupStatusText = $"Baseline backup failed: {ex.Message}";
+            AppendDiagnostics(BackupStatusText);
+            AppendDeploymentLog(BackupStatusText);
+        }
+
+        await RefreshAllAsync();
+        await RefreshServerAsync();
+
+        AppendServerLog("Prepare new server finished.");
+        AppendDeploymentLog("Prepare new server finished.");
     }
 
     /// <summary>
@@ -3609,18 +3810,23 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     {
         try
         {
-            PersistBackupRoot();
-            var backup = _backupRestoreService.CreateBackup(_configuration, BackupRoot);
-            RefreshBackupRows();
-            SelectedBackup = BackupItems.FirstOrDefault(item => item.FullPath == backup.FullPath) ?? BackupItems.FirstOrDefault();
-            BackupStatusText = $"Backup created: {backup.DisplayName}.";
-            AppendDiagnostics($"Backup created: {backup.FullPath}");
+            CreateBackupSnapshot("Backup created", "Backup created");
         }
         catch (Exception ex)
         {
             BackupStatusText = $"Backup failed: {ex.Message}";
             AppendDiagnostics($"Backup failed: {ex.Message}");
         }
+    }
+
+    private void CreateBackupSnapshot(string statusPrefix, string diagnosticsPrefix)
+    {
+        PersistBackupRoot();
+        var backup = _backupRestoreService.CreateBackup(_configuration, BackupRoot);
+        RefreshBackupRows();
+        SelectedBackup = BackupItems.FirstOrDefault(item => item.FullPath == backup.FullPath) ?? BackupItems.FirstOrDefault();
+        BackupStatusText = $"{statusPrefix}: {backup.DisplayName}.";
+        AppendDiagnostics($"{diagnosticsPrefix}: {backup.FullPath}");
     }
 
     /// <summary>

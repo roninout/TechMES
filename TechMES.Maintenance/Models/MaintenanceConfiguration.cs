@@ -52,6 +52,11 @@ public sealed class MaintenanceConfiguration
     public SecurityOptions Security { get; set; } = new();
 
     /// <summary>
+    /// Настройки ручного импорта и редактирования Info-справочников в Maintenance.
+    /// </summary>
+    public ImportEditOptions ImportEdit { get; set; } = new();
+
+    /// <summary>
     /// Возвращает безопасную конфигурацию по умолчанию, если maintenance.settings.json отсутствует
     /// или временно поврежден.
     /// </summary>
@@ -99,6 +104,7 @@ public sealed class MaintenanceConfiguration
         Server = new ServerOptions(),
         Cleanup = new CleanupOptions(),
         TargetMachine = new TargetMachineOptions(),
-        Security = new SecurityOptions()
+        Security = new SecurityOptions(),
+        ImportEdit = new ImportEditOptions()
     };
 }

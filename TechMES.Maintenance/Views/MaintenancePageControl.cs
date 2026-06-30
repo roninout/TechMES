@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace TechMES.Maintenance.Views;
 
@@ -29,6 +30,15 @@ public class MaintenancePageControl : UserControl
     /// Передает SelectionChanged-событие в одноименный метод MainWindow.
     /// </summary>
     protected void ForwardSelectionChangedEvent(object sender, SelectionChangedEventArgs e, [CallerMemberName] string? methodName = null)
+    {
+        ForwardEvent(methodName, sender, e);
+    }
+
+    /// <summary>
+    /// Передает keyboard-событие в одноименный метод MainWindow.
+    /// Используется таблицами Import/Edit для paste из Excel-подобного буфера.
+    /// </summary>
+    protected void ForwardKeyEvent(object sender, KeyEventArgs e, [CallerMemberName] string? methodName = null)
     {
         ForwardEvent(methodName, sender, e);
     }
@@ -68,6 +78,7 @@ public class MaintenancePageControl : UserControl
     public void OnOpenFirewallAdvancedClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnCreateHttpsCertificateClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenCertificateManagerClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnExportPublicCertificateClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnApplyHttpsConfigClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenHttpsFirewallClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenLocalUsersAndGroupsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
@@ -86,6 +97,7 @@ public class MaintenancePageControl : UserControl
     public void OnInstallAllClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnStartAllDeployClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnDeployAllClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnPrepareNewServerClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnPublishDeployServiceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnInstallDeployServiceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnSaveTypedSettingsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
@@ -106,6 +118,16 @@ public class MaintenancePageControl : UserControl
     public void OnBrowseBackupRootClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnExportBackupZipClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnImportBackupZipClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnImportTabSelectionChanged(object sender, SelectionChangedEventArgs e) => ForwardSelectionChangedEvent(sender, e);
+    public void OnRefreshImportSuppliersClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnSaveImportSuppliersClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnChooseSupplierLogoClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnSupplierFilterTextChanged(object sender, TextChangedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnRefreshImportOrdersClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnSaveImportOrdersClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnBrowseOrdersPdfSourceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnOrdersPdfSourceLostFocus(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnImportGridPreviewKeyDown(object sender, KeyEventArgs e) => ForwardKeyEvent(sender, e);
 
     /// <summary>
     /// Прокручивает read-only TextBox с логами вниз при появлении новых строк.

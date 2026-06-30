@@ -64,7 +64,7 @@
                 <TabItem>
                     <TabItem.Header>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Width="190">
-                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE9F5;" FontSize="20" Margin="0,0,10,0" />
+                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE80F;" FontSize="20" Margin="0,0,10,0" />
                             <TextBlock Text="General" FontWeight="SemiBold" />
                         </StackPanel>
                     </TabItem.Header>
@@ -79,6 +79,16 @@
                         </StackPanel>
                     </TabItem.Header>
                     <views:SettingsPage />
+                </TabItem>
+
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Width="190">
+                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8B5;" FontSize="20" Margin="0,0,10,0" />
+                            <TextBlock Text="Import/Edit" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </TabItem.Header>
+                    <views:ImportEditPage />
                 </TabItem>
 
                 <TabItem>
@@ -109,16 +119,6 @@
                         </StackPanel>
                     </TabItem.Header>
                     <views:LogsPage />
-                </TabItem>
-
-                <TabItem>
-                    <TabItem.Header>
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Width="190">
-                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8FD;" FontSize="20" Margin="0,0,10,0" />
-                            <TextBlock Text="Next steps" FontWeight="SemiBold" />
-                        </StackPanel>
-                    </TabItem.Header>
-                    <views:NextStepsPage />
                 </TabItem>
             </TabControl>
         </Grid>

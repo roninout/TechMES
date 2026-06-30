@@ -19,4 +19,8 @@
     <PackageReference Include="Npgsql" Version="10.0.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
+  </ItemGroup>
+
 </Project>

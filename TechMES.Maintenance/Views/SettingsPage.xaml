@@ -929,9 +929,14 @@
                             </StackPanel>
                         </GroupBox>
                         <Grid Margin="0,0,0,12">
-                            <Button Content="Open certmgr"
-                                    HorizontalAlignment="Left"
-                                    Click="OnOpenCertificateManagerClick" />
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Left">
+                                <Button Content="Open certmgr"
+                                        Click="OnOpenCertificateManagerClick" />
+                                <Button Content="Export CER / guide"
+                                        Margin="8,0,0,0"
+                                        Click="OnExportPublicCertificateClick" />
+                            </StackPanel>
                             <Button Content="Create/replace cert"
                                     HorizontalAlignment="Right"
                                     Click="OnCreateHttpsCertificateClick" />
