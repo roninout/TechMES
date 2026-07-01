@@ -3,6 +3,7 @@
                               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                               xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                               xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                               xmlns:views="clr-namespace:TechMES.Maintenance.Views"
                               mc:Ignorable="d">
     <TabControl HorizontalContentAlignment="Stretch"
@@ -10,7 +11,7 @@
         <TabItem>
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8FD;" FontSize="18" Margin="0,0,8,0" />
+                    <ui:SymbolIcon Symbol="DocumentBulletList24" Width="20" Height="20" Margin="0,0,8,0" />
                     <TextBlock Text="Next steps" />
                 </StackPanel>
             </TabItem.Header>
@@ -33,3 +34,6 @@
     </TabControl>
                 
 </views:MaintenancePageControl>
+
+
+

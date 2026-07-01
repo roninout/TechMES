@@ -1,0 +1,539 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                    xmlns:control="http://filterdatagrid.control.com/2021"
+                    xmlns:views="clr-namespace:TechMES.Maintenance.Views">
+    <!--
+        Этот файл больше не задает отдельную тему Maintenance.
+        Он оставляет только именованные ресурсы совместимости для старых страниц,
+        а реальные цвета берутся из стандартных ресурсов WPF UI.
+    -->
+    <SolidColorBrush x:Key="TechMesBlueBrush" Color="#2563EB" />
+    <SolidColorBrush x:Key="TechMesTextBrush" Color="#1F2937" />
+    <SolidColorBrush x:Key="TechMesMutedBrush" Color="#6B7280" />
+    <SolidColorBrush x:Key="TechMesPanelBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="TechMesCardBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="TechMesInputBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="TechMesBorderBrush" Color="#D1D5DB" />
+    <SolidColorBrush x:Key="TechMesShellBrush" Color="#F3F4F6" />
+    <SolidColorBrush x:Key="TechMesHoverBrush" Color="#EEF2FF" />
+    <SolidColorBrush x:Key="TechMesSelectedBrush" Color="#DBEAFE" />
+    <SolidColorBrush x:Key="TechMesGridHeaderBrush" Color="#F8FAFC" />
+    <SolidColorBrush x:Key="TechMesWarningRowBrush" Color="#FEF3C7" />
+    <SolidColorBrush x:Key="TechMesErrorRowBrush" Color="#FEE2E2" />
+
+    <Style x:Key="SectionTitleText" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ui:ThemeResource TextFillColorPrimaryBrush}" />
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+
+    <Style x:Key="MutedText" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ui:ThemeResource TextFillColorSecondaryBrush}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style x:Key="SettingsFieldLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ui:ThemeResource TextFillColorPrimaryBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!--
+    Секция Maintenance с заголовком.
+
+    Также растягиваем вложенный ui:Card,
+    чтобы секция занимала всю выделенную ей строку Grid.
+    -->
+    <!--
+Секция Maintenance в стиле WPF UI Gallery:
+
+Заголовок расположен над карточкой,
+а содержимое — внутри ui:Card.
+-->
+    <Style TargetType="{x:Type views:MaintenanceSection}">
+
+        <Setter Property="Padding"
+            Value="14" />
+
+        <Setter Property="HorizontalAlignment"
+            Value="Stretch" />
+
+        <Setter Property="VerticalAlignment"
+            Value="Stretch" />
+
+        <Setter Property="HorizontalContentAlignment"
+            Value="Stretch" />
+
+        <Setter Property="VerticalContentAlignment"
+            Value="Stretch" />
+
+        <Setter Property="Template">
+            <Setter.Value>
+
+                <ControlTemplate TargetType="{x:Type views:MaintenanceSection}">
+
+                    <Grid>
+
+                        <Grid.RowDefinitions>
+                            <!-- Заголовок над карточкой -->
+                            <RowDefinition Height="Auto" />
+
+                            <!-- Содержимое карточки -->
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!--
+                    Заголовок секции:
+                    Server log, Diagnostics, Deploy log и т. д.
+                    -->
+                        <ContentPresenter
+                        x:Name="HeaderPresenter"
+                        Grid.Row="0"
+                        ContentSource="Header"
+                        Margin="4,0,0,10"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        RecognizesAccessKey="True"
+                        TextElement.FontSize="14"
+                        TextElement.FontWeight="SemiBold"
+                        TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+
+                        <!-- Карточка содержит только основное содержимое -->
+                        <ui:Card
+                        Grid.Row="1"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        VerticalContentAlignment="Stretch">
+
+                            <ContentPresenter
+                            Margin="{TemplateBinding Padding}"
+                            ContentSource="Content"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch" />
+
+                        </ui:Card>
+
+                    </Grid>
+
+                    <ControlTemplate.Triggers>
+
+                        <!-- Если заголовок не задан, убираем пустое место -->
+                        <Trigger Property="Header"
+                             Value="{x:Null}">
+
+                            <Setter TargetName="HeaderPresenter"
+                                Property="Visibility"
+                                Value="Collapsed" />
+
+                        </Trigger>
+
+                        <Trigger Property="Header"
+                             Value="">
+
+                            <Setter TargetName="HeaderPresenter"
+                                Property="Visibility"
+                                Value="Collapsed" />
+
+                        </Trigger>
+
+                    </ControlTemplate.Triggers>
+
+                </ControlTemplate>
+
+            </Setter.Value>
+        </Setter>
+
+    </Style>
+
+    <!--
+    Обычная карточка Maintenance.
+
+    Важно явно задать Stretch вложенному ui:Card,
+    потому что стандартный Card WPF UI по вертикали
+    выравнивается по центру.
+    -->
+    <Style TargetType="{x:Type views:MaintenanceCard}">
+
+        <Setter Property="Padding"
+            Value="12" />
+
+        <Setter Property="HorizontalAlignment"
+            Value="Stretch" />
+
+        <Setter Property="VerticalAlignment"
+            Value="Stretch" />
+
+        <Setter Property="HorizontalContentAlignment"
+            Value="Stretch" />
+
+        <Setter Property="VerticalContentAlignment"
+            Value="Stretch" />
+
+        <Setter Property="Template">
+            <Setter.Value>
+
+                <ControlTemplate TargetType="{x:Type views:MaintenanceCard}">
+
+                    <ui:Card
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    VerticalContentAlignment="Stretch">
+
+                        <ContentPresenter
+                        Margin="{TemplateBinding Padding}"
+                        ContentSource="Content"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch" />
+
+                    </ui:Card>
+
+                </ControlTemplate>
+
+            </Setter.Value>
+        </Setter>
+
+    </Style>
+
+        <!--Отдельный шаблон заголовка для FilterDataGrid.
+
+        Не наследуем DefaultUiDataGridColumnHeaderStyle:
+        FilterDataGrid использует собственный HeaderTemplate
+        с кнопкой и popup фильтра.
+
+        ContentSource="Content" сохраняет HeaderTemplate колонки,
+        поэтому фильтрация продолжает работать.-->
+
+    <Style x:Key="TechMesFilterDataGridColumnHeaderStyle"
+       TargetType="{x:Type DataGridColumnHeader}">
+
+        <!--Этот ресурс MainWindow обновляет при каждом переключении светлой/тёмной темы.-->
+        <Setter Property="MinHeight"
+            Value="36" />
+        
+        <Setter Property="Background"
+            Value="{DynamicResource TechMesGridHeaderBrush}" />
+
+        <Setter Property="Foreground"
+            Value="{DynamicResource TextFillColorPrimaryBrush}" />
+
+        <Setter Property="BorderBrush"
+            Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+
+        <Setter Property="BorderThickness"
+            Value="0,0,1,1" />
+
+        <Setter Property="Padding"
+            Value="8,0,4,0" />
+
+        <Setter Property="HorizontalContentAlignment"
+            Value="Stretch" />
+
+        <Setter Property="VerticalContentAlignment"
+            Value="Center" />
+
+        <Setter Property="FontWeight"
+            Value="Normal" />
+
+        <Setter Property="SnapsToDevicePixels"
+            Value="True" />
+
+        <Setter Property="Template">
+            <Setter.Value>
+
+                <ControlTemplate TargetType="{x:Type DataGridColumnHeader}">
+
+                    <Border x:Name="HeaderBorder"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        Padding="{TemplateBinding Padding}"
+                        SnapsToDevicePixels="True">
+
+                        <!--
+                    Сохраняет HeaderTemplate библиотеки FilterDataGrid:
+                    название колонки, кнопку фильтра и popup.
+                    -->
+                        <ContentPresenter
+                        ContentSource="Content"
+                        RecognizesAccessKey="True"
+                        HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                        VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                        SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+
+                    </Border>
+
+                    <ControlTemplate.Triggers>
+
+                        <Trigger Property="IsMouseOver"
+                             Value="True">
+
+                            <Setter TargetName="HeaderBorder"
+                                Property="Background"
+                                Value="{DynamicResource TechMesHoverBrush}" />
+
+                        </Trigger>
+
+                        <Trigger Property="IsPressed"
+                             Value="True">
+
+                            <Setter TargetName="HeaderBorder"
+                                Property="Background"
+                                Value="{DynamicResource TechMesSelectedBrush}" />
+
+                        </Trigger>
+
+                        <Trigger Property="IsEnabled"
+                             Value="False">
+
+                            <Setter TargetName="HeaderBorder"
+                                Property="Opacity"
+                                Value="0.56" />
+
+                        </Trigger>
+
+                    </ControlTemplate.Triggers>
+
+                </ControlTemplate>
+
+            </Setter.Value>
+        </Setter>
+
+    </Style>
+
+    <!-- Базовый стиль всех FilterDataGrid в Maintenance. -->
+    <Style x:Key="TechMesFilterDataGridStyle"
+           TargetType="{x:Type control:FilterDataGrid}">
+
+        <Setter Property="Background"
+                Value="{DynamicResource TechMesPanelBrush}" />
+
+        <Setter Property="Foreground"
+                Value="{DynamicResource TextFillColorPrimaryBrush}" />
+
+        <Setter Property="BorderBrush"
+                Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+
+        <Setter Property="BorderThickness"
+                Value="1" />
+
+        <Setter Property="RowHeight"
+                Value="36" />
+
+        <Setter Property="ColumnHeaderHeight"
+                Value="36" />
+
+        <Setter Property="ColumnHeaderStyle"
+                Value="{StaticResource TechMesFilterDataGridColumnHeaderStyle}" />
+
+        <Setter Property="GridLinesVisibility"
+                Value="Horizontal" />
+
+        <Setter Property="HorizontalGridLinesBrush"
+                Value="{DynamicResource ControlElevationBorderBrush}" />
+
+        <Setter Property="VerticalGridLinesBrush"
+                Value="{DynamicResource ControlElevationBorderBrush}" />
+
+    </Style>
+
+    <!-- Автоматически применяем стиль ко всем FilterDataGrid. -->
+    <Style TargetType="{x:Type control:FilterDataGrid}"
+           BasedOn="{StaticResource TechMesFilterDataGridStyle}" />
+
+
+
+
+
+    <!-- =========================================================
+     TAB CONTROL
+     Более заметное состояние выбранной вкладки.
+     Основано на стандартном стиле WPF UI.
+     ========================================================= -->
+
+    <Style x:Key="TechMesTabItemStyle"
+       TargetType="{x:Type TabItem}"
+       BasedOn="{StaticResource {x:Type TabItem}}">
+
+        <Setter Property="MinHeight"
+            Value="40" />
+
+        <Setter Property="Padding"
+            Value="12,6" />
+
+        <Setter Property="Margin"
+            Value="0,0,3,0" />
+
+        <Setter Property="Foreground"
+            Value="{DynamicResource TextFillColorSecondaryBrush}" />
+
+        <Setter Property="FontWeight"
+            Value="Normal" />
+
+        <Setter Property="HorizontalContentAlignment"
+            Value="Stretch" />
+
+        <Setter Property="VerticalContentAlignment"
+            Value="Stretch" />
+
+        <Setter Property="Template">
+            <Setter.Value>
+
+                <ControlTemplate TargetType="{x:Type TabItem}">
+
+                    <Grid>
+
+                        <!-- Основной фон вкладки -->
+                        <Border x:Name="TabBorder"
+                            Padding="{TemplateBinding Padding}"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            BorderThickness="1,1,1,0"
+                            CornerRadius="8,8,0,0"
+                            SnapsToDevicePixels="True">
+
+                            <ContentPresenter
+                            ContentSource="Header"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            RecognizesAccessKey="True" />
+
+                        </Border>
+
+                        <!--Акцентный индикатор выбранной вкладки. Цвет автоматически соответствует Accent Color Windows.-->
+                        <Border x:Name="AccentIndicator"
+                            Height="3"
+                            Margin="10,0,10,1"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Bottom"
+                            Background="{DynamicResource SystemAccentColorPrimaryBrush}"
+                            CornerRadius="2"
+                            Visibility="Collapsed" />
+
+                    </Grid>
+
+                    <ControlTemplate.Triggers>
+
+                        <!-- Наведение на невыбранную вкладку -->
+                        <Trigger Property="IsMouseOver"
+                             Value="True">
+
+                            <Setter TargetName="TabBorder"
+                                Property="Background"
+                                Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+
+                            <Setter Property="Foreground"
+                                Value="{DynamicResource TextFillColorPrimaryBrush}" />
+
+                        </Trigger>
+
+                        <!-- Выбранная вкладка -->
+                        <Trigger Property="IsSelected"
+                             Value="True">
+
+                            <Setter Property="Panel.ZIndex"
+                                Value="100" />
+
+                            <Setter Property="Foreground"
+                                Value="{DynamicResource TextFillColorPrimaryBrush}" />
+
+                            <Setter Property="FontWeight"
+                                Value="SemiBold" />
+
+                            <Setter TargetName="TabBorder"
+                                Property="Background"
+                                Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+
+                            <Setter TargetName="TabBorder"
+                                Property="BorderBrush"
+                                Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+
+                            <Setter TargetName="AccentIndicator"
+                                Property="Visibility"
+                                Value="Visible" />
+
+                        </Trigger>
+
+                        <!-- Отключённая вкладка -->
+                        <Trigger Property="IsEnabled"
+                             Value="False">
+
+                            <Setter Property="Opacity"
+                                Value="0.5" />
+
+                        </Trigger>
+
+                    </ControlTemplate.Triggers>
+
+                </ControlTemplate>
+
+            </Setter.Value>
+        </Setter>
+
+    </Style>
+
+
+    <!--Сохраняем штатный TabControl WPF UI, но назначаем ему наши элементы вкладок.-->
+    <Style x:Key="TechMesTabControlStyle"
+       TargetType="{x:Type TabControl}"
+       BasedOn="{StaticResource {x:Type TabControl}}">
+
+        <Setter Property="ItemContainerStyle"
+            Value="{StaticResource TechMesTabItemStyle}" />
+
+    </Style>
+
+
+    <!--Автоматически применяем оформление ко всем TabControl во всём Maintenance.-->
+    <Style TargetType="{x:Type TabControl}"
+       BasedOn="{StaticResource TechMesTabControlStyle}" />
+
+
+
+    <!-- =========================================================
+     BUTTONS
+
+     Все обычные ui:Button по умолчанию Primary.
+     Кнопки внутри DataGrid / FilterDataGrid остаются Secondary.
+     Явно заданный Appearance у конкретной кнопки имеет приоритет.
+     ========================================================= -->
+
+    <Style x:Key="TechMesDefaultButtonStyle"
+       TargetType="{x:Type ui:Button}"
+       BasedOn="{StaticResource DefaultUiButtonStyle}">
+
+        <!-- Основной стиль кнопок Maintenance — синий Accent. -->
+        <Setter Property="Appearance"
+            Value="Primary" />
+
+        <!--
+    Кнопки внутри таблиц оставляем такими, как сейчас:
+    обычный серый стиль Secondary.
+    FilterDataGrid также будет найден как DataGrid.
+    -->
+        <Style.Triggers>
+
+            <DataTrigger
+            Binding="{Binding IsVisible,
+                              RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+            Value="True">
+
+                <Setter Property="Appearance"
+                    Value="Secondary" />
+
+            </DataTrigger>
+
+        </Style.Triggers>
+
+    </Style>
+
+
+    <!-- Автоматически применяем ко всем ui:Button приложения. -->
+    <Style TargetType="{x:Type ui:Button}"
+       BasedOn="{StaticResource TechMesDefaultButtonStyle}" />
+
+
+</ResourceDictionary>

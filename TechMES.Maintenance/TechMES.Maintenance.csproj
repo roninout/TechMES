@@ -16,7 +16,9 @@
 
   <ItemGroup>
     <!-- Maintenance сам выполняет короткую PostgreSQL-проверку авторизации и версии сервера. -->
+    <PackageReference Include="FilterDataGrid" Version="1.2.9" />
     <PackageReference Include="Npgsql" Version="10.0.2" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 
   <ItemGroup>

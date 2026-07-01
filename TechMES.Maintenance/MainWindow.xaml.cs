@@ -12,19 +12,21 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Win32;
 using TechMES.Maintenance.Models;
 using TechMES.Maintenance.Services;
 using TechMES.Maintenance.ViewModels;
+using Wpf.Ui.Appearance;
 
 namespace TechMES.Maintenance;
 
 /// <summary>
 /// Главное окно обслуживающего приложения TechMES.
-/// Первый инкремент закрывает базовую эксплуатационную задачу:
-/// увидеть сервисы, проверить health URL, открыть appsettings, сохранить JSON с backup и посмотреть логи.
+/// Окно собирает вместе контроль служб, подготовку сервера, настройки, диагностику, backup/restore,
+/// просмотр логов и импорт справочных данных.
 /// </summary>
-public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyChanged
+public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.ComponentModel.INotifyPropertyChanged
 {
     private static readonly JsonSerializerOptions TypedAppSettingsJsonOptions = new()
     {
@@ -79,6 +81,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private string _importRuntimeStatusText = "Runtime catalog has not been loaded yet.";
     private RuntimeCatalogSnapshot? _importRuntimeCatalog;
     private BackupItemViewModel? _selectedBackup;
+    private ApplicationTheme _maintenanceTheme = ApplicationTheme.Dark;
 
     /// <summary>
     /// Результат проверки DNS/hosts-алиаса сервера.
@@ -94,6 +97,11 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     /// Для первого этапа это проще, чем полноценный MVVM-фреймворк.
     /// </summary>
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>
+    /// Подпись кнопки переключения темы. Текст показывает действие, которое будет выполнено при следующем нажатии.
+    /// </summary>
+    public string ThemeToggleText => _maintenanceTheme == ApplicationTheme.Dark ? "Светлая тема" : "Темная тема";
 
     /// <summary>
     /// Строки таблицы сервисов.
@@ -364,6 +372,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
 
             _logSelectedDate = value;
             OnPropertyChanged(nameof(LogSelectedDate));
+            RefreshLogRows();
         }
     }
 
@@ -1065,6 +1074,7 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     public MainWindow()
     {
         InitializeComponent();
+        ApplyMaintenanceTheme(_maintenanceTheme);
 
         var repositoryLocator = new RepositoryLocator();
         _repositoryRoot = repositoryLocator.LocateRepositoryRoot();
@@ -1098,6 +1108,118 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
         RefreshLogRows();
         RefreshBackupRows();
         RefreshDiskStatuses();
+    }
+
+    /// <summary>
+    /// Открывает стартовую страницу через штатный WPF UI NavigationView.
+    /// Страницы получают MainWindow как DataContext, поэтому существующие Binding и обработчики остаются рабочими.
+    /// </summary>
+    private void OnRootNavigationLoaded(object sender, RoutedEventArgs e)
+    {
+        RootNavigation.Navigate(typeof(Views.ServicesPage), this);
+    }
+
+    /// <summary>
+    /// Переключает Maintenance между светлой и темной темой WPF UI.
+    /// </summary>
+    private void OnToggleMaintenanceThemeClick(object sender, RoutedEventArgs e)
+    {
+        var nextTheme = _maintenanceTheme == ApplicationTheme.Dark
+            ? ApplicationTheme.Light
+            : ApplicationTheme.Dark;
+
+        ApplyMaintenanceTheme(nextTheme);
+    }
+
+    /// <summary>
+    /// Применяет выбранную тему WPF UI.
+    ///
+    /// Используем фиксированный Mica backdrop, как в WPF UI Gallery.
+    /// Режим Auto оставляет выбор фона Windows и на некоторых системах
+    /// делает активное окно практически полностью чёрным.
+    /// </summary>
+    private void ApplyMaintenanceTheme(ApplicationTheme theme)
+    {
+        _maintenanceTheme = theme;
+        ApplicationThemeManager.Apply(theme, Wpf.Ui.Controls.WindowBackdropType.None,updateAccent: true);
+        ApplyCompatibilityThemeResources();
+        OnPropertyChanged(nameof(ThemeToggleText));
+    }
+
+
+
+    /// <summary>
+    /// Связывает старые TechMes-ресурсы со стандартными кистями WPF UI.
+    /// Это временный мост для существующих страниц до их полного перевода на ui:Card и другие WPF UI контролы.
+    /// </summary>
+    private void ApplyCompatibilityThemeResources()
+    {
+        SetThemeResource("TechMesBlueBrush", "SystemAccentColorPrimaryBrush", new SolidColorBrush(Color.FromRgb(37, 99, 235)));
+        SetThemeResource("TechMesTextBrush", "TextFillColorPrimaryBrush", SystemColors.ControlTextBrush);
+        SetThemeResource("TechMesMutedBrush", "TextFillColorSecondaryBrush", SystemColors.GrayTextBrush);
+        SetThemeResource("TechMesPanelBrush", "CardBackgroundFillColorDefaultBrush", SystemColors.WindowBrush);
+        SetThemeResource("TechMesCardBrush", "CardBackgroundFillColorDefaultBrush", SystemColors.WindowBrush);
+        SetThemeResource("TechMesInputBrush", "ControlFillColorDefaultBrush", SystemColors.WindowBrush);
+        SetThemeResource("TechMesBorderBrush", "ControlStrokeColorDefaultBrush", SystemColors.ActiveBorderBrush);
+        SetThemeResource("TechMesShellBrush", "ApplicationBackgroundBrush", SystemColors.ControlBrush);
+        SetThemeResource("TechMesHoverBrush", "SubtleFillColorSecondaryBrush", SystemColors.ControlLightBrush);
+        SetThemeResource("TechMesSelectedBrush", "SubtleFillColorTertiaryBrush", SystemColors.ControlLightBrush);
+        SetThemeResource("TechMesGridHeaderBrush", "ControlFillColorSecondaryBrush", SystemColors.ControlLightBrush);
+
+        if (_maintenanceTheme == ApplicationTheme.Dark)
+        {
+            SetThemeBrush("TechMesWarningRowBrush", Color.FromRgb(74, 52, 17));
+            SetThemeBrush("TechMesErrorRowBrush", Color.FromRgb(74, 29, 29));
+        }
+        else
+        {
+            SetThemeBrush("TechMesWarningRowBrush", Color.FromRgb(254, 243, 199));
+            SetThemeBrush("TechMesErrorRowBrush", Color.FromRgb(254, 226, 226));
+        }
+    }
+
+    /// <summary>
+    /// Заменяет именованный TechMes-ресурс на кисть из текущей темы WPF UI.
+    /// </summary>
+    private void SetThemeResource(string resourceKey, string wpfUiResourceKey, Brush fallback)
+    {
+        var brush = TryFindResource(wpfUiResourceKey) as Brush
+            ?? Application.Current.TryFindResource(wpfUiResourceKey) as Brush
+            ?? fallback;
+
+        Resources[resourceKey] = brush;
+        Application.Current.Resources[resourceKey] = brush;
+    }
+
+    /// <summary>
+    /// Безопасно обновляет цветовой ресурс темы. WPF UI может замораживать кисти
+    /// в словарях ресурсов, поэтому при read-only состоянии мы заменяем ресурс новой кистью.
+    /// </summary>
+    private void SetThemeBrush(string resourceKey, Color color)
+    {
+        SetThemeBrush(Resources, resourceKey, color);
+        SetThemeBrush(Application.Current.Resources, resourceKey, color);
+    }
+
+    /// <summary>
+    /// Обновляет кисть в конкретном ResourceDictionary: меняет цвет у обычной кисти
+    /// или подменяет ресурс, если существующая кисть уже заморожена WPF.
+    /// </summary>
+    private static void SetThemeBrush(ResourceDictionary resources, string resourceKey, Color color)
+    {
+        if (!resources.Contains(resourceKey))
+        {
+            resources[resourceKey] = new SolidColorBrush(color);
+            return;
+        }
+
+        if (resources[resourceKey] is SolidColorBrush brush && !brush.IsFrozen)
+        {
+            brush.Color = color;
+            return;
+        }
+
+        resources[resourceKey] = new SolidColorBrush(color);
     }
 
     /// <summary>
@@ -3547,21 +3669,11 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     }
 
     /// <summary>
-    /// Применяет выбранную дату просмотра логов.
-    /// DatePicker меняет только фильтр списка, сами log-файлы не изменяются.
-    /// </summary>
-    private void OnLogDateSelected(object sender, SelectionChangedEventArgs e)
-    {
-        RefreshLogRows();
-    }
-
-    /// <summary>
     /// Переключает журнал на предыдущий день и сразу обновляет список найденных log-файлов.
     /// </summary>
     private void OnPreviousLogDateClick(object sender, RoutedEventArgs e)
     {
         LogSelectedDate = (LogSelectedDate ?? DateTime.Today).Date.AddDays(-1);
-        RefreshLogRows();
     }
 
     /// <summary>
@@ -3570,7 +3682,6 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private void OnTodayLogDateClick(object sender, RoutedEventArgs e)
     {
         LogSelectedDate = DateTime.Today;
-        RefreshLogRows();
     }
 
     /// <summary>
@@ -3579,7 +3690,6 @@ public partial class MainWindow : Window, System.ComponentModel.INotifyPropertyC
     private void OnNextLogDateClick(object sender, RoutedEventArgs e)
     {
         LogSelectedDate = (LogSelectedDate ?? DateTime.Today).Date.AddDays(1);
-        RefreshLogRows();
     }
 
     /// <summary>

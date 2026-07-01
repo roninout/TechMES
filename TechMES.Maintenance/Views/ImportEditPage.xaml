@@ -3,10 +3,13 @@
                               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                               xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                               xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                              xmlns:control="http://filterdatagrid.control.com/2021"
                               xmlns:views="clr-namespace:TechMES.Maintenance.Views"
                               mc:Ignorable="d">
     <views:MaintenancePageControl.Resources>
-        <Style x:Key="ImportGrid" TargetType="DataGrid">
+        <!--<Style x:Key="ImportGrid" TargetType="{x:Type control:FilterDataGrid}">-->
+        <Style x:Key="ImportGrid" TargetType="{x:Type control:FilterDataGrid}" BasedOn="{StaticResource TechMesFilterDataGridStyle}">
             <Setter Property="AutoGenerateColumns" Value="False" />
             <Setter Property="CanUserAddRows" Value="True" />
             <Setter Property="CanUserDeleteRows" Value="True" />
@@ -15,7 +18,7 @@
             <Setter Property="ClipboardCopyMode" Value="IncludeHeader" />
             <Setter Property="HeadersVisibility" Value="Column" />
             <Setter Property="GridLinesVisibility" Value="Horizontal" />
-            <Setter Property="Background" Value="{StaticResource TechMesPanelBrush}" />
+            <Setter Property="Background" Value="{DynamicResource TechMesPanelBrush}" />
             <EventSetter Event="PreviewKeyDown" Handler="OnImportGridPreviewKeyDown" />
         </Style>
     </views:MaintenancePageControl.Resources>
@@ -28,7 +31,7 @@
         <TabItem Tag="SUPPLIER">
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE716;" FontSize="18" Margin="0,0,8,0" />
+                    <ui:SymbolIcon Symbol="PersonAccounts20" Width="20" Height="20" Margin="0,0,8,0" />
                     <TextBlock Text="SUPPLIER" />
                 </StackPanel>
             </TabItem.Header>
@@ -40,9 +43,9 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0"
-                        Background="{StaticResource TechMesPanelBrush}"
-                        BorderBrush="{StaticResource TechMesBorderBrush}"
+                <views:MaintenanceCard Grid.Row="0"
+                        Background="{DynamicResource TechMesPanelBrush}"
+                        BorderBrush="{DynamicResource TechMesBorderBrush}"
                         BorderThickness="1"
                         Padding="12"
                         Margin="0,0,0,10">
@@ -53,15 +56,19 @@
                                    Style="{StaticResource MutedText}"
                                    TextWrapping="Wrap" />
                     </StackPanel>
-                </Border>
+                </views:MaintenanceCard>
 
-                <DataGrid Grid.Row="1"
-                          Style="{StaticResource ImportGrid}"
-                          RowHeight="72"
-                          ColumnHeaderHeight="58"
-                          CanUserSortColumns="True"
-                          ItemsSource="{Binding ImportSuppliers}">
-                    <DataGrid.Resources>
+                <control:FilterDataGrid Grid.Row="1"
+                                        Style="{StaticResource ImportGrid}"
+                                        RowHeight="72"
+                                        ColumnHeaderHeight="36"
+                                        CanUserSortColumns="True"
+                                        ShowStatusBar="False"
+                                        ShowElapsedTime="False"
+                                        DateFormatString="dd.MM.yyyy"
+                                        FilterLanguage="Russian"
+                                        ItemsSource="{Binding ImportSuppliers}">
+                    <control:FilterDataGrid.Resources>
                         <Style x:Key="PendingDeleteTextBlockStyle" TargetType="{x:Type TextBlock}">
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsPendingDelete}" Value="True">
@@ -69,8 +76,8 @@
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </DataGrid.Resources>
-                    <DataGrid.RowStyle>
+                    </control:FilterDataGrid.Resources>
+                    <control:FilterDataGrid.RowStyle>
                         <Style TargetType="{x:Type DataGridRow}">
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsPendingDelete}" Value="True">
@@ -78,61 +85,46 @@
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </DataGrid.RowStyle>
-                    <DataGrid.Columns>
-                        <DataGridTemplateColumn Width="130"
-                                                SortMemberPath="LogoFileName"
-                                                IsReadOnly="True">
-                            <DataGridTemplateColumn.Header>
-                                <StackPanel>
-                                    <TextBlock Text="Logo" />
-                                    <TextBox Tag="Logo"
-                                             Width="110"
-                                             Height="22"
-                                             Margin="0,3,0,0"
-                                             TextChanged="OnSupplierFilterTextChanged" />
-                                </StackPanel>
-                            </DataGridTemplateColumn.Header>
-                            <DataGridTemplateColumn.CellTemplate>
+                    </control:FilterDataGrid.RowStyle>
+                    <control:FilterDataGrid.Columns>
+                        <control:DataGridTemplateColumn Header="Logo"
+                                                        FieldName="LogoFileName"
+                                                        IsColumnFiltered="True"
+                                                        Width="130"
+                                                        SortMemberPath="LogoFileName"
+                                                        IsReadOnly="True">
+                            <control:DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Border Width="104"
+                                    <views:MaintenanceCard Width="104"
                                             Height="58"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
-                                            BorderBrush="{StaticResource TechMesBorderBrush}"
+                                            BorderBrush="{DynamicResource TechMesBorderBrush}"
                                             BorderThickness="1"
-                                            Background="{StaticResource TechMesPanelBrush}">
+                                            Background="{DynamicResource TechMesPanelBrush}">
                                         <Image Source="{Binding LogoPreview}"
                                                Stretch="Uniform"
                                                Margin="3"
                                                ToolTip="{Binding LogoFileName}" />
-                                    </Border>
+                                    </views:MaintenanceCard>
                                 </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                            </control:DataGridTemplateColumn.CellTemplate>
+                        </control:DataGridTemplateColumn>
 
-                        <DataGridTextColumn Binding="{Binding Supplier, UpdateSourceTrigger=PropertyChanged}"
-                                            SortMemberPath="Supplier"
-                                            ElementStyle="{StaticResource PendingDeleteTextBlockStyle}"
-                                            Width="*"
-                                            MinWidth="240">
-                            <DataGridTextColumn.Header>
-                                <StackPanel>
-                                    <TextBlock Text="Supplier" />
-                                    <TextBox Tag="Supplier"
-                                             MinWidth="220"
-                                             Height="22"
-                                             Margin="0,3,0,0"
-                                             TextChanged="OnSupplierFilterTextChanged" />
-                                </StackPanel>
-                            </DataGridTextColumn.Header>
-                        </DataGridTextColumn>
+                        <control:DataGridTextColumn Header="Supplier"
+                                                    Binding="{Binding Supplier, UpdateSourceTrigger=PropertyChanged}"
+                                                    SortMemberPath="Supplier"
+                                                    IsColumnFiltered="True"
+                                                    ElementStyle="{StaticResource PendingDeleteTextBlockStyle}"
+                                                    Width="*"
+                                                    MinWidth="240" />
 
-                        <DataGridTemplateColumn Header="Select"
-                                                Width="80">
-                            <DataGridTemplateColumn.CellTemplate>
+                        <control:DataGridTemplateColumn Header="Select"
+                                                        IsColumnFiltered="False"
+                                                        Width="80">
+                            <control:DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Button Content="..."
+                                    <ui:Button Content="..."
                                             Width="38"
                                             MinWidth="38"
                                             Height="24"
@@ -140,27 +132,18 @@
                                             Tag="{Binding}"
                                             Click="OnChooseSupplierLogoClick" />
                                 </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                            </control:DataGridTemplateColumn.CellTemplate>
+                        </control:DataGridTemplateColumn>
 
-                        <DataGridTextColumn Binding="{Binding LogoStatus}"
-                                            SortMemberPath="LogoStatus"
-                                            ElementStyle="{StaticResource PendingDeleteTextBlockStyle}"
-                                            IsReadOnly="True"
-                                            Width="150">
-                            <DataGridTextColumn.Header>
-                                <StackPanel>
-                                    <TextBlock Text="Status" />
-                                    <TextBox Tag="Status"
-                                             Width="130"
-                                             Height="22"
-                                             Margin="0,3,0,0"
-                                             TextChanged="OnSupplierFilterTextChanged" />
-                                </StackPanel>
-                            </DataGridTextColumn.Header>
-                        </DataGridTextColumn>
-                    </DataGrid.Columns>
-                </DataGrid>
+                        <control:DataGridTextColumn Header="Status"
+                                                    Binding="{Binding LogoStatus}"
+                                                    SortMemberPath="LogoStatus"
+                                                    IsColumnFiltered="True"
+                                                    ElementStyle="{StaticResource PendingDeleteTextBlockStyle}"
+                                                    IsReadOnly="True"
+                                                    Width="150" />
+                    </control:FilterDataGrid.Columns>
+                </control:FilterDataGrid>
 
                 <Grid Grid.Row="2"
                       Margin="0,8,0,0">
@@ -170,7 +153,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <Button Content="Refresh"
+                    <ui:Button Content="Refresh"
                             MinWidth="100"
                             Click="OnRefreshImportSuppliersClick" />
                     <TextBlock Grid.Column="1"
@@ -179,7 +162,7 @@
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                TextWrapping="Wrap" />
-                    <Button Grid.Column="2"
+                    <ui:Button Grid.Column="2"
                             Content="Save"
                             MinWidth="100"
                             Click="OnSaveImportSuppliersClick" />
@@ -190,7 +173,7 @@
         <TabItem Tag="ORDERS">
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8A5;" FontSize="18" Margin="0,0,8,0" />
+                    <ui:SymbolIcon Symbol="DocumentText24" Width="20" Height="20" Margin="0,0,8,0" />
                     <TextBlock Text="ORDERS" />
                 </StackPanel>
             </TabItem.Header>
@@ -202,9 +185,9 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0"
-                        Background="{StaticResource TechMesPanelBrush}"
-                        BorderBrush="{StaticResource TechMesBorderBrush}"
+                <views:MaintenanceCard Grid.Row="0"
+                        Background="{DynamicResource TechMesPanelBrush}"
+                        BorderBrush="{DynamicResource TechMesBorderBrush}"
                         BorderThickness="1"
                         Padding="12"
                         Margin="0,0,0,10">
@@ -228,11 +211,11 @@
                                 <TextBlock Text="PDF source folder"
                                            VerticalAlignment="Center"
                                            Style="{StaticResource MutedText}" />
-                                <TextBox Grid.Column="1"
+                                <ui:TextBox Grid.Column="1"
                                          Text="{Binding OrdersPdfSourceRoot, UpdateSourceTrigger=PropertyChanged}"
                                          LostFocus="OnOrdersPdfSourceLostFocus"
                                          Margin="0,0,8,0" />
-                                <Button Grid.Column="2"
+                                <ui:Button Grid.Column="2"
                                         Content="Browse..."
                                         MinWidth="96"
                                         Click="OnBrowseOrdersPdfSourceClick" />
@@ -242,40 +225,50 @@
                                     Orientation="Horizontal"
                                     VerticalAlignment="Bottom"
                                     Margin="12,0,0,0">
-                            <Button Content="Refresh"
+                            <ui:Button Content="Refresh"
                                     MinWidth="100"
                                     Click="OnRefreshImportOrdersClick" />
-                            <Button Content="Save"
+                            <ui:Button Content="Save"
                                     MinWidth="100"
                                     Click="OnSaveImportOrdersClick" />
                         </StackPanel>
                     </Grid>
-                </Border>
+                </views:MaintenanceCard>
 
-                <DataGrid Grid.Row="1"
-                          Style="{StaticResource ImportGrid}"
-                          ItemsSource="{Binding ImportOrders}">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="Type"
-                                            Binding="{Binding Type, UpdateSourceTrigger=PropertyChanged}"
-                                            Width="150" />
-                        <DataGridTextColumn Header="Product code"
-                                            Binding="{Binding ProductCode, UpdateSourceTrigger=PropertyChanged}"
-                                            Width="210" />
-                        <DataGridTextColumn Header="Supplier"
-                                            Binding="{Binding Supplier, UpdateSourceTrigger=PropertyChanged}"
-                                            Width="180" />
-                        <DataGridTextColumn Header="Source"
-                                            Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
-                                            Width="260" />
-                        <DataGridTextColumn Header="Description"
-                                            Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
-                                            Width="*" />
-                        <DataGridTextColumn Header="Image"
-                                            Binding="{Binding Image, UpdateSourceTrigger=PropertyChanged}"
-                                            Width="220" />
-                    </DataGrid.Columns>
-                </DataGrid>
+                <control:FilterDataGrid Grid.Row="1"
+                                        Style="{StaticResource ImportGrid}"
+                                        ShowStatusBar="False"
+                                        ShowElapsedTime="False"
+                                        DateFormatString="dd.MM.yyyy"
+                                        FilterLanguage="Russian"
+                                        ItemsSource="{Binding ImportOrders}">
+                    <control:FilterDataGrid.Columns>
+                        <control:DataGridTextColumn Header="Type"
+                                                    Binding="{Binding Type, UpdateSourceTrigger=PropertyChanged}"
+                                                    IsColumnFiltered="True"
+                                                    Width="150" />
+                        <control:DataGridTextColumn Header="Product code"
+                                                    Binding="{Binding ProductCode, UpdateSourceTrigger=PropertyChanged}"
+                                                    IsColumnFiltered="True"
+                                                    Width="210" />
+                        <control:DataGridTextColumn Header="Supplier"
+                                                    Binding="{Binding Supplier, UpdateSourceTrigger=PropertyChanged}"
+                                                    IsColumnFiltered="True"
+                                                    Width="180" />
+                        <control:DataGridTextColumn Header="Source"
+                                                    Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
+                                                    IsColumnFiltered="True"
+                                                    Width="260" />
+                        <control:DataGridTextColumn Header="Description"
+                                                    Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
+                                                    IsColumnFiltered="True"
+                                                    Width="*" />
+                        <control:DataGridTextColumn Header="Image"
+                                                    Binding="{Binding Image, UpdateSourceTrigger=PropertyChanged}"
+                                                    IsColumnFiltered="True"
+                                                    Width="220" />
+                    </control:FilterDataGrid.Columns>
+                </control:FilterDataGrid>
 
                 <TextBlock Grid.Row="2"
                            Text="{Binding ImportOrderStatusText}"
@@ -288,13 +281,13 @@
         <TabItem Tag="INSTRUCTION">
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE82D;" FontSize="18" Margin="0,0,8,0" />
+                    <ui:SymbolIcon Symbol="DocumentBulletList24" Width="20" Height="20" Margin="0,0,8,0" />
                     <TextBlock Text="INSTRUCTION" />
                 </StackPanel>
             </TabItem.Header>
-            <Border Margin="12"
-                    Background="{StaticResource TechMesPanelBrush}"
-                    BorderBrush="{StaticResource TechMesBorderBrush}"
+            <views:MaintenanceCard Margin="12"
+                    Background="{DynamicResource TechMesPanelBrush}"
+                    BorderBrush="{DynamicResource TechMesBorderBrush}"
                     BorderThickness="1"
                     Padding="16">
                 <StackPanel>
@@ -307,19 +300,19 @@
                                Margin="0,12,0,0"
                                TextWrapping="Wrap" />
                 </StackPanel>
-            </Border>
+            </views:MaintenanceCard>
         </TabItem>
 
         <TabItem Tag="SCHEME">
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8A9;" FontSize="18" Margin="0,0,8,0" />
+                    <ui:SymbolIcon Symbol="Table24" Width="20" Height="20" Margin="0,0,8,0" />
                     <TextBlock Text="SCHEME" />
                 </StackPanel>
             </TabItem.Header>
-            <Border Margin="12"
-                    Background="{StaticResource TechMesPanelBrush}"
-                    BorderBrush="{StaticResource TechMesBorderBrush}"
+            <views:MaintenanceCard Margin="12"
+                    Background="{DynamicResource TechMesPanelBrush}"
+                    BorderBrush="{DynamicResource TechMesBorderBrush}"
                     BorderThickness="1"
                     Padding="16">
                 <StackPanel>
@@ -332,7 +325,11 @@
                                Margin="0,12,0,0"
                                TextWrapping="Wrap" />
                 </StackPanel>
-            </Border>
+            </views:MaintenanceCard>
         </TabItem>
     </TabControl>
 </views:MaintenancePageControl>
+
+
+
+

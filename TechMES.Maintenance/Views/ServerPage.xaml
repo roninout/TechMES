@@ -1,20 +1,22 @@
-﻿<views:MaintenancePageControl x:Class="TechMES.Maintenance.Views.ServerPage"
+<views:MaintenancePageControl x:Class="TechMES.Maintenance.Views.ServerPage"
                               xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                               xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                               xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                              xmlns:control="http://filterdatagrid.control.com/2021"
                               xmlns:views="clr-namespace:TechMES.Maintenance.Views"
                               mc:Ignorable="d">
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="150" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0"
-                                Background="{StaticResource TechMesPanelBrush}"
-                                BorderBrush="{StaticResource TechMesBorderBrush}"
+        <views:MaintenanceCard Grid.Row="0"
+                                Background="{DynamicResource TechMesPanelBrush}"
+                                BorderBrush="{DynamicResource TechMesBorderBrush}"
                                 BorderThickness="1"
                                 Padding="12"
                                 Margin="0,0,0,10">
@@ -25,7 +27,7 @@
                     <TextBlock Text="Runtime Service остается локальным и наружу не открывается. HTTPS нужен для камеры, QR-сканера и браузерных API." Style="{StaticResource MutedText}" />
                 </StackPanel>
             </Grid>
-        </Border>
+        </views:MaintenanceCard>
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
@@ -34,62 +36,68 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0"
-                                    Background="{StaticResource TechMesPanelBrush}"
-                                    BorderBrush="{StaticResource TechMesBorderBrush}"
+            <views:MaintenanceCard Grid.Column="0"
+                                    Background="{DynamicResource TechMesPanelBrush}"
+                                    BorderBrush="{DynamicResource TechMesBorderBrush}"
                                     BorderThickness="1"
                                     Padding="10">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top"
-                                               Text="URLs"
-                                               Style="{StaticResource SectionTitleText}" />
-                    <DataGrid ItemsSource="{Binding ServerAddresses}"
-                                              AutoGenerateColumns="False"
-                                              IsReadOnly="True"
-                                              CanUserAddRows="False"
-                                              HeadersVisibility="Column"
-                                              GridLinesVisibility="Horizontal"
-                                              Background="{StaticResource TechMesPanelBrush}">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Adapter"
-                                                                Binding="{Binding AdapterName}"
-                                                                Width="220" />
-                            <DataGridTextColumn Header="IP"
-                                                                Binding="{Binding Address}"
-                                                                Width="150" />
-                            <DataGridTextColumn Header="WEB URL"
-                                                                Binding="{Binding WebUrl}"
-                                                                Width="*" />
-                            <DataGridTextColumn Header="HTTPS URL"
-                                                                Binding="{Binding HttpsUrl}"
-                                                                Width="*" />
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <control:FilterDataGrid ItemsSource="{Binding ServerAddresses}"
+                                            AutoGenerateColumns="False"
+                                            IsReadOnly="True"
+                                            CanUserAddRows="False"
+                                            HeadersVisibility="Column"
+                                            GridLinesVisibility="Horizontal"
+                                            Background="{DynamicResource TechMesPanelBrush}"
+                                            ShowStatusBar="False"
+                                            ShowElapsedTime="False"
+                                            DateFormatString="dd.MM.yyyy"
+                                            FilterLanguage="Russian">
+                        <control:FilterDataGrid.Columns>
+                            <control:DataGridTextColumn Header="Adapter"
+                                                        Binding="{Binding AdapterName}"
+                                                        IsColumnFiltered="True"
+                                                        Width="220" />
+                            <control:DataGridTextColumn Header="IP"
+                                                        Binding="{Binding Address}"
+                                                        IsColumnFiltered="True"
+                                                        Width="150" />
+                            <control:DataGridTextColumn Header="WEB URL"
+                                                        Binding="{Binding WebUrl}"
+                                                        IsColumnFiltered="True"
+                                                        Width="*" />
+                            <control:DataGridTextColumn Header="HTTPS URL"
+                                                        Binding="{Binding HttpsUrl}"
+                                                        IsColumnFiltered="True"
+                                                        Width="*" />
+                        </control:FilterDataGrid.Columns>
+                    </control:FilterDataGrid>
                 </DockPanel>
-            </Border>
+            </views:MaintenanceCard>
 
-            <Border Grid.Column="2"
-                                    Background="{StaticResource TechMesPanelBrush}"
-                                    BorderBrush="{StaticResource TechMesBorderBrush}"
+            <views:MaintenanceCard Grid.Column="2"
+                                    Background="{DynamicResource TechMesPanelBrush}"
+                                    BorderBrush="{DynamicResource TechMesBorderBrush}"
                                     BorderThickness="1"
                                     Padding="10">
                 <DockPanel LastChildFill="True">
                     <Grid DockPanel.Dock="Bottom"
-                          Margin="0,12,0,0">
+                          Margin="0,22,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="20" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <Button Grid.Column="0"
+                        <ui:Button Grid.Column="0"
                                 Content="Prepare server"
                                 HorizontalAlignment="Left"
-                                MinWidth="120"
+                                MinWidth="100"
                                 Click="OnPrepareServerClick" />
-                        <Button Grid.Column="1"
+                        <ui:Button Grid.Column="2"
                                 Content="Refresh server"
                                 HorizontalAlignment="Right"
-                                MinWidth="120"
+                                MinWidth="100"
                                 Click="OnRefreshServerClick" />
                     </Grid>
 
@@ -139,13 +147,13 @@
                                    TextWrapping="Wrap" />
                     </StackPanel>
                 </DockPanel>
-            </Border>
+            </views:MaintenanceCard>
         </Grid>
 
-        <GroupBox Grid.Row="2"
+        <views:MaintenanceSection Grid.Row="2"
                                   Header="Server log"
                                   Margin="0,12,0,0">
-            <TextBox Text="{Binding ServerLogText}"
+            <ui:TextBox Text="{Binding ServerLogText}"
                                      IsReadOnly="True"
                                      TextChanged="OnAutoScrollLogTextChanged"
                                      TextWrapping="Wrap"
@@ -153,6 +161,10 @@
                                      FontFamily="Consolas"
                                      BorderThickness="0"
                                      Padding="8" />
-        </GroupBox>
+        </views:MaintenanceSection>
     </Grid>
 </views:MaintenancePageControl>
+
+
+
+

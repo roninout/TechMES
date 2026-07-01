@@ -19,6 +19,34 @@ public class MaintenancePageControl : UserControl
     private readonly Dictionary<DataGrid, (INotifyCollectionChanged Source, NotifyCollectionChangedEventHandler Handler)> _autoScrollDataGrids = [];
 
     /// <summary>
+    /// Создаёт базовую страницу Maintenance.
+    /// </summary>
+    public MaintenancePageControl()
+    {
+        Loaded += OnMaintenancePageLoaded;
+    }
+
+    /// <summary>
+    /// Передаёт всем страницам DataContext главного окна.
+    /// </summary>
+    private void OnMaintenancePageLoaded(object sender,RoutedEventArgs e)
+    {
+        var mainWindow = Window.GetWindow(this) as MainWindow;
+
+        if (mainWindow is null)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(DataContext, mainWindow))
+        {
+            return;
+        }
+
+        DataContext = mainWindow;
+    }
+
+    /// <summary>
     /// Передает обычное RoutedEvent-событие в одноименный метод MainWindow.
     /// </summary>
     protected void ForwardRoutedEvent(object sender, RoutedEventArgs e, [CallerMemberName] string? methodName = null)

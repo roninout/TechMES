@@ -3,6 +3,8 @@
                               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                               xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                               xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                              xmlns:control="http://filterdatagrid.control.com/2021"
                               xmlns:views="clr-namespace:TechMES.Maintenance.Views"
                               mc:Ignorable="d">
     <TabControl HorizontalAlignment="Stretch"
@@ -12,7 +14,7 @@
         <TabItem>
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE968;" FontSize="18" Margin="0,0,8,0" />
+                    <ui:SymbolIcon Symbol="Server24" Width="20" Height="20" Margin="0,0,8,0" />
                     <TextBlock Text="Server" />
                 </StackPanel>
             </TabItem.Header>
@@ -23,93 +25,138 @@
         <TabItem>
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE9F5;" FontSize="18" Margin="0,0,8,0" />
+                    <ui:SymbolIcon Symbol="WindowWrench24" Width="20" Height="20" Margin="0,0,8,0" />
                     <TextBlock Text="Services" />
                 </StackPanel>
             </TabItem.Header>
             <Grid Margin="12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="350" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="180" />
                 </Grid.RowDefinitions>
 
-                <StackPanel Grid.Row="0"
-                            Margin="0,0,0,10">
-                    <TextBlock Text="Services"
+                <views:MaintenanceCard Grid.Row="0"
+                                Background="{DynamicResource TechMesPanelBrush}"
+                                BorderBrush="{DynamicResource TechMesBorderBrush}"
+                                BorderThickness="1"
+                                Padding="12"
+                                Margin="0,0,0,10">
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="Services"
                                Style="{StaticResource SectionTitleText}" />
-                    <TextBlock Text="Статусы читаются из Windows Service Control Manager через sc.exe. Если службы еще не установлены, это нормально."
+                            <TextBlock Text="Статусы читаются из Windows Service Control Manager через sc.exe. Если службы еще не установлены, это нормально."
                                Style="{StaticResource MutedText}" />
-                </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </views:MaintenanceCard>
 
-                <DataGrid Grid.Row="1"
-                          ItemsSource="{Binding ServiceStatuses}"
-                          AutoGenerateColumns="False"
-                          IsReadOnly="True"
-                          CanUserAddRows="False"
-                          HeadersVisibility="Column"
-                          GridLinesVisibility="Horizontal"
-                          Background="{StaticResource TechMesPanelBrush}">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="Service"
-                                            Binding="{Binding DisplayName}"
-                                            Width="170" />
-                        <DataGridTextColumn Header="Windows name"
-                                            Binding="{Binding ServiceName}"
-                                            Width="210" />
-                        <DataGridTextColumn Header="Status"
-                                            Binding="{Binding Status}"
-                                            Width="130" />
-                        <DataGridTextColumn Header="Health"
-                                            Binding="{Binding Health}"
-                                            Width="130" />
-                        <DataGridTextColumn Header="Health URL"
-                                            Binding="{Binding HealthUrl}"
-                                            Width="*" />
-                        <DataGridTextColumn Header="Checked"
-                                            Binding="{Binding LastChecked, StringFormat={}{0:HH:mm:ss}}"
-                                            Width="100" />
-                        <DataGridTemplateColumn Header="Actions"
-                                                Width="310">
-                            <DataGridTemplateColumn.CellTemplate>
+                <views:MaintenanceCard Grid.Row="1"
+                                    Background="{DynamicResource TechMesPanelBrush}"
+                                    BorderBrush="{DynamicResource TechMesBorderBrush}"
+                                    BorderThickness="1"
+                                    Padding="12"
+                                    Margin="0,0,0,10">
+
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+
+                        <control:FilterDataGrid
+                                        ItemsSource="{Binding ServiceStatuses}"
+                                        AutoGenerateColumns="False"
+                                        IsReadOnly="True"
+                                        CanUserAddRows="False"
+                                        HeadersVisibility="Column"
+                                        GridLinesVisibility="Horizontal"
+                                        Background="{DynamicResource TechMesPanelBrush}"
+                                        ShowStatusBar="False"
+                                        ShowElapsedTime="False"
+                                        DateFormatString="dd.MM.yyyy"
+                                        FilterLanguage="Russian">
+                    <control:FilterDataGrid.Columns>
+                        <control:DataGridTextColumn Header="Service"
+                                                    Binding="{Binding DisplayName}"
+                                                    IsColumnFiltered="True"
+                                                    Width="200" />
+                        <control:DataGridTextColumn Header="Windows name"
+                                                    Binding="{Binding ServiceName}"
+                                                    IsColumnFiltered="True"
+                                                    Width="210" 
+                                                    Visibility="Collapsed"/>
+                        <control:DataGridTextColumn Header="Status"
+                                                    Binding="{Binding Status}"
+                                                    IsColumnFiltered="True"
+                                                    Width="130" />
+                        <control:DataGridTextColumn Header="Health"
+                                                    Binding="{Binding Health}"
+                                                    IsColumnFiltered="True"
+                                                    Width="130" />
+                        <control:DataGridTextColumn Header="Health URL"
+                                                    Binding="{Binding HealthUrl}"
+                                                    IsColumnFiltered="True"
+                                                    Width="*" />
+                        <control:DataGridTextColumn Header="Checked"
+                                                    Binding="{Binding LastChecked, StringFormat={}{0:HH:mm:ss}}"
+                                                    IsColumnFiltered="True"
+                                                    Width="100" />
+                        <control:DataGridTemplateColumn Header="Actions" Width="280">
+                            
+                            <control:DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button Content="Start"
+                                        <ui:Button Content="Start"
                                                 Tag="{Binding}"
+                                                MinWidth="62" Margin="0,2,6,2"
                                                 Click="OnStartServiceClick" />
-                                        <Button Content="Stop"
+                                        <ui:Button Content="Stop"
                                                 Tag="{Binding}"
+                                                MinWidth="62" Margin="0,2,6,2"
                                                 Click="OnStopServiceClick" />
-                                        <Button Content="Restart"
+                                        <ui:Button Content="Restart"
                                                 Tag="{Binding}"
+                                                MinWidth="62" Margin="0,2,6,2"
                                                 Click="OnRestartServiceClick" />
-                                        <Button Content="Probe"
+                                        <ui:Button Content="Probe"
                                                 Tag="{Binding}"
+                                                MinWidth="62" Margin="0,2,6,2"
                                                 Click="OnProbeServiceClick" />
                                     </StackPanel>
                                 </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                    </DataGrid.Columns>
-                </DataGrid>
+                            </control:DataGridTemplateColumn.CellTemplate>
+                            
+                        </control:DataGridTemplateColumn>
+                        
+                    </control:FilterDataGrid.Columns>
+                </control:FilterDataGrid>
 
-                <Grid Grid.Row="2"
-                      Margin="0,10,-6,0">
-                    <Button Content="Open services"
-                            HorizontalAlignment="Left"
-                            MinWidth="110"
-                            Click="OnOpenServicesConsoleClick" />
-                    <Button Content="Refresh all"
-                            HorizontalAlignment="Right"
-                            MinWidth="110"
-                            Click="OnRefreshAllClick" />
-                </Grid>
+                        <Grid Grid.Row="1" Margin="0,12,0,0">
 
-                <GroupBox Grid.Row="3"
+                            <ui:Button
+                                Content="Open services"
+                                HorizontalAlignment="Left"
+                                MinWidth="110"
+                                Click="OnOpenServicesConsoleClick" />
+
+                            <ui:Button
+                                Content="Refresh all"
+                                HorizontalAlignment="Right"
+                                MinWidth="110"
+                                Click="OnRefreshAllClick" />
+
+                        </Grid>
+                    </Grid>
+
+                </views:MaintenanceCard>
+                    
+                <views:MaintenanceSection Grid.Row="3"
                           Header="Diagnostics"
                           Margin="0,8,0,0">
-                    <TextBox Text="{Binding DiagnosticsText}"
+                    <ui:TextBox Text="{Binding DiagnosticsText}"
                              IsReadOnly="True"
                              TextChanged="OnAutoScrollLogTextChanged"
                              TextWrapping="Wrap"
@@ -117,14 +164,14 @@
                              FontFamily="Consolas"
                              BorderThickness="0"
                              Padding="8" />
-                </GroupBox>
+                </views:MaintenanceSection>
             </Grid>
         </TabItem>
 
         <TabItem>
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE896;" FontSize="18" Margin="0,0,8,0" />
+                    <ui:SymbolIcon Symbol="DocumentText24" Width="20" Height="20" Margin="0,0,8,0" />
                     <TextBlock Text="Deploy" />
                 </StackPanel>
             </TabItem.Header>
@@ -133,3 +180,7 @@
         </TabItem>
     </TabControl>
 </views:MaintenancePageControl>
+
+
+
+

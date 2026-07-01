@@ -3,91 +3,136 @@
                               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                               xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                               xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                              xmlns:control="http://filterdatagrid.control.com/2021"
                               xmlns:views="clr-namespace:TechMES.Maintenance.Views"
                               mc:Ignorable="d">
     <Grid Margin="12">
         <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="170" />
+            <RowDefinition Height="350" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <DataGrid Grid.Row="0"
-                  ItemsSource="{Binding DeploymentServices}"
-                  AutoGenerateColumns="False"
-                  IsReadOnly="True"
-                  CanUserAddRows="False"
-                  HeadersVisibility="Column"
-                  GridLinesVisibility="Horizontal"
-                  Background="{StaticResource TechMesPanelBrush}">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Service"
-                                    Binding="{Binding DisplayName}"
-                                    Width="160" />
-                <DataGridTextColumn Header="Windows name"
-                                    Binding="{Binding ServiceName}"
-                                    Width="210" />
-                <DataGridTextColumn Header="Project"
-                                    Binding="{Binding ProjectPath}"
-                                    Width="240" />
-                <DataGridTextColumn Header="Publish directory"
-                                    Binding="{Binding PublishDirectory}"
-                                    Width="*" />
-                <DataGridTextColumn Header="Status"
-                                    Binding="{Binding Status}"
-                                    Width="170" />
-                <DataGridTemplateColumn Header="Actions"
-                                        Width="230">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="Publish"
-                                        Tag="{Binding}"
-                                        Click="OnPublishDeployServiceClick" />
-                                <Button Content="Install"
-                                        Tag="{Binding}"
-                                        Click="OnInstallDeployServiceClick" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-            </DataGrid.Columns>
-        </DataGrid>
+        <views:MaintenanceCard Grid.Row="0"
+                                Background="{DynamicResource TechMesPanelBrush}"
+                                BorderBrush="{DynamicResource TechMesBorderBrush}"
+                                BorderThickness="1"
+                                Padding="12"
+                                Margin="0,0,0,10">
+            <Grid>
+                <StackPanel>
+                    <TextBlock Text="Deploy" Style="{StaticResource SectionTitleText}" />
+                    <TextBlock Text="Публикация и установка TechMES Runtime Service и WEB-приложения на сервер." Style="{StaticResource MutedText}" />
+                    <TextBlock Text="Здесь можно подготовить сервер, собрать проекты, установить или обновить службы и запустить их." Style="{StaticResource MutedText}" />
+                </StackPanel>
+            </Grid>
+        </views:MaintenanceCard>
 
-        <Grid Grid.Row="1"
-              Margin="0,10,-6,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+        <views:MaintenanceCard Grid.Row="1"
+                                    Background="{DynamicResource TechMesPanelBrush}"
+                                    BorderBrush="{DynamicResource TechMesBorderBrush}"
+                                    BorderThickness="1"
+                                    Padding="12"
+                                    Margin="0,0,0,0">
 
-            <Button Grid.Column="0"
-                    Content="Prepare new server"
-                    MinWidth="140"
-                    Click="OnPrepareNewServerClick" />
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-            <StackPanel Grid.Column="1"
+                <control:FilterDataGrid Grid.Row="0"
+                                ItemsSource="{Binding DeploymentServices}"
+                                AutoGenerateColumns="False"
+                                IsReadOnly="True"
+                                CanUserAddRows="False"
+                                HeadersVisibility="Column"
+                                GridLinesVisibility="Horizontal"
+                                Background="{DynamicResource TechMesPanelBrush}"
+                                ShowStatusBar="False"
+                                ShowElapsedTime="False"
+                                DateFormatString="dd.MM.yyyy"
+                                FilterLanguage="Russian">
+                    <control:FilterDataGrid.Columns>
+                        <control:DataGridTextColumn Header="Service"
+                                                    Binding="{Binding DisplayName}"
+                                                    IsColumnFiltered="True"
+                                                    Width="200" />
+                        <control:DataGridTextColumn Header="Windows name"
+                                                    Binding="{Binding ServiceName}"
+                                                    IsColumnFiltered="True"
+                                                    Width="210"
+                                                    Visibility="Collapsed"/>
+                        <control:DataGridTextColumn Header="Project"
+                                                    Binding="{Binding ProjectPath}"
+                                                    IsColumnFiltered="True"
+                                                    Width="*" />
+                        <control:DataGridTextColumn Header="Publish directory"
+                                                    Binding="{Binding PublishDirectory}"
+                                                    IsColumnFiltered="True"
+                                                    Width="Auto" />
+                        <control:DataGridTextColumn Header="Status"
+                                                    Binding="{Binding Status}"
+                                                    IsColumnFiltered="True"
+                                                    Width="Auto" />
+                        <control:DataGridTemplateColumn Header="Actions" Width="150">
+                            <control:DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <ui:Button Content="Publish"
+                                                    Tag="{Binding}"
+                                                    MinWidth="62" Margin="0,2,6,2"
+                                                    Click="OnPublishDeployServiceClick" />
+                                        <ui:Button Content="Install"
+                                                    Tag="{Binding}"
+                                                    MinWidth="62" Margin="0,2,6,2"
+                                                    Click="OnInstallDeployServiceClick" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </control:DataGridTemplateColumn.CellTemplate>
+                        </control:DataGridTemplateColumn>
+                        
+                    </control:FilterDataGrid.Columns>
+                </control:FilterDataGrid>
+
+                <Grid Grid.Row="1" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <ui:Button Grid.Column="0"
+                        Content="Prepare new server"
+                        MinWidth="140"
+                        Click="OnPrepareNewServerClick" />
+
+                    <StackPanel Grid.Column="1"
                         Orientation="Horizontal"
                         HorizontalAlignment="Center">
-                <Button Content="Publish all"
-                        Click="OnPublishAllClick" />
-                <Button Content="Install/Update all"
-                        Click="OnInstallAllClick" />
-                <Button Content="Start all"
-                        Click="OnStartAllDeployClick" />
-            </StackPanel>
+                        <ui:Button Content="Publish all" Margin="0,0,10,0"
+                            Click="OnPublishAllClick" />
+                        <ui:Button Content="Install/Update all" Margin="0,0,10,0"
+                            Click="OnInstallAllClick" />
+                        <ui:Button Content="Start all"
+                            Click="OnStartAllDeployClick" />
+                    </StackPanel>
 
-            <Button Grid.Column="2"
-                    Content="Deploy all"
-                    MinWidth="90"
-                    Click="OnDeployAllClick" />
-        </Grid>
+                    <ui:Button Grid.Column="2"
+                        Content="Deploy all"
+                        MinWidth="90"
+                        Click="OnDeployAllClick" />
+                </Grid>
+            </Grid>
 
-        <GroupBox Grid.Row="2"
+
+        </views:MaintenanceCard>
+
+        <views:MaintenanceSection Grid.Row="2"
                   Header="Deploy log"
                   Margin="0,8,0,0">
-            <TextBox Text="{Binding DeploymentLogText}"
+            <ui:TextBox Text="{Binding DeploymentLogText}"
                      IsReadOnly="True"
                      TextChanged="OnAutoScrollLogTextChanged"
                      TextWrapping="Wrap"
@@ -95,6 +140,10 @@
                      FontFamily="Consolas"
                      BorderThickness="0"
                      Padding="8" />
-        </GroupBox>
+        </views:MaintenanceSection>
     </Grid>
 </views:MaintenancePageControl>
+
+
+
+
