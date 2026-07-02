@@ -9,17 +9,54 @@
                               mc:Ignorable="d">
     <views:MaintenancePageControl.Resources>
         <!--<Style x:Key="ImportGrid" TargetType="{x:Type control:FilterDataGrid}">-->
-        <Style x:Key="ImportGrid" TargetType="{x:Type control:FilterDataGrid}" BasedOn="{StaticResource TechMesFilterDataGridStyle}">
-            <Setter Property="AutoGenerateColumns" Value="False" />
-            <Setter Property="CanUserAddRows" Value="True" />
-            <Setter Property="CanUserDeleteRows" Value="True" />
-            <Setter Property="SelectionMode" Value="Extended" />
-            <Setter Property="SelectionUnit" Value="CellOrRowHeader" />
-            <Setter Property="ClipboardCopyMode" Value="IncludeHeader" />
-            <Setter Property="HeadersVisibility" Value="Column" />
-            <Setter Property="GridLinesVisibility" Value="Horizontal" />
-            <Setter Property="Background" Value="{DynamicResource TechMesPanelBrush}" />
-            <EventSetter Event="PreviewKeyDown" Handler="OnImportGridPreviewKeyDown" />
+        <Style x:Key="ImportGrid"
+               TargetType="{x:Type control:FilterDataGrid}"
+               BasedOn="{StaticResource TechMesFilterDataGridStyle}">
+
+            <Setter Property="AutoGenerateColumns"
+                    Value="False" />
+
+            <Setter Property="CanUserAddRows"
+                    Value="True" />
+
+            <Setter Property="CanUserDeleteRows"
+                    Value="True" />
+
+            <Setter Property="SelectionMode"
+                    Value="Extended" />
+
+            <Setter Property="SelectionUnit"
+                    Value="CellOrRowHeader" />
+
+            <Setter Property="ClipboardCopyMode"
+                    Value="IncludeHeader" />
+
+            <Setter Property="HeadersVisibility"
+                    Value="Column" />
+
+            <Setter Property="GridLinesVisibility"
+                    Value="Horizontal" />
+
+            <Setter Property="Background"
+                    Value="{DynamicResource TechMesPanelBrush}" />
+
+            <!--
+            Явно возвращаем темозависимый заголовок.
+            FilterDataGrid подмешивает собственные локальные ресурсы,
+            поэтому для Import/Edit лучше назначить стиль непосредственно.
+            -->
+            <Setter Property="ColumnHeaderStyle"
+                    Value="{StaticResource TechMesFilterDataGridColumnHeaderStyle}" />
+
+            <Setter Property="RowBackground"
+                    Value="{DynamicResource TechMesPanelBrush}" />
+
+            <Setter Property="AlternatingRowBackground"
+                    Value="{DynamicResource TechMesPanelBrush}" />
+
+            <EventSetter Event="PreviewKeyDown"
+                         Handler="OnImportGridPreviewKeyDown" />
+
         </Style>
     </views:MaintenancePageControl.Resources>
 
@@ -48,7 +85,7 @@
                         BorderBrush="{DynamicResource TechMesBorderBrush}"
                         BorderThickness="1"
                         Padding="12"
-                        Margin="0,0,0,10">
+                        Margin="0,0,0,0">
                     <StackPanel>
                         <TextBlock Text="Suppliers"
                                    Style="{StaticResource SectionTitleText}" />
@@ -58,60 +95,106 @@
                     </StackPanel>
                 </views:MaintenanceCard>
 
-                <control:FilterDataGrid Grid.Row="1"
-                                        Style="{StaticResource ImportGrid}"
-                                        RowHeight="72"
-                                        ColumnHeaderHeight="36"
-                                        CanUserSortColumns="True"
-                                        ShowStatusBar="False"
-                                        ShowElapsedTime="False"
-                                        DateFormatString="dd.MM.yyyy"
-                                        FilterLanguage="Russian"
-                                        ItemsSource="{Binding ImportSuppliers}">
-                    <control:FilterDataGrid.Resources>
-                        <Style x:Key="PendingDeleteTextBlockStyle" TargetType="{x:Type TextBlock}">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsPendingDelete}" Value="True">
-                                    <Setter Property="TextDecorations" Value="Strikethrough" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </control:FilterDataGrid.Resources>
-                    <control:FilterDataGrid.RowStyle>
-                        <Style TargetType="{x:Type DataGridRow}">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsPendingDelete}" Value="True">
-                                    <Setter Property="Opacity" Value="0.55" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </control:FilterDataGrid.RowStyle>
-                    <control:FilterDataGrid.Columns>
-                        <control:DataGridTemplateColumn Header="Logo"
+                <views:MaintenanceSection Grid.Row="1" Margin="0,12,0,0">
+                    <control:FilterDataGrid
+                        Grid.Row="1"
+                        Style="{StaticResource ImportGrid}"
+                        ColumnHeaderStyle="{StaticResource TechMesFilterDataGridColumnHeaderStyle}"
+                        RowHeight="72"
+                        ColumnHeaderHeight="36"
+                        CanUserSortColumns="True"
+                        ShowStatusBar="False"
+                        ShowElapsedTime="False"
+                        DateFormatString="dd.MM.yyyy"
+                        FilterLanguage="Russian"
+                        ItemsSource="{Binding ImportSuppliers}">
+                        
+                            <control:FilterDataGrid.Resources>
+                                <Style x:Key="PendingDeleteTextBlockStyle"
+                                   TargetType="{x:Type TextBlock}"
+                                   BasedOn="{StaticResource {x:Type TextBlock}}">
+
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsPendingDelete}"
+                                                 Value="True">
+
+                                            <Setter Property="TextDecorations"
+                                                Value="Strikethrough" />
+
+                                        </DataTrigger>
+                                    </Style.Triggers>
+
+                                </Style>
+                            </control:FilterDataGrid.Resources>
+                        <!--Важно наследовать штатный темозависимый стиль строки. Раньше локальный RowStyle создавался с нуля и тем самым убирал WPF UI-оформление только у таблицы SUPPLIER.-->
+                        <control:FilterDataGrid.RowStyle>
+                            <Style TargetType="{x:Type DataGridRow}"
+                               BasedOn="{StaticResource {x:Type DataGridRow}}">
+
+                                <Setter Property="Background"
+                                    Value="{DynamicResource TechMesPanelBrush}" />
+
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsPendingDelete}"
+                                             Value="True">
+
+                                        <Setter Property="Opacity"
+                                            Value="0.55" />
+
+                                    </DataTrigger>
+                                </Style.Triggers>
+
+                            </Style>
+                        </control:FilterDataGrid.RowStyle>
+
+                        <!--
+                    Сохраняем штатный темозависимый стиль ячеек.
+                    -->
+                        <control:FilterDataGrid.CellStyle>
+                            <Style TargetType="{x:Type DataGridCell}"
+                               BasedOn="{StaticResource {x:Type DataGridCell}}">
+
+                                <Setter Property="Background"
+                                    Value="Transparent" />
+
+                                <Setter Property="VerticalContentAlignment"
+                                    Value="Center" />
+
+                            </Style>
+                        </control:FilterDataGrid.CellStyle>
+                        <control:FilterDataGrid.Columns>
+                            <control:DataGridTemplateColumn Header="Logo"
                                                         FieldName="LogoFileName"
                                                         IsColumnFiltered="True"
                                                         Width="130"
                                                         SortMemberPath="LogoFileName"
                                                         IsReadOnly="True">
-                            <control:DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <views:MaintenanceCard Width="104"
-                                            Height="58"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            BorderBrush="{DynamicResource TechMesBorderBrush}"
-                                            BorderThickness="1"
-                                            Background="{DynamicResource TechMesPanelBrush}">
-                                        <Image Source="{Binding LogoPreview}"
-                                               Stretch="Uniform"
-                                               Margin="3"
-                                               ToolTip="{Binding LogoFileName}" />
-                                    </views:MaintenanceCard>
-                                </DataTemplate>
-                            </control:DataGridTemplateColumn.CellTemplate>
-                        </control:DataGridTemplateColumn>
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
 
-                        <control:DataGridTextColumn Header="Supplier"
+                                        <Border Width="104"
+                                                Height="58"
+                                                Padding="4"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Background="{DynamicResource TechMesPanelBrush}"
+                                                BorderBrush="{DynamicResource TechMesBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4">
+
+                                            <Image Source="{Binding LogoPreview}"
+                                                   Stretch="Uniform"
+                                                   HorizontalAlignment="Stretch"
+                                                   VerticalAlignment="Stretch"
+                                                   ToolTip="{Binding LogoFileName}" />
+                                        </Border>
+                                        
+                                    </DataTemplate>
+                                    
+                                </control:DataGridTemplateColumn.CellTemplate>
+                            </control:DataGridTemplateColumn>
+
+                            <control:DataGridTextColumn Header="Supplier"
                                                     Binding="{Binding Supplier, UpdateSourceTrigger=PropertyChanged}"
                                                     SortMemberPath="Supplier"
                                                     IsColumnFiltered="True"
@@ -119,31 +202,32 @@
                                                     Width="*"
                                                     MinWidth="240" />
 
-                        <control:DataGridTemplateColumn Header="Select"
+                            <control:DataGridTemplateColumn Header="Select"
                                                         IsColumnFiltered="False"
                                                         Width="80">
-                            <control:DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <ui:Button Content="..."
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ui:Button Content="..."
                                             Width="38"
                                             MinWidth="38"
                                             Height="24"
                                             Padding="0"
                                             Tag="{Binding}"
                                             Click="OnChooseSupplierLogoClick" />
-                                </DataTemplate>
-                            </control:DataGridTemplateColumn.CellTemplate>
-                        </control:DataGridTemplateColumn>
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+                            </control:DataGridTemplateColumn>
 
-                        <control:DataGridTextColumn Header="Status"
+                            <control:DataGridTextColumn Header="Status"
                                                     Binding="{Binding LogoStatus}"
                                                     SortMemberPath="LogoStatus"
                                                     IsColumnFiltered="True"
                                                     ElementStyle="{StaticResource PendingDeleteTextBlockStyle}"
                                                     IsReadOnly="True"
                                                     Width="150" />
-                    </control:FilterDataGrid.Columns>
-                </control:FilterDataGrid>
+                        </control:FilterDataGrid.Columns>
+                    </control:FilterDataGrid>
+                </views:MaintenanceSection>
 
                 <Grid Grid.Row="2"
                       Margin="0,8,0,0">

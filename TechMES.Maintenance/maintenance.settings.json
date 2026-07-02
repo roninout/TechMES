@@ -58,7 +58,7 @@
   },
   "Cleanup": {
     "BackupRoot": "C:\\TechMES\\TechMES.Maintenance\\backups",
-    "LogRetentionDays": 14,
+    "LogRetentionDays": 1,
     "AppSettingsBackupRetentionDays": 30,
     "BackupRetentionDays": 60
   },

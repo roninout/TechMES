@@ -28,7 +28,7 @@
                                 BorderBrush="{DynamicResource TechMesBorderBrush}"
                                 BorderThickness="1"
                                 Padding="12"
-                                Margin="0,0,0,10">
+                                Margin="0,0,0,0">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -51,34 +51,36 @@
                                 <StackPanel Grid.Row="2"
                                             Grid.Column="0"
                                             Margin="0,0,12,0">
-                                    <TextBlock Text="Backup root"
-                                               Style="{StaticResource MutedText}" />
+                                    <!--<TextBlock Text="Backup root"
+                                               Style="{StaticResource MutedText}" />-->
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="8" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <ui:TextBox Text="{Binding BackupRoot, UpdateSourceTrigger=PropertyChanged}"
-                                                 LostFocus="OnBackupRootLostFocus" />
-                                        <ui:Button Grid.Column="2"
-                                                Content="Browse..."
-                                                MinWidth="96"
-                                                Click="OnBrowseBackupRootClick" />
-                                    </Grid>
+                                <ui:TextBox Text="{Binding BackupRoot, UpdateSourceTrigger=PropertyChanged}"
+                                                    IsReadOnly="True"
+                                                    LostFocus="OnBackupRootLostFocus" />
+                            </Grid>
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="2"
                                             Grid.Column="1"
                                             Orientation="Horizontal"
-                                            VerticalAlignment="Bottom">
-                                    <ui:Button Content="Create backup"
-                                            Click="OnCreateBackupClick" />
+                                            VerticalAlignment="Center">
+                                            <ui:Button Content="Browse..."
+                                                        MinWidth="96" Margin="10,0,0,0"
+                                                        Click="OnBrowseBackupRootClick" />
+
+                                            <ui:Button Content="Create backup" Margin="10,0,0,0"
+                                                        Click="OnCreateBackupClick" />
                                 </StackPanel>
                             </Grid>
                         </views:MaintenanceCard>
 
-                        <control:FilterDataGrid Grid.Row="1"
+                <views:MaintenanceSection Grid.Row="1" Margin="0,12,0,0">
+                    <control:FilterDataGrid Grid.Row="1"
                                                 ItemsSource="{Binding BackupItems}"
                                                 SelectedItem="{Binding SelectedBackup, Mode=TwoWay}"
                                                 AutoGenerateColumns="False"
@@ -118,8 +120,9 @@
                                                             Width="320" />
                             </control:FilterDataGrid.Columns>
                         </control:FilterDataGrid>
-
-                        <Grid Grid.Row="2"
+                </views:MaintenanceSection>
+                        
+                <Grid Grid.Row="2"
                               Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -140,13 +143,13 @@
                                         Orientation="Horizontal"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Center">
-                                <ui:Button Content="Refresh backups"
+                                <ui:Button Content="Refresh backups" Margin="10,0,0,0"
                                         Click="OnRefreshBackupsClick" />
-                                <ui:Button Content="Restore selected"
+                                <ui:Button Content="Restore selected" Margin="10,0,0,0"
                                         Click="OnRestoreBackupClick" />
-                                <ui:Button Content="Export ZIP"
+                                <ui:Button Content="Export ZIP" Margin="10,0,0,0"
                                         Click="OnExportBackupZipClick" />
-                                <ui:Button Content="Import ZIP"
+                                <ui:Button Content="Import ZIP" Margin="10,0,0,0"
                                         Click="OnImportBackupZipClick" />
                             </StackPanel>
                         </Grid>

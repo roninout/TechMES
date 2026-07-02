@@ -30,18 +30,13 @@ public partial class App : Application
          * Поэтому стили заголовка и popup приходится назначать
          * после загрузки каждого FilterDataGrid.
          */
-        EventManager.RegisterClassHandler(
-            typeof(FilterGrid),
-            FrameworkElement.LoadedEvent,
-            new RoutedEventHandler(OnFilterDataGridLoaded));
+        EventManager.RegisterClassHandler(typeof(FilterGrid), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnFilterDataGridLoaded));
     }
 
     /// <summary>
     /// Настраивает каждый FilterDataGrid после загрузки.
     /// </summary>
-    private static void OnFilterDataGridLoaded(
-        object sender,
-        RoutedEventArgs e)
+    private static void OnFilterDataGridLoaded(object sender, RoutedEventArgs e)
     {
         if (sender is not FilterGrid grid)
         {
@@ -76,7 +71,7 @@ public partial class App : Application
                  * Заголовок и строки таблицы имеют
                  * одинаковую высоту.
                  */
-                grid.RowHeight = TableRowHeight;
+                //grid.RowHeight = TableRowHeight;
                 grid.ColumnHeaderHeight = TableRowHeight;
 
                 /*
@@ -93,8 +88,7 @@ public partial class App : Application
     /// Обычные CheckBox и ListBox приложения
     /// эти изменения не затрагивают.
     /// </summary>
-    private static void ApplyCompactFilterPopupStyles(
-        FilterGrid grid)
+    private static void ApplyCompactFilterPopupStyles(FilterGrid grid)
     {
         /*
          * Берём полноценный Fluent-стиль CheckBox от WPF UI

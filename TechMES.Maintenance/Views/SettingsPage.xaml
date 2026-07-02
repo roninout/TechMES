@@ -1088,7 +1088,7 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem>
+            <TabItem x:Name="RawSettingsTab">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <ui:SymbolIcon Symbol="DocumentText24" Width="20" Height="20" Margin="0,0,8,0" />
@@ -1125,24 +1125,21 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <DockPanel Grid.Row="0"
-                                               Margin="0,0,0,8">
-                            <StackPanel DockPanel.Dock="Right"
-                                                    Orientation="Horizontal">
-                                <ui:Button Content="Reload"
-                                                    Click="OnReloadSettingsClick" />
-                                <ui:Button Content="Save"
-                                                    Click="OnSaveSettingsClick" />
-                            </StackPanel>
+                        <!--
+                        Верхние кнопки удалены.
+                        Действия выбранного файла находятся в общей нижней панели.
+                        -->
+                        <StackPanel Grid.Row="0"
+                                    Margin="0,0,0,8">
 
-                            <StackPanel>
-                                <TextBlock Text="{Binding SelectedSettingsFile.DisplayName}"
-                                                       FontSize="18"
-                                                       FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding SelectedSettingsFile.FullPath}"
-                                                       Style="{StaticResource MutedText}" />
-                            </StackPanel>
-                        </DockPanel>
+                            <TextBlock Text="{Binding SelectedSettingsFile.DisplayName}"
+                                       FontSize="18"
+                                       FontWeight="SemiBold" />
+
+                            <TextBlock Text="{Binding SelectedSettingsFile.FullPath}"
+                                       Style="{StaticResource MutedText}" />
+
+                        </StackPanel>
 
                         <ui:TextBox Grid.Row="1"
                                              Text="{Binding SelectedSettingsFile.Content, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
@@ -1164,28 +1161,224 @@
             </TabItem>
         </TabControl>
 
-        <Grid Grid.Row="1" Margin="0,10,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+        <!--
+        Общая нижняя панель страницы Settings.
+        Она расположена вне внутреннего TabControl,
+        поэтому видна на всех вкладках Settings.
+        -->
+        <Border Grid.Row="1"
+                Margin="0,10,0,0"
+                Padding="12,8"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0">
 
-            <ui:Button Content="Reload"
-                    MinWidth="110"
-                    Click="OnReloadAllTypedSettingsClick" />
-            <TextBlock Grid.Column="1"
-                       Text="{Binding TypedAppSettings.Status}"
-                       Style="{StaticResource MutedText}"
-                       TextWrapping="Wrap"
-                       TextAlignment="Center"
-                       VerticalAlignment="Center"
-                       Margin="12,0" />
-            <ui:Button Grid.Column="2"
-                    Content="Save"
-                    MinWidth="130"
-                    Click="OnSaveAllTypedSettingsClick" />
-        </Grid>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- =====================================================
+                     Левая кнопка
+                     ===================================================== -->
+
+                <!-- Обычные вкладки Settings: перечитать typed-настройки. -->
+                <ui:Button Grid.Column="0"
+                           Content="Reload"
+                           Width="130"
+                           Height="34"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Center"
+                           Appearance="Secondary"
+                           Click="OnReloadAllTypedSettingsClick">
+
+                    <ui:Button.Style>
+                        <Style TargetType="{x:Type ui:Button}"
+                               BasedOn="{StaticResource TechMesDefaultButtonStyle}">
+
+                            <Setter Property="Visibility"
+                                    Value="Visible" />
+
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSelected, ElementName=RawSettingsTab}"
+                                             Value="True">
+                                    <Setter Property="Visibility"
+                                            Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+
+                        </Style>
+                    </ui:Button.Style>
+
+                </ui:Button>
+
+                <!-- Raw settings: перечитать только выбранный JSON-файл. -->
+                <ui:Button Grid.Column="0"
+                           Content="Reload file"
+                           Width="130"
+                           Height="34"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Center"
+                           Appearance="Secondary"
+                           Click="OnReloadSettingsClick">
+
+                    <ui:Button.Style>
+                        <Style TargetType="{x:Type ui:Button}"
+                               BasedOn="{StaticResource TechMesDefaultButtonStyle}">
+
+                            <Setter Property="Visibility"
+                                    Value="Collapsed" />
+
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSelected, ElementName=RawSettingsTab}"
+                                             Value="True">
+                                    <Setter Property="Visibility"
+                                            Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+
+                        </Style>
+                    </ui:Button.Style>
+
+                </ui:Button>
+
+
+                <!-- =====================================================
+                     Центральный статус
+                     ===================================================== -->
+
+                <Grid Grid.Column="1"
+                      Margin="16,0">
+
+                    <!-- Статус typed-настроек на обычных вкладках. -->
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Text="{Binding TypedAppSettings.Status}"
+                        TextWrapping="NoWrap"
+                        TextTrimming="CharacterEllipsis"
+                        TextAlignment="Center">
+
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock"
+                                   BasedOn="{StaticResource MutedText}">
+
+                                <Setter Property="Visibility"
+                                        Value="Visible" />
+
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSelected, ElementName=RawSettingsTab}"
+                                                 Value="True">
+                                        <Setter Property="Visibility"
+                                                Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+
+                            </Style>
+                        </TextBlock.Style>
+
+                    </TextBlock>
+
+                    <!-- Статус выбранного файла на вкладке Raw settings. -->
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Text="{Binding SelectedSettingsFile.Status}"
+                        TextWrapping="NoWrap"
+                        TextTrimming="CharacterEllipsis"
+                        TextAlignment="Center">
+
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock"
+                                   BasedOn="{StaticResource MutedText}">
+
+                                <Setter Property="Visibility"
+                                        Value="Collapsed" />
+
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSelected, ElementName=RawSettingsTab}"
+                                                 Value="True">
+                                        <Setter Property="Visibility"
+                                                Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+
+                            </Style>
+                        </TextBlock.Style>
+
+                    </TextBlock>
+
+                </Grid>
+
+
+                <!-- =====================================================
+                     Правая кнопка
+                     ===================================================== -->
+
+                <!-- Обычные вкладки Settings: сохранить typed-настройки. -->
+                <ui:Button Grid.Column="2"
+                           Content="Save"
+                           Width="130"
+                           Height="34"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"
+                           Appearance="Primary"
+                           Click="OnSaveAllTypedSettingsClick">
+
+                    <ui:Button.Style>
+                        <Style TargetType="{x:Type ui:Button}"
+                               BasedOn="{StaticResource TechMesDefaultButtonStyle}">
+
+                            <Setter Property="Visibility"
+                                    Value="Visible" />
+
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSelected, ElementName=RawSettingsTab}"
+                                             Value="True">
+                                    <Setter Property="Visibility"
+                                            Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+
+                        </Style>
+                    </ui:Button.Style>
+
+                </ui:Button>
+
+                <!-- Raw settings: сохранить только выбранный JSON-файл. -->
+                <ui:Button Grid.Column="2"
+                           Content="Save file"
+                           Width="130"
+                           Height="34"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"
+                           Appearance="Primary"
+                           Click="OnSaveSettingsClick">
+
+                    <ui:Button.Style>
+                        <Style TargetType="{x:Type ui:Button}"
+                               BasedOn="{StaticResource TechMesDefaultButtonStyle}">
+
+                            <Setter Property="Visibility"
+                                    Value="Collapsed" />
+
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSelected, ElementName=RawSettingsTab}"
+                                             Value="True">
+                                    <Setter Property="Visibility"
+                                            Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+
+                        </Style>
+                    </ui:Button.Style>
+
+                </ui:Button>
+
+            </Grid>
+        </Border>
     </Grid>
 </views:MaintenancePageControl>
 

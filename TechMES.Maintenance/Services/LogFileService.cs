@@ -107,9 +107,11 @@ public sealed class LogFileService(DirectoryInfo repositoryRoot)
     /// </summary>
     private string GetDisplayName(string fullPath)
     {
-        if (fullPath.StartsWith(repositoryRoot.FullName, StringComparison.OrdinalIgnoreCase))
-            return Path.GetRelativePath(repositoryRoot.FullName, fullPath);
+        //if (fullPath.StartsWith(repositoryRoot.FullName, StringComparison.OrdinalIgnoreCase))
+        //    return Path.GetRelativePath(repositoryRoot.FullName, fullPath);
 
-        return fullPath;
+        //return fullPath;
+
+        return Path.GetFileName(fullPath);
     }
 }
