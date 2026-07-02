@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Win32;
 using TechMES.Maintenance.Models;
 using TechMES.Maintenance.ViewModels;
@@ -105,30 +106,95 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Selects a supplier logo image and keeps it in memory until Save.
+    /// Handles the second left click before DataGrid processes it.
+    /// The file picker opens only when the clicked cell belongs to the Logo column.
     /// </summary>
-    private void OnChooseSupplierLogoClick(object sender, RoutedEventArgs e)
+    private void OnSupplierGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is not ImportSupplierRowViewModel row)
+        if (e.ChangedButton != MouseButton.Left || e.ClickCount != 2)
             return;
 
+        if (e.OriginalSource is not DependencyObject source)
+            return;
+
+        var cell = FindVisualParent<DataGridCell>(source);
+        if (cell is null)
+            return;
+
+        if (!string.Equals(
+                cell.Column.SortMemberPath,
+                nameof(ImportSupplierRowViewModel.LogoFileName),
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (cell.DataContext is not ImportSupplierRowViewModel row)
+            return;
+
+        // Prevent DataGrid from processing the second click as editing/selection input.
+        e.Handled = true;
+        ChooseSupplierLogo(row);
+    }
+
+    /// <summary>
+    /// Finds the nearest visual parent of the requested type.
+    /// </summary>
+    private static T? FindVisualParent<T>(DependencyObject? current)
+        where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T result)
+                return result;
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Selects a supplier logo image and keeps it in memory until Save.
+    /// </summary>
+    /// <summary>
+    /// Выбирает логотип поставщика и сохраняет его в памяти до нажатия Save.
+    /// </summary>
+    private void ChooseSupplierLogo(ImportSupplierRowViewModel row)
+    {
         var dialog = new OpenFileDialog
         {
             Title = "Choose supplier logo",
-            Filter = "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|All files (*.*)|*.*",
+            Filter =
+                "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|" +
+                "*.png;*.jpg;*.jpeg;*.bmp;*.gif|" +
+                "All files (*.*)|*.*",
             CheckFileExists = true
         };
 
         if (dialog.ShowDialog(this) != true)
+        {
             return;
+        }
 
-        row.PendingLogoData = File.ReadAllBytes(dialog.FileName);
-        row.SetLogoPreview(row.PendingLogoData);
+        var logoData = File.ReadAllBytes(dialog.FileName);
+
+        row.PendingLogoData = logoData;
+        row.SetLogoPreview(logoData);
         row.LogoFileName = Path.GetFileName(dialog.FileName);
         row.LogoChanged = true;
         row.LogoStatus = "Selected";
-        ImportSupplierStatusText = $"Logo selected for {row.Supplier}: {row.LogoFileName}";
-        CollectionViewSource.GetDefaultView(ImportSuppliers).Refresh();
+
+        ImportSupplierStatusText =
+            $"Logo selected for {row.Supplier}: {row.LogoFileName}";
+
+        /*
+         * CollectionView.Refresh() здесь вызывать нельзя:
+         * строка таблицы может находиться в AddNew/EditItem transaction.
+         *
+         * SetLogoPreview и свойства ViewModel сами должны уведомить интерфейс
+         * через PropertyChanged.
+         */
     }
 
     /// <summary>
@@ -382,8 +448,9 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Pastes tab-separated data into DataGridTextColumn bindings.
-    /// This gives the operator the same quick workflow as Excel: copy a range, select a start cell, paste.
+    /// Pastes tab-separated data into writable DataGrid columns.
+    /// DataGridTextColumn uses Binding, while template columns use ClipboardContentBinding.
+    /// This preserves the Excel workflow after switching SUPPLIER cells to WPF UI templates.
     /// </summary>
     private static void PasteClipboardIntoImportGrid(DataGrid grid, string clipboardText)
     {
@@ -391,11 +458,10 @@ public partial class MainWindow
             return;
 
         var columns = grid.Columns
-            .OfType<DataGridTextColumn>()
-            .Where(x => !x.IsReadOnly)
-            .Select(x => new ImportPasteColumn(x, GetBindingPath(x)))
-            .Where(x => !string.IsNullOrWhiteSpace(x.PropertyName))
-            .OrderBy(x => x.Column.DisplayIndex)
+            .Where(column => !column.IsReadOnly)
+            .Select(column => new ImportPasteColumn(column, GetBindingPath(column)))
+            .Where(column => !string.IsNullOrWhiteSpace(column.PropertyName))
+            .OrderBy(column => column.Column.DisplayIndex)
             .ToList();
 
         if (columns.Count == 0)
@@ -409,10 +475,10 @@ public partial class MainWindow
         if (startRow < 0)
             startRow = Math.Max(0, grid.Items.Count - 1);
 
-        var selectedColumn = selectedCell.Column as DataGridTextColumn;
+        var selectedColumn = selectedCell.Column;
         var startColumn = selectedColumn is null
             ? 0
-            : Math.Max(0, columns.FindIndex(x => ReferenceEquals(x.Column, selectedColumn)));
+            : Math.Max(0, columns.FindIndex(column => ReferenceEquals(column.Column, selectedColumn)));
 
         if (startColumn < 0)
             startColumn = 0;
@@ -516,13 +582,21 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Extracts a simple property path from a DataGridTextColumn binding.
+    /// Extracts a writable property path from either a bound column
+    /// or a template column with ClipboardContentBinding.
     /// </summary>
-    private static string GetBindingPath(DataGridTextColumn column)
+    private static string GetBindingPath(DataGridColumn column)
     {
-        return column.Binding is Binding binding
-            ? binding.Path?.Path ?? ""
-            : "";
+        if (column is DataGridBoundColumn boundColumn
+            && boundColumn.Binding is Binding boundBinding)
+        {
+            return boundBinding.Path?.Path ?? "";
+        }
+
+        if (column.ClipboardContentBinding is Binding clipboardBinding)
+            return clipboardBinding.Path?.Path ?? "";
+
+        return column.SortMemberPath ?? "";
     }
 
     /// <summary>
@@ -573,5 +647,5 @@ public partial class MainWindow
     /// <summary>
     /// Describes a writable paste target column.
     /// </summary>
-    private sealed record ImportPasteColumn(DataGridTextColumn Column, string PropertyName);
+    private sealed record ImportPasteColumn(DataGridColumn Column, string PropertyName);
 }

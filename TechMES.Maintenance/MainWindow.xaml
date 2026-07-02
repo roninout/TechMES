@@ -134,12 +134,15 @@
                 Метод OnToggleMaintenanceThemeClick уже есть
                 в MainWindow.xaml.cs и менять его не нужно.
                 -->
-                <ui:Button Content="{Binding ThemeToggleText}"
-                           Icon="{ui:SymbolIcon Symbol=DarkTheme24}"
-                           Appearance="Secondary"
-                           MinWidth="130"
-                           Margin="0,0,12,0"
-                           Click="OnToggleMaintenanceThemeClick" />
+                <ui:Button
+                    Icon="{ui:SymbolIcon Symbol=DarkTheme24}"
+                    Appearance="Secondary"
+                    Width="40"
+                    Height="32"
+                    Padding="0"
+                    Margin="0,0,12,0"
+                    ToolTip="{Binding ThemeToggleText}"
+                    Click="OnToggleMaintenanceThemeClick" />
 
             </ui:TitleBar.TrailingContent>
 

@@ -29,7 +29,7 @@ public class MaintenancePageControl : UserControl
     /// <summary>
     /// Передаёт всем страницам DataContext главного окна.
     /// </summary>
-    private void OnMaintenancePageLoaded(object sender,RoutedEventArgs e)
+    private void OnMaintenancePageLoaded(object sender, RoutedEventArgs e)
     {
         var mainWindow = Window.GetWindow(this) as MainWindow;
 
@@ -149,7 +149,7 @@ public class MaintenancePageControl : UserControl
     public void OnImportTabSelectionChanged(object sender, SelectionChangedEventArgs e) => ForwardSelectionChangedEvent(sender, e);
     public void OnRefreshImportSuppliersClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnSaveImportSuppliersClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
-    public void OnChooseSupplierLogoClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnSupplierGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnSupplierFilterTextChanged(object sender, TextChangedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnRefreshImportOrdersClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnSaveImportOrdersClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
