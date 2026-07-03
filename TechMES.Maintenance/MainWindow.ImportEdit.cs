@@ -495,6 +495,22 @@ public partial class MainWindow
         if (sender is not DataGrid grid)
             return;
 
+        /*
+         * FilterDataGrid не всегда корректно формирует Clipboard
+         * для DataGridTemplateColumn с ComboBox.
+         *
+         * Для ProductCode во вкладке INSTRUCTION копируем значение
+         * явно из ViewModel. Это работает как в режиме просмотра,
+         * так и когда ComboBox уже открыт.
+         */
+        if (e.Key == Key.C
+            && Keyboard.Modifiers == ModifierKeys.Control
+            && TryCopyInstructionProductCodes(grid))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Delete
             && Keyboard.Modifiers == ModifierKeys.None
             && e.OriginalSource is not TextBox
@@ -504,11 +520,55 @@ public partial class MainWindow
             return;
         }
 
-        if (e.Key != Key.V || Keyboard.Modifiers != ModifierKeys.Control || !Clipboard.ContainsText())
+        if (e.Key != Key.V
+            || Keyboard.Modifiers != ModifierKeys.Control
+            || !Clipboard.ContainsText())
+        {
             return;
+        }
 
-        PasteClipboardIntoImportGrid(grid, Clipboard.GetText());
+        PasteClipboardIntoImportGrid(
+            grid,
+            Clipboard.GetText());
+
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// Копирует выбранные ProductCode из INSTRUCTION как обычный текст.
+    ///
+    /// Никакие заголовки в Clipboard не добавляются, поэтому значение
+    /// можно сразу вставить в Product code другой строки.
+    /// При выборе нескольких ячеек коды копируются построчно.
+    /// </summary>
+    private static bool TryCopyInstructionProductCodes(
+        DataGrid grid)
+    {
+        var selectedProductCodeCells = grid.SelectedCells
+            .Where(cell =>
+                cell.Item is ImportInstructionRowViewModel
+                && string.Equals(
+                    GetBindingPath(cell.Column),
+                    nameof(ImportInstructionRowViewModel.ProductCode),
+                    StringComparison.Ordinal))
+            .OrderBy(cell =>
+                grid.Items.IndexOf(cell.Item))
+            .ToList();
+
+        if (selectedProductCodeCells.Count == 0)
+            return false;
+
+        var values = selectedProductCodeCells
+            .Select(cell =>
+                ((ImportInstructionRowViewModel)cell.Item).ProductCode)
+            .ToList();
+
+        Clipboard.SetText(
+            string.Join(
+                Environment.NewLine,
+                values));
+
+        return true;
     }
 
     /// <summary>
@@ -602,6 +662,12 @@ public partial class MainWindow
 
         ImportOrderStatusText = $"Order rows loaded: {ImportOrders.Count}.";
         RefreshImportProductCodeOptions();
+
+        /*
+         * Если INSTRUCTION уже открыт, ORDERS мог быть обновлён после него.
+         * Перепривязываем SelectedOrder и все зависимые read-only поля.
+         */
+        RefreshImportInstructionOrderDetails();
     }
 
     /// <summary>
@@ -614,30 +680,126 @@ public partial class MainWindow
             throw new InvalidOperationException("Runtime catalog is not loaded.");
 
         ImportInstructionStatusText = "Loading instruction links...";
-        var existingRows = await _infoImportEditStore.LoadInstructionsAsync(GetRuntimeDatabaseConnectionString());
+
+        var existingRows =
+            await _infoImportEditStore.LoadInstructionsAsync(
+                GetRuntimeDatabaseConnectionString());
+
         var existingByEquipment = existingRows
-            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
-            .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => x.Last(), StringComparer.OrdinalIgnoreCase);
+            .Where(row => !string.IsNullOrWhiteSpace(row.Equipment))
+            .GroupBy(
+                row => row.Equipment.Trim(),
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Last(),
+                StringComparer.OrdinalIgnoreCase);
+
+        var ordersByProductCode = CreateImportOrdersByProductCode();
 
         ImportInstructions.Clear();
 
         foreach (var item in _importRuntimeCatalog.EquipmentItems)
         {
-            existingByEquipment.TryGetValue(item.Equipment, out var existing);
+            existingByEquipment.TryGetValue(
+                item.Equipment,
+                out var existing);
 
-            ImportInstructions.Add(new ImportInstructionRowViewModel
+            var productCode =
+                existing?.ProductCode?.Trim()
+                ?? "";
+
+            ordersByProductCode.TryGetValue(
+                productCode,
+                out var selectedOrder);
+
+            var row = new ImportInstructionRowViewModel
             {
                 Station = item.Station,
                 Type = item.Type,
-                Equipment = item.Equipment,
-                ProductCode = existing?.ProductCode ?? "",
-                Source = existing?.Source ?? "",
-                Description = existing?.Description ?? ""
-            });
+                Equipment = item.Equipment
+            };
+
+            /*
+             * Supplier, Source, Description и Image всегда берутся
+             * из ORDERS по ProductCode. Значения из старой instruction-связи
+             * для этих колонок не используются.
+             */
+            row.ApplyOrder(
+                selectedOrder,
+                productCode);
+
+            ImportInstructions.Add(row);
         }
 
-        ImportInstructionStatusText = $"Instruction rows loaded: {ImportInstructions.Count}.";
+        ImportInstructionStatusText =
+            $"Instruction rows loaded: {ImportInstructions.Count}.";
+    }
+
+    /// <summary>
+    /// Создаёт быстрый справочник ORDERS по ProductCode.
+    /// Последняя строка с одинаковым кодом имеет приоритет,
+    /// что соответствует текущей логике сохранения ORDERS.
+    /// </summary>
+    private Dictionary<string, ImportOrderRowViewModel>
+        CreateImportOrdersByProductCode()
+    {
+        return ImportOrders
+            .Where(order =>
+                !string.IsNullOrWhiteSpace(order.ProductCode))
+            .GroupBy(
+                order => order.ProductCode.Trim(),
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Last(),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Обновляет ORDERS-данные во всех уже созданных строках INSTRUCTION.
+    /// </summary>
+    private void RefreshImportInstructionOrderDetails()
+    {
+        if (ImportInstructions.Count == 0)
+            return;
+
+        var ordersByProductCode =
+            CreateImportOrdersByProductCode();
+
+        foreach (var row in ImportInstructions)
+        {
+            var productCode =
+                row.ProductCode.Trim();
+
+            ordersByProductCode.TryGetValue(
+                productCode,
+                out var selectedOrder);
+
+            row.ApplyOrder(
+                selectedOrder,
+                productCode);
+        }
+    }
+
+    /// <summary>
+    /// Обновляет одну строку INSTRUCTION после вставки ProductCode.
+    /// </summary>
+    private void RefreshImportInstructionOrderDetails(
+        ImportInstructionRowViewModel row)
+    {
+        var productCode =
+            row.ProductCode.Trim();
+
+        var selectedOrder = ImportOrders.FirstOrDefault(
+            order => string.Equals(
+                order.ProductCode?.Trim(),
+                productCode,
+                StringComparison.OrdinalIgnoreCase));
+
+        row.ApplyOrder(
+            selectedOrder,
+            productCode);
     }
 
     /// <summary>
@@ -950,12 +1112,20 @@ public partial class MainWindow
             return;
 
         var selectedCell = grid.SelectedCells.FirstOrDefault();
-        var startRow = selectedCell.Item is null || selectedCell.Item == CollectionView.NewItemPlaceholder
-            ? Math.Max(0, grid.Items.Count - 1)
-            : grid.Items.IndexOf(selectedCell.Item);
 
-        if (startRow < 0)
-            startRow = Math.Max(0, grid.Items.Count - 1);
+        /*
+         * startViewRow относится именно к текущему представлению DataGrid.
+         * Это важно после сортировки и фильтрации: индекс в grid.Items
+         * может не совпадать с индексом в исходной ObservableCollection.
+         */
+        var startViewRow =
+            selectedCell.Item is null
+            || selectedCell.Item == CollectionView.NewItemPlaceholder
+                ? Math.Max(0, grid.Items.Count - 1)
+                : grid.Items.IndexOf(selectedCell.Item);
+
+        if (startViewRow < 0)
+            startViewRow = Math.Max(0, grid.Items.Count - 1);
 
         var selectedColumn = selectedCell.Column;
         var startColumn = selectedColumn is null
@@ -972,6 +1142,8 @@ public partial class MainWindow
 
         var pasteRowOffset = 0;
         var rejectedLookupCells = 0;
+        var orderRowsChanged = false;
+
         foreach (var line in lines)
         {
             if (string.IsNullOrWhiteSpace(line))
@@ -981,7 +1153,12 @@ public partial class MainWindow
             if (pasteRowOffset == 0 && LooksLikeHeaderRow(cells, columns))
                 continue;
 
-            var item = EnsurePasteRow(targetList, startRow + pasteRowOffset);
+            var item = GetPasteTargetItem(
+                grid,
+                targetList,
+                startViewRow,
+                pasteRowOffset);
+
             if (item is null)
                 break;
 
@@ -1003,13 +1180,53 @@ public partial class MainWindow
                     }
 
                     property.SetValue(item, valueToSet);
+
+                    if (item is ImportOrderRowViewModel)
+                    {
+                        /*
+                         * После вставки в ORDERS обновим зависимые read-only
+                         * поля уже открытой вкладки INSTRUCTION.
+                         */
+                        orderRowsChanged = true;
+                    }
+
+                    /*
+                     * ProductCode может быть изменён не только ComboBox,
+                     * но и вставкой из Excel. В этом случае вручную
+                     * подтягиваем связанные поля из ORDERS.
+                     */
+                    if (item is ImportInstructionRowViewModel instructionRow
+                        && string.Equals(
+                            columns[columnIndex].PropertyName,
+                            nameof(ImportInstructionRowViewModel.ProductCode),
+                            StringComparison.Ordinal))
+                    {
+                        RefreshImportInstructionOrderDetails(
+                            instructionRow);
+                    }
                 }
             }
 
             pasteRowOffset++;
         }
 
-        grid.Items.Refresh();
+        /*
+         * Здесь нельзя вызывать grid.Items.Refresh().
+         *
+         * Ctrl+V обрабатывается в PreviewKeyDown, поэтому DataGrid может
+         * находиться внутри EditItem или AddNew transaction. CollectionView
+         * запрещает Refresh в этом состоянии и выбрасывает:
+         *
+         * 'Refresh' is not allowed during an AddNew or EditItem transaction.
+         *
+         * Все строки Import/Edit наследуются от ObservableObject, а коллекции
+         * являются ObservableCollection, поэтому PropertyChanged и CollectionChanged
+         * уже автоматически обновляют отображение без ручного Refresh.
+         */
+        if (orderRowsChanged)
+        {
+            RefreshImportInstructionOrderDetails();
+        }
 
         if (rejectedLookupCells > 0)
         {
@@ -1337,6 +1554,43 @@ public partial class MainWindow
             return clipboardBinding.Path?.Path ?? "";
 
         return column.SortMemberPath ?? "";
+    }
+
+    /// <summary>
+    /// Возвращает строку из текущего представления DataGrid.
+    ///
+    /// Нельзя использовать индекс grid.Items напрямую для ItemsSource:
+    /// после сортировки или фильтрации их порядок может отличаться.
+    /// </summary>
+    private static object? GetPasteTargetItem(
+        DataGrid grid,
+        IList targetList,
+        int startViewRow,
+        int pasteRowOffset)
+    {
+        var targetViewRow =
+            startViewRow + pasteRowOffset;
+
+        if (targetViewRow >= 0
+            && targetViewRow < grid.Items.Count)
+        {
+            var viewItem =
+                grid.Items[targetViewRow];
+
+            if (viewItem is not null
+                && viewItem != CollectionView.NewItemPlaceholder)
+            {
+                return viewItem;
+            }
+        }
+
+        /*
+         * За пределами текущего представления сохраняем прежнее
+         * поведение: создаём новую строку в исходной коллекции.
+         */
+        return EnsurePasteRow(
+            targetList,
+            targetList.Count);
     }
 
     /// <summary>

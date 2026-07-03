@@ -33,7 +33,7 @@
                     Value="CellOrRowHeader" />
 
             <Setter Property="ClipboardCopyMode"
-                    Value="IncludeHeader" />
+                    Value="ExcludeHeader" />
 
             <Setter Property="HeadersVisibility"
                     Value="Column" />
@@ -640,7 +640,7 @@
                         <StackPanel>
                             <TextBlock Text="Instructions"
                                        Style="{StaticResource SectionTitleText}" />
-                            <TextBlock Text="Links Runtime equipment to instruction PDF files. Station, Type, Equipment and Product code are selected from dictionaries; Source points to files in the folder below."
+                            <TextBlock Text="Runtime provides Station, Type and Equipment. Select only Product code; Supplier, Source, Description and Image are filled automatically from ORDERS."
                                        Style="{StaticResource MutedText}"
                                        TextWrapping="Wrap" />
 
@@ -694,90 +694,72 @@
                                 </control:DataGridTemplateColumn.CellTemplate>
                             </control:DataGridTemplateColumn>
 
+                            <!--
+                            Runtime Catalog columns.
+                            They are read-only and use a secondary text color
+                            to make the non-editable state visually clear.
+                            -->
                             <control:DataGridTemplateColumn Header="Station"
                                                             FieldName="Station"
                                                             ClipboardContentBinding="{Binding Station}"
                                                             SortMemberPath="Station"
+                                                            IsReadOnly="True"
                                                             IsColumnFiltered="True"
                                                             Width="140">
                                 <control:DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <ui:TextBlock Text="{Binding Station}"
+                                                      Appearance="Secondary"
                                                       Margin="8,0"
                                                       VerticalAlignment="Center"
-                                                      TextTrimming="CharacterEllipsis" />
+                                                      TextTrimming="CharacterEllipsis"
+                                                      ToolTip="{Binding Station}" />
                                     </DataTemplate>
                                 </control:DataGridTemplateColumn.CellTemplate>
-                                <control:DataGridTemplateColumn.CellEditingTemplate>
-                                    <DataTemplate>
-                                        <ComboBox ItemsSource="{Binding DataContext.ImportRuntimeStationOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
-                                                  SelectedItem="{Binding Station, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  IsEditable="False"
-                                                  IsTextSearchEnabled="True"
-                                                  IsSynchronizedWithCurrentItem="False"
-                                                  HorizontalAlignment="Stretch"
-                                                  VerticalAlignment="Center"
-                                                  Loaded="OnOrderLookupComboBoxLoaded" />
-                                    </DataTemplate>
-                                </control:DataGridTemplateColumn.CellEditingTemplate>
                             </control:DataGridTemplateColumn>
 
                             <control:DataGridTemplateColumn Header="Type"
                                                             FieldName="Type"
                                                             ClipboardContentBinding="{Binding Type}"
                                                             SortMemberPath="Type"
+                                                            IsReadOnly="True"
                                                             IsColumnFiltered="True"
                                                             Width="120">
                                 <control:DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <ui:TextBlock Text="{Binding Type}"
+                                                      Appearance="Secondary"
                                                       Margin="8,0"
                                                       VerticalAlignment="Center"
-                                                      TextTrimming="CharacterEllipsis" />
+                                                      TextTrimming="CharacterEllipsis"
+                                                      ToolTip="{Binding Type}" />
                                     </DataTemplate>
                                 </control:DataGridTemplateColumn.CellTemplate>
-                                <control:DataGridTemplateColumn.CellEditingTemplate>
-                                    <DataTemplate>
-                                        <ComboBox ItemsSource="{Binding DataContext.ImportRuntimeTypeOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
-                                                  SelectedItem="{Binding Type, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  IsEditable="False"
-                                                  IsTextSearchEnabled="True"
-                                                  IsSynchronizedWithCurrentItem="False"
-                                                  HorizontalAlignment="Stretch"
-                                                  VerticalAlignment="Center"
-                                                  Loaded="OnOrderLookupComboBoxLoaded" />
-                                    </DataTemplate>
-                                </control:DataGridTemplateColumn.CellEditingTemplate>
                             </control:DataGridTemplateColumn>
 
                             <control:DataGridTemplateColumn Header="Equipment"
                                                             FieldName="Equipment"
                                                             ClipboardContentBinding="{Binding Equipment}"
                                                             SortMemberPath="Equipment"
+                                                            IsReadOnly="True"
                                                             IsColumnFiltered="True"
                                                             Width="220">
                                 <control:DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <ui:TextBlock Text="{Binding Equipment}"
+                                                      Appearance="Secondary"
                                                       Margin="8,0"
                                                       VerticalAlignment="Center"
-                                                      TextTrimming="CharacterEllipsis" />
+                                                      TextTrimming="CharacterEllipsis"
+                                                      ToolTip="{Binding Equipment}" />
                                     </DataTemplate>
                                 </control:DataGridTemplateColumn.CellTemplate>
-                                <control:DataGridTemplateColumn.CellEditingTemplate>
-                                    <DataTemplate>
-                                        <ComboBox ItemsSource="{Binding DataContext.ImportRuntimeEquipmentOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
-                                                  SelectedItem="{Binding Equipment, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  IsEditable="False"
-                                                  IsTextSearchEnabled="True"
-                                                  IsSynchronizedWithCurrentItem="False"
-                                                  HorizontalAlignment="Stretch"
-                                                  VerticalAlignment="Center"
-                                                  Loaded="OnOrderLookupComboBoxLoaded" />
-                                    </DataTemplate>
-                                </control:DataGridTemplateColumn.CellEditingTemplate>
                             </control:DataGridTemplateColumn>
 
+                            <!--
+                            Единственная редактируемая колонка INSTRUCTION.
+                            ComboBox получает целые строки ORDERS и показывает ProductCode.
+                            -->
                             <control:DataGridTemplateColumn Header="Product code"
                                                             FieldName="ProductCode"
                                                             ClipboardContentBinding="{Binding ProductCode}"
@@ -789,13 +771,17 @@
                                         <ui:TextBlock Text="{Binding ProductCode}"
                                                       Margin="8,0"
                                                       VerticalAlignment="Center"
-                                                      TextTrimming="CharacterEllipsis" />
+                                                      TextTrimming="CharacterEllipsis"
+                                                      ToolTip="{Binding ProductCode}" />
                                     </DataTemplate>
                                 </control:DataGridTemplateColumn.CellTemplate>
+
                                 <control:DataGridTemplateColumn.CellEditingTemplate>
                                     <DataTemplate>
-                                        <ComboBox ItemsSource="{Binding DataContext.ImportProductCodeOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
-                                                  SelectedItem="{Binding ProductCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        <ComboBox ItemsSource="{Binding DataContext.ImportOrders, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
+                                                  SelectedItem="{Binding SelectedOrder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  DisplayMemberPath="ProductCode"
+                                                  TextSearch.TextPath="ProductCode"
                                                   IsEditable="False"
                                                   IsTextSearchEnabled="True"
                                                   IsSynchronizedWithCurrentItem="False"
@@ -806,15 +792,85 @@
                                 </control:DataGridTemplateColumn.CellEditingTemplate>
                             </control:DataGridTemplateColumn>
 
-                            <control:DataGridTextColumn Header="Source"
-                                                        Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
-                                                        IsColumnFiltered="True"
-                                                        Width="260" />
+                            <!--
+                            ORDERS metadata. These values are always derived
+                            from the selected Product code and cannot be edited here.
+                            -->
+                            <control:DataGridTemplateColumn Header="Supplier"
+                                                            FieldName="Supplier"
+                                                            ClipboardContentBinding="{Binding Supplier}"
+                                                            SortMemberPath="Supplier"
+                                                            IsReadOnly="True"
+                                                            IsColumnFiltered="True"
+                                                            Width="180">
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ui:TextBlock Text="{Binding Supplier}"
+                                                      Appearance="Secondary"
+                                                      Margin="8,0"
+                                                      VerticalAlignment="Center"
+                                                      TextTrimming="CharacterEllipsis"
+                                                      ToolTip="{Binding Supplier}" />
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+                            </control:DataGridTemplateColumn>
 
-                            <control:DataGridTextColumn Header="Description"
-                                                        Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
-                                                        IsColumnFiltered="True"
-                                                        Width="*" />
+                            <control:DataGridTemplateColumn Header="Source"
+                                                            FieldName="Source"
+                                                            ClipboardContentBinding="{Binding Source}"
+                                                            SortMemberPath="Source"
+                                                            IsReadOnly="True"
+                                                            IsColumnFiltered="True"
+                                                            Width="260">
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ui:TextBlock Text="{Binding Source}"
+                                                      Appearance="Secondary"
+                                                      Margin="8,0"
+                                                      VerticalAlignment="Center"
+                                                      TextTrimming="CharacterEllipsis"
+                                                      ToolTip="{Binding Source}" />
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+                            </control:DataGridTemplateColumn>
+
+                            <control:DataGridTemplateColumn Header="Description"
+                                                            FieldName="Description"
+                                                            ClipboardContentBinding="{Binding Description}"
+                                                            SortMemberPath="Description"
+                                                            IsReadOnly="True"
+                                                            IsColumnFiltered="True"
+                                                            Width="*">
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ui:TextBlock Text="{Binding Description}"
+                                                      Appearance="Secondary"
+                                                      Margin="8,0"
+                                                      VerticalAlignment="Center"
+                                                      TextTrimming="CharacterEllipsis"
+                                                      ToolTip="{Binding Description}" />
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+                            </control:DataGridTemplateColumn>
+
+                            <control:DataGridTemplateColumn Header="Image"
+                                                            FieldName="Image"
+                                                            ClipboardContentBinding="{Binding Image}"
+                                                            SortMemberPath="Image"
+                                                            IsReadOnly="True"
+                                                            IsColumnFiltered="True"
+                                                            Width="220">
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ui:TextBlock Text="{Binding Image}"
+                                                      Appearance="Secondary"
+                                                      Margin="8,0"
+                                                      VerticalAlignment="Center"
+                                                      TextTrimming="CharacterEllipsis"
+                                                      ToolTip="{Binding Image}" />
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+                            </control:DataGridTemplateColumn>
                         </control:FilterDataGrid.Columns>
                     </control:FilterDataGrid>
                 </Grid>
