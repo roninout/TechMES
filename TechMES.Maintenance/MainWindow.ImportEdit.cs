@@ -17,10 +17,11 @@ public partial class MainWindow
     private string _supplierLogoFilter = "";
     private string _supplierNameFilter = "";
     private string _supplierStatusFilter = "";
+    private Task<RuntimeCatalogSnapshot>? _importRuntimeCatalogLoadTask;
 
     /// <summary>
-    /// Lazy-loads Import/Edit tabs. Supplier and Orders read PostgreSQL directly;
-    /// Instruction and Scheme first require Runtime catalog data.
+    /// Lazy-loads Import/Edit tabs. Runtime catalog is cached because ORDERS,
+    /// INSTRUCTION and SCHEME use the same type/station/equipment dictionaries.
     /// </summary>
     private async void OnImportTabSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -40,6 +41,9 @@ public partial class MainWindow
                     break;
 
                 case "ORDERS" when ImportOrders.Count == 0:
+                    if (!await EnsureImportOrderLookupDataAsync())
+                        break;
+
                     await RefreshImportOrdersAsync();
                     break;
 
@@ -204,6 +208,9 @@ public partial class MainWindow
     {
         try
         {
+            if (!await EnsureImportOrderLookupDataAsync())
+                return;
+
             await RefreshImportOrdersAsync();
         }
         catch (Exception ex)
@@ -220,6 +227,22 @@ public partial class MainWindow
     {
         try
         {
+            if (!await EnsureImportOrderLookupDataAsync())
+                return;
+
+            var invalidLookupMessages = GetInvalidImportOrderLookupMessages();
+            if (invalidLookupMessages.Count > 0)
+            {
+                ImportOrderStatusText = $"Orders contain invalid lookup values: {invalidLookupMessages.Count}.";
+                MessageBox.Show(
+                    this,
+                    string.Join(Environment.NewLine, invalidLookupMessages.Take(12)),
+                    "ORDERS lookup validation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
             var saved = await _infoImportEditStore.SaveOrdersAsync(
                 GetRuntimeDatabaseConnectionString(),
                 ImportOrders);
@@ -331,6 +354,7 @@ public partial class MainWindow
             ImportSuppliers.Add(row);
 
         ApplyImportSupplierFilter();
+        RefreshImportOrderSupplierOptions();
         ImportSupplierStatusText = $"Supplier rows loaded: {ImportSuppliers.Count}.";
     }
 
@@ -383,28 +407,149 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Loads Runtime catalog for future Instruction and Scheme tabs.
+    /// Loads all lookup data required by ORDERS editors.
+    /// Suppliers come from PostgreSQL; types come from Runtime catalog.
+    /// </summary>
+    private async Task<bool> EnsureImportOrderLookupDataAsync()
+    {
+        if (ImportSuppliers.Count == 0)
+            await RefreshImportSuppliersAsync();
+
+        RefreshImportOrderSupplierOptions();
+
+        if (_importRuntimeCatalog is null)
+            ImportOrderStatusText = "Loading equipment types from Runtime...";
+
+        return await EnsureRuntimeCatalogForImportAsync();
+    }
+
+    /// <summary>
+    /// Loads Runtime catalog for ORDERS, Instruction and Scheme tabs.
     /// A stopped Runtime is a normal operator error, so it is shown as a clear modal message.
     /// </summary>
-    private async Task EnsureRuntimeCatalogForImportAsync()
+    private async Task<bool> EnsureRuntimeCatalogForImportAsync()
     {
+        if (_importRuntimeCatalog is not null)
+        {
+            RefreshImportOrderTypeOptions();
+            return true;
+        }
+
+        IsImportRuntimeCatalogLoading = true;
+
         try
         {
             ImportRuntimeStatusText = "Loading Runtime catalog...";
-            _importRuntimeCatalog = await _runtimeCatalogClient.LoadEquipmentCatalogAsync(GetRuntimeBaseUrlForImport());
+
+            // Даём WPF отрисовать footer и ProgressBar до начала HTTP-запроса.
+            await Dispatcher.InvokeAsync(
+                static () => { },
+                System.Windows.Threading.DispatcherPriority.Render);
+
+            _importRuntimeCatalogLoadTask ??=
+                _runtimeCatalogClient.LoadEquipmentCatalogAsync(
+                    GetRuntimeBaseUrlForImport());
+
+            _importRuntimeCatalog = await _importRuntimeCatalogLoadTask;
+
+            RefreshImportOrderTypeOptions();
+
             ImportRuntimeStatusText =
-                $"Runtime catalog loaded: stations {_importRuntimeCatalog.Stations.Count}, types {_importRuntimeCatalog.Types.Count}, equipment {_importRuntimeCatalog.Equipments.Count}.";
+                $"Runtime catalog loaded: stations {_importRuntimeCatalog.Stations.Count}, " +
+                $"types {_importRuntimeCatalog.Types.Count}, " +
+                $"equipment {_importRuntimeCatalog.Equipments.Count}.";
+
+            return true;
         }
         catch (Exception ex)
         {
             _importRuntimeCatalog = null;
-            ImportRuntimeStatusText = $"Runtime catalog load failed: {ex.Message}";
+            _importRuntimeCatalogLoadTask = null;
+            ImportOrderTypeOptions.Clear();
+
+            ImportRuntimeStatusText =
+                $"Runtime catalog load failed: {ex.Message}";
+
             MessageBox.Show(
                 this,
-                "Runtime Service is required for Instruction and Scheme import. Start Runtime Service and try again.",
+                "Runtime Service is required for ORDERS, Instruction and Scheme import. " +
+                "Start Runtime Service and try again.",
                 "Runtime required",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
+
+            return false;
+        }
+        finally
+        {
+            IsImportRuntimeCatalogLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the Supplier combobox options from the current SUPPLIER table rows.
+    /// Pending-delete rows are excluded so ORDERS cannot link to suppliers that will be removed.
+    /// </summary>
+    private void RefreshImportOrderSupplierOptions()
+    {
+        ReplaceStringOptions(
+            ImportOrderSupplierOptions,
+            ImportSuppliers
+                .Where(row => !row.IsPendingDelete)
+                .Select(row => row.Supplier)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Rebuilds the Type combobox options from the cached Runtime catalog snapshot.
+    /// </summary>
+    private void RefreshImportOrderTypeOptions()
+    {
+        ReplaceStringOptions(
+            ImportOrderTypeOptions,
+            _importRuntimeCatalog?.Types ?? []);
+    }
+
+    /// <summary>
+    /// Replaces an observable string list while keeping the same collection instance for XAML bindings.
+    /// </summary>
+    //private static void ReplaceStringOptions(ObservableCollection<string> target, IEnumerable<string> source)
+    //{
+    //    target.Clear();
+    //    foreach (var value in source)
+    //        target.Add(value);
+    //}
+
+    private static void ReplaceStringOptions(ObservableCollection<string> target, IEnumerable<string> source)
+    {
+        var values = source
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        /*
+         * Нельзя каждый раз выполнять target.Clear().
+         *
+         * ComboBox привязан к SelectedItem в режиме TwoWay.
+         * При очистке ItemsSource WPF сбрасывает выбранное значение
+         * и записывает null обратно в ImportOrderRowViewModel.
+         */
+        if (target.SequenceEqual(
+                values,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        target.Clear();
+
+        foreach (var value in values)
+        {
+            target.Add(value);
         }
     }
 
@@ -452,7 +597,7 @@ public partial class MainWindow
     /// DataGridTextColumn uses Binding, while template columns use ClipboardContentBinding.
     /// This preserves the Excel workflow after switching SUPPLIER cells to WPF UI templates.
     /// </summary>
-    private static void PasteClipboardIntoImportGrid(DataGrid grid, string clipboardText)
+    private void PasteClipboardIntoImportGrid(DataGrid grid, string clipboardText)
     {
         if (grid.ItemsSource is not IList targetList)
             return;
@@ -489,6 +634,7 @@ public partial class MainWindow
             .Split('\n');
 
         var pasteRowOffset = 0;
+        var rejectedLookupCells = 0;
         foreach (var line in lines)
         {
             if (string.IsNullOrWhiteSpace(line))
@@ -510,13 +656,127 @@ public partial class MainWindow
 
                 var property = item.GetType().GetProperty(columns[columnIndex].PropertyName);
                 if (property?.CanWrite == true && property.PropertyType == typeof(string))
-                    property.SetValue(item, cells[cellIndex].Trim());
+                {
+                    var value = cells[cellIndex].Trim();
+                    var valueToSet = value;
+                    if (item is ImportOrderRowViewModel
+                        && !TryNormalizeImportOrderLookupValue(columns[columnIndex].PropertyName, value, out valueToSet))
+                    {
+                        rejectedLookupCells++;
+                        continue;
+                    }
+
+                    property.SetValue(item, valueToSet);
+                }
             }
 
             pasteRowOffset++;
         }
 
         grid.Items.Refresh();
+
+        if (rejectedLookupCells > 0)
+        {
+            var message = $"Paste skipped invalid ORDERS lookup cells: {rejectedLookupCells}. Type and Supplier must exist in their dictionaries.";
+            ImportOrderStatusText = message;
+            AppendDiagnostics(message);
+        }
+    }
+
+    /// <summary>
+    /// Normalizes pasted ORDERS Type/Supplier values against combobox dictionaries.
+    /// Empty values are allowed, but non-empty unknown values are rejected.
+    /// </summary>
+    private bool TryNormalizeImportOrderLookupValue(string propertyName, string value, out string normalizedValue)
+    {
+        normalizedValue = value.Trim();
+
+        var options = GetImportOrderLookupOptions(propertyName);
+        if (options is null || string.IsNullOrWhiteSpace(normalizedValue))
+            return true;
+
+        var candidate = normalizedValue;
+        var match = options.FirstOrDefault(option =>
+            option.Equals(candidate, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+            return false;
+
+        normalizedValue = match;
+        return true;
+    }
+
+    /// <summary>
+    /// Returns user-facing validation messages for ORDERS rows that point to missing dictionaries.
+    /// </summary>
+    private IReadOnlyList<string> GetInvalidImportOrderLookupMessages()
+    {
+        var messages = new List<string>();
+        for (var index = 0; index < ImportOrders.Count; index++)
+        {
+            var row = ImportOrders[index];
+            AddImportOrderLookupValidationMessage(
+                messages,
+                index,
+                nameof(ImportOrderRowViewModel.Type),
+                row.Type,
+                "Runtime catalog Type");
+            AddImportOrderLookupValidationMessage(
+                messages,
+                index,
+                nameof(ImportOrderRowViewModel.Supplier),
+                row.Supplier,
+                "SUPPLIER table");
+        }
+
+        return messages;
+    }
+
+    /// <summary>
+    /// Adds a single lookup validation message when a non-empty value is not present in the dictionary.
+    /// </summary>
+    private void AddImportOrderLookupValidationMessage(ICollection<string> messages, int rowIndex, string propertyName, string value, string dictionaryName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            messages.Add(
+                $"Row {rowIndex + 1}: {propertyName} is required.");
+
+            return;
+        }
+
+        var options = GetImportOrderLookupOptions(propertyName);
+
+        if (options is null)
+        {
+            return;
+        }
+
+        var normalizedValue = value.Trim();
+
+        if (options.Any(option =>
+                option.Equals(
+                    normalizedValue,
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        messages.Add(
+            $"Row {rowIndex + 1}: {propertyName} " +
+            $"'{normalizedValue}' is not found in {dictionaryName}.");
+    }
+
+    /// <summary>
+    /// Maps ORDERS lookup columns to their current valid option lists.
+    /// </summary>
+    private IEnumerable<string>? GetImportOrderLookupOptions(string propertyName)
+    {
+        return propertyName switch
+        {
+            nameof(ImportOrderRowViewModel.Type) => ImportOrderTypeOptions,
+            nameof(ImportOrderRowViewModel.Supplier) => ImportOrderSupplierOptions,
+            _ => null
+        };
     }
 
     /// <summary>
@@ -550,6 +810,7 @@ public partial class MainWindow
 
             ImportSupplierStatusText =
                 $"Supplier rows pending delete: {GetPendingDeletedSupplierNames().Count}. Press Save to write changes; Refresh cancels pending delete.";
+            RefreshImportOrderSupplierOptions();
             CollectionViewSource.GetDefaultView(ImportSuppliers).Refresh();
             return true;
         }

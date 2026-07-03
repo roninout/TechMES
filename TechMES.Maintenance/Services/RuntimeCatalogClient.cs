@@ -46,9 +46,23 @@ public sealed class RuntimeCatalogClient
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        //var types = response.Equipments
+        //    .Select(x => string.IsNullOrWhiteSpace(x.TypeName) ? x.TypeGroup.ToString() : x.TypeName)
+        //    .Where(x => !string.IsNullOrWhiteSpace(x))
+        //    .Distinct(StringComparer.OrdinalIgnoreCase)
+        //    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+        //    .ToList();
+
+        /*
+         * TypeName содержит исходный SCADA Equipment Type:
+         * AnalogIn, DigitalIn, ValveA и т. д.
+         *
+         * Для ORDERS нужен пользовательский алиас, уже рассчитанный Runtime
+         * в TypeGroup: AI, DI, VGA, ATV и т. д.
+         */
         var types = response.Equipments
-            .Select(x => string.IsNullOrWhiteSpace(x.TypeName) ? x.TypeGroup.ToString() : x.TypeName)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.TypeGroup.ToString())
+            .Where(IsVisibleRuntimeTypeAlias)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -65,6 +79,20 @@ public sealed class RuntimeCatalogClient
             Equipments = equipments,
             TotalCount = response.TotalCount
         };
+    }
+
+    /// <summary>
+    /// Исключает служебные группы, которые не должны попадать в ORDERS Type.
+    /// </summary>
+    private static bool IsVisibleRuntimeTypeAlias(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        return !value.Equals("Unknown", StringComparison.OrdinalIgnoreCase)
+            && !value.Equals("None", StringComparison.OrdinalIgnoreCase)
+            && !value.Equals("All", StringComparison.OrdinalIgnoreCase)
+            && !value.Equals("Favorites", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -79,6 +79,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     private string _importSupplierStatusText = "Supplier table has not been loaded.";
     private string _importOrderStatusText = "Orders table has not been loaded.";
     private string _importRuntimeStatusText = "Runtime catalog has not been loaded yet.";
+    private bool _isImportRuntimeCatalogLoading;
     private RuntimeCatalogSnapshot? _importRuntimeCatalog;
     private BackupItemViewModel? _selectedBackup;
     private ApplicationTheme _maintenanceTheme = ApplicationTheme.Dark;
@@ -166,6 +167,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// Строки ORDERS для ручного редактирования product code, supplier и источников PDF/изображений.
     /// </summary>
     public ObservableCollection<ImportOrderRowViewModel> ImportOrders { get; } = [];
+
+    /// <summary>
+    /// Valid Type values for ORDERS. Loaded once from Runtime catalog and reused by Import/Edit tabs.
+    /// </summary>
+    public ObservableCollection<string> ImportOrderTypeOptions { get; } = [];
+
+    /// <summary>
+    /// Valid Supplier values for ORDERS. Built from the SUPPLIER tab rows.
+    /// </summary>
+    public ObservableCollection<string> ImportOrderSupplierOptions { get; } = [];
 
     /// <summary>
     /// Свободное место на дисках, где находятся репозиторий, publish root и backup root.
@@ -355,6 +366,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
             _importRuntimeStatusText = value;
             OnPropertyChanged(nameof(ImportRuntimeStatusText));
+        }
+    }
+
+    /// <summary>
+    /// Показывает, что Equipment Catalog сейчас загружается из Runtime Service.
+    /// Используется для отображения ProgressBar во вкладке Import/Edit.
+    /// </summary>
+    public bool IsImportRuntimeCatalogLoading
+    {
+        get => _isImportRuntimeCatalogLoading;
+        private set
+        {
+            if (_isImportRuntimeCatalogLoading == value)
+                return;
+
+            _isImportRuntimeCatalogLoading = value;
+            OnPropertyChanged(nameof(IsImportRuntimeCatalogLoading));
         }
     }
 
@@ -1141,7 +1169,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     private void ApplyMaintenanceTheme(ApplicationTheme theme)
     {
         _maintenanceTheme = theme;
-        ApplicationThemeManager.Apply(theme, Wpf.Ui.Controls.WindowBackdropType.None,updateAccent: true);
+        ApplicationThemeManager.Apply(theme, Wpf.Ui.Controls.WindowBackdropType.None, updateAccent: true);
         ApplyCompatibilityThemeResources();
         OnPropertyChanged(nameof(ThemeToggleText));
     }

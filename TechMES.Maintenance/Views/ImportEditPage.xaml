@@ -6,8 +6,12 @@
                               xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                               xmlns:control="http://filterdatagrid.control.com/2021"
                               xmlns:views="clr-namespace:TechMES.Maintenance.Views"
+                              xmlns:converters="clr-namespace:TechMES.Maintenance.Converters"
                               mc:Ignorable="d">
     <views:MaintenancePageControl.Resources>
+        <!-- Номер строки без использования AlternationCount. -->
+        <converters:RowNumberConverter x:Key="RowNumberConverter" />
+
         <!--<Style x:Key="ImportGrid" TargetType="{x:Type control:FilterDataGrid}">-->
         <Style x:Key="ImportGrid"
                TargetType="{x:Type control:FilterDataGrid}"
@@ -220,6 +224,32 @@
                             </control:FilterDataGrid.CellStyle>
                             <control:FilterDataGrid.Columns>
 
+
+                                <!-- Номер строки в текущем представлении DataGrid. -->
+                                <control:DataGridTemplateColumn
+                                    Header="№"
+                                    Width="50"
+                                    IsReadOnly="True"
+                                    IsColumnFiltered="False"
+                                    CanUserSort="False"
+                                    CanUserReorder="False"
+                                    CanUserResize="False">
+
+                                    <control:DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+
+                                            <TextBlock
+                                                Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
+                                                               Converter={StaticResource RowNumberConverter}}"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                TextAlignment="Center" />
+
+                                        </DataTemplate>
+                                    </control:DataGridTemplateColumn.CellTemplate>
+
+                                </control:DataGridTemplateColumn>
+
                                 <!-- Логотип отображается в WPF UI Card; двойной клик открывает выбор файла. -->
                                 <control:DataGridTemplateColumn
                                 Header="Logo"
@@ -424,18 +454,151 @@
                                         FilterLanguage="Russian"
                                         ItemsSource="{Binding ImportOrders}">
                         <control:FilterDataGrid.Columns>
-                            <control:DataGridTextColumn Header="Type"
-                                                    Binding="{Binding Type, UpdateSourceTrigger=PropertyChanged}"
+
+
+                            <!-- Номер строки в текущем представлении DataGrid. -->
+                            <control:DataGridTemplateColumn
+                                Header="№"
+                                Width="50"
+                                IsReadOnly="True"
+                                IsColumnFiltered="False"
+                                CanUserSort="False"
+                                CanUserReorder="False"
+                                CanUserResize="False">
+
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+
+                                        <TextBlock
+                                            Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
+                                                           Converter={StaticResource RowNumberConverter}}"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            TextAlignment="Center" />
+
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+
+                            </control:DataGridTemplateColumn>
+
+                            <control:DataGridTemplateColumn
+                                Header="Type"
+                                FieldName="Type"
+                                ClipboardContentBinding="{Binding Type}"
+                                SortMemberPath="Type"
+                                IsColumnFiltered="True"
+                                Width="150">
+
+                                <!-- Первый клик: только выделение ячейки. -->
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+
+                                        <ui:TextBlock
+                                            Text="{Binding Type}"
+                                            Margin="8,0"
+                                            VerticalAlignment="Center"
+                                            TextTrimming="CharacterEllipsis" />
+
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+
+                                <!-- Второй клик: режим редактирования с ComboBox. -->
+                                <control:DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+
+                                        <ComboBox
+                                                            ItemsSource="{Binding DataContext.ImportOrderTypeOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
+                                                            SelectedItem="{Binding Type, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                            IsEditable="False"
+                                                            IsTextSearchEnabled="True"
+                                                            IsSynchronizedWithCurrentItem="False"
+                                                            HorizontalAlignment="Stretch"
+                                                            VerticalAlignment="Center"
+                                                            Loaded="OnOrderLookupComboBoxLoaded" />
+
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellEditingTemplate>
+
+                            </control:DataGridTemplateColumn>
+
+                            <!--<control:DataGridTemplateColumn Header="Type"
+                                                    FieldName="Type"
+                                                    ClipboardContentBinding="{Binding Type}"
+                                                    SortMemberPath="Type"
                                                     IsColumnFiltered="True"
-                                                    Width="150" />
+                                                    Width="150">
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ComboBox ItemsSource="{Binding DataContext.ImportOrderTypeOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
+                                                  SelectedItem="{Binding Type, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  IsEditable="False"
+                                                  IsTextSearchEnabled="True"
+                                                  MinWidth="120" />
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+                            </control:DataGridTemplateColumn>-->
                             <control:DataGridTextColumn Header="Product code"
                                                     Binding="{Binding ProductCode, UpdateSourceTrigger=PropertyChanged}"
                                                     IsColumnFiltered="True"
                                                     Width="210" />
-                            <control:DataGridTextColumn Header="Supplier"
-                                                    Binding="{Binding Supplier, UpdateSourceTrigger=PropertyChanged}"
+
+                            <control:DataGridTemplateColumn
+                                Header="Supplier"
+                                FieldName="Supplier"
+                                ClipboardContentBinding="{Binding Supplier}"
+                                SortMemberPath="Supplier"
+                                IsColumnFiltered="True"
+                                Width="180">
+
+                                <!-- Первый клик: только выделение ячейки. -->
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+
+                                        <ui:TextBlock
+                                            Text="{Binding Supplier}"
+                                            Margin="8,0"
+                                            VerticalAlignment="Center"
+                                            TextTrimming="CharacterEllipsis" />
+
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+
+                                <!-- Второй клик: режим редактирования с ComboBox. -->
+                                <control:DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+
+                                        <ComboBox
+                                                                ItemsSource="{Binding DataContext.ImportOrderSupplierOptions,RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
+                                                                SelectedItem="{Binding Supplier, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                IsEditable="False"
+                                                                IsTextSearchEnabled="True"
+                                                                IsSynchronizedWithCurrentItem="False"
+                                                                HorizontalAlignment="Stretch"
+                                                                VerticalAlignment="Center"
+                                                                Loaded="OnOrderLookupComboBoxLoaded" />
+
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellEditingTemplate>
+
+                            </control:DataGridTemplateColumn>
+
+
+                            <!--<control:DataGridTemplateColumn Header="Supplier"
+                                                    FieldName="Supplier"
+                                                    ClipboardContentBinding="{Binding Supplier}"
+                                                    SortMemberPath="Supplier"
                                                     IsColumnFiltered="True"
-                                                    Width="180" />
+                                                    Width="180">
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ComboBox ItemsSource="{Binding DataContext.ImportOrderSupplierOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
+                                                  SelectedItem="{Binding Supplier, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  IsEditable="False"
+                                                  IsTextSearchEnabled="True"
+                                                  MinWidth="150" />
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+                            </control:DataGridTemplateColumn>-->
                             <control:DataGridTextColumn Header="Source"
                                                     Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
                                                     IsColumnFiltered="True"
@@ -565,10 +728,17 @@
 
                 </ui:Button>
 
-                <!-- Центральный статус выбранной вкладки. -->
-                <Grid Grid.Column="1" Margin="16,0">
+                <!-- Центральный статус и ProgressBar выбранной вкладки. -->
+                <Grid Grid.Column="1"
+                      Margin="16,0">
 
-                    <TextBlock Text="{Binding ImportSupplierStatusText}"
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Text="{Binding ImportSupplierStatusText}"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                TextAlignment="Center"
@@ -588,7 +758,8 @@
                         </TextBlock.Style>
                     </TextBlock>
 
-                    <TextBlock Text="{Binding ImportOrderStatusText}"
+                    <TextBlock Grid.Row="0"
+                               Text="{Binding ImportOrderStatusText}"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                TextAlignment="Center"
@@ -608,7 +779,8 @@
                         </TextBlock.Style>
                     </TextBlock>
 
-                    <TextBlock Text="{Binding ImportRuntimeStatusText}"
+                    <TextBlock Grid.Row="0"
+                               Text="{Binding ImportRuntimeStatusText}"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                TextAlignment="Center"
@@ -632,6 +804,40 @@
                         </TextBlock.Style>
                     </TextBlock>
 
+
+
+                    <!--
+                    Неопределённый WPF UI ProgressBar.
+                    Показывается во время получения Equipment Catalog из Runtime Service.
+                    -->
+                    <ProgressBar Grid.Row="1"
+                                 Height="4"
+                                 Margin="0,4,0,0"
+                                 HorizontalAlignment="Stretch"
+                                 VerticalAlignment="Bottom"
+                                 IsIndeterminate="True">
+
+                        <ProgressBar.Style>
+                            <Style TargetType="{x:Type ProgressBar}"
+                                   BasedOn="{StaticResource {x:Type ProgressBar}}">
+
+                                <Setter Property="Visibility"
+                                        Value="Collapsed" />
+
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsImportRuntimeCatalogLoading}"
+                                                 Value="True">
+
+                                        <Setter Property="Visibility"
+                                                Value="Visible" />
+
+                                    </DataTrigger>
+                                </Style.Triggers>
+
+                            </Style>
+                        </ProgressBar.Style>
+
+                    </ProgressBar>
                 </Grid>
 
                 <!-- SUPPLIER: Save -->
@@ -689,7 +895,6 @@
 
     </Grid>
 </views:MaintenancePageControl>
-
 
 
 
