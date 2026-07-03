@@ -75,8 +75,6 @@
     "RequireScadaAudit": true
   },
   "ImportEdit": {
-    "OrdersPdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction",
-    "InstructionPdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction",
-    "SchemePdfSourceRoot": ""
+    "OrdersPdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction"
   }
 }

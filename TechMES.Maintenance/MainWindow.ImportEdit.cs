@@ -47,9 +47,18 @@ public partial class MainWindow
                     await RefreshImportOrdersAsync();
                     break;
 
-                case "INSTRUCTION":
-                case "SCHEME":
-                    await EnsureRuntimeCatalogForImportAsync();
+                case "INSTRUCTION" when ImportInstructions.Count == 0:
+                    if (!await EnsureImportDocumentLookupDataAsync())
+                        break;
+
+                    await RefreshImportInstructionsAsync();
+                    break;
+
+                case "SCHEME" when ImportSchemeFiles.Count == 0 && ImportSchemeLinks.Count == 0:
+                    if (!await EnsureImportDocumentLookupDataAsync())
+                        break;
+
+                    await RefreshImportSchemesAsync();
                     break;
             }
         }
@@ -230,7 +239,7 @@ public partial class MainWindow
             if (!await EnsureImportOrderLookupDataAsync())
                 return;
 
-            var invalidLookupMessages = GetInvalidImportOrderLookupMessages();
+            var invalidLookupMessages = GetInvalidImportLookupMessages(ImportOrders);
             if (invalidLookupMessages.Count > 0)
             {
                 ImportOrderStatusText = $"Orders contain invalid lookup values: {invalidLookupMessages.Count}.";
@@ -288,6 +297,194 @@ public partial class MainWindow
     private void OnOrdersPdfSourceLostFocus(object sender, RoutedEventArgs e)
     {
         PersistImportEditOptions();
+    }
+
+    /// <summary>
+    /// Reloads INSTRUCTION rows and merges existing DB links with the Runtime equipment catalog.
+    /// </summary>
+    private async void OnRefreshImportInstructionsClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!await EnsureImportDocumentLookupDataAsync())
+                return;
+
+            await RefreshImportInstructionsAsync();
+        }
+        catch (Exception ex)
+        {
+            ImportInstructionStatusText = $"Instruction refresh failed: {ex.Message}";
+            AppendDiagnostics(ImportInstructionStatusText);
+        }
+    }
+
+    /// <summary>
+    /// Saves INSTRUCTION source files and equipment links.
+    /// </summary>
+    private async void OnSaveImportInstructionsClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!await EnsureImportDocumentLookupDataAsync())
+                return;
+
+            var invalidLookupMessages = GetInvalidImportLookupMessages(ImportInstructions);
+            if (invalidLookupMessages.Count > 0)
+            {
+                ImportInstructionStatusText = $"Instruction contains invalid lookup values: {invalidLookupMessages.Count}.";
+                MessageBox.Show(
+                    this,
+                    string.Join(Environment.NewLine, invalidLookupMessages.Take(12)),
+                    "INSTRUCTION lookup validation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            var saved = await _infoImportEditStore.SaveInstructionsAsync(
+                GetRuntimeDatabaseConnectionString(),
+                InstructionPdfSourceRoot,
+                ImportInstructions);
+
+            PersistImportEditOptions();
+            ImportInstructionStatusText = $"Instruction rows saved: {saved}.";
+            AppendDiagnostics(ImportInstructionStatusText);
+            await RefreshImportInstructionsAsync();
+        }
+        catch (Exception ex)
+        {
+            ImportInstructionStatusText = $"Instruction save failed: {ex.Message}";
+            AppendDiagnostics(ImportInstructionStatusText);
+            MessageBox.Show(this, ImportInstructionStatusText, "INSTRUCTION", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Chooses the source folder where new INSTRUCTION PDF files will be taken from.
+    /// </summary>
+    private void OnBrowseInstructionPdfSourceClick(object sender, RoutedEventArgs e)
+    {
+        var folder = ChooseImportSourceFolder("Choose INSTRUCTION PDF source folder", InstructionPdfSourceRoot);
+        if (folder is null)
+            return;
+
+        InstructionPdfSourceRoot = folder;
+        PersistImportEditOptions();
+        ImportInstructionStatusText = $"PDF source folder saved: {InstructionPdfSourceRoot}";
+    }
+
+    /// <summary>
+    /// Persists the INSTRUCTION PDF source folder after manual path editing.
+    /// </summary>
+    private void OnInstructionPdfSourceLostFocus(object sender, RoutedEventArgs e)
+    {
+        PersistImportEditOptions();
+    }
+
+    /// <summary>
+    /// Reloads SCHEME file and equipment-link rows.
+    /// </summary>
+    private async void OnRefreshImportSchemesClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!await EnsureImportDocumentLookupDataAsync())
+                return;
+
+            await RefreshImportSchemesAsync();
+        }
+        catch (Exception ex)
+        {
+            ImportSchemeStatusText = $"Scheme refresh failed: {ex.Message}";
+            AppendDiagnostics(ImportSchemeStatusText);
+        }
+    }
+
+    /// <summary>
+    /// Saves SCHEME files and the equipment-to-scheme link table.
+    /// </summary>
+    private async void OnSaveImportSchemesClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!await EnsureImportDocumentLookupDataAsync())
+                return;
+
+            RefreshImportSchemeSourceOptions();
+
+            var invalidLookupMessages = GetInvalidImportLookupMessages(ImportSchemeFiles)
+                .Concat(GetInvalidImportLookupMessages(ImportSchemeLinks))
+                .ToList();
+            if (invalidLookupMessages.Count > 0)
+            {
+                ImportSchemeStatusText = $"Scheme contains invalid lookup values: {invalidLookupMessages.Count}.";
+                MessageBox.Show(
+                    this,
+                    string.Join(Environment.NewLine, invalidLookupMessages.Take(12)),
+                    "SCHEME lookup validation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            var saved = await _infoImportEditStore.SaveSchemesAsync(
+                GetRuntimeDatabaseConnectionString(),
+                SchemePdfSourceRoot,
+                ImportSchemeFiles,
+                ImportSchemeLinks);
+
+            PersistImportEditOptions();
+            ImportSchemeStatusText = $"Scheme rows saved: {saved}.";
+            AppendDiagnostics(ImportSchemeStatusText);
+            await RefreshImportSchemesAsync();
+        }
+        catch (Exception ex)
+        {
+            ImportSchemeStatusText = $"Scheme save failed: {ex.Message}";
+            AppendDiagnostics(ImportSchemeStatusText);
+            MessageBox.Show(this, ImportSchemeStatusText, "SCHEME", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Chooses the source folder where new SCHEME PDF files will be taken from.
+    /// </summary>
+    private void OnBrowseSchemePdfSourceClick(object sender, RoutedEventArgs e)
+    {
+        var folder = ChooseImportSourceFolder("Choose SCHEME PDF source folder", SchemePdfSourceRoot);
+        if (folder is null)
+            return;
+
+        SchemePdfSourceRoot = folder;
+        PersistImportEditOptions();
+        ImportSchemeStatusText = $"PDF source folder saved: {SchemePdfSourceRoot}";
+    }
+
+    /// <summary>
+    /// Persists the SCHEME PDF source folder after manual path editing.
+    /// </summary>
+    private void OnSchemePdfSourceLostFocus(object sender, RoutedEventArgs e)
+    {
+        PersistImportEditOptions();
+    }
+
+    /// <summary>
+    /// Opens a standard Windows folder picker for Import/Edit source folders.
+    /// </summary>
+    private string? ChooseImportSourceFolder(string title, string currentPath)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = title,
+            Multiselect = false
+        };
+
+        if (Directory.Exists(currentPath))
+            dialog.InitialDirectory = currentPath;
+
+        return dialog.ShowDialog(this) == true
+            ? dialog.FolderName
+            : null;
     }
 
     /// <summary>
@@ -404,6 +601,84 @@ public partial class MainWindow
             ImportOrders.Add(row);
 
         ImportOrderStatusText = $"Order rows loaded: {ImportOrders.Count}.";
+        RefreshImportProductCodeOptions();
+    }
+
+    /// <summary>
+    /// Rebuilds INSTRUCTION rows from Runtime catalog and overlays existing DB links.
+    /// Runtime is the master list here, so every equipment item is visible even without a linked file.
+    /// </summary>
+    private async Task RefreshImportInstructionsAsync()
+    {
+        if (_importRuntimeCatalog is null)
+            throw new InvalidOperationException("Runtime catalog is not loaded.");
+
+        ImportInstructionStatusText = "Loading instruction links...";
+        var existingRows = await _infoImportEditStore.LoadInstructionsAsync(GetRuntimeDatabaseConnectionString());
+        var existingByEquipment = existingRows
+            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+            .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.Last(), StringComparer.OrdinalIgnoreCase);
+
+        ImportInstructions.Clear();
+
+        foreach (var item in _importRuntimeCatalog.EquipmentItems)
+        {
+            existingByEquipment.TryGetValue(item.Equipment, out var existing);
+
+            ImportInstructions.Add(new ImportInstructionRowViewModel
+            {
+                Station = item.Station,
+                Type = item.Type,
+                Equipment = item.Equipment,
+                ProductCode = existing?.ProductCode ?? "",
+                Source = existing?.Source ?? "",
+                Description = existing?.Description ?? ""
+            });
+        }
+
+        ImportInstructionStatusText = $"Instruction rows loaded: {ImportInstructions.Count}.";
+    }
+
+    /// <summary>
+    /// Loads SCHEME library files and equipment links from PostgreSQL.
+    /// Link rows are enriched with Station from the cached Runtime catalog when possible.
+    /// </summary>
+    private async Task RefreshImportSchemesAsync()
+    {
+        if (_importRuntimeCatalog is null)
+            throw new InvalidOperationException("Runtime catalog is not loaded.");
+
+        ImportSchemeStatusText = "Loading scheme tables...";
+
+        var files = await _infoImportEditStore.LoadSchemeFilesAsync(GetRuntimeDatabaseConnectionString());
+        var links = await _infoImportEditStore.LoadSchemeLinksAsync(GetRuntimeDatabaseConnectionString());
+        var equipmentByName = _importRuntimeCatalog.EquipmentItems
+            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+            .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+
+        ImportSchemeFiles.Clear();
+        foreach (var row in files)
+            ImportSchemeFiles.Add(row);
+
+        RefreshImportSchemeSourceOptions();
+
+        ImportSchemeLinks.Clear();
+        foreach (var row in links)
+        {
+            if (equipmentByName.TryGetValue(row.Equipment.Trim(), out var equipment))
+            {
+                row.Station = equipment.Station;
+                if (string.IsNullOrWhiteSpace(row.Type))
+                    row.Type = equipment.Type;
+            }
+
+            ImportSchemeLinks.Add(row);
+        }
+
+        ImportSchemeStatusText =
+            $"Scheme files loaded: {ImportSchemeFiles.Count}; links loaded: {ImportSchemeLinks.Count}.";
     }
 
     /// <summary>
@@ -424,6 +699,23 @@ public partial class MainWindow
     }
 
     /// <summary>
+    /// Loads shared lookup data for document tabs: Runtime catalog, ORDERS product codes and SUPPLIER names.
+    /// The Runtime task is cached, so switching ORDERS/INSTRUCTION/SCHEME does not create duplicate HTTP calls.
+    /// </summary>
+    private async Task<bool> EnsureImportDocumentLookupDataAsync()
+    {
+        if (!await EnsureImportOrderLookupDataAsync())
+            return false;
+
+        if (ImportOrders.Count == 0)
+            await RefreshImportOrdersAsync();
+
+        RefreshImportProductCodeOptions();
+        RefreshImportSchemeSourceOptions();
+        return true;
+    }
+
+    /// <summary>
     /// Loads Runtime catalog for ORDERS, Instruction and Scheme tabs.
     /// A stopped Runtime is a normal operator error, so it is shown as a clear modal message.
     /// </summary>
@@ -432,6 +724,7 @@ public partial class MainWindow
         if (_importRuntimeCatalog is not null)
         {
             RefreshImportOrderTypeOptions();
+            RefreshImportRuntimeLookupOptions();
             return true;
         }
 
@@ -453,6 +746,7 @@ public partial class MainWindow
             _importRuntimeCatalog = await _importRuntimeCatalogLoadTask;
 
             RefreshImportOrderTypeOptions();
+            RefreshImportRuntimeLookupOptions();
 
             ImportRuntimeStatusText =
                 $"Runtime catalog loaded: stations {_importRuntimeCatalog.Stations.Count}, " +
@@ -466,6 +760,9 @@ public partial class MainWindow
             _importRuntimeCatalog = null;
             _importRuntimeCatalogLoadTask = null;
             ImportOrderTypeOptions.Clear();
+            ImportRuntimeStationOptions.Clear();
+            ImportRuntimeTypeOptions.Clear();
+            ImportRuntimeEquipmentOptions.Clear();
 
             ImportRuntimeStatusText =
                 $"Runtime catalog load failed: {ex.Message}";
@@ -511,6 +808,44 @@ public partial class MainWindow
         ReplaceStringOptions(
             ImportOrderTypeOptions,
             _importRuntimeCatalog?.Types ?? []);
+    }
+
+    /// <summary>
+    /// Rebuilds the Runtime lookup dictionaries used by INSTRUCTION and SCHEME combobox columns.
+    /// </summary>
+    private void RefreshImportRuntimeLookupOptions()
+    {
+        ReplaceStringOptions(
+            ImportRuntimeStationOptions,
+            _importRuntimeCatalog?.Stations ?? []);
+
+        ReplaceStringOptions(
+            ImportRuntimeTypeOptions,
+            _importRuntimeCatalog?.Types ?? []);
+
+        ReplaceStringOptions(
+            ImportRuntimeEquipmentOptions,
+            _importRuntimeCatalog?.Equipments ?? []);
+    }
+
+    /// <summary>
+    /// Rebuilds Product code options from the current ORDERS table rows.
+    /// </summary>
+    private void RefreshImportProductCodeOptions()
+    {
+        ReplaceStringOptions(
+            ImportProductCodeOptions,
+            ImportOrders.Select(x => x.ProductCode));
+    }
+
+    /// <summary>
+    /// Rebuilds the SCHEME link combobox from the current scheme file table.
+    /// </summary>
+    private void RefreshImportSchemeSourceOptions()
+    {
+        ReplaceStringOptions(
+            ImportSchemeSourceOptions,
+            ImportSchemeFiles.Select(x => x.Source));
     }
 
     /// <summary>
@@ -589,6 +924,8 @@ public partial class MainWindow
     private void PersistImportEditOptions()
     {
         _configuration.ImportEdit.OrdersPdfSourceRoot = OrdersPdfSourceRoot;
+        _configuration.ImportEdit.InstructionPdfSourceRoot = InstructionPdfSourceRoot;
+        _configuration.ImportEdit.SchemePdfSourceRoot = SchemePdfSourceRoot;
         _configurationStore.Save(_configuration);
     }
 
@@ -659,8 +996,7 @@ public partial class MainWindow
                 {
                     var value = cells[cellIndex].Trim();
                     var valueToSet = value;
-                    if (item is ImportOrderRowViewModel
-                        && !TryNormalizeImportOrderLookupValue(columns[columnIndex].PropertyName, value, out valueToSet))
+                    if (!TryNormalizeImportLookupValue(item, columns[columnIndex].PropertyName, value, out valueToSet))
                     {
                         rejectedLookupCells++;
                         continue;
@@ -677,21 +1013,21 @@ public partial class MainWindow
 
         if (rejectedLookupCells > 0)
         {
-            var message = $"Paste skipped invalid ORDERS lookup cells: {rejectedLookupCells}. Type and Supplier must exist in their dictionaries.";
-            ImportOrderStatusText = message;
+            var message = $"Paste skipped invalid lookup cells: {rejectedLookupCells}. Use values from the combo box dictionaries.";
+            SetImportStatusForGrid(grid, message);
             AppendDiagnostics(message);
         }
     }
 
     /// <summary>
-    /// Normalizes pasted ORDERS Type/Supplier values against combobox dictionaries.
+    /// Normalizes pasted values against the combobox dictionaries of the current Import/Edit row type.
     /// Empty values are allowed, but non-empty unknown values are rejected.
     /// </summary>
-    private bool TryNormalizeImportOrderLookupValue(string propertyName, string value, out string normalizedValue)
+    private bool TryNormalizeImportLookupValue(object item, string propertyName, string value, out string normalizedValue)
     {
         normalizedValue = value.Trim();
 
-        var options = GetImportOrderLookupOptions(propertyName);
+        var options = GetImportLookupOptions(item, propertyName);
         if (options is null || string.IsNullOrWhiteSpace(normalizedValue))
             return true;
 
@@ -706,26 +1042,108 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Returns user-facing validation messages for ORDERS rows that point to missing dictionaries.
+    /// Returns user-facing validation messages for Import/Edit rows that point to missing dictionaries.
     /// </summary>
-    private IReadOnlyList<string> GetInvalidImportOrderLookupMessages()
+    private IReadOnlyList<string> GetInvalidImportLookupMessages(IEnumerable rows)
     {
         var messages = new List<string>();
-        for (var index = 0; index < ImportOrders.Count; index++)
+        var index = 0;
+        foreach (var item in rows)
         {
-            var row = ImportOrders[index];
-            AddImportOrderLookupValidationMessage(
-                messages,
-                index,
-                nameof(ImportOrderRowViewModel.Type),
-                row.Type,
-                "Runtime catalog Type");
-            AddImportOrderLookupValidationMessage(
-                messages,
-                index,
-                nameof(ImportOrderRowViewModel.Supplier),
-                row.Supplier,
-                "SUPPLIER table");
+            switch (item)
+            {
+                case ImportOrderRowViewModel row:
+                    AddImportLookupValidationMessage(
+                        messages,
+                        index,
+                        row,
+                        nameof(ImportOrderRowViewModel.Type),
+                        row.Type,
+                        "Runtime catalog Type");
+                    AddImportLookupValidationMessage(
+                        messages,
+                        index,
+                        row,
+                        nameof(ImportOrderRowViewModel.Supplier),
+                        row.Supplier,
+                        "SUPPLIER table");
+                    break;
+
+                case ImportInstructionRowViewModel row:
+                    AddImportLookupValidationMessage(
+                        messages,
+                        index,
+                        row,
+                        nameof(ImportInstructionRowViewModel.Station),
+                        row.Station,
+                        "Runtime catalog Station");
+                    AddImportLookupValidationMessage(
+                        messages,
+                        index,
+                        row,
+                        nameof(ImportInstructionRowViewModel.Type),
+                        row.Type,
+                        "Runtime catalog Type");
+                    AddImportLookupValidationMessage(
+                        messages,
+                        index,
+                        row,
+                        nameof(ImportInstructionRowViewModel.Equipment),
+                        row.Equipment,
+                        "Runtime catalog Equipment");
+                    AddImportLookupValidationMessage(
+                        messages,
+                        index,
+                        row,
+                        nameof(ImportInstructionRowViewModel.ProductCode),
+                        row.ProductCode,
+                        "ORDERS Product code",
+                        isRequired: false);
+                    break;
+
+                case ImportSchemeFileRowViewModel row:
+                    AddImportLookupValidationMessage(
+                        messages,
+                        index,
+                        row,
+                        nameof(ImportSchemeFileRowViewModel.Type),
+                        row.Type,
+                        "Runtime catalog Type");
+                    break;
+
+                case ImportSchemeLinkRowViewModel row:
+                    AddImportLookupValidationMessage(
+                        messages,
+                        index,
+                        row,
+                        nameof(ImportSchemeLinkRowViewModel.Station),
+                        row.Station,
+                        "Runtime catalog Station");
+                    AddImportLookupValidationMessage(
+                        messages,
+                        index,
+                        row,
+                        nameof(ImportSchemeLinkRowViewModel.Type),
+                        row.Type,
+                        "Runtime catalog Type");
+                    AddImportLookupValidationMessage(
+                        messages,
+                        index,
+                        row,
+                        nameof(ImportSchemeLinkRowViewModel.Equipment),
+                        row.Equipment,
+                        "Runtime catalog Equipment");
+                    AddImportLookupValidationMessage(
+                        messages,
+                        index,
+                        row,
+                        nameof(ImportSchemeLinkRowViewModel.Scheme),
+                        row.Scheme,
+                        "SCHEME files");
+                    break;
+            }
+
+            index++;
         }
 
         return messages;
@@ -734,17 +1152,27 @@ public partial class MainWindow
     /// <summary>
     /// Adds a single lookup validation message when a non-empty value is not present in the dictionary.
     /// </summary>
-    private void AddImportOrderLookupValidationMessage(ICollection<string> messages, int rowIndex, string propertyName, string value, string dictionaryName)
+    private void AddImportLookupValidationMessage(
+        ICollection<string> messages,
+        int rowIndex,
+        object item,
+        string propertyName,
+        string value,
+        string dictionaryName,
+        bool isRequired = true)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            messages.Add(
-                $"Row {rowIndex + 1}: {propertyName} is required.");
+            if (isRequired)
+            {
+                messages.Add(
+                    $"Row {rowIndex + 1}: {propertyName} is required.");
+            }
 
             return;
         }
 
-        var options = GetImportOrderLookupOptions(propertyName);
+        var options = GetImportLookupOptions(item, propertyName);
 
         if (options is null)
         {
@@ -767,16 +1195,67 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Maps ORDERS lookup columns to their current valid option lists.
+    /// Maps lookup columns to their current valid option lists.
     /// </summary>
-    private IEnumerable<string>? GetImportOrderLookupOptions(string propertyName)
+    private IEnumerable<string>? GetImportLookupOptions(object item, string propertyName)
     {
-        return propertyName switch
+        return item switch
         {
-            nameof(ImportOrderRowViewModel.Type) => ImportOrderTypeOptions,
-            nameof(ImportOrderRowViewModel.Supplier) => ImportOrderSupplierOptions,
+            ImportOrderRowViewModel => propertyName switch
+            {
+                nameof(ImportOrderRowViewModel.Type) => ImportOrderTypeOptions,
+                nameof(ImportOrderRowViewModel.Supplier) => ImportOrderSupplierOptions,
+                _ => null
+            },
+            ImportInstructionRowViewModel => propertyName switch
+            {
+                nameof(ImportInstructionRowViewModel.Station) => ImportRuntimeStationOptions,
+                nameof(ImportInstructionRowViewModel.Type) => ImportRuntimeTypeOptions,
+                nameof(ImportInstructionRowViewModel.Equipment) => ImportRuntimeEquipmentOptions,
+                nameof(ImportInstructionRowViewModel.ProductCode) => ImportProductCodeOptions,
+                _ => null
+            },
+            ImportSchemeFileRowViewModel => propertyName switch
+            {
+                nameof(ImportSchemeFileRowViewModel.Type) => ImportRuntimeTypeOptions,
+                _ => null
+            },
+            ImportSchemeLinkRowViewModel => propertyName switch
+            {
+                nameof(ImportSchemeLinkRowViewModel.Station) => ImportRuntimeStationOptions,
+                nameof(ImportSchemeLinkRowViewModel.Type) => ImportRuntimeTypeOptions,
+                nameof(ImportSchemeLinkRowViewModel.Equipment) => ImportRuntimeEquipmentOptions,
+                nameof(ImportSchemeLinkRowViewModel.Scheme) => ImportSchemeSourceOptions,
+                _ => null
+            },
             _ => null
         };
+    }
+
+    /// <summary>
+    /// Writes paste feedback to the status text that belongs to the current Import/Edit table.
+    /// </summary>
+    private void SetImportStatusForGrid(DataGrid grid, string message)
+    {
+        switch (grid.ItemsSource)
+        {
+            case ObservableCollection<ImportSupplierRowViewModel>:
+                ImportSupplierStatusText = message;
+                break;
+
+            case ObservableCollection<ImportOrderRowViewModel>:
+                ImportOrderStatusText = message;
+                break;
+
+            case ObservableCollection<ImportInstructionRowViewModel>:
+                ImportInstructionStatusText = message;
+                break;
+
+            case ObservableCollection<ImportSchemeFileRowViewModel>:
+            case ObservableCollection<ImportSchemeLinkRowViewModel>:
+                ImportSchemeStatusText = message;
+                break;
+        }
     }
 
     /// <summary>
@@ -875,6 +1354,18 @@ public partial class MainWindow
 
                 case ObservableCollection<ImportOrderRowViewModel> orders:
                     orders.Add(new ImportOrderRowViewModel());
+                    break;
+
+                case ObservableCollection<ImportInstructionRowViewModel> instructions:
+                    instructions.Add(new ImportInstructionRowViewModel());
+                    break;
+
+                case ObservableCollection<ImportSchemeFileRowViewModel> schemeFiles:
+                    schemeFiles.Add(new ImportSchemeFileRowViewModel());
+                    break;
+
+                case ObservableCollection<ImportSchemeLinkRowViewModel> schemeLinks:
+                    schemeLinks.Add(new ImportSchemeLinkRowViewModel());
                     break;
 
                 default:

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.IO;
 using Npgsql;
 using TechMES.Maintenance.ViewModels;
 
@@ -213,6 +214,274 @@ public sealed class InfoImportEditStore
     /// <summary>
     /// Обновляет только имя поставщика и имя файла, не затрагивая существующие бинарные данные логотипа.
     /// </summary>
+    /// <summary>
+    /// Loads existing equipment-to-instruction links. Runtime data is merged in the UI layer.
+    /// </summary>
+    public async Task<IReadOnlyList<ImportInstructionRowViewModel>> LoadInstructionsAsync(
+        string connectionString,
+        CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            SELECT
+                i.equip_name,
+                COALESCE(i.product_code, '') AS product_code,
+                COALESCE(i.description, '') AS description,
+                COALESCE(string_agg(ins.file_name, '; ' ORDER BY link.sort_order, ins.file_name), '') AS source
+            FROM public.equip_info i
+            LEFT JOIN public.equip_info_instruction link ON link.equip_name = i.equip_name
+            LEFT JOIN public.equip_instruction ins ON ins.id = link.instruction_id
+            GROUP BY i.equip_name, i.product_code, i.description
+            ORDER BY i.equip_name;
+            """;
+
+        var result = new List<ImportInstructionRowViewModel>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            result.Add(new ImportInstructionRowViewModel
+            {
+                Equipment = reader.GetString(0),
+                ProductCode = reader.GetString(1),
+                Description = reader.GetString(2),
+                Source = reader.GetString(3)
+            });
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Saves instruction files and equipment links using the same library/link schema as the old WPF import.
+    /// </summary>
+    public async Task<int> SaveInstructionsAsync(
+        string connectionString,
+        string sourceRoot,
+        IEnumerable<ImportInstructionRowViewModel> instructions,
+        CancellationToken cancellationToken = default)
+    {
+        var clean = instructions
+            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+            .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.Last())
+            .ToList();
+
+        if (clean.Count == 0)
+            return 0;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            foreach (var item in clean)
+            {
+                await EnsureInfoRowAsync(
+                    connection,
+                    transaction,
+                    item.Equipment,
+                    item.ProductCode,
+                    item.Description,
+                    cancellationToken);
+
+                var sortOrder = 0;
+                foreach (var source in SplitSourceValues(item.Source))
+                {
+                    var filePath = ResolveSourceFilePath(sourceRoot, source);
+                    var instructionId = await SaveLibraryFileAsync(
+                        connection,
+                        transaction,
+                        "public.equip_instruction",
+                        item.Type,
+                        filePath,
+                        cancellationToken);
+
+                    await EnsureDocumentLinkAsync(
+                        connection,
+                        transaction,
+                        "public.equip_info_instruction",
+                        "instruction_id",
+                        item.Equipment,
+                        instructionId,
+                        sortOrder++,
+                        cancellationToken);
+                }
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return clean.Count;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Loads scheme file library rows.
+    /// </summary>
+    public async Task<IReadOnlyList<ImportSchemeFileRowViewModel>> LoadSchemeFilesAsync(
+        string connectionString,
+        CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            SELECT
+                COALESCE(equip_type_group, '') AS equip_type_group,
+                COALESCE(file_name, '') AS file_name,
+                COALESCE(display_name, '') AS display_name
+            FROM public.equip_scheme
+            ORDER BY equip_type_group, file_name;
+            """;
+
+        var result = new List<ImportSchemeFileRowViewModel>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            result.Add(new ImportSchemeFileRowViewModel
+            {
+                Type = reader.GetString(0),
+                Source = reader.GetString(1),
+                Description = reader.GetString(2)
+            });
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Loads equipment-to-scheme links.
+    /// </summary>
+    public async Task<IReadOnlyList<ImportSchemeLinkRowViewModel>> LoadSchemeLinksAsync(
+        string connectionString,
+        CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            SELECT
+                link.equip_name,
+                COALESCE(scheme.equip_type_group, '') AS equip_type_group,
+                COALESCE(scheme.file_name, '') AS file_name,
+                COALESCE(scheme.display_name, '') AS display_name
+            FROM public.equip_info_scheme link
+            JOIN public.equip_scheme scheme ON scheme.id = link.scheme_id
+            ORDER BY link.equip_name, link.sort_order, scheme.file_name;
+            """;
+
+        var result = new List<ImportSchemeLinkRowViewModel>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            result.Add(new ImportSchemeLinkRowViewModel
+            {
+                Equipment = reader.GetString(0),
+                Type = reader.GetString(1),
+                Scheme = reader.GetString(2),
+                Description = reader.GetString(3)
+            });
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Saves scheme library files and their equipment links.
+    /// </summary>
+    public async Task<int> SaveSchemesAsync(
+        string connectionString,
+        string sourceRoot,
+        IEnumerable<ImportSchemeFileRowViewModel> files,
+        IEnumerable<ImportSchemeLinkRowViewModel> links,
+        CancellationToken cancellationToken = default)
+    {
+        var cleanFiles = files
+            .Where(x => !string.IsNullOrWhiteSpace(x.Type))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Source))
+            .GroupBy(x => $"{x.Type.Trim()}\u001f{x.Source.Trim()}", StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.Last())
+            .ToList();
+
+        var cleanLinks = links
+            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Scheme))
+            .ToList();
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            foreach (var file in cleanFiles)
+            {
+                var filePath = ResolveSourceFilePath(sourceRoot, file.Source);
+                await SaveLibraryFileAsync(
+                    connection,
+                    transaction,
+                    "public.equip_scheme",
+                    file.Type,
+                    filePath,
+                    cancellationToken);
+            }
+
+            var sortOrderByEquipment = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var link in cleanLinks)
+            {
+                await EnsureInfoRowAsync(
+                    connection,
+                    transaction,
+                    link.Equipment,
+                    productCode: "",
+                    description: "",
+                    cancellationToken);
+
+                var schemeId = await ResolveLibraryFileIdAsync(
+                    connection,
+                    transaction,
+                    "public.equip_scheme",
+                    link.Type,
+                    link.Scheme,
+                    cancellationToken);
+
+                var key = link.Equipment.Trim();
+                sortOrderByEquipment.TryGetValue(key, out var sortOrder);
+                sortOrderByEquipment[key] = sortOrder + 1;
+
+                await EnsureDocumentLinkAsync(
+                    connection,
+                    transaction,
+                    "public.equip_info_scheme",
+                    "scheme_id",
+                    link.Equipment,
+                    schemeId,
+                    sortOrder,
+                    cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return cleanFiles.Count + cleanLinks.Count;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
     private static async Task SaveSupplierMetadataAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -358,6 +627,266 @@ public sealed class InfoImportEditStore
     /// <summary>
     /// Считает SHA-256 в hex-формате, как устойчивый признак выбранного файла логотипа.
     /// </summary>
+    private static IEnumerable<string> SplitSourceValues(string? source)
+    {
+        return (source ?? "")
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x));
+    }
+
+    private static string ResolveSourceFilePath(string sourceRoot, string source)
+    {
+        var value = source.Trim();
+        var filePath = Path.IsPathRooted(value)
+            ? value
+            : Path.Combine(sourceRoot ?? "", value);
+
+        if (!File.Exists(filePath))
+            throw new FileNotFoundException($"Import source file not found: {filePath}", filePath);
+
+        return filePath;
+    }
+
+    private static async Task EnsureInfoRowAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string equipmentName,
+        string productCode,
+        string description,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO public.equip_info
+            (
+                equip_name,
+                product_code,
+                description,
+                updated_at
+            )
+            VALUES
+            (
+                @equip_name,
+                NULLIF(@product_code, ''),
+                NULLIF(@description, ''),
+                now()
+            )
+            ON CONFLICT (equip_name)
+            DO UPDATE SET
+                product_code = COALESCE(NULLIF(EXCLUDED.product_code, ''), public.equip_info.product_code),
+                description = COALESCE(NULLIF(EXCLUDED.description, ''), public.equip_info.description),
+                updated_at = now();
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("equip_name", equipmentName.Trim());
+        command.Parameters.AddWithValue("product_code", productCode?.Trim() ?? "");
+        command.Parameters.AddWithValue("description", description?.Trim() ?? "");
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<long> SaveLibraryFileAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string tableName,
+        string type,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        ValidateLibraryTableName(tableName);
+
+        var fileName = Path.GetFileName(filePath);
+        var fileData = await File.ReadAllBytesAsync(filePath, cancellationToken);
+        var fileHash = ComputeSha256(fileData);
+        var updatedAt = File.GetLastWriteTime(filePath);
+
+        var existingId = await FindLibraryFileIdAsync(
+            connection,
+            transaction,
+            tableName,
+            type,
+            fileName,
+            fileHash,
+            cancellationToken);
+
+        if (existingId is not null)
+        {
+            var updateSql = $"""
+                UPDATE {tableName}
+                SET
+                    equip_type_group = NULLIF(@equip_type_group, ''),
+                    file_name = @file_name,
+                    display_name = @display_name,
+                    file_hash = @file_hash,
+                    file_data = @file_data,
+                    updated_at = @updated_at
+                WHERE id = @id;
+                """;
+
+            await using var updateCommand = new NpgsqlCommand(updateSql, connection, transaction);
+            updateCommand.Parameters.AddWithValue("id", existingId.Value);
+            AddLibraryFileParameters(updateCommand, type, fileName, fileHash, fileData, updatedAt);
+            await updateCommand.ExecuteNonQueryAsync(cancellationToken);
+            return existingId.Value;
+        }
+
+        var insertSql = $"""
+            INSERT INTO {tableName}
+            (
+                equip_type_group,
+                file_name,
+                display_name,
+                file_hash,
+                file_data,
+                updated_at
+            )
+            VALUES
+            (
+                NULLIF(@equip_type_group, ''),
+                @file_name,
+                @display_name,
+                @file_hash,
+                @file_data,
+                @updated_at
+            )
+            RETURNING id;
+            """;
+
+        await using var insertCommand = new NpgsqlCommand(insertSql, connection, transaction);
+        AddLibraryFileParameters(insertCommand, type, fileName, fileHash, fileData, updatedAt);
+        var scalar = await insertCommand.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt64(scalar);
+    }
+
+    private static async Task<long> ResolveLibraryFileIdAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string tableName,
+        string type,
+        string fileName,
+        CancellationToken cancellationToken)
+    {
+        ValidateLibraryTableName(tableName);
+
+        var sql = $"""
+            SELECT id
+            FROM {tableName}
+            WHERE lower(file_name) = lower(@file_name)
+              AND (NULLIF(@equip_type_group, '') IS NULL OR lower(COALESCE(equip_type_group, '')) = lower(@equip_type_group))
+            ORDER BY
+                CASE WHEN lower(COALESCE(equip_type_group, '')) = lower(@equip_type_group) THEN 0 ELSE 1 END,
+                id
+            LIMIT 1;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("file_name", Path.GetFileName(fileName.Trim()));
+        command.Parameters.AddWithValue("equip_type_group", type?.Trim() ?? "");
+        var scalar = await command.ExecuteScalarAsync(cancellationToken);
+        if (scalar is null or DBNull)
+            throw new InvalidOperationException($"Scheme file is not found in the library: {fileName}");
+
+        return Convert.ToInt64(scalar);
+    }
+
+    private static async Task<long?> FindLibraryFileIdAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string tableName,
+        string type,
+        string fileName,
+        string fileHash,
+        CancellationToken cancellationToken)
+    {
+        ValidateLibraryTableName(tableName);
+
+        var sql = $"""
+            SELECT id
+            FROM {tableName}
+            WHERE lower(COALESCE(equip_type_group, '')) = lower(@equip_type_group)
+              AND (file_hash = @file_hash OR lower(file_name) = lower(@file_name))
+            ORDER BY
+                CASE WHEN file_hash = @file_hash THEN 0 ELSE 1 END,
+                id
+            LIMIT 1;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("equip_type_group", type?.Trim() ?? "");
+        command.Parameters.AddWithValue("file_name", fileName);
+        command.Parameters.AddWithValue("file_hash", fileHash);
+        var scalar = await command.ExecuteScalarAsync(cancellationToken);
+        return scalar is null or DBNull ? null : Convert.ToInt64(scalar);
+    }
+
+    private static async Task EnsureDocumentLinkAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string linkTableName,
+        string documentIdColumnName,
+        string equipmentName,
+        long documentId,
+        int sortOrder,
+        CancellationToken cancellationToken)
+    {
+        ValidateLinkTableName(linkTableName, documentIdColumnName);
+
+        var sql = $"""
+            INSERT INTO {linkTableName}
+            (
+                equip_name,
+                {documentIdColumnName},
+                sort_order
+            )
+            VALUES
+            (
+                @equip_name,
+                @document_id,
+                @sort_order
+            )
+            ON CONFLICT (equip_name, {documentIdColumnName})
+            DO UPDATE SET sort_order = EXCLUDED.sort_order;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("equip_name", equipmentName.Trim());
+        command.Parameters.AddWithValue("document_id", documentId);
+        command.Parameters.AddWithValue("sort_order", sortOrder);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static void AddLibraryFileParameters(
+        NpgsqlCommand command,
+        string type,
+        string fileName,
+        string fileHash,
+        byte[] fileData,
+        DateTime updatedAt)
+    {
+        command.Parameters.AddWithValue("equip_type_group", type?.Trim() ?? "");
+        command.Parameters.AddWithValue("file_name", fileName);
+        command.Parameters.AddWithValue("display_name", fileName);
+        command.Parameters.AddWithValue("file_hash", fileHash);
+        command.Parameters.AddWithValue("file_data", fileData);
+        command.Parameters.AddWithValue("updated_at", updatedAt);
+    }
+
+    private static void ValidateLibraryTableName(string tableName)
+    {
+        if (tableName is not ("public.equip_instruction" or "public.equip_scheme"))
+            throw new ArgumentOutOfRangeException(nameof(tableName), tableName, "Unsupported document library table.");
+    }
+
+    private static void ValidateLinkTableName(string tableName, string idColumnName)
+    {
+        if (tableName == "public.equip_info_instruction" && idColumnName == "instruction_id")
+            return;
+
+        if (tableName == "public.equip_info_scheme" && idColumnName == "scheme_id")
+            return;
+
+        throw new ArgumentOutOfRangeException(nameof(tableName), tableName, "Unsupported document link table.");
+    }
+
     private static string ComputeSha256(byte[] data)
     {
         return Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();

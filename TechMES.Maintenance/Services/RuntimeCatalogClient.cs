@@ -39,11 +39,22 @@ public sealed class RuntimeCatalogClient
         if (response is null)
             throw new InvalidOperationException("Runtime returned an empty equipment response.");
 
-        var equipments = response.Equipments
+        var equipmentItems = response.Equipments
+            .Where(x => !x.IsGroup)
+            .Where(x => !x.IsEquipmentChildNode)
             .Where(x => !string.IsNullOrWhiteSpace(x.Name))
-            .Select(x => x.Name.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .Select(x => new RuntimeCatalogEquipmentItem(
+                (x.Station ?? "").Trim(),
+                x.TypeGroup.ToString().Trim(),
+                x.Name.Trim()))
+            .Where(x => IsVisibleRuntimeTypeAlias(x.Type))
+            .GroupBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .OrderBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var equipments = equipmentItems
+            .Select(x => x.Equipment)
             .ToList();
 
         //var types = response.Equipments
@@ -60,8 +71,8 @@ public sealed class RuntimeCatalogClient
          * Для ORDERS нужен пользовательский алиас, уже рассчитанный Runtime
          * в TypeGroup: AI, DI, VGA, ATV и т. д.
          */
-        var types = response.Equipments
-            .Select(x => x.TypeGroup.ToString())
+        var types = equipmentItems
+            .Select(x => x.Type)
             .Where(IsVisibleRuntimeTypeAlias)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
@@ -69,7 +80,8 @@ public sealed class RuntimeCatalogClient
 
         return new RuntimeCatalogSnapshot
         {
-            Stations = response.Stations
+            Stations = equipmentItems
+                .Select(x => x.Station)
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Select(x => x.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -77,6 +89,7 @@ public sealed class RuntimeCatalogClient
                 .ToList(),
             Types = types,
             Equipments = equipments,
+            EquipmentItems = equipmentItems,
             TotalCount = response.TotalCount
         };
     }

@@ -76,8 +76,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     private string _backupStatusText = "No backup operation has been started.";
     private string _cleanupStatusText = "Cleanup scan has not been started.";
     private string _ordersPdfSourceRoot = "";
+    private string _instructionPdfSourceRoot = "";
+    private string _schemePdfSourceRoot = "";
     private string _importSupplierStatusText = "Supplier table has not been loaded.";
     private string _importOrderStatusText = "Orders table has not been loaded.";
+    private string _importInstructionStatusText = "Instruction table has not been loaded.";
+    private string _importSchemeStatusText = "Scheme tables have not been loaded.";
     private string _importRuntimeStatusText = "Runtime catalog has not been loaded yet.";
     private bool _isImportRuntimeCatalogLoading;
     private RuntimeCatalogSnapshot? _importRuntimeCatalog;
@@ -169,6 +173,21 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     public ObservableCollection<ImportOrderRowViewModel> ImportOrders { get; } = [];
 
     /// <summary>
+    /// Editable INSTRUCTION rows. Runtime equipment is prefilled; document columns are edited by operator.
+    /// </summary>
+    public ObservableCollection<ImportInstructionRowViewModel> ImportInstructions { get; } = [];
+
+    /// <summary>
+    /// Editable SCHEME file library rows.
+    /// </summary>
+    public ObservableCollection<ImportSchemeFileRowViewModel> ImportSchemeFiles { get; } = [];
+
+    /// <summary>
+    /// Editable links between Runtime equipment rows and SCHEME files.
+    /// </summary>
+    public ObservableCollection<ImportSchemeLinkRowViewModel> ImportSchemeLinks { get; } = [];
+
+    /// <summary>
     /// Valid Type values for ORDERS. Loaded once from Runtime catalog and reused by Import/Edit tabs.
     /// </summary>
     public ObservableCollection<string> ImportOrderTypeOptions { get; } = [];
@@ -177,6 +196,31 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// Valid Supplier values for ORDERS. Built from the SUPPLIER tab rows.
     /// </summary>
     public ObservableCollection<string> ImportOrderSupplierOptions { get; } = [];
+
+    /// <summary>
+    /// Runtime Station lookup values reused by INSTRUCTION and SCHEME.
+    /// </summary>
+    public ObservableCollection<string> ImportRuntimeStationOptions { get; } = [];
+
+    /// <summary>
+    /// Runtime Type lookup values reused by ORDERS, INSTRUCTION and SCHEME.
+    /// </summary>
+    public ObservableCollection<string> ImportRuntimeTypeOptions { get; } = [];
+
+    /// <summary>
+    /// Runtime Equipment lookup values reused by INSTRUCTION and SCHEME.
+    /// </summary>
+    public ObservableCollection<string> ImportRuntimeEquipmentOptions { get; } = [];
+
+    /// <summary>
+    /// Product codes from ORDERS. INSTRUCTION links can select only known codes.
+    /// </summary>
+    public ObservableCollection<string> ImportProductCodeOptions { get; } = [];
+
+    /// <summary>
+    /// Scheme file names from the SCHEME library table for equipment links.
+    /// </summary>
+    public ObservableCollection<string> ImportSchemeSourceOptions { get; } = [];
 
     /// <summary>
     /// Свободное место на дисках, где находятся репозиторий, publish root и backup root.
@@ -322,6 +366,40 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     }
 
     /// <summary>
+    /// Source folder for new INSTRUCTION files.
+    /// </summary>
+    public string InstructionPdfSourceRoot
+    {
+        get => _instructionPdfSourceRoot;
+        set
+        {
+            if (_instructionPdfSourceRoot == value)
+                return;
+
+            _instructionPdfSourceRoot = value;
+            _configuration.ImportEdit.InstructionPdfSourceRoot = value;
+            OnPropertyChanged(nameof(InstructionPdfSourceRoot));
+        }
+    }
+
+    /// <summary>
+    /// Source folder for new SCHEME files.
+    /// </summary>
+    public string SchemePdfSourceRoot
+    {
+        get => _schemePdfSourceRoot;
+        set
+        {
+            if (_schemePdfSourceRoot == value)
+                return;
+
+            _schemePdfSourceRoot = value;
+            _configuration.ImportEdit.SchemePdfSourceRoot = value;
+            OnPropertyChanged(nameof(SchemePdfSourceRoot));
+        }
+    }
+
+    /// <summary>
     /// Короткий статус последней операции SUPPLIER.
     /// </summary>
     public string ImportSupplierStatusText
@@ -350,6 +428,38 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
             _importOrderStatusText = value;
             OnPropertyChanged(nameof(ImportOrderStatusText));
+        }
+    }
+
+    /// <summary>
+    /// Short status text for the INSTRUCTION tab.
+    /// </summary>
+    public string ImportInstructionStatusText
+    {
+        get => _importInstructionStatusText;
+        set
+        {
+            if (_importInstructionStatusText == value)
+                return;
+
+            _importInstructionStatusText = value;
+            OnPropertyChanged(nameof(ImportInstructionStatusText));
+        }
+    }
+
+    /// <summary>
+    /// Short status text for the SCHEME tab.
+    /// </summary>
+    public string ImportSchemeStatusText
+    {
+        get => _importSchemeStatusText;
+        set
+        {
+            if (_importSchemeStatusText == value)
+                return;
+
+            _importSchemeStatusText = value;
+            OnPropertyChanged(nameof(ImportSchemeStatusText));
         }
     }
 
@@ -1122,6 +1232,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             ? GetDefaultBackupRoot()
             : _configuration.Cleanup.BackupRoot;
         OrdersPdfSourceRoot = _configuration.ImportEdit.OrdersPdfSourceRoot;
+        InstructionPdfSourceRoot = _configuration.ImportEdit.InstructionPdfSourceRoot;
+        SchemePdfSourceRoot = _configuration.ImportEdit.SchemePdfSourceRoot;
 
         DataContext = this;
 

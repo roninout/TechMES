@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "TechMES.Contracts/1.0.0": {
+        "runtime": {
+          "TechMES.Contracts.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "TechMES.Contracts/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

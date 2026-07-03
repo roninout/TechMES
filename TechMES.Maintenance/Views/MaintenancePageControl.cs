@@ -155,6 +155,14 @@ public class MaintenancePageControl : UserControl
     public void OnSaveImportOrdersClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnBrowseOrdersPdfSourceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOrdersPdfSourceLostFocus(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnRefreshImportInstructionsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnSaveImportInstructionsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnBrowseInstructionPdfSourceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnInstructionPdfSourceLostFocus(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnRefreshImportSchemesClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnSaveImportSchemesClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnBrowseSchemePdfSourceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnSchemePdfSourceLostFocus(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnImportGridPreviewKeyDown(object sender, KeyEventArgs e) => ForwardKeyEvent(sender, e);
 
     /// <summary>
