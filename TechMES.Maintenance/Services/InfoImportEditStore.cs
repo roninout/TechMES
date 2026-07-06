@@ -289,6 +289,19 @@ public sealed class InfoImportEditStore
                     item.Description,
                     cancellationToken);
 
+                /*
+                 * Synchronize links, not just append new ones.
+                 *
+                 * If ORDERS.Source was changed from one PDF to another, the old
+                 * instruction_id must be removed from equip_info_instruction before
+                 * the current Source list is inserted.
+                 */
+                await DeleteInstructionLinksAsync(
+                    connection,
+                    transaction,
+                    item.Equipment,
+                    cancellationToken);
+
                 var sortOrder = 0;
                 foreach (var source in SplitSourceValues(item.Source))
                 {
@@ -816,6 +829,22 @@ public sealed class InfoImportEditStore
         command.Parameters.AddWithValue("file_hash", fileHash);
         var scalar = await command.ExecuteScalarAsync(cancellationToken);
         return scalar is null or DBNull ? null : Convert.ToInt64(scalar);
+    }
+
+    private static async Task DeleteInstructionLinksAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string equipmentName,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            DELETE FROM public.equip_info_instruction
+            WHERE equip_name = @equip_name;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("equip_name", equipmentName.Trim());
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task EnsureDocumentLinkAsync(

@@ -328,6 +328,16 @@ public partial class MainWindow
             if (!await EnsureImportDocumentLookupDataAsync())
                 return;
 
+            /*
+             * Source, Supplier, Description and Image in INSTRUCTION are derived
+             * from the selected Product code in ORDERS.
+             *
+             * Source and Image are hidden in the table, so before Save we must
+             * synchronize the INSTRUCTION rows with the current ORDERS rows.
+             * Otherwise SaveInstructionsAsync can save an old Source value.
+             */
+            RefreshImportInstructionOrderDetails();
+
             var invalidLookupMessages = GetInvalidImportLookupMessages(ImportInstructions);
             if (invalidLookupMessages.Count > 0)
             {

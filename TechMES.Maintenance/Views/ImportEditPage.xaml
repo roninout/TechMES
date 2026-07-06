@@ -299,7 +299,7 @@
                                     IsColumnFiltered="False"
                                     CanUserSort="False"
                                     CanUserReorder="False"
-                                    CanUserResize="False">
+                                    CanUserResize="True">
 
                                     <control:DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
@@ -401,38 +401,14 @@
                                 </control:DataGridTemplateColumn>
 
                                 <!-- Просмотр и редактирование имени поставщика выполняют WPF UI-контролы. -->
-                                <control:DataGridTemplateColumn
+                                <control:DataGridTextColumn
                                 Header="Supplier"
-                                FieldName="Supplier"
+                                Binding="{Binding Supplier, UpdateSourceTrigger=PropertyChanged}"
                                 ClipboardContentBinding="{Binding Supplier}"
                                 SortMemberPath="Supplier"
                                 IsColumnFiltered="True"
                                 Width="*"
-                                MinWidth="240">
-
-                                    <control:DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-
-                                            <ui:TextBlock
-                                            Text="{Binding Supplier}"
-                                            Style="{StaticResource ImportReadOnlySupplierCellTextStyle}" />
-
-                                        </DataTemplate>
-                                    </control:DataGridTemplateColumn.CellTemplate>
-
-                                    <control:DataGridTemplateColumn.CellEditingTemplate>
-                                        <DataTemplate>
-
-                                            <ui:TextBox
-                                            Text="{Binding Supplier,
-                                                           Mode=TwoWay,
-                                                           UpdateSourceTrigger=PropertyChanged}"
-                                            Style="{StaticResource SupplierEditorTextBoxStyle}" />
-
-                                        </DataTemplate>
-                                    </control:DataGridTemplateColumn.CellEditingTemplate>
-
-                                </control:DataGridTemplateColumn>
+                                MinWidth="240" />
 
                                 <!-- Статус отображается WPF UI TextBlock и выравнивается по центру строки. -->
                                 <control:DataGridTemplateColumn
@@ -449,7 +425,7 @@
 
                                             <ui:TextBlock
                                             Text="{Binding LogoStatus}"
-                                            Style="{StaticResource SupplierCellTextStyle}" />
+                                            Style="{StaticResource ImportReadOnlySupplierCellTextStyle}" />
 
                                         </DataTemplate>
                                     </control:DataGridTemplateColumn.CellTemplate>
@@ -531,7 +507,7 @@
                                 IsColumnFiltered="False"
                                 CanUserSort="False"
                                 CanUserReorder="False"
-                                CanUserResize="False">
+                                CanUserResize="True">
 
                                 <control:DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -667,14 +643,14 @@
                                     </DataTemplate>
                                 </control:DataGridTemplateColumn.CellTemplate>
                             </control:DataGridTemplateColumn>-->
-                            <control:DataGridTextColumn Header="Source"
-                                                    Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsColumnFiltered="True"
-                                                    Width="260" />
                             <control:DataGridTextColumn Header="Description"
                                                     Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
                                                     IsColumnFiltered="True"
                                                     Width="*" />
+                            <control:DataGridTextColumn Header="Source"
+                                                    Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
+                                                    IsColumnFiltered="True"
+                                                    Width="260" />
                             <control:DataGridTextColumn Header="Image"
                                                     Binding="{Binding Image, UpdateSourceTrigger=PropertyChanged}"
                                                     IsColumnFiltered="True"
@@ -750,7 +726,7 @@
                                                             IsColumnFiltered="False"
                                                             CanUserSort="False"
                                                             CanUserReorder="False"
-                                                            CanUserResize="False">
+                                                            CanUserResize="True">
                                 <control:DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
@@ -889,6 +865,7 @@
                             </control:DataGridTemplateColumn>
 
                             <control:DataGridTemplateColumn Header="Source"
+                                                            Visibility="Collapsed"
                                                             FieldName="Source"
                                                             ClipboardContentBinding="{Binding Source}"
                                                             SortMemberPath="Source"
@@ -929,6 +906,7 @@
                             </control:DataGridTemplateColumn>
 
                             <control:DataGridTemplateColumn Header="Image"
+                                                            Visibility="Collapsed"
                                                             FieldName="Image"
                                                             ClipboardContentBinding="{Binding Image}"
                                                             SortMemberPath="Image"
@@ -1030,7 +1008,7 @@
                                                                     IsColumnFiltered="False"
                                                                     CanUserSort="False"
                                                                     CanUserReorder="False"
-                                                                    CanUserResize="False">
+                                                                    CanUserResize="True">
                                         <control:DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
@@ -1111,7 +1089,7 @@
                                                                     IsColumnFiltered="False"
                                                                     CanUserSort="False"
                                                                     CanUserReorder="False"
-                                                                    CanUserResize="False">
+                                                                    CanUserResize="True">
                                         <control:DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
