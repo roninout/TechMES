@@ -225,12 +225,13 @@ public sealed class InfoImportEditStore
             SELECT
                 i.equip_name,
                 COALESCE(i.product_code, '') AS product_code,
+                COALESCE(i.supplier, '') AS supplier,
                 COALESCE(i.description, '') AS description,
                 COALESCE(string_agg(ins.file_name, '; ' ORDER BY link.sort_order, ins.file_name), '') AS source
             FROM public.equip_info i
             LEFT JOIN public.equip_info_instruction link ON link.equip_name = i.equip_name
             LEFT JOIN public.equip_instruction ins ON ins.id = link.instruction_id
-            GROUP BY i.equip_name, i.product_code, i.description
+            GROUP BY i.equip_name, i.product_code, i.supplier, i.description
             ORDER BY i.equip_name;
             """;
 
@@ -247,8 +248,9 @@ public sealed class InfoImportEditStore
             {
                 Equipment = reader.GetString(0),
                 ProductCode = reader.GetString(1),
-                Description = reader.GetString(2),
-                Source = reader.GetString(3)
+                Supplier = reader.GetString(2),
+                Description = reader.GetString(3),
+                Source = reader.GetString(4)
             });
         }
 
@@ -286,6 +288,7 @@ public sealed class InfoImportEditStore
                     transaction,
                     item.Equipment,
                     item.ProductCode,
+                    item.Supplier,
                     item.Description,
                     cancellationToken);
 
@@ -459,6 +462,7 @@ public sealed class InfoImportEditStore
                     transaction,
                     link.Equipment,
                     productCode: "",
+                    supplier: "",
                     description: "",
                     cancellationToken);
 
@@ -665,6 +669,7 @@ public sealed class InfoImportEditStore
         NpgsqlTransaction transaction,
         string equipmentName,
         string productCode,
+        string supplier,
         string description,
         CancellationToken cancellationToken)
     {
@@ -673,6 +678,7 @@ public sealed class InfoImportEditStore
             (
                 equip_name,
                 product_code,
+                supplier,
                 description,
                 updated_at
             )
@@ -680,12 +686,14 @@ public sealed class InfoImportEditStore
             (
                 @equip_name,
                 NULLIF(@product_code, ''),
+                NULLIF(@supplier, ''),
                 NULLIF(@description, ''),
                 now()
             )
             ON CONFLICT (equip_name)
             DO UPDATE SET
                 product_code = COALESCE(NULLIF(EXCLUDED.product_code, ''), public.equip_info.product_code),
+                supplier = COALESCE(NULLIF(EXCLUDED.supplier, ''), public.equip_info.supplier),
                 description = COALESCE(NULLIF(EXCLUDED.description, ''), public.equip_info.description),
                 updated_at = now();
             """;
@@ -693,6 +701,7 @@ public sealed class InfoImportEditStore
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("equip_name", equipmentName.Trim());
         command.Parameters.AddWithValue("product_code", productCode?.Trim() ?? "");
+        command.Parameters.AddWithValue("supplier", supplier?.Trim() ?? "");
         command.Parameters.AddWithValue("description", description?.Trim() ?? "");
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
