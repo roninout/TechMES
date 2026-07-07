@@ -305,6 +305,12 @@ public sealed class InfoImportEditStore
                     item.Equipment,
                     cancellationToken);
 
+                await DeletePhotoLinksAsync(
+                    connection,
+                    transaction,
+                    item.Equipment,
+                    cancellationToken);
+
                 var sortOrder = 0;
                 foreach (var source in SplitSourceValues(item.Source))
                 {
@@ -325,6 +331,29 @@ public sealed class InfoImportEditStore
                         item.Equipment,
                         instructionId,
                         sortOrder++,
+                        cancellationToken);
+                }
+
+                var photoSortOrder = 0;
+                foreach (var image in SplitSourceValues(item.Image))
+                {
+                    var filePath = ResolveInstructionImageFilePath(sourceRoot, image);
+                    var photoId = await SaveLibraryFileAsync(
+                        connection,
+                        transaction,
+                        "public.equip_photo",
+                        item.Type,
+                        filePath,
+                        cancellationToken);
+
+                    await EnsureDocumentLinkAsync(
+                        connection,
+                        transaction,
+                        "public.equip_info_photo",
+                        "photo_id",
+                        item.Equipment,
+                        photoId,
+                        photoSortOrder++,
                         cancellationToken);
                 }
             }
@@ -647,7 +676,7 @@ public sealed class InfoImportEditStore
     private static IEnumerable<string> SplitSourceValues(string? source)
     {
         return (source ?? "")
-            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(x => !string.IsNullOrWhiteSpace(x));
     }
 
@@ -662,6 +691,24 @@ public sealed class InfoImportEditStore
             throw new FileNotFoundException($"Import source file not found: {filePath}", filePath);
 
         return filePath;
+    }
+
+    private static string ResolveInstructionImageFilePath(string sourceRoot, string image)
+    {
+        var value = image.Trim();
+        if (Path.IsPathRooted(value))
+            return ResolveSourceFilePath(sourceRoot ?? "", value);
+
+        /*
+         * The legacy WPF import keeps instruction images in an Images folder
+         * next to instruction PDFs. The fallback supports manually selected
+         * files that are placed directly in the configured source folder.
+         */
+        var imagesFolderPath = Path.Combine(sourceRoot ?? "", "Images", value);
+        if (File.Exists(imagesFolderPath))
+            return imagesFolderPath;
+
+        return ResolveSourceFilePath(sourceRoot ?? "", value);
     }
 
     private static async Task EnsureInfoRowAsync(
@@ -856,6 +903,22 @@ public sealed class InfoImportEditStore
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task DeletePhotoLinksAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string equipmentName,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            DELETE FROM public.equip_info_photo
+            WHERE equip_name = @equip_name;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("equip_name", equipmentName.Trim());
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static async Task EnsureDocumentLinkAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -910,13 +973,16 @@ public sealed class InfoImportEditStore
 
     private static void ValidateLibraryTableName(string tableName)
     {
-        if (tableName is not ("public.equip_instruction" or "public.equip_scheme"))
+        if (tableName is not ("public.equip_photo" or "public.equip_instruction" or "public.equip_scheme"))
             throw new ArgumentOutOfRangeException(nameof(tableName), tableName, "Unsupported document library table.");
     }
 
     private static void ValidateLinkTableName(string tableName, string idColumnName)
     {
         if (tableName == "public.equip_info_instruction" && idColumnName == "instruction_id")
+            return;
+
+        if (tableName == "public.equip_info_photo" && idColumnName == "photo_id")
             return;
 
         if (tableName == "public.equip_info_scheme" && idColumnName == "scheme_id")

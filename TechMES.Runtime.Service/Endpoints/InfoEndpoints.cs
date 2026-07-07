@@ -253,8 +253,7 @@ public static class InfoEndpoints
 
         headers.CacheControl = "public, max-age=86400";
         headers.ETag = etag;
-        headers.ContentDisposition =
-            $"inline; filename=\"{NormalizeHeaderFileName(file.FileName)}\"";
+        headers.ContentDisposition = BuildContentDisposition(file.FileName);
 
         if (lastModified is not null)
             headers.LastModified = lastModified.Value.ToString("R");
@@ -289,6 +288,15 @@ public static class InfoEndpoints
     /// <summary>
     /// Нормализует имя файла для HTTP header Content-Disposition.
     /// </summary>
+    private static string BuildContentDisposition(string? fileName)
+    {
+        var safeFileName = NormalizeHeaderFileName(fileName);
+        var asciiFileName = BuildAsciiHeaderFileName(safeFileName);
+        var utf8FileName = Uri.EscapeDataString(safeFileName);
+
+        return $"inline; filename=\"{asciiFileName}\"; filename*=UTF-8''{utf8FileName}";
+    }
+
     private static string NormalizeHeaderFileName(string? fileName)
     {
         fileName = string.IsNullOrWhiteSpace(fileName)
@@ -296,5 +304,18 @@ public static class InfoEndpoints
             : fileName.Trim();
 
         return fileName.Replace("\\", "_").Replace("/", "_").Replace("\"", "'");
+    }
+
+    private static string BuildAsciiHeaderFileName(string fileName)
+    {
+        var chars = fileName
+            .Select(ch => ch >= 32 && ch <= 126 ? ch : '_')
+            .ToArray();
+
+        var ascii = new string(chars).Trim('_', '.', ' ');
+
+        return string.IsNullOrWhiteSpace(ascii)
+            ? "file"
+            : ascii;
     }
 }

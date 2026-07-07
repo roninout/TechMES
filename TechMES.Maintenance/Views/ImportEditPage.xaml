@@ -491,6 +491,8 @@
 
                     <control:FilterDataGrid Grid.Row="1"
                                         Style="{StaticResource ImportGrid}"
+                                        CanUserResizeColumns="True"
+                                        CanUserReorderColumns="True"
                                         ShowStatusBar="False"
                                         ShowElapsedTime="False"
                                         DateFormatString="dd.MM.yyyy"
@@ -531,6 +533,7 @@
                                 ClipboardContentBinding="{Binding Type}"
                                 SortMemberPath="Type"
                                 IsColumnFiltered="True"
+                                CanUserResize="True"
                                 Width="150">
 
                                 <!-- Первый клик: только выделение ячейки. -->
@@ -584,6 +587,7 @@
                             <control:DataGridTextColumn Header="Product code"
                                                     Binding="{Binding ProductCode, UpdateSourceTrigger=PropertyChanged}"
                                                     IsColumnFiltered="True"
+                                                    CanUserResize="True"
                                                     Width="210" />
 
                             <control:DataGridTemplateColumn
@@ -592,6 +596,7 @@
                                 ClipboardContentBinding="{Binding Supplier}"
                                 SortMemberPath="Supplier"
                                 IsColumnFiltered="True"
+                                CanUserResize="True"
                                 Width="180">
 
                                 <!-- Первый клик: только выделение ячейки. -->
@@ -646,15 +651,58 @@
                             <control:DataGridTextColumn Header="Description"
                                                     Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
                                                     IsColumnFiltered="True"
+                                                    CanUserResize="True"
                                                     Width="*" />
-                            <control:DataGridTextColumn Header="Source"
-                                                    Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsColumnFiltered="True"
-                                                    Width="260" />
-                            <control:DataGridTextColumn Header="Image"
-                                                    Binding="{Binding Image, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsColumnFiltered="True"
-                                                    Width="220" />
+
+                            <control:DataGridTemplateColumn Header="Source"
+                                                            FieldName="Source"
+                                                            ClipboardContentBinding="{Binding Source}"
+                                                            SortMemberPath="Source"
+                                                            IsColumnFiltered="True"
+                                                            CanUserResize="True"
+                                                            Width="260">
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ui:TextBlock Text="{Binding Source}"
+                                                      Margin="8,0"
+                                                      VerticalAlignment="Center"
+                                                      TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+
+                                <control:DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding Source, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                 HorizontalAlignment="Stretch"
+                                                 VerticalAlignment="Center" />
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellEditingTemplate>
+                            </control:DataGridTemplateColumn>
+
+                            <control:DataGridTemplateColumn Header="Image"
+                                                            FieldName="Image"
+                                                            ClipboardContentBinding="{Binding Image}"
+                                                            SortMemberPath="Image"
+                                                            IsColumnFiltered="True"
+                                                            CanUserResize="True"
+                                                            Width="220">
+                                <control:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ui:TextBlock Text="{Binding Image}"
+                                                      Margin="8,0"
+                                                      VerticalAlignment="Center"
+                                                      TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellTemplate>
+
+                                <control:DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding Image, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                 HorizontalAlignment="Stretch"
+                                                 VerticalAlignment="Center" />
+                                    </DataTemplate>
+                                </control:DataGridTemplateColumn.CellEditingTemplate>
+                            </control:DataGridTemplateColumn>
                         </control:FilterDataGrid.Columns>
                     </control:FilterDataGrid>
 
@@ -1578,4 +1626,3 @@
 
     </Grid>
 </views:MaintenancePageControl>
-
