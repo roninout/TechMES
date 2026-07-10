@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
     // ECharts instance по DOM element. WeakMap освобождает записи после удаления element.
     const charts = new WeakMap();
 
@@ -113,6 +113,7 @@
 
             if (zoomState) {
                 zoomStates.set(element, zoomState);
+                notifyVisibleWindowChanged(element, zoomState);
                 requestHistoryNearEdge(element, zoomState);
             }
         });
@@ -176,16 +177,32 @@
             event.stopPropagation();
         };
 
+        const onMouseMove = event => {
+            if (activePointers.size > 0) {
+                return;
+            }
+
+            showTouchPointer(element, chart, event);
+        };
+
+        const onMouseLeave = () => {
+            chart.dispatchAction({ type: "hideTip" });
+        };
+
         element.addEventListener("pointerdown", onPointerDown, { capture: true, passive: false });
         element.addEventListener("pointermove", onPointerMove, { capture: true, passive: false });
         element.addEventListener("pointerup", onPointerUp, { capture: true, passive: false });
         element.addEventListener("pointercancel", onPointerUp, { capture: true, passive: false });
         element.addEventListener("lostpointercapture", onPointerUp, { capture: true, passive: false });
+        element.addEventListener("mousemove", onMouseMove, { passive: true });
+        element.addEventListener("mouseleave", onMouseLeave, { passive: true });
 
         touchHandlers.set(element, {
             onPointerDown,
             onPointerMove,
-            onPointerUp
+            onPointerUp,
+            onMouseMove,
+            onMouseLeave
         });
     }
 
@@ -387,6 +404,7 @@
 
         if (valueZoom) {
             zoomStates.set(element, valueZoom);
+            notifyVisibleWindowChanged(element, valueZoom);
         }
 
         chart.dispatchAction({
@@ -396,6 +414,24 @@
                 { dataZoomIndex: 1, start: zoom.start, end: zoom.end }
             ]
         });
+    }
+
+    // Сообщает Blazor фактический time range, который сейчас видит пользователь.
+    function notifyVisibleWindowChanged(element, zoomState) {
+        const callback = historyCallbacks.get(element);
+
+        if (!callback?.invokeMethodAsync || !zoomState) {
+            return;
+        }
+
+        const start = Math.round(zoomState.startValue);
+        const end = Math.round(zoomState.endValue);
+
+        if (!Number.isFinite(start) || !Number.isFinite(end)) {
+            return;
+        }
+
+        callback.invokeMethodAsync("NotifyVisibleWindowChangedAsync", start, end).catch(() => {});
     }
 
     // Читает dataZoom из текущего option ECharts.
@@ -779,14 +815,17 @@
 
         // После setOption ECharts уже знает итоговый grid с учетом containLabel.
         // requestAnimationFrame дает canvas завершить layout перед чтением координат.
-        window.requestAnimationFrame(() => syncPlotBounds(element, chart));
+        window.requestAnimationFrame(() => {
+            syncPlotBounds(element, chart);
+            notifyVisibleWindowChanged(element, zoomState);
+        });
     }
 
     // Преобразует компактные series DTO в формат series ECharts.
     function toSeries(source) {
         const color = source.color || "#2f80ed";
 
-        return {
+        const series = {
             name: source.name || "",
             type: "line",
             data: source.data || [],
@@ -800,17 +839,23 @@
             itemStyle: {
                 color
             },
-            areaStyle: {
-                color: source.fill || toRgba(color, 0.18),
-                opacity: 1
-            },
             emphasis: {
                 focus: "series"
             }
         };
+
+        if (source.useArea !== false) {
+            series.areaStyle = {
+                color: source.fill || toRgba(color, 0.18),
+                opacity: 1
+            };
+        }
+
+        return series;
     }
 
-    // Формирует HTML tooltip без служебных полей quality/raw в пользовательском тексте.
+    // Формирует HTML tooltip. Для масштабированных серий показывает raw-значение,
+    // а не внутреннее значение, перенесенное на общую ось графика.
     function formatTooltip(params, unit) {
         const items = Array.isArray(params) ? params : [params];
         const first = items[0];
@@ -819,7 +864,7 @@
 
         for (const item of items) {
             const data = item.data || item.value || [];
-            const value = data[1];
+            const value = Number.isFinite(data[2]) ? data[2] : data[1];
             const suffix = unit ? ` ${escapeHtml(unit)}` : "";
 
             lines.push(

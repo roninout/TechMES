@@ -1,4 +1,4 @@
-using TechMES.Contracts.Equipment;
+﻿using TechMES.Contracts.Equipment;
 using TechMES.Contracts.Param;
 
 namespace TechMES.Application.Param;
@@ -24,6 +24,24 @@ public interface IEquipmentParamProvider
     /// </summary>
     Task<ParamTrendResponse> GetTrendAsync(
         EquipmentDto equipment,
+        int windowMinutes = 30,
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Проверяет, что введенный тег PID Tune можно читать и использовать как trend.
+    /// </summary>
+    Task<ParamTuneCheckResponse> CheckTuneTrendTagAsync(
+        string tagName,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Читает Runtime-данные вкладки PID Tune для VGA: ManTune, PV/SP и тренды.
+    /// </summary>
+    Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(
+        EquipmentDto equipment,
+        ParamTuneSettingsResponse settings,
         int windowMinutes = 30,
         DateTime? fromUtc = null,
         DateTime? toUtc = null,

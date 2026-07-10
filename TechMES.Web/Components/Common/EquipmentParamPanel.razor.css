@@ -1,4 +1,4 @@
-.equipment-param-panel {
+﻿.equipment-param-panel {
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr);
     gap: 12px;
@@ -6,6 +6,123 @@
     min-width: 0;
     overflow: auto;
     padding: 0 4px 0 8px;
+}
+
+.param-tune-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+
+.param-tune-graph-layout {
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    align-items: center;
+    gap: 18px;
+    min-width: 0;
+}
+
+.param-tune-bars {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(54px, 1fr));
+    align-items: center;
+    justify-items: center;
+    gap: 8px;
+    min-height: 360px;
+    min-width: 0;
+}
+
+.param-tune-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.param-tune-chart-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    min-height: 34px;
+    min-width: 0;
+}
+
+.param-tune-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+
+.param-tune-row {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) 110px 184px 184px;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.param-tune-input-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.param-tune-help {
+    align-self: center;
+    color: var(--rz-text-secondary-color);
+    font-size: 0.85rem;
+    min-width: 0;
+}
+
+.param-tune-result-row {
+    display: grid;
+    grid-template-columns: 120px 120px 120px minmax(0, 1fr) 140px 120px;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.param-tune-row ::deep .rz-button,
+.param-tune-result-row ::deep .rz-button {
+    width: 100%;
+}
+
+::deep .param-tune-tag-field,
+::deep .param-tune-number-field,
+::deep .param-tune-result-field {
+    width: 100%;
+}
+
+::deep .param-tune-range-field {
+    min-width: 180px;
+}
+
+.param-tune-progress {
+    align-self: center;
+}
+
+::deep .param-tune-number-field .rz-numeric,
+::deep .param-tune-number-field .rz-spinner,
+::deep .param-tune-number-field .rz-inputnumber,
+::deep .param-tune-number-field .rz-inputtext,
+::deep .param-tune-number-field input {
+    width: 100% !important;
+    min-width: 0;
+}
+
+@media (max-width: 900px) {
+    .param-tune-graph-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .param-tune-row,
+    .param-tune-input-row,
+    .param-tune-result-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
 ::deep .equipment-param-summary-card {

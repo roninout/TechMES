@@ -4,9 +4,11 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using TechMES.Application.EventLog;
 using TechMES.Application.Info;
 using TechMES.Application.Messages;
+using TechMES.Application.Param;
 using TechMES.Infrastructure.PostgreSql.EventLog;
 using TechMES.Infrastructure.PostgreSql.Info;
 using TechMES.Infrastructure.PostgreSql.Messages;
+using TechMES.Infrastructure.PostgreSql.Param;
 
 namespace TechMES.Infrastructure.PostgreSql;
 
@@ -30,6 +32,7 @@ public static class PostgreSqlServiceCollectionExtensions
         // и не зависит от Npgsql или SQL-запросов напрямую.
         services.AddScoped<IMessageStore, PostgreSqlMessageStore>();
         services.TryAddScoped<IEquipmentInfoStore, PostgreSqlEquipmentInfoStore>();
+        services.TryAddScoped<IParamTuneStore, PostgreSqlParamTuneStore>();
 
         return services;
     }
@@ -42,6 +45,7 @@ public static class PostgreSqlServiceCollectionExtensions
     public static IServiceCollection AddPostgreSqlInfoInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.TryAddScoped<IEquipmentInfoStore, PostgreSqlEquipmentInfoStore>();
+        services.TryAddScoped<IParamTuneStore, PostgreSqlParamTuneStore>();
 
         return services;
     }

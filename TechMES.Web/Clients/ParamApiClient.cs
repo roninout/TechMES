@@ -1,3 +1,4 @@
+﻿using System.Globalization;
 using System.Net.Http.Json;
 using System.Runtime.Versioning;
 using System.Security.Claims;
@@ -97,6 +98,115 @@ public sealed class ParamApiClient
             Supported = false,
             Message = "Runtime Service returned empty Param trend."
         };
+    }
+
+    /// <summary>
+    /// Читает Runtime-данные вкладки PID Tune для VGA.
+    /// tuneSettings используется как временный черновик после Check: он не сохраняется в БД,
+    /// но позволяет сразу отобразить PV/SP в графике до нажатия Save.
+    /// </summary>
+    public async Task<ParamTuneRuntimeResponse> GetTuneAsync(
+        string equipmentName,
+        int windowMinutes,
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        CancellationToken ct = default,
+        ParamTuneSettingsResponse? tuneSettings = null)
+    {
+        var client = CreateClient();
+        var encodedName = Uri.EscapeDataString(equipmentName);
+        var queryParts = new List<string> { $"windowMinutes={windowMinutes}" };
+
+        void AddQuery(string name, string? value)
+        {
+            if (value is not null)
+                queryParts.Add($"{name}={Uri.EscapeDataString(value)}");
+        }
+
+        void AddQueryDouble(string name, double? value)
+        {
+            if (value.HasValue)
+                AddQuery(name, value.Value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (fromUtc.HasValue)
+            AddQuery("fromUtc", ToQueryUtc(fromUtc.Value));
+
+        if (toUtc.HasValue)
+            AddQuery("toUtc", ToQueryUtc(toUtc.Value));
+
+        if (tuneSettings is not null)
+        {
+            AddQuery("pv", tuneSettings.Pv);
+            AddQueryDouble("pvMin", tuneSettings.PvMin);
+            AddQueryDouble("pvMax", tuneSettings.PvMax);
+            AddQuery("sp", tuneSettings.Sp);
+            AddQueryDouble("spMin", tuneSettings.SpMin);
+            AddQueryDouble("spMax", tuneSettings.SpMax);
+        }
+
+        var query = string.Join("&", queryParts);
+
+        var result = await client.GetFromJsonAsync<ParamTuneRuntimeResponse>(
+            $"api/param/{encodedName}/tune?{query}",
+            ct);
+
+        return result ?? new ParamTuneRuntimeResponse
+        {
+            EquipmentName = equipmentName,
+            Supported = false,
+            Message = "Runtime Service returned empty PID Tune response."
+        };
+    }
+
+    /// <summary>
+    /// Проверяет в Runtime/CtApi, что PV/SP тег найден, читается как число и имеет trend-reference.
+    /// </summary>
+    public async Task<ParamTuneCheckResponse> CheckTuneTagAsync(
+        string equipmentName,
+        ParamTuneCheckRequest request,
+        CancellationToken ct = default)
+    {
+        var client = CreateClient();
+        var encodedName = Uri.EscapeDataString(equipmentName);
+
+        using var response = await client.PostAsJsonAsync(
+            $"api/param/{encodedName}/tune/check",
+            request,
+            ct);
+
+        var result = await response.Content.ReadFromJsonAsync<ParamTuneCheckResponse>(cancellationToken: ct);
+        return result ?? new ParamTuneCheckResponse
+        {
+            TagName = request.TagName,
+            Found = false,
+            TrendFound = false,
+            Message = response.IsSuccessStatusCode
+                ? "Runtime Service returned empty PID Tune check response."
+                : $"Runtime Service rejected PID Tune check: {(int)response.StatusCode} {response.ReasonPhrase}"
+        };
+    }
+
+    /// <summary>
+    /// Сохраняет PV/SP теги и диапазоны в Runtime/PostgreSQL.
+    /// </summary>
+    public async Task<ParamTuneSettingsResponse> SaveTuneAsync(
+        string equipmentName,
+        ParamTuneSaveRequest request,
+        CancellationToken ct = default)
+    {
+        var client = CreateClient();
+        var encodedName = Uri.EscapeDataString(equipmentName);
+
+        using var response = await client.PostAsJsonAsync(
+            $"api/param/{encodedName}/tune",
+            request,
+            ct);
+
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<ParamTuneSettingsResponse>(cancellationToken: ct);
+        return result ?? new ParamTuneSettingsResponse { EquipmentName = equipmentName };
     }
 
     /// <summary>

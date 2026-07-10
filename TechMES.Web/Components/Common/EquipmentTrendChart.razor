@@ -1,4 +1,4 @@
-@using TechMES.Contracts.Param
+﻿@using TechMES.Contracts.Param
 @using Microsoft.JSInterop
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
@@ -45,6 +45,12 @@
     public string? Unit { get; set; }
 
     /// <summary>
+    /// true - обычный Param Graph рисуется как LineArea; false - Tune-график рисуется чистыми линиями.
+    /// </summary>
+    [Parameter]
+    public bool UseArea { get; set; } = true;
+
+    /// <summary>
     /// Левая граница видимого окна тренда.
     /// </summary>
     [Parameter]
@@ -73,6 +79,12 @@
     /// </summary>
     [Parameter]
     public EventCallback<string> OnHistoryRequested { get; set; }
+
+    /// <summary>
+    /// Событие изменения фактического видимого окна графика после zoom/pan.
+    /// </summary>
+    [Parameter]
+    public EventCallback<TrendVisibleWindowChangedEventArgs> OnVisibleWindowChanged { get; set; }
 
     /// <summary>
     /// После первого render-а передает график в JS.
@@ -142,7 +154,8 @@
             {
                 name = item.Name,
                 color = item.Color,
-                fill = ToAreaFill(item.Color),
+                fill = UseArea ? ToAreaFill(item.Color) : null,
+                useArea = UseArea,
                 data = trend.Points
                     .Where(point => point.Series.Equals(item.Name, StringComparison.OrdinalIgnoreCase))
                     .OrderBy(point => point.Time)
@@ -190,6 +203,25 @@
             return;
 
         await OnHistoryRequested.InvokeAsync(direction);
+    }
+
+    /// <summary>
+    /// JS вызывает этот метод после построения графика, zoom или touch-pan.
+    /// Так Blazor знает, какой участок данных выбран пользователем.
+    /// </summary>
+    [JSInvokable]
+    public async Task NotifyVisibleWindowChangedAsync(long startUtcMs, long endUtcMs)
+    {
+        if (_isDisposed || !OnVisibleWindowChanged.HasDelegate)
+            return;
+
+        var fromUtc = DateTimeOffset.FromUnixTimeMilliseconds(startUtcMs).UtcDateTime;
+        var toUtc = DateTimeOffset.FromUnixTimeMilliseconds(endUtcMs).UtcDateTime;
+
+        if (toUtc < fromUtc)
+            (fromUtc, toUtc) = (toUtc, fromUtc);
+
+        await OnVisibleWindowChanged.InvokeAsync(new TrendVisibleWindowChangedEventArgs(fromUtc, toUtc));
     }
 
     /// <summary>

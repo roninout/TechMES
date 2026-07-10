@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -255,6 +255,153 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         {
             response.Message = "No trend points were returned for the selected time window.";
         }
+
+        return response;
+    }
+
+    public async Task<ParamTuneCheckResponse> CheckTuneTrendTagAsync(
+        string tagName,
+        CancellationToken ct = default)
+    {
+        var normalized = (tagName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return new ParamTuneCheckResponse
+            {
+                TagName = "",
+                Found = false,
+                TrendFound = false,
+                Message = "Trend tag name is empty."
+            };
+        }
+
+        var currentValue = await TryReadNumericTagAsync(normalized, ct);
+        var trendRef = await ResolveRawTrendRefAsync(normalized, ct);
+        var found = trendRef is not null && currentValue.HasValue;
+
+        return new ParamTuneCheckResponse
+        {
+            TagName = normalized,
+            Found = found,
+            TrendFound = trendRef is not null,
+            CurrentValue = currentValue,
+            Message = found
+                ? "Trend tag found."
+                : currentValue.HasValue
+                    ? "Tag was read, but trend reference was not resolved."
+                    : "Tag was not read as numeric value."
+        };
+    }
+
+    public async Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(
+        EquipmentDto equipment,
+        ParamTuneSettingsResponse settings,
+        int windowMinutes = 30,
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(equipment);
+
+        windowMinutes = Math.Clamp(windowMinutes, 1, 240);
+
+        var to = NormalizeUtc(toUtc) ?? DateTime.UtcNow;
+        var from = NormalizeUtc(fromUtc) ?? to.AddMinutes(-windowMinutes);
+
+        if (from >= to)
+            from = to.AddMinutes(-windowMinutes);
+
+        settings.EquipmentName = equipment.Name;
+        var supported = equipment.TypeGroup == EquipmentTypeGroup.VGA;
+
+        var response = new ParamTuneRuntimeResponse
+        {
+            EquipmentName = equipment.Name,
+            TypeGroup = equipment.TypeGroup,
+            Supported = supported,
+            Settings = settings,
+            Time = DateTime.Now,
+            Trend = new ParamTrendResponse
+            {
+                EquipmentName = equipment.Name,
+                TypeGroup = equipment.TypeGroup,
+                Supported = supported,
+                FromUtc = from,
+                ToUtc = to
+            }
+        };
+
+        if (!supported)
+        {
+            response.Message = "PID Tune is supported only for VGA equipment.";
+            response.Trend.Message = response.Message;
+            return response;
+        }
+
+        const double tuneAxisMin = 0;
+        const double tuneAxisMax = 100;
+        var pvRange = NormalizeRange(settings.PvMin ?? 0, settings.PvMax ?? 100);
+        var spRange = NormalizeRange(settings.SpMin ?? 0, settings.SpMax ?? 100);
+
+        response.ManTuneMin = 0;
+        response.ManTuneMax = 100;
+        response.ManTuneValue = await ReadEquipmentNumericItemAsync(equipment.Name, "ManTune", ct)
+            ?? await ReadEquipmentNumericItemAsync(equipment.Name, "Man", ct);
+        response.PvValue = await TryReadNumericTagAsync(settings.Pv, ct);
+        response.SpValue = await TryReadNumericTagAsync(settings.Sp, ct);
+
+        response.Trend.AxisYMin = tuneAxisMin;
+        response.Trend.AxisYMax = tuneAxisMax;
+
+        response.Trend.Series.Add(new ParamTrendItemDto
+        {
+            Name = "ManTune",
+            Color = "#4F81BD",
+            NativeMin = 0,
+            NativeMax = 100
+        });
+
+        if (!string.IsNullOrWhiteSpace(settings.Sp))
+        {
+            response.Trend.Series.Add(new ParamTrendItemDto
+            {
+                Name = "Sp",
+                Color = "#F59E0B",
+                NativeMin = spRange.Min,
+                NativeMax = spRange.Max
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings.Pv))
+        {
+            response.Trend.Series.Add(new ParamTrendItemDto
+            {
+                Name = "Pv",
+                Color = "#2E7D32",
+                NativeMin = pvRange.Min,
+                NativeMax = pvRange.Max
+            });
+        }
+
+        var manRef = await ResolveTrendNameAsync(equipment.Name, "ManTune", ct)
+            ?? await ResolveTrendNameAsync(equipment.Name, "Man", ct);
+        await AppendTuneTrendPointsAsync(response.Trend, "ManTune", manRef, from, to, 0, 100, tuneAxisMin, tuneAxisMax, ct);
+
+        var spRef = await ResolveRawTrendRefAsync(settings.Sp, ct);
+        settings.SpTrendFound = spRef is not null && response.SpValue.HasValue;
+        await AppendTuneTrendPointsAsync(response.Trend, "Sp", spRef, from, to, spRange.Min, spRange.Max, tuneAxisMin, tuneAxisMax, ct);
+
+        var pvRef = await ResolveRawTrendRefAsync(settings.Pv, ct);
+        settings.PvTrendFound = pvRef is not null && response.PvValue.HasValue;
+        await AppendTuneTrendPointsAsync(response.Trend, "Pv", pvRef, from, to, pvRange.Min, pvRange.Max, tuneAxisMin, tuneAxisMax, ct);
+
+        response.Trend.Points = response.Trend.Points
+            .OrderBy(point => point.Time)
+            .ThenBy(point => point.Series, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (response.Trend.Points.Count == 0)
+            response.Trend.Message = "No PID Tune trend points were returned for the selected time window.";
 
         return response;
     }
@@ -1214,10 +1361,144 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return new TrendRef(trendName, cluster);
     }
 
+    private async Task<TrendRef?> ResolveRawTrendRefAsync(string? tagName, CancellationToken ct)
+    {
+        var normalized = (tagName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        var cluster = await ResolveRawTagClusterAsync(normalized, ct);
+        if (string.IsNullOrWhiteSpace(cluster)
+            || cluster.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            cluster = "Cluster1";
+        }
+
+        return new TrendRef(normalized, cluster);
+    }
+
+    private async Task<string> ResolveRawTagClusterAsync(string tagName, CancellationToken ct)
+    {
+        try
+        {
+            var escapedTagName = EscapeCicodeString(tagName);
+            return CleanScadaText(await _nativeClient.CicodeAsync($"TagInfo(\"{escapedTagName}\", 17)", ct));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Param Tune TagInfo cluster failed. Tag={Tag}", tagName);
+            return "";
+        }
+    }
+
+    private async Task<double?> TryReadNumericTagAsync(string? tagName, CancellationToken ct)
+    {
+        var normalized = (tagName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        try
+        {
+            var raw = await _nativeClient.TagReadAsync(normalized, ct);
+            return TryParseDouble(raw ?? "", out var value) ? value : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Param Tune TagRead failed. Tag={Tag}", normalized);
+            return null;
+        }
+    }
+
+    private async Task<double?> ReadEquipmentNumericItemAsync(string equipmentName, string itemName, CancellationToken ct)
+    {
+        var tagName = await ResolveTagNameAsync(equipmentName, itemName, ct);
+        if (string.IsNullOrWhiteSpace(tagName)
+            || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return await TryReadNumericTagAsync(tagName, ct);
+    }
+
+    private async Task AppendTuneTrendPointsAsync(
+        ParamTrendResponse response,
+        string seriesName,
+        TrendRef? trendRef,
+        DateTime fromUtc,
+        DateTime toUtc,
+        double nativeMin,
+        double nativeMax,
+        double axisMin,
+        double axisMax,
+        CancellationToken ct)
+    {
+        if (trendRef is null)
+            return;
+
+        var nativeRange = NormalizeRange(nativeMin, nativeMax);
+        var axisRange = NormalizeRange(axisMin, axisMax);
+        var rows = await QueryTuneTrendRowsWithFallbackAsync(trendRef.Value, fromUtc, toUtc, ct);
+        foreach (var row in rows)
+        {
+            response.Points.Add(new ParamTrendPointDto
+            {
+                Series = seriesName,
+                Time = row.TimeUtc.ToLocalTime(),
+                RawValue = row.Value,
+                Value = MapToBase(row.Value, nativeRange.Min, nativeRange.Max, axisRange.Min, axisRange.Max),
+                Quality = row.Quality
+            });
+        }
+    }
+
     private async Task<string> ResolveClusterAsync(string equipmentName, string itemName, CancellationToken ct)
     {
         var escapedKey = EscapeCicodeString($"{equipmentName}.{itemName}");
         return (await _nativeClient.CicodeAsync($"TagInfo(\"{escapedKey}\", 17)", ct) ?? "").Trim();
+    }
+
+    /// <summary>
+    /// Для ручных PV/SP тегов пользователь вводит имя технологического тега,
+    /// а Citect trend часто называется TREND_... или использует подчеркивания вместо точек.
+    /// Поэтому пробуем несколько безопасных вариантов и берем первый, который вернул данные.
+    /// </summary>
+    private async Task<List<TrendRow>> QueryTuneTrendRowsWithFallbackAsync(
+        TrendRef trendRef,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken ct)
+    {
+        foreach (var candidate in BuildTuneTrendCandidates(trendRef))
+        {
+            var rows = await QueryTrendRowsAsync(candidate, fromUtc, toUtc, ct);
+            if (rows.Count > 0)
+                return rows;
+        }
+
+        return [];
+    }
+
+    private static IEnumerable<TrendRef> BuildTuneTrendCandidates(TrendRef trendRef)
+    {
+        var names = new[]
+        {
+            trendRef.TrendName,
+            trendRef.TrendName.StartsWith("TREND_", StringComparison.OrdinalIgnoreCase)
+                ? trendRef.TrendName
+                : "TREND_" + trendRef.TrendName,
+            trendRef.TrendName.Replace('.', '_'),
+            trendRef.TrendName.Replace('.', '_').StartsWith("TREND_", StringComparison.OrdinalIgnoreCase)
+                ? trendRef.TrendName.Replace('.', '_')
+                : "TREND_" + trendRef.TrendName.Replace('.', '_')
+        };
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in names)
+        {
+            if (!string.IsNullOrWhiteSpace(name) && seen.Add(name))
+                yield return new TrendRef(name, trendRef.Cluster);
+        }
     }
 
     private async Task<List<TrendRow>> QueryTrendRowsAsync(
@@ -1847,7 +2128,7 @@ internal static class ParamDefinitions
                 B("Mode"), B("AlarmLAEn"), B("AlarmLWEn"), B("AlarmHWEn"), B("AlarmHAEn"), B("ForceCmd"),
                 B("AlarmLA"), B("AlarmLW"), B("AlarmHW"), B("AlarmHA"), B("AlarmA"), B("AlarmW"),
                 B("AlarmHealth"), N("STW"), N("Min"), N("Max"), N("MinR"), N("MaxR"), N("OutMin"),
-                N("OutMax"), N("Value"), N("Man"), N("ManTrue"), N("ManForced"), N("SetLA"), N("SetLW"),
+                N("OutMax"), N("Value"), N("Man"), N("ManTune"), N("ManTrue"), N("ManForced"), N("SetLA"), N("SetLW"),
                 N("SetHW"), N("SetHA"), N("SetHyst"), N("R"), N("HashCode")
             ],
             [T("R", "#4F81BD")],

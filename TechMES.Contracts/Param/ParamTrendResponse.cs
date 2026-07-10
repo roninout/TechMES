@@ -1,4 +1,4 @@
-using TechMES.Contracts.Equipment;
+﻿using TechMES.Contracts.Equipment;
 
 namespace TechMES.Contracts.Param;
 

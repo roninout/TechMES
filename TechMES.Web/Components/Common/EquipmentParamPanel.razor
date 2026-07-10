@@ -1,5 +1,6 @@
-@using TechMES.Contracts.Equipment
+﻿@using TechMES.Contracts.Equipment
 @using TechMES.Contracts.Param
+@using TechMES.Contracts.Param.Tuning
 @using System.Globalization
 @using TechMES.Web.Settings
 @inject ParamApiClient ParamApi
@@ -580,6 +581,218 @@
                             </RadzenTabsItem>
                         }
 
+                        @if (IsVgaEquipment)
+                        {
+                            var tuneSettings = EnsureTuneSettings();
+                            var tuneResult = CalculateTune();
+
+                            <RadzenTabsItem Text="Tune" Icon="query_stats">
+                                @if (_isLoading && SelectedTabKind == ParamPanelTabKind.Tune)
+                                {
+                                    <TechMesLoadingBar />
+                                }
+                                else
+                                {
+                                    <div class="param-tune-panel">
+                                        @if (!string.IsNullOrWhiteSpace(_tune?.Message ?? _tuneStatusText))
+                                        {
+                                            <RadzenAlert AlertStyle="@_tuneStatusStyle" ShowIcon="true">
+                                                @DisplayValue(_tune?.Message ?? _tuneStatusText)
+                                            </RadzenAlert>
+                                        }
+
+                                        <div class="param-tune-graph-layout">
+                                            <div class="param-tune-bars">
+                                                <ParamGraphVerticalBar Label="ManTune"
+                                                                       Value="@_tune?.ManTuneValue"
+                                                                       Min="@(_tune?.ManTuneMin ?? 0)"
+                                                                       Max="@(_tune?.ManTuneMax ?? 100)"
+                                                                       FillColor="#4F81BD" />
+                                                <ParamGraphVerticalBar Label="Sp"
+                                                                       Value="@_tune?.SpValue"
+                                                                       Min="@(tuneSettings.SpMin ?? 0)"
+                                                                       Max="@(tuneSettings.SpMax ?? 100)"
+                                                                       FillColor="#F59E0B" />
+                                                <ParamGraphVerticalBar Label="Pv"
+                                                                       Value="@_tune?.PvValue"
+                                                                       Min="@(tuneSettings.PvMin ?? 0)"
+                                                                       Max="@(tuneSettings.PvMax ?? 100)"
+                                                                       FillColor="#2E7D32" />
+                                            </div>
+
+                                            <div class="param-tune-chart">
+                                                <div class="param-tune-chart-toolbar">
+                                                    <RadzenButton Icon="skip_next"
+                                                                  ButtonStyle="ButtonStyle.Light"
+                                                                  class="param-live-button"
+                                                                  title="Go to latest"
+                                                                  Click="@GoTuneLiveAsync" />
+                                                </div>
+
+                                                @if (_tuneTrend is null || _tuneTrend.Points.Count == 0)
+                                                {
+                                                    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                                                        @DisplayValue(_tuneTrend?.Message ?? "Tune trend points are not loaded yet.")
+                                                    </RadzenAlert>
+                                                }
+                                                else
+                                                {
+                                                    <div class="param-chart-shell">
+                                                        <EquipmentTrendChart Trend="@_tuneTrend"
+                                                                             ViewKey="@TuneChartViewKey"
+                                                                             VisibleFromUtc="@GetTuneVisibleFromUtc()"
+                                                                             VisibleToUtc="@GetTuneVisibleToUtc()"
+                                                                             UseArea="false"
+                                                                             OnVisibleWindowChanged="@OnTuneVisibleWindowChangedAsync" />
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+
+                                        <RadzenPanel AllowCollapse="true" class="param-reference-panel">
+                                            <HeaderTemplate>
+                                                <div class="param-reference-panel-title">
+                                                    <RadzenIcon Icon="query_stats" class="param-reference-panel-icon" />
+                                                    <span>PID Tune</span>
+                                                </div>
+                                            </HeaderTemplate>
+                                            <ChildContent>
+                                                <div class="param-tune-form">
+                                                    <div class="param-tune-row">
+                                                        <RadzenFormField AllowFloatingLabel="false" Text="Process model" class="param-tune-tag-field">
+                                                            <RadzenDropDown TValue="string"
+                                                                            Data="@TuneModelOptions"
+                                                                            TextProperty="Text"
+                                                                            ValueProperty="Value"
+                                                                            @bind-Value="_tuneCalculationModel"
+                                                                            Change="@(_ => NormalizeTuneCalculationMethod())"
+                                                                            Style="width: 100%;" />
+                                                        </RadzenFormField>
+                                                        <RadzenFormField AllowFloatingLabel="false" Text="Tune method" class="param-tune-tag-field">
+                                                            <RadzenDropDown TValue="string"
+                                                                            Data="@TuneMethodOptions"
+                                                                            TextProperty="Text"
+                                                                            ValueProperty="Value"
+                                                                            @bind-Value="_tuneCalculationMethod"
+                                                                            Style="width: 100%;" />
+                                                        </RadzenFormField>
+                                                        <span class="param-tune-help">@tuneResult.Message</span>
+                                                    </div>
+
+                                                    @if (_tuneCalculationModel == TuneModelFopdt)
+                                                    {
+                                                        <div class="param-tune-input-row">
+                                                            <RadzenFormField AllowFloatingLabel="false" Text="K" class="param-tune-number-field">
+                                                                <RadzenNumeric TValue="double?" @bind-Value="_tuneFopdtK" />
+                                                            </RadzenFormField>
+                                                            <RadzenFormField AllowFloatingLabel="false" Text="Tau, sec" class="param-tune-number-field">
+                                                                <RadzenNumeric TValue="double?" @bind-Value="_tuneFopdtTau" />
+                                                            </RadzenFormField>
+                                                            <RadzenFormField AllowFloatingLabel="false" Text="Theta, sec" class="param-tune-number-field">
+                                                                <RadzenNumeric TValue="double?" @bind-Value="_tuneFopdtTheta" />
+                                                            </RadzenFormField>
+                                                            <RadzenFormField AllowFloatingLabel="false" Text="Tau c, sec" class="param-tune-number-field">
+                                                                <RadzenNumeric TValue="double?" @bind-Value="_tuneFopdtTauC" Disabled="@(_tuneCalculationMethod != TuneMethodFopdtSimcPid)" />
+                                                            </RadzenFormField>
+                                                        </div>
+                                                    }
+                                                    else if (_tuneCalculationModel == TuneModelIntegrating)
+                                                    {
+                                                        <div class="param-tune-input-row">
+                                                            <RadzenFormField AllowFloatingLabel="false" Text="ki" class="param-tune-number-field">
+                                                                <RadzenNumeric TValue="double?" @bind-Value="_tuneIntegratingKi" />
+                                                            </RadzenFormField>
+                                                            <RadzenFormField AllowFloatingLabel="false" Text="Theta, sec" class="param-tune-number-field">
+                                                                <RadzenNumeric TValue="double?" @bind-Value="_tuneIntegratingTheta" />
+                                                            </RadzenFormField>
+                                                            <RadzenFormField AllowFloatingLabel="false" Text="Tau c, sec" class="param-tune-number-field">
+                                                                <RadzenNumeric TValue="double?" @bind-Value="_tuneIntegratingTauC" Disabled="@(_tuneCalculationMethod == TuneMethodIntegratingZn)" />
+                                                            </RadzenFormField>
+                                                        </div>
+                                                    }
+                                                    else if (_tuneCalculationModel == TuneModelClosedLoop)
+                                                    {
+                                                        <div class="param-tune-input-row">
+                                                            <RadzenFormField AllowFloatingLabel="false" Text="Ku" class="param-tune-number-field">
+                                                                <RadzenNumeric TValue="double?" @bind-Value="_tuneClosedKu" />
+                                                            </RadzenFormField>
+                                                            <RadzenFormField AllowFloatingLabel="false" Text="Tu, sec" class="param-tune-number-field">
+                                                                <RadzenNumeric TValue="double?" @bind-Value="_tuneClosedTu" />
+                                                            </RadzenFormField>
+                                                        </div>
+                                                    }
+
+                                                    <div class="param-tune-row">
+                                                        <RadzenFormField AllowFloatingLabel="false" Text="Pv trend tag" class="param-tune-tag-field">
+                                                            <RadzenTextBox @bind-Value="TunePv" />
+                                                        </RadzenFormField>
+                                                        <RadzenButton Text="Check"
+                                                                      Icon="manage_search"
+                                                                      ButtonStyle="ButtonStyle.Light"
+                                                                      Click="@(() => CheckTuneTagAsync(isPv: true))"
+                                                                      Disabled="@_isTuneCheckingPv" />
+                                                        <RadzenFormField AllowFloatingLabel="false" Text="Pv min" class="param-tune-number-field param-tune-range-field">
+                                                            <RadzenNumeric TValue="double?" @bind-Value="TunePvMin" />
+                                                        </RadzenFormField>
+                                                        <RadzenFormField AllowFloatingLabel="false" Text="Pv max" class="param-tune-number-field param-tune-range-field">
+                                                            <RadzenNumeric TValue="double?" @bind-Value="TunePvMax" />
+                                                        </RadzenFormField>
+                                                    </div>
+
+                                                    <div class="param-tune-row">
+                                                        <RadzenFormField AllowFloatingLabel="false" Text="Sp trend tag" class="param-tune-tag-field">
+                                                            <RadzenTextBox @bind-Value="TuneSp" />
+                                                        </RadzenFormField>
+                                                        <RadzenButton Text="Check"
+                                                                      Icon="manage_search"
+                                                                      ButtonStyle="ButtonStyle.Light"
+                                                                      Click="@(() => CheckTuneTagAsync(isPv: false))"
+                                                                      Disabled="@_isTuneCheckingSp" />
+                                                        <RadzenFormField AllowFloatingLabel="false" Text="Sp min" class="param-tune-number-field param-tune-range-field">
+                                                            <RadzenNumeric TValue="double?" @bind-Value="TuneSpMin" />
+                                                        </RadzenFormField>
+                                                        <RadzenFormField AllowFloatingLabel="false" Text="Sp max" class="param-tune-number-field param-tune-range-field">
+                                                            <RadzenNumeric TValue="double?" @bind-Value="TuneSpMax" />
+                                                        </RadzenFormField>
+                                                    </div>
+
+                                                    <div class="param-tune-result-row">
+                                                        <RadzenFormField AllowFloatingLabel="false" Text="Kp" class="param-tune-result-field">
+                                                            <RadzenTextBox Value="@FormatTuneNumber(tuneResult.Kp)" ReadOnly="true" />
+                                                        </RadzenFormField>
+                                                        <RadzenFormField AllowFloatingLabel="false" Text="Ti" class="param-tune-result-field">
+                                                            <RadzenTextBox Value="@FormatTuneNumber(tuneResult.Ti)" ReadOnly="true" />
+                                                        </RadzenFormField>
+                                                        <RadzenFormField AllowFloatingLabel="false" Text="Td" class="param-tune-result-field">
+                                                            <RadzenTextBox Value="@FormatTuneNumber(tuneResult.Td)" ReadOnly="true" />
+                                                        </RadzenFormField>
+                                                        @if (_isTuneCalculating)
+                                                        {
+                                                            <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" class="param-tune-progress" />
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="param-status">@_tuneStatusText</span>
+                                                        }
+                                                        <RadzenButton Text="Calculate"
+                                                                      Icon="calculate"
+                                                                      ButtonStyle="ButtonStyle.Light"
+                                                                      Click="@CalculateTuneFromVisibleTrendAsync"
+                                                                      Disabled="@(!CanCalculateTune)" />
+                                                        <RadzenButton Text="Save"
+                                                                      Icon="save"
+                                                                      ButtonStyle="ButtonStyle.Light"
+                                                                      Click="@SaveTuneAsync"
+                                                                      Disabled="@(!CanSaveTune)" />
+                                                    </div>
+                                                </div>
+                                            </ChildContent>
+                                        </RadzenPanel>
+                                    </div>
+                                }
+                            </RadzenTabsItem>
+                        }
+
                         @if (IsVgaElEquipment && HasPage(ParamPageKind.DiDo))
                         {
                             <RadzenTabsItem Text="DI/DO" Icon="settings_input_component">
@@ -749,6 +962,89 @@
     /// Буфер тренда для вкладки Graph.
     /// </summary>
     private ParamTrendResponse? _trend;
+
+    /// <summary>
+    /// Runtime-данные и сохраненные настройки вкладки Tune для VGA.
+    /// </summary>
+    private ParamTuneRuntimeResponse? _tune;
+
+    /// <summary>
+    /// Отдельный line-тренд вкладки Tune: он не смешивается с основным Graph.
+    /// </summary>
+    private ParamTrendResponse? _tuneTrend;
+
+    /// <summary>
+    /// Версия Tune-графика, чтобы JS сбрасывал старый zoom при смене оборудования или сохранении тегов.
+    /// </summary>
+    private int _tuneChartViewVersion;
+
+    /// <summary>
+    /// true после первой загрузки Tune-настроек из PostgreSQL для выбранного оборудования.
+    /// Пока пользователь вводит PV/SP, последующие runtime refresh обновляют график,
+    /// но не перезатирают черновик полей значениями из БД.
+    /// </summary>
+    private bool _hasTuneSettingsLoadedFromStore;
+
+    /// <summary>
+    /// true, пока Runtime проверяет PV trend tag.
+    /// </summary>
+    private bool _isTuneCheckingPv;
+
+    /// <summary>
+    /// true, пока Runtime проверяет SP trend tag.
+    /// </summary>
+    private bool _isTuneCheckingSp;
+
+    /// <summary>
+    /// true, пока настройки Tune сохраняются в PostgreSQL.
+    /// </summary>
+    private bool _isTuneSaving;
+
+    /// <summary>
+    /// true, пока по видимой области графика считается FOPDT/SIMC PID.
+    /// </summary>
+    private bool _isTuneCalculating;
+
+    /// <summary>
+    /// Левая граница видимого окна Tune-графика, которую сообщает ECharts после zoom/pan.
+    /// </summary>
+    private DateTime? _tuneVisibleFromUtc;
+
+    /// <summary>
+    /// Правая граница видимого окна Tune-графика, которую сообщает ECharts после zoom/pan.
+    /// </summary>
+    private DateTime? _tuneVisibleToUtc;
+
+    /// <summary>
+    /// Текст результата Check/Save во вкладке Tune.
+    /// </summary>
+    private string _tuneStatusText = "";
+
+    /// <summary>
+    /// Цвет alert-статуса во вкладке Tune.
+    /// </summary>
+    private AlertStyle _tuneStatusStyle = AlertStyle.Info;
+
+    /// <summary>
+    /// Расчетная модель PID Tune. Теги и тренды приходят из Runtime,
+    /// а это поле управляет только локальной формулой Kp/Ti/Td.
+    /// </summary>
+    private string _tuneCalculationModel = TuneModelFopdt;
+
+    /// <summary>
+    /// Выбранный метод расчета PID Tune из логики Excel-калькулятора.
+    /// </summary>
+    private string _tuneCalculationMethod = TuneMethodFopdtSimcPid;
+
+    private double? _tuneFopdtK = 1.5;
+    private double? _tuneFopdtTau = 120;
+    private double? _tuneFopdtTheta = 15;
+    private double? _tuneFopdtTauC = 15;
+    private double? _tuneIntegratingKi = 0.0007;
+    private double? _tuneIntegratingTheta = 20;
+    private double? _tuneIntegratingTauC = 480;
+    private double? _tuneClosedKu = 4;
+    private double? _tuneClosedTu = 90;
 
     /// <summary>
     /// Read-only reference page PLC.
@@ -954,18 +1250,26 @@
         _loadedEquipmentName = currentName;
         _snapshot = null;
         _trend = null;
+        _tune = null;
+        _tuneTrend = null;
+        _hasTuneSettingsLoadedFromStore = false;
+        _isTuneCalculating = false;
+        _tuneVisibleFromUtc = null;
+        _tuneVisibleToUtc = null;
         _plcRefs = null;
         _diDoRefs = null;
         _dryRun = null;
         _atvRef = null;
         _fixedTrendToUtc = null;
         _chartViewVersion++;
+        _tuneChartViewVersion++;
         _statusText = "";
+        _tuneStatusText = "";
 
         if (Equipment is null)
             return;
 
-        await LoadAsync(showLoading: true, includeTrend: IsGraphTabVisible, ct: GetActiveLoadToken());
+        await LoadAsync(showLoading: true, includeTrend: ShouldLoadVisibleTrend, ct: GetActiveLoadToken());
         StartRefreshLoop();
     }
 
@@ -974,7 +1278,7 @@
     /// </summary>
     private async Task RefreshNowAsync()
     {
-        await LoadAsync(showLoading: false, includeTrend: IsGraphTabVisible, ct: GetActiveLoadToken());
+        await LoadAsync(showLoading: false, includeTrend: ShouldLoadVisibleTrend, ct: GetActiveLoadToken());
     }
 
     /// <summary>
@@ -988,7 +1292,7 @@
             ? visibleTabs[index].Key
             : GraphTabKey;
 
-        if (IsGraphTabVisible && _snapshot?.Supported == true)
+        if (ShouldLoadVisibleTrend && _snapshot?.Supported == true)
         {
             await LoadAsync(showLoading: false, includeTrend: true, ct: GetActiveLoadToken());
             return;
@@ -1057,6 +1361,7 @@
             _snapshot = await ParamApi.GetSnapshotAsync(equipmentName, ct);
             EnsureSelectedTabIsAvailable();
             var shouldLoadTrend = includeTrend && IsGraphTabVisible;
+            var shouldLoadTune = includeTrend && IsTuneTabVisible && IsVgaEquipment;
 
             if (_snapshot.Supported && shouldLoadTrend)
             {
@@ -1075,6 +1380,9 @@
             {
                 _trend = _snapshot.Supported && !shouldLoadTrend ? _trend : null;
             }
+
+            if (_snapshot.Supported && shouldLoadTune)
+                await LoadTuneAsync(equipmentName, ct);
 
             if (_snapshot.Supported)
                 await LoadSelectedReferencePageAsync(ct);
@@ -1212,7 +1520,7 @@
                 {
                     await LoadAsync(
                         showLoading: false,
-                        includeTrend: IsGraphTabVisible,
+                        includeTrend: ShouldLoadVisibleTrend,
                         ct);
                     StateHasChanged();
                 });
@@ -1717,7 +2025,7 @@
                 });
 
                 CancelParamWriteAfterSave();
-                await LoadAsync(showLoading: false, includeTrend: IsGraphTabVisible, ct: GetActiveLoadToken());
+                await LoadAsync(showLoading: false, includeTrend: ShouldLoadVisibleTrend, ct: GetActiveLoadToken());
             }
             else
             {
@@ -1800,7 +2108,7 @@
                 await Task.Delay(250, ct);
 
             await WaitForRefreshIdleAsync(ct);
-            await LoadAsync(showLoading: false, includeTrend: IsGraphTabVisible, ct: ct);
+            await LoadAsync(showLoading: false, includeTrend: ShouldLoadVisibleTrend, ct: ct);
 
             if (item.Kind != ParamValueKind.Boolean || SnapshotMatchesWrittenValue(item.Name, value))
                 return;
@@ -2009,6 +2317,16 @@
     private bool IsGraphTabVisible => SelectedTabKind == ParamPanelTabKind.Graph;
 
     /// <summary>
+    /// true, когда активна вкладка PID Tune для VGA.
+    /// </summary>
+    private bool IsTuneTabVisible => SelectedTabKind == ParamPanelTabKind.Tune;
+
+    /// <summary>
+    /// true, когда нужно читать трендовые данные для текущей видимой вкладки.
+    /// </summary>
+    private bool ShouldLoadVisibleTrend => IsGraphTabVisible || IsTuneTabVisible;
+
+    /// <summary>
     /// Тип активной вкладки с учетом динамического набора tabs.
     /// </summary>
     private ParamPanelTabKind SelectedTabKind => GetSelectedTabInfo().Kind;
@@ -2126,6 +2444,9 @@
         if (HasAlarmItems)
             tabs.Add(new(ParamPanelTabKind.Alarm, AlarmTabKey));
 
+        if (IsVgaEquipment)
+            tabs.Add(new(ParamPanelTabKind.Tune, TuneTabKey));
+
         if (IsVgaElEquipment && HasPage(ParamPageKind.DiDo))
             tabs.Add(new(ParamPanelTabKind.DiDo, DiDoTabKey));
 
@@ -2189,6 +2510,530 @@
     private DateTime? GetVisibleToUtc()
     {
         return _trend?.ToUtc;
+    }
+
+    /// <summary>
+    /// Отдельный ключ состояния ECharts для вкладки Tune, чтобы зум/прокрутка PID-графика
+    /// не пересекались с обычной вкладкой Graph того же оборудования.
+    /// </summary>
+    private string TuneChartViewKey =>
+        $"{Equipment?.Name ?? ""}|tune|{_windowMinutes}|{_tuneChartViewVersion}";
+
+    /// <summary>
+    /// Левая граница видимого окна line-графика Tune.
+    /// </summary>
+    private DateTime? GetTuneVisibleFromUtc()
+    {
+        return _tuneVisibleFromUtc ?? _tuneTrend?.ToUtc.AddMinutes(-_windowMinutes);
+    }
+
+    /// <summary>
+    /// Правая граница видимого окна line-графика Tune.
+    /// </summary>
+    private DateTime? GetTuneVisibleToUtc()
+    {
+        return _tuneVisibleToUtc ?? _tuneTrend?.ToUtc;
+    }
+
+    /// <summary>
+    /// Запоминает фактическое окно Tune-графика после прокрутки или масштабирования.
+    /// Кнопка Calculate использует именно этот диапазон, а не весь загруженный буфер.
+    /// </summary>
+    private Task OnTuneVisibleWindowChangedAsync(TrendVisibleWindowChangedEventArgs range)
+    {
+        _tuneVisibleFromUtc = range.FromUtc;
+        _tuneVisibleToUtc = range.ToUtc;
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Возвращает Tune-график к последнему доступному участку и перечитывает свежие точки.
+    /// </summary>
+    private async Task GoTuneLiveAsync()
+    {
+        if (Equipment is null)
+            return;
+
+        _tuneVisibleFromUtc = null;
+        _tuneVisibleToUtc = null;
+        _tuneChartViewVersion++;
+
+        await LoadTuneAsync(Equipment.Name, GetActiveLoadToken());
+
+        if (!_isDisposed)
+            await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Гарантирует наличие объекта настроек Tune даже до первой загрузки из Runtime.
+    /// Это позволяет сразу показывать поля PV/SP и диапазоны, не плодя null-проверки в разметке.
+    /// </summary>
+    private ParamTuneSettingsResponse EnsureTuneSettings()
+    {
+        if (_tune is null)
+        {
+            _tune = new ParamTuneRuntimeResponse
+            {
+                EquipmentName = Equipment?.Name ?? "",
+                TypeGroup = Equipment?.TypeGroup ?? EquipmentTypeGroup.Unknown,
+                Supported = IsVgaEquipment,
+                Settings = new ParamTuneSettingsResponse
+                {
+                    EquipmentName = Equipment?.Name ?? "",
+                    PvMin = 0,
+                    PvMax = 100,
+                    SpMin = 0,
+                    SpMax = 100
+                }
+            };
+        }
+
+        if (_tune.Settings is null)
+            _tune.Settings = new ParamTuneSettingsResponse();
+
+        _tune.Settings.EquipmentName = Equipment?.Name ?? _tune.Settings.EquipmentName;
+        _tune.Settings.PvMin ??= 0;
+        _tune.Settings.PvMax ??= 100;
+        _tune.Settings.SpMin ??= 0;
+        _tune.Settings.SpMax ??= 100;
+
+        return _tune.Settings;
+    }
+
+    /// <summary>
+    /// Имя трендового тега PV. При ручном изменении сбрасываем флаг успешной проверки,
+    /// чтобы Save снова стал доступен только после Check.
+    /// </summary>
+    private string TunePv
+    {
+        get => EnsureTuneSettings().Pv ?? "";
+        set
+        {
+            var settings = EnsureTuneSettings();
+            settings.Pv = (value ?? "").Trim();
+            settings.PvTrendFound = false;
+            _tuneStatusText = "";
+        }
+    }
+
+    /// <summary>
+    /// Имя трендового тега SP. При ручном изменении сбрасываем флаг успешной проверки,
+    /// чтобы Save не сохранял непроверенный тег.
+    /// </summary>
+    private string TuneSp
+    {
+        get => EnsureTuneSettings().Sp ?? "";
+        set
+        {
+            var settings = EnsureTuneSettings();
+            settings.Sp = (value ?? "").Trim();
+            settings.SpTrendFound = false;
+            _tuneStatusText = "";
+        }
+    }
+
+    private double? TunePvMin
+    {
+        get => EnsureTuneSettings().PvMin;
+        set => EnsureTuneSettings().PvMin = value;
+    }
+
+    private double? TunePvMax
+    {
+        get => EnsureTuneSettings().PvMax;
+        set => EnsureTuneSettings().PvMax = value;
+    }
+
+    private double? TuneSpMin
+    {
+        get => EnsureTuneSettings().SpMin;
+        set => EnsureTuneSettings().SpMin = value;
+    }
+
+    private double? TuneSpMax
+    {
+        get => EnsureTuneSettings().SpMax;
+        set => EnsureTuneSettings().SpMax = value;
+    }
+
+    /// <summary>
+    /// Save включается только после успешной проверки обоих трендовых тегов.
+    /// </summary>
+    private bool CanSaveTune =>
+        !_isTuneSaving
+        && _tune?.Settings.PvTrendFound == true
+        && _tune.Settings.SpTrendFound == true
+        && CalculateTune().IsValid;
+
+    /// <summary>
+    /// Calculate доступен, когда в видимом окне есть PV и OUT/ManTune.
+    /// SP нужен для отображения на графике, но SIMC-идентификация использует именно PV и OUT.
+    /// </summary>
+    private bool CanCalculateTune =>
+        !_isTuneCalculating
+        && _tuneTrend?.Points.Any(point => point.Series.Equals("Pv", StringComparison.OrdinalIgnoreCase)) == true
+        && _tuneTrend.Points.Any(point => point.Series.Equals("ManTune", StringComparison.OrdinalIgnoreCase)) == true;
+
+    /// <summary>
+    /// Компактное отображение рассчитанных PID-значений.
+    /// </summary>
+    private static string FormatTuneNumber(double? value)
+    {
+        return value.HasValue
+            ? value.Value.ToString("0.###", CultureInfo.InvariantCulture)
+            : "";
+    }
+
+    private IReadOnlyList<TuneOption> TuneMethodOptions => _tuneCalculationModel switch
+    {
+        TuneModelIntegrating => TuneIntegratingMethods,
+        TuneModelClosedLoop => TuneClosedLoopMethods,
+        _ => TuneFopdtMethods
+    };
+
+    private void NormalizeTuneCalculationMethod()
+    {
+        if (TuneMethodOptions.Any(item => item.Value == _tuneCalculationMethod))
+            return;
+
+        _tuneCalculationMethod = TuneMethodOptions[0].Value;
+    }
+
+    private PidTuneCalculationResult CalculateTune()
+    {
+        NormalizeTuneCalculationMethod();
+        return PidTuneCalculator.Calculate(BuildTuneCalculationRequest());
+    }
+
+    /// <summary>
+    /// Собирает параметры формы Tune в DTO, который понимает общий PID-калькулятор.
+    /// </summary>
+    private PidTuneCalculationRequest BuildTuneCalculationRequest()
+    {
+        return new PidTuneCalculationRequest
+        {
+            ProcessModel = _tuneCalculationModel,
+            TuneMethod = _tuneCalculationMethod,
+            FopdtK = _tuneFopdtK,
+            FopdtTau = _tuneFopdtTau,
+            FopdtTheta = _tuneFopdtTheta,
+            FopdtTauC = _tuneFopdtTauC,
+            IntegratingKi = _tuneIntegratingKi,
+            IntegratingTheta = _tuneIntegratingTheta,
+            IntegratingTauC = _tuneIntegratingTauC,
+            ClosedLoopKu = _tuneClosedKu,
+            ClosedLoopTu = _tuneClosedTu
+        };
+    }
+
+    /// <summary>
+    /// Автоматически оценивает FOPDT-модель по видимому участку Tune-графика.
+    /// Пользователь выбирает участок zoom/pan, затем расчет берет PV и ManTune только из этого окна.
+    /// </summary>
+    private async Task CalculateTuneFromVisibleTrendAsync()
+    {
+        if (_tuneTrend is null)
+            return;
+
+        _isTuneCalculating = true;
+
+        try
+        {
+            var fromUtc = GetTuneVisibleFromUtc() ?? _tuneTrend.FromUtc;
+            var toUtc = GetTuneVisibleToUtc() ?? _tuneTrend.ToUtc;
+            var pv = GetTuneSamples("Pv", fromUtc, toUtc);
+            var output = GetTuneSamples("ManTune", fromUtc, toUtc);
+            var result = SimcPidTuner.Calculate(pv, output);
+
+            if (!result.IsSuccess)
+            {
+                _tuneStatusStyle = AlertStyle.Warning;
+                _tuneStatusText = result.ErrorMessage;
+                return;
+            }
+
+            _tuneCalculationModel = TuneModelFopdt;
+            if (!TuneFopdtMethods.Any(item => item.Value == _tuneCalculationMethod))
+                _tuneCalculationMethod = TuneMethodFopdtSimcPid;
+
+            _tuneFopdtK = result.K;
+            _tuneFopdtTau = result.T;
+            _tuneFopdtTheta = result.Theta;
+            _tuneFopdtTauC = result.Theta;
+
+            var selectedTune = CalculateTune();
+            _tuneStatusStyle = AlertStyle.Success;
+            _tuneStatusText =
+                $"Calculation completed. K={FormatTuneNumber(result.K)}, Tau={FormatTuneNumber(result.T)}, Theta={FormatTuneNumber(result.Theta)}, method={selectedTune.Message}, points={result.PointsUsed}.";
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "PID Tune",
+                Detail = "Calculation completed.",
+                Duration = 2500
+            });
+        }
+        finally
+        {
+            _isTuneCalculating = false;
+
+            if (!_isDisposed)
+                await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// Достает точки выбранной серии из текущего видимого окна Tune-графика.
+    /// Для расчета используется RawValue, потому Value уже масштабирован в общую ось 0..100.
+    /// </summary>
+    private IReadOnlyList<PidTuningSample> GetTuneSamples(string seriesName, DateTime fromUtc, DateTime toUtc)
+    {
+        var normalizedFromUtc = NormalizeTrendPointUtc(fromUtc);
+        var normalizedToUtc = NormalizeTrendPointUtc(toUtc);
+
+        return _tuneTrend?.Points
+            .Where(point => point.Series.Equals(seriesName, StringComparison.OrdinalIgnoreCase))
+            .Select(point => new
+            {
+                TimeUtc = NormalizeTrendPointUtc(point.Time),
+                point.RawValue
+            })
+            .Where(point => point.TimeUtc >= normalizedFromUtc
+                            && point.TimeUtc <= normalizedToUtc
+                            && !double.IsNaN(point.RawValue)
+                            && !double.IsInfinity(point.RawValue))
+            .OrderBy(point => point.TimeUtc)
+            .Select(point => new PidTuningSample(point.TimeUtc, point.RawValue))
+            .ToList()
+            ?? [];
+    }
+
+    /// <summary>
+    /// Приводит DateTime из DTO к UTC так же, как это делает ECharts-компонент.
+    /// </summary>
+    private static DateTime NormalizeTrendPointUtc(DateTime value)
+    {
+        return value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Local).ToUniversalTime()
+        };
+    }
+
+    /// <summary>
+    /// Загружает сохраненные настройки PID Tune, текущие значения ManTune/PV/SP и line-тренды.
+    /// </summary>
+    private async Task LoadTuneAsync(string equipmentName, CancellationToken ct)
+    {
+        var draftSettings = _hasTuneSettingsLoadedFromStore
+            && _tune?.Settings is not null
+            && string.Equals(_tune.Settings.EquipmentName, equipmentName, StringComparison.OrdinalIgnoreCase)
+                ? _tune.Settings
+                : null;
+
+        var runtimeTune = await ParamApi.GetTuneAsync(
+            equipmentName,
+            _trendHistoryMinutes,
+            null,
+            null,
+            ct,
+            draftSettings);
+
+        if (draftSettings is not null)
+            runtimeTune.Settings = draftSettings;
+        else
+            _hasTuneSettingsLoadedFromStore = true;
+
+        _tune = runtimeTune;
+        _tuneTrend = runtimeTune.Trend;
+        _tuneVisibleFromUtc ??= runtimeTune.Trend?.ToUtc.AddMinutes(-_windowMinutes);
+        _tuneVisibleToUtc ??= runtimeTune.Trend?.ToUtc;
+        _tuneChartViewVersion++;
+
+        if (!string.IsNullOrWhiteSpace(runtimeTune.Message))
+            _tuneStatusStyle = runtimeTune.Supported ? AlertStyle.Info : AlertStyle.Warning;
+    }
+
+    /// <summary>
+    /// Проверяет PV/SP через Runtime: тег должен читаться как число и иметь trend-reference.
+    /// После успешной проверки перечитываем Tune, чтобы сразу обновить барграфы и график.
+    /// </summary>
+    private async Task CheckTuneTagAsync(bool isPv)
+    {
+        if (Equipment is null)
+            return;
+
+        var settings = EnsureTuneSettings();
+        var tagName = isPv ? settings.Pv : settings.Sp;
+        var previousPvTag = settings.Pv;
+        var previousPvFound = settings.PvTrendFound;
+        var previousSpTag = settings.Sp;
+        var previousSpFound = settings.SpTrendFound;
+        if (string.IsNullOrWhiteSpace(tagName))
+        {
+            _tuneStatusStyle = AlertStyle.Warning;
+            _tuneStatusText = isPv ? "Enter PV trend tag." : "Enter SP trend tag.";
+            return;
+        }
+
+        if (isPv)
+            _isTuneCheckingPv = true;
+        else
+            _isTuneCheckingSp = true;
+
+        try
+        {
+            var result = await ParamApi.CheckTuneTagAsync(
+                Equipment.Name,
+                new ParamTuneCheckRequest { TagName = tagName.Trim() },
+                GetActiveLoadToken());
+
+            if (isPv)
+            {
+                settings.Pv = result.TagName;
+                settings.PvTrendFound = result.Found;
+            }
+            else
+            {
+                settings.Sp = result.TagName;
+                settings.SpTrendFound = result.Found;
+            }
+
+            _tuneStatusStyle = result.Found ? AlertStyle.Success : AlertStyle.Warning;
+            _tuneStatusText = result.Message ?? (result.Found ? "Trend tag found." : "Trend tag was not found.");
+
+            await LoadTuneAsync(Equipment.Name, GetActiveLoadToken());
+
+            // Check только проверяет введенный trend-тег. Пока Save не записал его в PostgreSQL,
+            // Runtime может вернуть прежние сохраненные настройки, поэтому восстанавливаем
+            // проверенные черновые значения для формы и состояния кнопки Save.
+            var refreshedSettings = EnsureTuneSettings();
+            if (isPv)
+            {
+                refreshedSettings.Pv = result.TagName;
+                refreshedSettings.PvTrendFound = result.Found;
+                refreshedSettings.Sp = previousSpTag;
+                refreshedSettings.SpTrendFound = previousSpFound;
+            }
+            else
+            {
+                refreshedSettings.Pv = previousPvTag;
+                refreshedSettings.PvTrendFound = previousPvFound;
+                refreshedSettings.Sp = result.TagName;
+                refreshedSettings.SpTrendFound = result.Found;
+            }
+        }
+        catch (OperationCanceledException) when (_isDisposed || !IsActive)
+        {
+        }
+        catch (Exception ex)
+        {
+            _tuneStatusStyle = AlertStyle.Danger;
+            _tuneStatusText = "Cannot check Tune tag: " + ex.Message;
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "PID Tune",
+                Detail = "Cannot check trend tag.",
+                Duration = 3500
+            });
+        }
+        finally
+        {
+            if (isPv)
+                _isTuneCheckingPv = false;
+            else
+                _isTuneCheckingSp = false;
+
+            if (!_isDisposed)
+                StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Сохраняет проверенные PV/SP теги и диапазоны в PostgreSQL через Runtime.Service.
+    /// </summary>
+    private async Task SaveTuneAsync()
+    {
+        if (Equipment is null || !CanSaveTune)
+            return;
+
+        var settings = EnsureTuneSettings();
+        var tuneResult = CalculateTune();
+        if (!tuneResult.IsValid)
+        {
+            _tuneStatusStyle = AlertStyle.Warning;
+            _tuneStatusText = tuneResult.Message;
+            return;
+        }
+
+        _isTuneSaving = true;
+
+        try
+        {
+            var saved = await ParamApi.SaveTuneAsync(
+                Equipment.Name,
+                new ParamTuneSaveRequest
+                {
+                    Pv = settings.Pv,
+                    PvMin = settings.PvMin,
+                    PvMax = settings.PvMax,
+                    Sp = settings.Sp,
+                    SpMin = settings.SpMin,
+                    SpMax = settings.SpMax,
+                    Kp = tuneResult.Kp,
+                    Ti = tuneResult.Ti,
+                    Td = tuneResult.Td
+                },
+                GetActiveLoadToken());
+
+            _tune ??= new ParamTuneRuntimeResponse
+            {
+                EquipmentName = Equipment.Name,
+                TypeGroup = Equipment.TypeGroup,
+                Supported = true
+            };
+            _tune.Settings = saved;
+
+            _tuneStatusStyle = AlertStyle.Success;
+            _tuneStatusText = "PID Tune settings saved.";
+
+            await LoadTuneAsync(Equipment.Name, GetActiveLoadToken());
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "PID Tune",
+                Detail = "Settings saved.",
+                Duration = 2500
+            });
+        }
+        catch (OperationCanceledException) when (_isDisposed || !IsActive)
+        {
+        }
+        catch (Exception ex)
+        {
+            _tuneStatusStyle = AlertStyle.Danger;
+            _tuneStatusText = "Cannot save Tune settings: " + ex.Message;
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "PID Tune",
+                Detail = "Cannot save Tune settings.",
+                Duration = 3500
+            });
+        }
+        finally
+        {
+            _isTuneSaving = false;
+
+            if (!_isDisposed)
+                StateHasChanged();
+        }
     }
 
     /// <summary>
@@ -2832,11 +3677,57 @@
     private const string DiDoTabKey = "DI/DO";
     private const string DryRunTabKey = "DryRun";
     private const string AtvTabKey = "ATV";
+    private const string TuneTabKey = "Tune";
+
+    private const string TuneModelFopdt = PidTuneProcessModel.Fopdt;
+    private const string TuneModelIntegrating = PidTuneProcessModel.Integrating;
+    private const string TuneModelClosedLoop = PidTuneProcessModel.ClosedLoop;
+    private const string TuneMethodFopdtSimcPid = PidTuneMethod.FopdtSimcPid;
+    private const string TuneMethodFopdtZnPid = PidTuneMethod.FopdtZieglerNicholsPid;
+    private const string TuneMethodFopdtCohenCoonPid = PidTuneMethod.FopdtCohenCoonPid;
+    private const string TuneMethodFopdtAmigoPid = PidTuneMethod.FopdtAmigoPid;
+    private const string TuneMethodIntegratingSimc = PidTuneMethod.IntegratingSimcPi;
+    private const string TuneMethodIntegratingZn = PidTuneMethod.IntegratingZieglerNicholsPi;
+    private const string TuneMethodIntegratingAveraging = PidTuneMethod.IntegratingAveragingPi;
+    private const string TuneMethodClosedZnPid = PidTuneMethod.ClosedLoopZieglerNicholsPid;
+    private const string TuneMethodClosedZnSoftPid = PidTuneMethod.ClosedLoopZieglerNicholsSoftPid;
+    private const string TuneMethodClosedTyreusLuybenPid = PidTuneMethod.ClosedLoopTyreusLuybenPid;
+
+    private static readonly IReadOnlyList<TuneOption> TuneModelOptions = new[]
+    {
+        new TuneOption(TuneModelFopdt, "FOPDT"),
+        new TuneOption(TuneModelIntegrating, "Integrating"),
+        new TuneOption(TuneModelClosedLoop, "Closed loop Ku/Tu")
+    };
+
+    private static readonly IReadOnlyList<TuneOption> TuneFopdtMethods = new[]
+    {
+        new TuneOption(TuneMethodFopdtSimcPid, "SIMC PID"),
+        new TuneOption(TuneMethodFopdtZnPid, "Ziegler-Nichols PID"),
+        new TuneOption(TuneMethodFopdtCohenCoonPid, "Cohen-Coon PID"),
+        new TuneOption(TuneMethodFopdtAmigoPid, "AMIGO PID")
+    };
+
+    private static readonly IReadOnlyList<TuneOption> TuneIntegratingMethods = new[]
+    {
+        new TuneOption(TuneMethodIntegratingSimc, "SIMC PI"),
+        new TuneOption(TuneMethodIntegratingZn, "Ziegler-Nichols PI"),
+        new TuneOption(TuneMethodIntegratingAveraging, "Averaging PI")
+    };
+
+    private static readonly IReadOnlyList<TuneOption> TuneClosedLoopMethods = new[]
+    {
+        new TuneOption(TuneMethodClosedZnPid, "Ziegler-Nichols PID"),
+        new TuneOption(TuneMethodClosedZnSoftPid, "Ziegler-Nichols soft PID"),
+        new TuneOption(TuneMethodClosedTyreusLuybenPid, "Tyreus-Luyben PID")
+    };
 
     /// <summary>
     /// Описание одной видимой вкладки: внешний ключ для сохранения выбора и внутренний тип для логики загрузки.
     /// </summary>
     private sealed record ParamPanelTabInfo(ParamPanelTabKind Kind, string Key);
+
+    private sealed record TuneOption(string Value, string Text);
 
     /// <summary>
     /// Сравнивает ключи вкладок без учета регистра.
@@ -2861,6 +3752,7 @@
         DiDo,
         DryRun,
         Atv,
+        Tune,
         MotorAll
     }
 }

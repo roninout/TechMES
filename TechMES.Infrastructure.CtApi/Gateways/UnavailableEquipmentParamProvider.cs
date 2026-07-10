@@ -41,6 +41,50 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
+    public Task<ParamTuneCheckResponse> CheckTuneTrendTagAsync(
+        string tagName,
+        CancellationToken ct = default)
+    {
+        return Task.FromResult(new ParamTuneCheckResponse
+        {
+            TagName = (tagName ?? "").Trim(),
+            Found = false,
+            TrendFound = false,
+            Message = _message
+        });
+    }
+
+    public Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(
+        EquipmentDto equipment,
+        ParamTuneSettingsResponse settings,
+        int windowMinutes = 30,
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        CancellationToken ct = default)
+    {
+        var to = NormalizeUtc(toUtc) ?? DateTime.UtcNow;
+        var from = NormalizeUtc(fromUtc) ?? to.AddMinutes(-Math.Max(1, windowMinutes));
+        settings.EquipmentName = equipment.Name;
+
+        return Task.FromResult(new ParamTuneRuntimeResponse
+        {
+            EquipmentName = equipment.Name,
+            TypeGroup = equipment.TypeGroup,
+            Supported = false,
+            Message = _message,
+            Settings = settings,
+            Trend = new ParamTrendResponse
+            {
+                EquipmentName = equipment.Name,
+                TypeGroup = equipment.TypeGroup,
+                Supported = false,
+                Message = _message,
+                FromUtc = from,
+                ToUtc = to
+            }
+        });
+    }
+
     /// <summary>
     /// Возвращает пустой trend-ответ с корректным временным диапазоном для UI.
     /// </summary>

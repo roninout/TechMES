@@ -1,4 +1,4 @@
-namespace TechMES.Contracts.Param;
+﻿namespace TechMES.Contracts.Param;
 
 /// <summary>
 /// Описание одной серии Param trend-а.

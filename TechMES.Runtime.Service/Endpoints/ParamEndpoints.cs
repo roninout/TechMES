@@ -1,4 +1,4 @@
-using TechMES.Application.Equipment;
+﻿using TechMES.Application.Equipment;
 using TechMES.Application.Param;
 using TechMES.Contracts.Equipment;
 using TechMES.Contracts.Param;
@@ -15,14 +15,15 @@ namespace TechMES.Runtime.Service.Endpoints;
 public static class ParamEndpoints
 {
     /// <summary>
-    /// Подключает все Param endpoints к Minimal API Runtime.Service.
-    /// URL-ы специально сгруппированы под /api/param/{equipmentName}, чтобы WEB
-    /// мог работать с одним выбранным оборудованием и разными вкладками Param.
+    /// Сохраняет PV/SP теги и их диапазоны для конкретного VGA.
     /// </summary>
     public static IEndpointRouteBuilder MapParamEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/param/{equipmentName}/snapshot", GetSnapshotAsync);
         app.MapGet("/api/param/{equipmentName}/trend", GetTrendAsync);
+        app.MapGet("/api/param/{equipmentName}/tune", GetTuneAsync);
+        app.MapPost("/api/param/{equipmentName}/tune/check", CheckTuneAsync);
+        app.MapPost("/api/param/{equipmentName}/tune", SaveTuneAsync);
         app.MapGet("/api/param/{equipmentName}/refs/plc", GetPlcRefsAsync);
         app.MapGet("/api/param/{equipmentName}/refs/dido", GetDiDoRefsAsync);
         app.MapGet("/api/param/{equipmentName}/refs/dryrun", GetDryRunAsync);
@@ -48,6 +49,130 @@ public static class ParamEndpoints
             return Results.NotFound();
 
         var result = await paramProvider.GetSnapshotAsync(equipment, ct);
+        return Results.Ok(result);
+    }
+
+    /// <summary>
+    /// Возвращает Runtime-данные вкладки PID Tune для VGA-оборудования.
+    /// </summary>
+    private static async Task<IResult> GetTuneAsync(
+        string equipmentName,
+        int? windowMinutes,
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        string? pv,
+        double? pvMin,
+        double? pvMax,
+        string? sp,
+        double? spMin,
+        double? spMax,
+        IEquipmentCatalogProvider equipmentCatalog,
+        IEquipmentParamProvider paramProvider,
+        IParamTuneStore tuneStore,
+        CancellationToken ct)
+    {
+        var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
+
+        if (equipment is null)
+            return Results.NotFound();
+
+        var settings = await tuneStore.GetAsync(equipment.Name, ct)
+            ?? new ParamTuneSettingsResponse { EquipmentName = equipment.Name };
+
+        ApplyTuneQueryOverrides(settings, pv, pvMin, pvMax, sp, spMin, spMax);
+
+        var result = await paramProvider.GetTuneRuntimeAsync(
+            equipment,
+            settings,
+            windowMinutes.GetValueOrDefault(30),
+            fromUtc,
+            toUtc,
+            ct);
+
+        return Results.Ok(result);
+    }
+
+    /// <summary>
+    /// Подставляет проверенные в UI PV/SP теги в Runtime-расчет без сохранения в PostgreSQL.
+    /// Так график обновляется сразу после Check, а постоянное хранение остается за кнопкой Save.
+    /// </summary>
+    private static void ApplyTuneQueryOverrides(
+        ParamTuneSettingsResponse settings,
+        string? pv,
+        double? pvMin,
+        double? pvMax,
+        string? sp,
+        double? spMin,
+        double? spMax)
+    {
+        if (pv is not null)
+            settings.Pv = string.IsNullOrWhiteSpace(pv) ? null : pv.Trim();
+
+        if (pvMin.HasValue)
+            settings.PvMin = pvMin;
+
+        if (pvMax.HasValue)
+            settings.PvMax = pvMax;
+
+        if (sp is not null)
+            settings.Sp = string.IsNullOrWhiteSpace(sp) ? null : sp.Trim();
+
+        if (spMin.HasValue)
+            settings.SpMin = spMin;
+
+        if (spMax.HasValue)
+            settings.SpMax = spMax;
+    }
+
+    /// <summary>
+    /// Проверяет, можно ли использовать введенный PV/SP тег во вкладке PID Tune.
+    /// </summary>
+    private static async Task<IResult> CheckTuneAsync(
+        string equipmentName,
+        ParamTuneCheckRequest request,
+        IEquipmentCatalogProvider equipmentCatalog,
+        IEquipmentParamProvider paramProvider,
+        CancellationToken ct)
+    {
+        var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
+
+        if (equipment is null)
+            return Results.NotFound();
+
+        if (equipment.TypeGroup != EquipmentTypeGroup.VGA)
+        {
+            return Results.Ok(new ParamTuneCheckResponse
+            {
+                TagName = request.TagName,
+                Found = false,
+                TrendFound = false,
+                Message = "PID Tune is supported only for VGA equipment."
+            });
+        }
+
+        var result = await paramProvider.CheckTuneTrendTagAsync(request.TagName, ct);
+        return Results.Ok(result);
+    }
+
+    /// <summary>
+    /// Сохраняет PV/SP теги и их диапазоны для конкретного VGA.
+    /// </summary>
+    private static async Task<IResult> SaveTuneAsync(
+        string equipmentName,
+        ParamTuneSaveRequest request,
+        IEquipmentCatalogProvider equipmentCatalog,
+        IParamTuneStore tuneStore,
+        CancellationToken ct)
+    {
+        var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
+
+        if (equipment is null)
+            return Results.NotFound();
+
+        if (equipment.TypeGroup != EquipmentTypeGroup.VGA)
+            return Results.BadRequest("PID Tune is supported only for VGA equipment.");
+
+        var result = await tuneStore.SaveAsync(equipment.Name, request, ct);
         return Results.Ok(result);
     }
 

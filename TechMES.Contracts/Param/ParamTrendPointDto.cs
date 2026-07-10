@@ -1,4 +1,4 @@
-namespace TechMES.Contracts.Param;
+﻿namespace TechMES.Contracts.Param;
 
 /// <summary>
 /// Одна точка Param trend-а.
@@ -11,7 +11,7 @@ public sealed class ParamTrendPointDto
     public string Series { get; set; } = "";
 
     /// <summary>
-    /// Время точки в UTC.
+    /// Время точки.
     /// </summary>
     public DateTime Time { get; set; }
 
