@@ -1,0 +1,109 @@
+@using TechMES.Contracts.Param.Tuning
+@inject DialogService DialogService
+
+<div class="pid-tune-info">
+    <RadzenAlert AlertStyle="AlertStyle.Warning"
+                 Variant="Variant.Flat"
+                 Shade="Shade.Lighter"
+                 AllowClose="false">
+        Полученные коэффициенты являются стартовыми настройками. Перед записью в контроллер
+        проверьте направление действия, пределы OUT, anti-windup и реакцию объекта в безопасном режиме.
+    </RadzenAlert>
+
+    <section class="pid-tune-info-section">
+        <h3>@Content.Model.Title</h3>
+        <div class="pid-tune-equation">@Content.Model.Equation</div>
+        <p>@Content.Model.Description</p>
+
+        <div class="pid-tune-values">
+            @foreach (var item in Content.Model.Values)
+            {
+                <div class="pid-tune-value-symbol">@item.Symbol</div>
+                <div class="pid-tune-value-description">@item.Description</div>
+                <div class="pid-tune-value-current">@item.CurrentValue</div>
+            }
+        </div>
+    </section>
+
+    <section class="pid-tune-info-section">
+        <h3>@Content.Method.Title</h3>
+        <p>@Content.Method.Description</p>
+
+        <div class="pid-tune-formulas">
+            @foreach (var formula in Content.Method.Formulas)
+            {
+                <code>@formula</code>
+            }
+        </div>
+    </section>
+
+    <section class="pid-tune-info-section">
+        <h3>Форма регулятора и результат</h3>
+        <div class="pid-tune-equation">
+            u(t) = Kp * (e(t) + (1 / Ti) * integral(e(t)) dt + Td * de(t) / dt)
+        </div>
+
+        <div class="pid-tune-values">
+            @foreach (var item in Content.ResultValues)
+            {
+                <div class="pid-tune-value-symbol">@item.Symbol</div>
+                <div class="pid-tune-value-description">@item.Description</div>
+                <div class="pid-tune-value-current">@item.CurrentValue</div>
+            }
+        </div>
+
+        @if (!Content.HasValidResult)
+        {
+            <p class="pid-tune-invalid-result">
+                Текущих исходных данных пока недостаточно для корректного расчета всех коэффициентов.
+            </p>
+        }
+    </section>
+
+    <div class="pid-tune-info-footer">
+        <div class="pid-tune-source">
+            <span>Первоисточник: @Content.Method.SourceTitle</span>
+            @if (!string.IsNullOrWhiteSpace(Content.Method.SourceUrl))
+            {
+                <a href="@Content.Method.SourceUrl"
+                   target="_blank"
+                   rel="noopener noreferrer">
+                    Открыть публикацию
+                </a>
+            }
+        </div>
+
+        <RadzenButton Text="Закрыть"
+                      Icon="close"
+                      ButtonStyle="ButtonStyle.Light"
+                      Click="@Close" />
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Текущие параметры модели и метода, переданные из вкладки Tune.
+    /// </summary>
+    [Parameter]
+    public PidTuneCalculationRequest Request { get; set; } = new();
+
+    /// <summary>
+    /// Результат расчета с текущими значениями формы.
+    /// </summary>
+    [Parameter]
+    public PidTuneCalculationResult Result { get; set; } =
+        PidTuneCalculationResult.Invalid("");
+
+    /// <summary>
+    /// Контекстное содержимое перестраивается при каждом открытии диалога.
+    /// </summary>
+    private PidTuneInfoContent Content => PidTuneInfoCatalog.Create(Request, Result);
+
+    /// <summary>
+    /// Закрывает модальное окно справки.
+    /// </summary>
+    private void Close()
+    {
+        DialogService.Close();
+    }
+}

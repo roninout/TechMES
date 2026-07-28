@@ -1,104 +1,190 @@
-﻿namespace TechMES.Contracts.Param.Tuning;
+namespace TechMES.Contracts.Param.Tuning;
 
 /// <summary>
-/// SIMC PID tuner для ступенчатого теста процесса.
-/// На вход получает выбранные пользователем участки PV и OUT, на выходе дает FOPDT-модель и PID.
+/// Автоматически идентифицирует FOPDT-модель по ступенчатому тесту OUT/PV
+/// и рассчитывает начальные SIMC PI-настройки в идеальной/ISA-форме.
 /// </summary>
 public static class SimcPidTuner
 {
-    private const double Epsilon = 1e-5;
+    private const double Epsilon = 1e-9;
+    private const double ResponseAt28Percent = 0.283;
+    private const double ResponseAt63Percent = 0.632;
 
     /// <summary>
-    /// Рассчитывает FOPDT-модель и SIMC PID по видимой области тренда.
-    /// OUT обычно соответствует ManTune, PV - выбранной пользователем переменной процесса.
+    /// Рассчитывает FOPDT-модель по видимой области тренда.
+    /// OUT обычно соответствует ManTune, PV - выбранной переменной процесса.
+    /// Постоянная времени определяется двухточечным методом 28.3/63.2 процента.
     /// </summary>
     public static PidTuningResult Calculate(
         IReadOnlyList<PidTuningSample> pv,
         IReadOnlyList<PidTuningSample> output)
     {
-        if (pv.Count == 0 || output.Count == 0)
-            return Fail("Нет данных PV или OUT в выбранной области графика.");
+        if (pv is null || output is null || pv.Count == 0 || output.Count == 0)
+            return Fail(
+                PidTuneIssueCode.MissingTrendData,
+                "Нет данных PV или OUT в выбранной области графика.");
 
         var pairs = AlignByTime(pv, output);
-        if (pairs.Count < 5)
-            return Fail("Недостаточно общих точек PV и OUT для расчета.");
+        if (pairs.Count < 8)
+            return Fail(
+                PidTuneIssueCode.InsufficientAlignedSamples,
+                "Недостаточно общих точек PV и OUT для расчета.");
 
         var dt = EstimateStepSeconds(pairs);
-        var stepIndex = FindLargestOutputStep(pairs);
+        var stepIndex = FindLargestOutputStep(pairs, out var largestOutputStep);
+        if (stepIndex < 2 || stepIndex >= pairs.Count - 2)
+        {
+            return Fail(
+                PidTuneIssueCode.StepTooCloseToBoundary,
+                "Ступень OUT расположена слишком близко к границе выбранной области.");
+        }
+
+        if (largestOutputStep <= Epsilon)
+            return Fail(
+                PidTuneIssueCode.NoOutStep,
+                "В выбранном участке OUT не найдено ступенчатое изменение.");
+
         var outInitial = AverageBefore(pairs, stepIndex, item => item.Output);
-        var outFinal = AverageTail(pairs, item => item.Output);
+        var outFinal = AverageTail(pairs, stepIndex, item => item.Output);
         var deltaOut = outFinal - outInitial;
 
-        if (Math.Abs(deltaOut) < Epsilon)
-            return Fail("В выбранном участке OUT не найдено ступенчатое изменение.");
+        // Ступень должна сохраниться до конца выбранной области, иначе это не
+        // классический ступенчатый тест и конечное усиление определить нельзя.
+        if (Math.Abs(deltaOut) < Math.Max(Epsilon, largestOutputStep * 0.25))
+        {
+            return Fail(
+                PidTuneIssueCode.OutStepNotSustained,
+                "OUT не сохранил ступенчатое изменение до конца выбранной области.");
+        }
+
+        if (largestOutputStep < Math.Abs(deltaOut) * 0.5)
+        {
+            return Fail(
+                PidTuneIssueCode.OutRampInsteadOfStep,
+                "OUT изменялся постепенно: для идентификации нужна выраженная ступень.");
+        }
+
+        if (!IsSettledTail(
+                pairs,
+                stepIndex,
+                item => item.Output,
+                Math.Abs(deltaOut)))
+        {
+            return Fail(
+                PidTuneIssueCode.OutNotSettled,
+                "OUT не установился в конце выбранной области.");
+        }
 
         var pvInitial = AverageBefore(pairs, stepIndex, item => item.Pv);
-        var pvFinal = AverageTail(pairs, item => item.Pv);
+        var pvFinal = AverageTail(pairs, stepIndex, item => item.Pv);
         var deltaPv = pvFinal - pvInitial;
 
         if (Math.Abs(deltaPv) < Epsilon)
-            return Fail("PV почти не изменилась после ступени OUT.");
+            return Fail(
+                PidTuneIssueCode.PvNoResponse,
+                "PV почти не изменилась после ступени OUT.");
 
+        if (!IsSettledTail(
+                pairs,
+                stepIndex,
+                item => item.Pv,
+                Math.Abs(deltaPv)))
+        {
+            return Fail(
+                PidTuneIssueCode.PvNotSettled,
+                "PV не установилась в конце выбранной области. Расширьте видимый интервал.");
+        }
+
+        // Знак K сохраняется: отрицательное усиление описывает процесс
+        // обратного действия и приводит к отрицательному Kp.
         var k = deltaPv / deltaOut;
-        if (Math.Abs(k) < Epsilon)
-            return Fail("Усиление процесса слишком мало для устойчивого расчета.");
+        if (!IsFinite(k) || Math.Abs(k) < Epsilon)
+            return Fail(
+                PidTuneIssueCode.ProcessGainTooSmall,
+                "Усиление процесса слишком мало для устойчивого расчета.");
 
-        var deadTimeIndex = FindCrossing(
+        var stepTimeUtc = pairs[stepIndex].TimeUtc;
+        var time28 = FindCrossingSeconds(
             pairs,
             stepIndex,
-            pvInitial + 0.02 * deltaPv,
-            deltaPv);
-
-        if (deadTimeIndex < 0)
-            return Fail("Не удалось найти начало реакции PV.");
-
-        var time63Index = FindCrossing(
+            pvInitial + ResponseAt28Percent * deltaPv,
+            deltaPv,
+            stepTimeUtc);
+        var time63 = FindCrossingSeconds(
             pairs,
-            deadTimeIndex,
-            pvInitial + 0.632 * deltaPv,
-            deltaPv);
+            stepIndex,
+            pvInitial + ResponseAt63Percent * deltaPv,
+            deltaPv,
+            stepTimeUtc);
 
-        if (time63Index < 0)
-            return Fail("PV не достигла 63.2% изменения в выбранной области.");
+        if (time28 is null)
+            return Fail(
+                PidTuneIssueCode.PvDidNotReach28Percent,
+                "PV не достигла 28.3% изменения в выбранной области.");
 
-        var theta = SecondsBetween(pairs[stepIndex].TimeUtc, pairs[deadTimeIndex].TimeUtc);
-        var t = SecondsBetween(pairs[deadTimeIndex].TimeUtc, pairs[time63Index].TimeUtc);
+        if (time63 is null)
+            return Fail(
+                PidTuneIssueCode.PvDidNotReach63Percent,
+                "PV не достигла 63.2% изменения в выбранной области.");
 
-        if (theta <= 0)
-            theta = dt;
+        if (time63 <= time28)
+            return Fail(
+                PidTuneIssueCode.InvalidResponseCrossings,
+                "Точки 28.3% и 63.2% не образуют корректный отклик процесса.");
 
-        if (t <= 0)
-            t = dt;
+        // Для FOPDT: t28 = theta + 0.333*tau, t63 = theta + tau.
+        // Отсюда tau = 1.5*(t63-t28), theta = t63-tau.
+        var tau = 1.5 * (time63.Value - time28.Value);
+        var theta = Math.Max(0, time63.Value - tau);
 
-        var lambda = theta;
-        var kp = (1.0 / k) * (t / (theta + lambda));
-        var ti = Math.Min(t, 4.0 * (theta + lambda));
-        var td = theta / 2.0;
+        if (!IsFinite(tau) || tau <= 0 || !IsFinite(theta))
+            return Fail(
+                PidTuneIssueCode.InvalidModelParameters,
+                "Не удалось определить корректные Tau и Theta.");
+
+        // Классический выбор SIMC - tauC=theta. При практически нулевой
+        // задержке шаг дискретизации задает минимально разумную tauC.
+        var tauC = Math.Max(theta, dt);
+        var kp = (1.0 / k) * tau / (tauC + theta);
+        var ti = Math.Min(tau, 4.0 * (tauC + theta));
+        const double td = 0;
+
+        if (!IsFinite(kp) || !IsFinite(ti) || ti <= 0)
+            return Fail(
+                PidTuneIssueCode.InvalidControllerParameters,
+                "Расчет SIMC сформировал некорректные параметры регулятора.");
 
         return new PidTuningResult
         {
             IsSuccess = true,
+            IssueCode = PidTuneIssueCode.None,
             K = Round(k, 4),
-            T = Round(t, 2),
+            T = Round(tau, 2),
             Theta = Round(theta, 2),
+            TauC = Round(tauC, 2),
             Kp = Round(kp, 4),
             Ti = Round(ti, 2),
-            Td = Round(td, 2),
+            Td = td,
             DtSeconds = Round(dt, 2),
             PointsUsed = pairs.Count,
-            StepTimeUtc = pairs[stepIndex].TimeUtc
+            StepTimeUtc = stepTimeUtc
         };
     }
 
-    private static PidTuningResult Fail(string message)
+    private static PidTuningResult Fail(PidTuneIssueCode issueCode, string message)
     {
         return new PidTuningResult
         {
             IsSuccess = false,
-            ErrorMessage = message
+            ErrorMessage = message,
+            IssueCode = issueCode
         };
     }
 
+    /// <summary>
+    /// Сопоставляет PV и OUT по ближайшему времени. Слишком удаленные точки
+    /// отбрасываются, чтобы разрывы одного тренда не искажали другой.
+    /// </summary>
     private static List<TuningPair> AlignByTime(
         IReadOnlyList<PidTuningSample> pv,
         IReadOnlyList<PidTuningSample> output)
@@ -116,32 +202,48 @@ public static class SimcPidTuner
         if (orderedPv.Count == 0 || orderedOutput.Count == 0)
             return pairs;
 
+        var pvStep = EstimateSourceStepSeconds(orderedPv);
+        var outputStep = EstimateSourceStepSeconds(orderedOutput);
+        var maxDistanceSeconds = Math.Max(1, Math.Max(pvStep, outputStep) * 1.5);
+
         var outputIndex = 0;
-        for (var pvIndex = 0; pvIndex < orderedPv.Count; pvIndex++)
+        foreach (var pvPoint in orderedPv)
         {
-            var pvPoint = orderedPv[pvIndex];
             while (outputIndex + 1 < orderedOutput.Count
-                   && Math.Abs(SecondsBetween(pvPoint.TimeUtc, orderedOutput[outputIndex + 1].TimeUtc))
-                   <= Math.Abs(SecondsBetween(pvPoint.TimeUtc, orderedOutput[outputIndex].TimeUtc)))
+                   && AbsoluteSecondsBetween(
+                       pvPoint.TimeUtc,
+                       orderedOutput[outputIndex + 1].TimeUtc)
+                   <= AbsoluteSecondsBetween(
+                       pvPoint.TimeUtc,
+                       orderedOutput[outputIndex].TimeUtc))
             {
                 outputIndex++;
+            }
+
+            var outputPoint = orderedOutput[outputIndex];
+            if (AbsoluteSecondsBetween(pvPoint.TimeUtc, outputPoint.TimeUtc)
+                > maxDistanceSeconds)
+            {
+                continue;
             }
 
             pairs.Add(new TuningPair(
                 pvPoint.TimeUtc,
                 pvPoint.Value,
-                orderedOutput[outputIndex].Value));
+                outputPoint.Value));
         }
 
         return pairs;
     }
 
-    private static int FindLargestOutputStep(IReadOnlyList<TuningPair> pairs)
+    private static int FindLargestOutputStep(
+        IReadOnlyList<TuningPair> pairs,
+        out double maxDelta)
     {
-        var stepIndex = 1;
-        var maxDelta = 0d;
+        var stepIndex = -1;
+        maxDelta = 0;
 
-        for (var i = 1; i < pairs.Count - 1; i++)
+        for (var i = 1; i < pairs.Count; i++)
         {
             var delta = Math.Abs(pairs[i].Output - pairs[i - 1].Output);
             if (delta > maxDelta)
@@ -154,23 +256,40 @@ public static class SimcPidTuner
         return stepIndex;
     }
 
-    private static int FindCrossing(
+    /// <summary>
+    /// Находит время пересечения уровня с линейной интерполяцией между точками.
+    /// Возвращаемое время отсчитывается от момента ступени OUT.
+    /// </summary>
+    private static double? FindCrossingSeconds(
         IReadOnlyList<TuningPair> pairs,
         int startIndex,
         double target,
-        double direction)
+        double direction,
+        DateTime stepTimeUtc)
     {
-        for (var i = Math.Max(0, startIndex); i < pairs.Count; i++)
+        for (var i = Math.Max(1, startIndex); i < pairs.Count; i++)
         {
+            var previous = pairs[i - 1];
+            var current = pairs[i];
             var crossed = direction > 0
-                ? pairs[i].Pv >= target
-                : pairs[i].Pv <= target;
+                ? previous.Pv <= target && current.Pv >= target
+                : previous.Pv >= target && current.Pv <= target;
 
-            if (crossed)
-                return i;
+            if (!crossed)
+                continue;
+
+            var pvDelta = current.Pv - previous.Pv;
+            var fraction = Math.Abs(pvDelta) <= Epsilon
+                ? 0
+                : Math.Clamp((target - previous.Pv) / pvDelta, 0, 1);
+            var segmentSeconds = SecondsBetween(previous.TimeUtc, current.TimeUtc);
+            var crossingTime = SecondsBetween(stepTimeUtc, previous.TimeUtc)
+                               + fraction * segmentSeconds;
+
+            return Math.Max(0, crossingTime);
         }
 
-        return -1;
+        return null;
     }
 
     private static double AverageBefore(
@@ -178,16 +297,40 @@ public static class SimcPidTuner
         int stepIndex,
         Func<TuningPair, double> selector)
     {
-        var take = Math.Min(5, Math.Max(1, stepIndex));
-        var skip = Math.Max(0, stepIndex - take);
-        return pairs.Skip(skip).Take(take).Average(selector);
+        var take = Math.Min(5, stepIndex);
+        return pairs
+            .Skip(stepIndex - take)
+            .Take(take)
+            .Average(selector);
     }
 
     private static double AverageTail(
         IReadOnlyList<TuningPair> pairs,
+        int stepIndex,
         Func<TuningPair, double> selector)
     {
-        return pairs.Skip(Math.Max(0, pairs.Count - 5)).Average(selector);
+        var skip = Math.Max(stepIndex + 1, pairs.Count - 5);
+        return pairs.Skip(skip).Average(selector);
+    }
+
+    /// <summary>
+    /// Проверяет, что последние точки образуют плато. Допуск в 10 процентов
+    /// учитывает промышленный шум, но отсекает незавершенный переходный процесс.
+    /// </summary>
+    private static bool IsSettledTail(
+        IReadOnlyList<TuningPair> pairs,
+        int stepIndex,
+        Func<TuningPair, double> selector,
+        double totalChange)
+    {
+        var skip = Math.Max(stepIndex + 1, pairs.Count - 5);
+        var tail = pairs.Skip(skip).Select(selector).ToList();
+        if (tail.Count < 3)
+            return false;
+
+        var spread = tail.Max() - tail.Min();
+        var tolerance = Math.Max(Epsilon * 10, totalChange * 0.1);
+        return spread <= tolerance;
     }
 
     private static double EstimateStepSeconds(IReadOnlyList<TuningPair> pairs)
@@ -198,10 +341,26 @@ public static class SimcPidTuner
             .OrderBy(delta => delta)
             .ToList();
 
-        if (deltas.Count == 0)
-            return 1;
+        return MedianOrDefault(deltas, 1);
+    }
 
-        return deltas[deltas.Count / 2];
+    private static double EstimateSourceStepSeconds(
+        IReadOnlyList<PidTuningSample> samples)
+    {
+        var deltas = samples
+            .Zip(samples.Skip(1), (left, right) => SecondsBetween(left.TimeUtc, right.TimeUtc))
+            .Where(delta => delta > 0)
+            .OrderBy(delta => delta)
+            .ToList();
+
+        return MedianOrDefault(deltas, 1);
+    }
+
+    private static double MedianOrDefault(IReadOnlyList<double> ordered, double fallback)
+    {
+        return ordered.Count == 0
+            ? fallback
+            : ordered[ordered.Count / 2];
     }
 
     private static double SecondsBetween(DateTime leftUtc, DateTime rightUtc)
@@ -209,9 +368,14 @@ public static class SimcPidTuner
         return (rightUtc - leftUtc).TotalSeconds;
     }
 
+    private static double AbsoluteSecondsBetween(DateTime leftUtc, DateTime rightUtc)
+    {
+        return Math.Abs(SecondsBetween(leftUtc, rightUtc));
+    }
+
     private static bool IsFinite(double value)
     {
-        return !double.IsNaN(value) && !double.IsInfinity(value);
+        return double.IsFinite(value);
     }
 
     private static double Round(double value, int digits)

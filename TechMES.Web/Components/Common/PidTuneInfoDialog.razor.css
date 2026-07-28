@@ -1,0 +1,126 @@
+.pid-tune-info {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+
+.pid-tune-info-section {
+    padding-block: 2px;
+}
+
+.pid-tune-info-section h3 {
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.pid-tune-info-section p {
+    margin: 8px 0 0;
+    line-height: 1.5;
+}
+
+.pid-tune-equation,
+.pid-tune-formulas {
+    border: 1px solid color-mix(in srgb, var(--rz-text-color) 16%, transparent);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--rz-text-color) 6%, transparent);
+    color: var(--rz-text-color) !important;
+    font-family: Consolas, "Courier New", monospace;
+}
+
+.pid-tune-equation {
+    padding: 10px 12px;
+    overflow-wrap: anywhere;
+}
+
+.pid-tune-formulas {
+    display: grid;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 12px;
+}
+
+.pid-tune-formulas code {
+    color: var(--rz-text-color) !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.pid-tune-values {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) 110px;
+    gap: 8px 12px;
+    align-items: baseline;
+    margin-top: 12px;
+}
+
+.pid-tune-value-symbol {
+    font-weight: 700;
+}
+
+.pid-tune-value-description {
+    color: var(--rz-text-secondary-color);
+    line-height: 1.4;
+}
+
+.pid-tune-value-current {
+    text-align: right;
+    font-family: Consolas, "Courier New", monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+.pid-tune-invalid-result {
+    color: var(--rz-warning);
+}
+
+.pid-tune-info-footer {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    padding-top: 4px;
+}
+
+.pid-tune-source {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    color: var(--rz-text-secondary-color);
+    font-size: 0.85rem;
+}
+
+.pid-tune-source a {
+    width: fit-content;
+}
+
+.pid-tune-source a,
+.pid-tune-source a:visited {
+    color: var(--rz-primary) !important;
+}
+
+.pid-tune-source a:hover,
+.pid-tune-source a:focus-visible {
+    color: color-mix(in srgb, var(--rz-primary) 76%, var(--rz-text-color) 24%) !important;
+}
+
+@media (max-width: 640px) {
+    .pid-tune-values {
+        grid-template-columns: 52px minmax(0, 1fr);
+    }
+
+    .pid-tune-value-current {
+        grid-column: 2;
+        text-align: left;
+    }
+
+    .pid-tune-info-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .pid-tune-info-footer ::deep .rz-button {
+        align-self: flex-end;
+    }
+}

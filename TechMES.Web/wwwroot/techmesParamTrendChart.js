@@ -113,7 +113,7 @@
 
             if (zoomState) {
                 zoomStates.set(element, zoomState);
-                notifyVisibleWindowChanged(element, zoomState);
+                notifyVisibleWindowChanged(element, zoomState, viewKeys.get(element));
                 requestHistoryNearEdge(element, zoomState);
             }
         });
@@ -404,7 +404,7 @@
 
         if (valueZoom) {
             zoomStates.set(element, valueZoom);
-            notifyVisibleWindowChanged(element, valueZoom);
+            notifyVisibleWindowChanged(element, valueZoom, viewKeys.get(element));
         }
 
         chart.dispatchAction({
@@ -417,10 +417,15 @@
     }
 
     // Сообщает Blazor фактический time range, который сейчас видит пользователь.
-    function notifyVisibleWindowChanged(element, zoomState) {
+    function notifyVisibleWindowChanged(element, zoomState, expectedViewKey) {
         const callback = historyCallbacks.get(element);
+        const currentViewKey = viewKeys.get(element) || "";
 
         if (!callback?.invokeMethodAsync || !zoomState) {
+            return;
+        }
+
+        if (expectedViewKey !== undefined && expectedViewKey !== currentViewKey) {
             return;
         }
 
@@ -431,7 +436,42 @@
             return;
         }
 
-        callback.invokeMethodAsync("NotifyVisibleWindowChangedAsync", start, end).catch(() => {});
+        callback.invokeMethodAsync(
+            "NotifyVisibleWindowChangedAsync",
+            start,
+            end,
+            currentViewKey).catch(() => {});
+    }
+
+    // Ставит видимое окно в правую границу уже после передачи свежих данных.
+    // silent dispatch исключает промежуточный datazoom callback со старым диапазоном.
+    function goToLatest(element, startUtcMs, endUtcMs, expectedViewKey) {
+        const chart = charts.get(element);
+        const range = dataRanges.get(element);
+        const currentViewKey = viewKeys.get(element) || "";
+
+        if (!chart || !range || expectedViewKey !== currentViewKey) {
+            return;
+        }
+
+        const latestZoom = normalizeValueZoom(startUtcMs, endUtcMs, range);
+
+        if (!latestZoom) {
+            return;
+        }
+
+        zoomStates.set(element, latestZoom);
+        const percentZoom = valuesToPercent(latestZoom, range);
+
+        chart.dispatchAction({
+            type: "dataZoom",
+            batch: [
+                { dataZoomIndex: 0, start: percentZoom.start, end: percentZoom.end },
+                { dataZoomIndex: 1, start: percentZoom.start, end: percentZoom.end }
+            ]
+        }, { silent: true });
+
+        notifyVisibleWindowChanged(element, latestZoom, expectedViewKey);
     }
 
     // Читает dataZoom из текущего option ECharts.
@@ -560,7 +600,7 @@
         };
     }
 
-    // Передает фактические вертикальные границы ECharts grid в общую Graph-разметку.
+    // Передает фактические вертикальные границы ECharts grid в общую Graph/Tune-разметку.
     // Координаты пересчитываются относительно левой панели, поэтому шкалы совпадают с plot-area
     // даже при изменении высоты окна, появлении служебной строки над графиком или смене устройства.
     function syncPlotBounds(element, chart) {
@@ -568,8 +608,9 @@
             return;
         }
 
-        const layout = element.closest?.(".param-graph-layout");
-        const sidePanel = layout?.querySelector?.(".param-graph-side-panel-aligned-bars");
+        const layout = element.closest?.(".param-graph-layout, .param-tune-graph-layout");
+        const sidePanel = layout?.querySelector?.(
+            ".param-graph-side-panel-aligned-bars, .param-tune-bars");
         const grid = chart.getModel?.()?.getComponent?.("grid", 0)?.coordinateSystem?.getRect?.();
 
         if (!layout || !sidePanel || !grid) {
@@ -816,8 +857,16 @@
         // После setOption ECharts уже знает итоговый grid с учетом containLabel.
         // requestAnimationFrame дает canvas завершить layout перед чтением координат.
         window.requestAnimationFrame(() => {
+            if (viewKeys.get(element) !== viewKey) {
+                return;
+            }
+
             syncPlotBounds(element, chart);
-            notifyVisibleWindowChanged(element, zoomState);
+            const currentZoomState =
+                readZoomStateFromOption(element, chart) ||
+                zoomStates.get(element) ||
+                zoomState;
+            notifyVisibleWindowChanged(element, currentZoomState, viewKey);
         });
     }
 
@@ -1020,6 +1069,7 @@
 
     window.techMesParamTrendChart = {
         render,
+        goToLatest,
         dispose
     };
 })();

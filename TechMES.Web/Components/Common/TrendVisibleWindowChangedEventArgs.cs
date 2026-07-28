@@ -6,10 +6,11 @@
 /// </summary>
 public sealed class TrendVisibleWindowChangedEventArgs : EventArgs
 {
-    public TrendVisibleWindowChangedEventArgs(DateTime fromUtc, DateTime toUtc)
+    public TrendVisibleWindowChangedEventArgs(DateTime fromUtc, DateTime toUtc, string viewKey)
     {
         FromUtc = DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc);
         ToUtc = DateTime.SpecifyKind(toUtc, DateTimeKind.Utc);
+        ViewKey = viewKey;
     }
 
     /// <summary>
@@ -21,4 +22,10 @@ public sealed class TrendVisibleWindowChangedEventArgs : EventArgs
     /// Правая граница видимого окна в UTC.
     /// </summary>
     public DateTime ToUtc { get; }
+
+    /// <summary>
+    /// Ключ версии графика, из которой пришло событие.
+    /// Родитель отбрасывает запоздавшие callback-и предыдущего render-а.
+    /// </summary>
+    public string ViewKey { get; }
 }

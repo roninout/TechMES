@@ -1,0 +1,105 @@
+.pid-issue-diagram {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--rz-text-color) 14%, transparent);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--rz-text-color) 3%, var(--rz-base-background-color));
+}
+
+.pid-issue-diagram svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 220px;
+    color: var(--rz-text-color);
+}
+
+.diagram-title {
+    fill: var(--rz-text-color);
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.diagram-problem-title {
+    fill: var(--rz-warning);
+}
+
+.diagram-ok-title {
+    fill: var(--rz-success);
+}
+
+.diagram-grid {
+    fill: none;
+    stroke: color-mix(in srgb, var(--rz-text-color) 12%, transparent);
+    stroke-width: 1;
+}
+
+.diagram-frame {
+    fill: transparent;
+    stroke-width: 1.5;
+}
+
+.diagram-problem-frame {
+    stroke: color-mix(in srgb, var(--rz-warning) 70%, var(--rz-text-color));
+}
+
+.diagram-ok-frame {
+    stroke: color-mix(in srgb, var(--rz-success) 70%, var(--rz-text-color));
+}
+
+.diagram-line {
+    fill: none;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.diagram-out {
+    stroke: var(--rz-warning);
+}
+
+.diagram-pv {
+    stroke: var(--rz-success);
+}
+
+.diagram-problem-line {
+    opacity: 0.9;
+}
+
+.diagram-step-marker {
+    stroke: color-mix(in srgb, var(--rz-info) 75%, var(--rz-text-color));
+    stroke-width: 1.5;
+    stroke-dasharray: 6 5;
+}
+
+.diagram-point {
+    stroke: var(--rz-base-background-color);
+    stroke-width: 2;
+}
+
+.diagram-point-28,
+.diagram-point-63 {
+    fill: var(--rz-info);
+}
+
+.diagram-small-label,
+.diagram-legend text {
+    fill: var(--rz-text-secondary-color);
+    font-size: 12px;
+}
+
+.diagram-sample-dots {
+    fill: var(--rz-warning);
+}
+
+@media (max-width: 640px) {
+    .pid-issue-diagram {
+        overflow-x: auto;
+    }
+
+    .pid-issue-diagram svg {
+        width: 720px;
+        max-width: none;
+    }
+}

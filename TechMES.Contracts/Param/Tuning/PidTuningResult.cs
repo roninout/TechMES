@@ -16,6 +16,11 @@ public sealed class PidTuningResult
     public string ErrorMessage { get; init; } = "";
 
     /// <summary>
+    /// Машиночитаемая причина ошибки для контекстной диагностики в WEB.
+    /// </summary>
+    public PidTuneIssueCode IssueCode { get; init; }
+
+    /// <summary>
     /// Усиление процесса: delta PV / delta OUT.
     /// </summary>
     public double K { get; init; }
@@ -29,6 +34,11 @@ public sealed class PidTuningResult
     /// Запаздывание процесса, сек.
     /// </summary>
     public double Theta { get; init; }
+
+    /// <summary>
+    /// Выбранная для SIMC постоянная времени замкнутого контура, сек.
+    /// </summary>
+    public double TauC { get; init; }
 
     /// <summary>
     /// Пропорциональный коэффициент регулятора.

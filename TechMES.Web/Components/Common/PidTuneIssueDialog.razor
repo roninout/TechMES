@@ -1,0 +1,64 @@
+@using TechMES.Contracts.Param.Tuning
+@inject DialogService DialogService
+
+<div class="pid-tune-issue">
+    <RadzenAlert AlertStyle="AlertStyle.Warning"
+                 Variant="Variant.Flat"
+                 Shade="Shade.Lighter"
+                 AllowClose="false">
+        @Message
+    </RadzenAlert>
+
+    <section class="pid-tune-issue-section">
+        <h3>@Content.Title</h3>
+        <p>@Content.Explanation</p>
+    </section>
+
+    <section class="pid-tune-issue-section">
+        <h3>Как должен выглядеть выбранный участок</h3>
+        <PidTuneIssueDiagram IssueCode="@IssueCode" />
+        <p class="pid-tune-diagram-caption">
+            Слева показан характер проблемы, справа - пригодный для идентификации
+            ступенчатый тест с устойчивыми уровнями OUT и полным откликом PV.
+        </p>
+    </section>
+
+    <section class="pid-tune-issue-section">
+        <h3>Что сделать</h3>
+        <p>@Content.Recommendation</p>
+        <ul>
+            @foreach (var item in Content.Checklist)
+            {
+                <li>@item</li>
+            }
+        </ul>
+    </section>
+
+    <div class="pid-tune-issue-footer">
+        <RadzenButton Text="Закрыть"
+                      Icon="close"
+                      ButtonStyle="ButtonStyle.Light"
+                      Click="@Close" />
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Тип диагностической причины, определенный алгоритмом PID Tune.
+    /// </summary>
+    [Parameter]
+    public PidTuneIssueCode IssueCode { get; set; } = PidTuneIssueCode.Unknown;
+
+    /// <summary>
+    /// Краткий статус, который пользователь нажал в основной форме.
+    /// </summary>
+    [Parameter]
+    public string Message { get; set; } = "";
+
+    private PidTuneIssueContent Content => PidTuneIssueCatalog.Get(IssueCode);
+
+    private void Close()
+    {
+        DialogService.Close();
+    }
+}

@@ -6,6 +6,15 @@ namespace TechMES.Contracts.Param.Tuning;
 /// </summary>
 public static class PidTuneMethod
 {
+    /// <summary>
+    /// SIMC PI для модели FOPDT. Строковое значение сохранено прежним,
+    /// чтобы уже сохраненное состояние UI осталось совместимым.
+    /// </summary>
+    public const string FopdtSimcPi = "FOPDT_SIMC_PID";
+
+    /// <summary>
+    /// Обратная совместимость со старым именем константы.
+    /// </summary>
     public const string FopdtSimcPid = "FOPDT_SIMC_PID";
 
     public const string FopdtZieglerNicholsPid = "FOPDT_ZN_PID";

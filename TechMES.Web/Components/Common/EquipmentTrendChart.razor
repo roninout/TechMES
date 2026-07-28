@@ -27,6 +27,23 @@
     private bool _isDisposed;
 
     /// <summary>
+    /// Последняя версия команды перехода к актуальному диапазону, примененная в ECharts.
+    /// </summary>
+    private int _appliedGoToLatestVersion = int.MinValue;
+
+    /// <summary>
+    /// Отличает первое получение параметров от последующей явной команды.
+    /// Новый экземпляр вкладки принимает текущее окно, но сам не сбрасывает его в latest.
+    /// </summary>
+    private bool _goToLatestVersionInitialized;
+
+    /// <summary>
+    /// Последнее окно, отправленное родителю. Не дает одинаковому callback-у
+    /// запускать бесконечную цепочку Blazor render -> JS render -> callback.
+    /// </summary>
+    private (string ViewKey, long FromUtcMs, long ToUtcMs)? _lastNotifiedWindow;
+
+    /// <summary>
     /// Буфер тренда, полученный от Runtime.Service.
     /// </summary>
     [Parameter]
@@ -45,10 +62,18 @@
     public string? Unit { get; set; }
 
     /// <summary>
-    /// true - обычный Param Graph рисуется как LineArea; false - Tune-график рисуется чистыми линиями.
+    /// Визуальный стиль серий. Все остальные возможности графика не зависят от выбранного стиля.
     /// </summary>
     [Parameter]
-    public bool UseArea { get; set; } = true;
+    public EquipmentTrendRenderStyle RenderStyle { get; set; } = EquipmentTrendRenderStyle.Area;
+
+    /// <summary>
+    /// Необязательные отображаемые имена серий.
+    /// Ключ остается исходным именем серии из Runtime, поэтому фильтрация точек
+    /// и расчеты продолжают работать с техническими именами тегов.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyDictionary<string, string>? SeriesDisplayNames { get; set; }
 
     /// <summary>
     /// Левая граница видимого окна тренда.
@@ -87,6 +112,19 @@
     public EventCallback<TrendVisibleWindowChangedEventArgs> OnVisibleWindowChanged { get; set; }
 
     /// <summary>
+    /// Версия команды GoToLatest. Родитель увеличивает значение только при явном
+    /// нажатии кнопки, а общий компонент применяет переход после обновления данных.
+    /// </summary>
+    [Parameter]
+    public int GoToLatestVersion { get; set; }
+
+    /// <summary>
+    /// Ширина последнего временного окна в минутах.
+    /// </summary>
+    [Parameter]
+    public int LatestWindowMinutes { get; set; } = 30;
+
+    /// <summary>
     /// После первого render-а передает график в JS.
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -104,6 +142,12 @@
     /// </summary>
     protected override async Task OnParametersSetAsync()
     {
+        if (!_goToLatestVersionInitialized)
+        {
+            _appliedGoToLatestVersion = GoToLatestVersion;
+            _goToLatestVersionInitialized = true;
+        }
+
         if (_hasRendered)
         {
             await RenderChartAsync();
@@ -130,6 +174,8 @@
                 _chartElement,
                 BuildPayload(trend),
                 _selfReference);
+
+            await ApplyGoToLatestIfRequestedAsync(trend);
         }
         catch (OperationCanceledException)
         {
@@ -145,17 +191,47 @@
     }
 
     /// <summary>
+    /// После передачи свежего trend payload принудительно ставит оба dataZoom
+    /// в правую границу. Команда выполняется один раз для каждой версии и потому
+    /// не конфликтует с пользовательской прокруткой или периодическим опросом.
+    /// </summary>
+    private async Task ApplyGoToLatestIfRequestedAsync(ParamTrendResponse trend)
+    {
+        if (_appliedGoToLatestVersion == GoToLatestVersion)
+            return;
+
+        var toUtc = trend.ToUtc;
+        var fromUtc = toUtc.AddMinutes(-Math.Max(1, LatestWindowMinutes));
+
+        if (fromUtc < trend.FromUtc)
+            fromUtc = trend.FromUtc;
+
+        var expectedViewKey = ViewKey ?? trend.EquipmentName;
+
+        await JSRuntime.InvokeVoidAsync(
+            "techMesParamTrendChart.goToLatest",
+            _chartElement,
+            ToUnixMilliseconds(fromUtc),
+            ToUnixMilliseconds(toUtc),
+            expectedViewKey);
+
+        _appliedGoToLatestVersion = GoToLatestVersion;
+    }
+
+    /// <summary>
     /// Преобразует backend DTO в структуру, удобную для JavaScript/ECharts.
     /// </summary>
     private object BuildPayload(ParamTrendResponse trend)
     {
+        var useArea = RenderStyle == EquipmentTrendRenderStyle.Area;
+
         var series = GetSeries(trend)
             .Select(item => new
             {
-                name = item.Name,
+                name = GetSeriesDisplayName(item.Name),
                 color = item.Color,
-                fill = UseArea ? ToAreaFill(item.Color) : null,
-                useArea = UseArea,
+                fill = useArea ? ToAreaFill(item.Color) : null,
+                useArea,
                 data = trend.Points
                     .Where(point => point.Series.Equals(item.Name, StringComparison.OrdinalIgnoreCase))
                     .OrderBy(point => point.Time)
@@ -191,6 +267,21 @@
     }
 
     /// <summary>
+    /// Возвращает пользовательскую подпись серии, не изменяя ее техническое имя.
+    /// </summary>
+    private string GetSeriesDisplayName(string seriesName)
+    {
+        if (SeriesDisplayNames is not null
+            && SeriesDisplayNames.TryGetValue(seriesName, out var displayName)
+            && !string.IsNullOrWhiteSpace(displayName))
+        {
+            return displayName;
+        }
+
+        return seriesName;
+    }
+
+    /// <summary>
     /// JS вызывает этот метод, когда пользователь дотянул график к краю доступного буфера.
     /// </summary>
     [JSInvokable]
@@ -210,18 +301,38 @@
     /// Так Blazor знает, какой участок данных выбран пользователем.
     /// </summary>
     [JSInvokable]
-    public async Task NotifyVisibleWindowChangedAsync(long startUtcMs, long endUtcMs)
+    public async Task NotifyVisibleWindowChangedAsync(
+        long startUtcMs,
+        long endUtcMs,
+        string sourceViewKey)
     {
         if (_isDisposed || !OnVisibleWindowChanged.HasDelegate)
             return;
 
-        var fromUtc = DateTimeOffset.FromUnixTimeMilliseconds(startUtcMs).UtcDateTime;
-        var toUtc = DateTimeOffset.FromUnixTimeMilliseconds(endUtcMs).UtcDateTime;
+        var currentViewKey = ViewKey ?? Trend?.EquipmentName ?? "";
 
-        if (toUtc < fromUtc)
-            (fromUtc, toUtc) = (toUtc, fromUtc);
+        if (!string.Equals(sourceViewKey, currentViewKey, StringComparison.Ordinal))
+            return;
 
-        await OnVisibleWindowChanged.InvokeAsync(new TrendVisibleWindowChangedEventArgs(fromUtc, toUtc));
+        var normalizedStartUtcMs = Math.Min(startUtcMs, endUtcMs);
+        var normalizedEndUtcMs = Math.Max(startUtcMs, endUtcMs);
+        var notifiedWindow = _lastNotifiedWindow;
+
+        if (notifiedWindow.HasValue &&
+            string.Equals(notifiedWindow.Value.ViewKey, sourceViewKey, StringComparison.Ordinal) &&
+            notifiedWindow.Value.FromUtcMs == normalizedStartUtcMs &&
+            notifiedWindow.Value.ToUtcMs == normalizedEndUtcMs)
+        {
+            return;
+        }
+
+        _lastNotifiedWindow = (sourceViewKey, normalizedStartUtcMs, normalizedEndUtcMs);
+
+        var fromUtc = DateTimeOffset.FromUnixTimeMilliseconds(normalizedStartUtcMs).UtcDateTime;
+        var toUtc = DateTimeOffset.FromUnixTimeMilliseconds(normalizedEndUtcMs).UtcDateTime;
+
+        await OnVisibleWindowChanged.InvokeAsync(
+            new TrendVisibleWindowChangedEventArgs(fromUtc, toUtc, sourceViewKey));
     }
 
     /// <summary>

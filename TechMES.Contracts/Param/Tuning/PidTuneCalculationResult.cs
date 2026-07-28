@@ -17,6 +17,16 @@ public sealed class PidTuneCalculationResult
 
     public static PidTuneCalculationResult Valid(double kp, double ti, double td, string message)
     {
+        if (!double.IsFinite(kp)
+            || !double.IsFinite(ti)
+            || !double.IsFinite(td)
+            || Math.Abs(kp) < 1e-12
+            || ti <= 0
+            || td < 0)
+        {
+            return Invalid("The selected method produced invalid PID parameters.");
+        }
+
         return new PidTuneCalculationResult
         {
             Kp = kp,

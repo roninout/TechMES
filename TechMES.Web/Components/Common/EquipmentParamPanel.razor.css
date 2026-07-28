@@ -18,7 +18,7 @@
 .param-tune-graph-layout {
     display: grid;
     grid-template-columns: 210px minmax(0, 1fr);
-    align-items: center;
+    align-items: stretch;
     gap: 18px;
     min-width: 0;
 }
@@ -26,11 +26,22 @@
 .param-tune-bars {
     display: grid;
     grid-template-columns: repeat(3, minmax(54px, 1fr));
-    align-items: center;
+    align-items: stretch;
     justify-items: center;
     gap: 8px;
-    min-height: 360px;
+    /*
+       Эти границы заполняет techmesParamTrendChart.js по фактической plot-area ECharts.
+       Поэтому верхний/нижний края Tune-баров совпадают с сеткой графика при любой высоте окна.
+    */
+    padding-block-start: var(--param-chart-plot-top, 72px);
+    padding-block-end: var(--param-chart-plot-bottom, 86px);
+    box-sizing: border-box;
+    min-height: 0;
     min-width: 0;
+}
+
+.param-tune-bars ::deep .param-meter {
+    min-height: 0;
 }
 
 .param-tune-chart {
@@ -62,10 +73,32 @@
     min-width: 0;
 }
 
+.param-tune-settings-row {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) minmax(140px, 184px) minmax(140px, 184px);
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.param-tune-header-row {
+    /*
+     * Модель имеет стабильную ширину, достаточную для Closed loop Ku/Tu.
+     * Метод и краткое описание делят оставшееся место и могут растягиваться,
+     * поэтому длинное имя метода не обрезается до нескольких символов.
+     */
+    grid-template-columns: 240px minmax(260px, 1fr) minmax(220px, 1fr) 36px;
+}
+
 .param-tune-input-row {
     display: grid;
-    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    /*
+     * Коэффициенты модели имеют тот же фиксированный размер, что и поля
+     * диапазонов Pv/Sp на широком экране.
+     */
+    grid-template-columns: repeat(4, 184px);
     align-items: center;
+    justify-content: start;
     gap: 12px;
     min-width: 0;
 }
@@ -79,7 +112,7 @@
 
 .param-tune-result-row {
     display: grid;
-    grid-template-columns: 120px 120px 120px minmax(0, 1fr) 140px 120px;
+    grid-template-columns: 120px 120px 120px minmax(0, 1fr) 140px;
     align-items: center;
     gap: 12px;
     min-width: 0;
@@ -90,6 +123,43 @@
     width: 100%;
 }
 
+.param-tune-settings-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 120px 120px;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.param-tune-settings-actions ::deep .rz-button {
+    width: 120px;
+}
+
+.param-tune-info-slot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 36px;
+    min-width: 36px;
+}
+
+.param-tune-info-slot ::deep .param-tune-info-button.rz-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    color: var(--rz-text-secondary-color);
+}
+
+.param-tune-info-slot ::deep .param-tune-info-button.rz-button:hover,
+.param-tune-info-slot ::deep .param-tune-info-button.rz-button:focus-visible {
+    background: var(--rz-base-200);
+    color: var(--rz-text-color);
+}
+
 ::deep .param-tune-tag-field,
 ::deep .param-tune-number-field,
 ::deep .param-tune-result-field {
@@ -97,7 +167,7 @@
 }
 
 ::deep .param-tune-range-field {
-    min-width: 180px;
+    min-width: 0;
 }
 
 .param-tune-progress {
@@ -105,7 +175,6 @@
 }
 
 ::deep .param-tune-number-field .rz-numeric,
-::deep .param-tune-number-field .rz-spinner,
 ::deep .param-tune-number-field .rz-inputnumber,
 ::deep .param-tune-number-field .rz-inputtext,
 ::deep .param-tune-number-field input {
@@ -118,10 +187,28 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
+    .param-tune-bars {
+        min-height: 360px;
+        padding-block: 0;
+    }
+
     .param-tune-row,
+    .param-tune-settings-row,
     .param-tune-input-row,
     .param-tune-result-row {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .param-tune-settings-actions {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .param-tune-settings-actions ::deep .rz-button {
+        width: 100%;
+    }
+
+    .param-tune-info-slot {
+        justify-self: end;
     }
 }
 
@@ -433,6 +520,40 @@
     color: gray;
     font-size: 13px;
     text-align: right;
+}
+
+.param-status-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+    min-width: 0;
+    margin: 0;
+    padding: 3px 4px;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--rz-text-secondary-color);
+    cursor: pointer;
+    font: inherit;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+}
+
+.param-status-link span {
+    min-width: 0;
+}
+
+.param-status-link:hover,
+.param-status-link:focus-visible {
+    background: var(--rz-base-200);
+    color: var(--rz-primary);
+    outline: none;
+}
+
+.param-status-link ::deep .rzi {
+    flex: 0 0 auto;
+    font-size: 18px;
 }
 
 ::deep .param-live-button {

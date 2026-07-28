@@ -1,0 +1,94 @@
+@using TechMES.Contracts.Param.Tuning
+
+<div class="pid-issue-diagram" role="img" aria-label="Сравнение проблемного и подходящего ступенчатого теста">
+    <svg viewBox="0 0 760 300" preserveAspectRatio="xMidYMid meet">
+        <text x="198" y="24" text-anchor="middle" class="diagram-title diagram-problem-title">Текущий участок</text>
+        <text x="562" y="24" text-anchor="middle" class="diagram-title diagram-ok-title">Подходящий участок</text>
+
+        <g class="diagram-grid">
+            <path d="M30 50 H365 M30 100 H365 M30 150 H365 M30 200 H365 M30 250 H365" />
+            <path d="M395 50 H730 M395 100 H730 M395 150 H730 M395 200 H730 M395 250 H730" />
+            <path d="M30 50 V250 M114 50 V250 M198 50 V250 M282 50 V250 M365 50 V250" />
+            <path d="M395 50 V250 M479 50 V250 M563 50 V250 M647 50 V250 M730 50 V250" />
+        </g>
+
+        <rect x="30" y="50" width="335" height="200" class="diagram-frame diagram-problem-frame" />
+        <rect x="395" y="50" width="335" height="200" class="diagram-frame diagram-ok-frame" />
+
+        @if (!string.IsNullOrWhiteSpace(ProblemOutPath))
+        {
+            <path d="@ProblemOutPath" class="diagram-line diagram-out diagram-problem-line" />
+        }
+        @if (!string.IsNullOrWhiteSpace(ProblemPvPath))
+        {
+            <path d="@ProblemPvPath" class="diagram-line diagram-pv diagram-problem-line" />
+        }
+        @if (IssueCode == PidTuneIssueCode.InsufficientAlignedSamples)
+        {
+            <g class="diagram-sample-dots">
+                <circle cx="66" cy="176" r="4" />
+                <circle cx="126" cy="176" r="4" />
+                <circle cx="188" cy="112" r="4" />
+                <circle cx="258" cy="145" r="4" />
+            </g>
+        }
+
+        <path d="M405 176 H500 V88 H720" class="diagram-line diagram-out" />
+        <path d="M405 194 H525 C542 194 545 182 558 164 C580 133 617 112 720 108"
+              class="diagram-line diagram-pv" />
+        <path d="M500 48 V252" class="diagram-step-marker" />
+        <circle cx="568" cy="151" r="5" class="diagram-point diagram-point-28" />
+        <circle cx="604" cy="124" r="5" class="diagram-point diagram-point-63" />
+
+        <text x="505" y="68" class="diagram-small-label">ступень OUT</text>
+        <text x="574" y="146" class="diagram-small-label">28,3%</text>
+        <text x="610" y="119" class="diagram-small-label">63,2%</text>
+
+        <g class="diagram-legend">
+            <line x1="246" y1="276" x2="278" y2="276" class="diagram-line diagram-out" />
+            <text x="285" y="281">OUT</text>
+            <line x1="328" y1="276" x2="360" y2="276" class="diagram-line diagram-pv" />
+            <text x="367" y="281">PV</text>
+        </g>
+    </svg>
+</div>
+
+@code {
+    /// <summary>
+    /// Причина ошибки, определяющая форму проблемных кривых слева.
+    /// </summary>
+    [Parameter]
+    public PidTuneIssueCode IssueCode { get; set; }
+
+    private string ProblemOutPath => IssueCode switch
+    {
+        PidTuneIssueCode.MissingTrendData => "",
+        PidTuneIssueCode.InsufficientAlignedSamples => "",
+        PidTuneIssueCode.StepTooCloseToBoundary => "M40 176 H320 V88 H355",
+        PidTuneIssueCode.NoOutStep => "M40 150 H355",
+        PidTuneIssueCode.OutStepNotSustained => "M40 176 H132 V88 H238 V176 H355",
+        PidTuneIssueCode.OutRampInsteadOfStep => "M40 176 H110 L305 88 H355",
+        PidTuneIssueCode.OutNotSettled => "M40 176 H120 V88 L175 108 L225 80 L275 104 L325 84 L355 96",
+        _ => "M40 176 H130 V88 H355"
+    };
+
+    private string ProblemPvPath => IssueCode switch
+    {
+        PidTuneIssueCode.MissingTrendData => "M40 194 H150",
+        PidTuneIssueCode.InsufficientAlignedSamples => "",
+        PidTuneIssueCode.StepTooCloseToBoundary => "M40 194 H330 C338 194 345 184 355 168",
+        PidTuneIssueCode.NoOutStep => "M40 194 H355",
+        PidTuneIssueCode.OutStepNotSustained => "M40 194 H155 C180 190 206 154 235 150 C260 154 282 188 320 194 H355",
+        PidTuneIssueCode.OutRampInsteadOfStep => "M40 194 H130 C180 192 245 165 355 122",
+        PidTuneIssueCode.OutNotSettled => "M40 194 H145 C170 192 188 150 210 160 C235 174 250 120 275 142 C300 164 320 112 355 132",
+        PidTuneIssueCode.PvNoResponse => "M40 194 H355",
+        PidTuneIssueCode.ProcessGainTooSmall => "M40 194 H145 C190 194 235 188 355 184",
+        PidTuneIssueCode.PvNotSettled => "M40 194 H145 C190 194 212 175 250 151 C292 125 320 105 355 92",
+        PidTuneIssueCode.PvDidNotReach28Percent => "M40 194 H145 C210 194 270 190 355 174",
+        PidTuneIssueCode.PvDidNotReach63Percent => "M40 194 H145 C185 194 230 176 280 148 C315 128 338 119 355 116",
+        PidTuneIssueCode.InvalidResponseCrossings => "M40 194 H145 C160 194 172 130 188 166 C204 205 220 112 240 154 C260 194 278 118 300 144 C320 166 338 116 355 130",
+        PidTuneIssueCode.InvalidModelParameters => "M40 194 H145 C165 194 178 124 200 168 C220 210 240 118 265 156 C290 194 315 128 355 142",
+        PidTuneIssueCode.InvalidControllerParameters => "M40 194 H145 C175 194 195 108 225 154 C255 202 282 104 315 150 C330 170 342 138 355 146",
+        _ => "M40 194 H155 C185 194 205 174 235 148 C270 118 310 108 355 106"
+    };
+}

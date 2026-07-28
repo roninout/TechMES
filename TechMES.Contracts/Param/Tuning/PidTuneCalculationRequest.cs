@@ -9,7 +9,7 @@ public sealed class PidTuneCalculationRequest
 {
     public string ProcessModel { get; init; } = PidTuneProcessModel.Fopdt;
 
-    public string TuneMethod { get; init; } = PidTuneMethod.FopdtSimcPid;
+    public string TuneMethod { get; init; } = PidTuneMethod.FopdtSimcPi;
 
     public double? FopdtK { get; init; }
 
