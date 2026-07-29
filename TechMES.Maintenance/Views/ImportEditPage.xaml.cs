@@ -13,6 +13,17 @@ public partial class ImportEditPage : MaintenancePageControl
     public ImportEditPage()
     {
         InitializeComponent();
+
+        /*
+         * IMPORT является общей служебной вкладкой для всех справочников,
+         * поэтому в интерфейсе она располагается после SUPPLIER, ORDERS,
+         * INSTRUCTION и SCHEME. Перестановка выполняется после загрузки XAML,
+         * чтобы большой блок разметки импорта оставался цельным и удобным
+         * для дальнейшей реализации Excel-алгоритма.
+         */
+        ImportTabControl.Items.Remove(ImportTab);
+        ImportTabControl.Items.Add(ImportTab);
+        ImportTabControl.SelectedIndex = 0;
     }
 
     /// <summary>

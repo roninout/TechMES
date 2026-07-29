@@ -57,6 +57,23 @@ public sealed class RuntimeCatalogClient
             .Select(x => x.Equipment)
             .ToList();
 
+        /*
+         * Группы хранятся отдельно от обычного оборудования. Они не должны
+         * попадать в комбобоксы ORDERS/INSTRUCTION, но лист SCHEME использует
+         * имя группы как область назначения документа.
+         */
+        var groupItems = response.Equipments
+            .Where(x => x.IsGroup)
+            .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+            .Select(x => new RuntimeCatalogEquipmentItem(
+                (x.Station ?? "").Trim(),
+                x.TypeGroup.ToString().Trim(),
+                x.Name.Trim()))
+            .GroupBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .OrderBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         //var types = response.Equipments
         //    .Select(x => string.IsNullOrWhiteSpace(x.TypeName) ? x.TypeGroup.ToString() : x.TypeName)
         //    .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -90,6 +107,7 @@ public sealed class RuntimeCatalogClient
             Types = types,
             Equipments = equipments,
             EquipmentItems = equipmentItems,
+            GroupItems = groupItems,
             TotalCount = response.TotalCount
         };
     }

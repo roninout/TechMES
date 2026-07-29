@@ -206,6 +206,248 @@
                     HorizontalContentAlignment="Stretch"
                     VerticalContentAlignment="Stretch"
                     SelectionChanged="OnImportTabSelectionChanged">
+            <TabItem x:Name="ImportTab" Tag="IMPORT">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="ArrowImport24" Width="20" Height="20" Margin="0,0,8,0" />
+                        <TextBlock Text="IMPORT" />
+                    </StackPanel>
+                </TabItem.Header>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <!--
+                        Верхняя область запускает единый импорт всех поддерживаемых листов книги.
+                        Сам Excel-файл только описывает связи; PDF и изображения читаются из папок ниже.
+                        -->
+                        <views:MaintenanceCard Background="{DynamicResource TechMesPanelBrush}"
+                                               BorderBrush="{DynamicResource TechMesBorderBrush}"
+                                               BorderThickness="1"
+                                               Padding="12"
+                                               Margin="0,0,0,12">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0">
+                                    <TextBlock Text="Excel import"
+                                               Style="{StaticResource SectionTitleText}" />
+                                    <TextBlock Text="Imports SUPPLIER, ORDERS, INSTRUCTION and SCHEME with their database links."
+                                               Style="{StaticResource MutedText}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+
+                                <Grid Grid.Row="1" Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="Excel file"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource MutedText}" />
+                                    <ui:TextBox Grid.Column="1"
+                                                Text="{Binding ExcelImportFilePath, UpdateSourceTrigger=PropertyChanged}"
+                                                Margin="0,0,8,0" />
+                                    <ui:Button Grid.Column="2"
+                                               Content="Browse..."
+                                               MinWidth="96"
+                                               Margin="0,0,8,0"
+                                               Click="OnBrowseExcelImportFileClick" />
+                                    <ui:Button Grid.Column="3"
+                                               Content="Import"
+                                               MinWidth="110"
+                                               Appearance="Primary"
+                                               Click="OnImportExcelClick" />
+                                </Grid>
+
+                                <Grid Grid.Row="2" Margin="0,10,0,0">
+                                    <ProgressBar Height="4"
+                                                 IsIndeterminate="True">
+                                        <ProgressBar.Style>
+                                            <Style TargetType="ProgressBar">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsExcelImportRunning}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ProgressBar.Style>
+                                    </ProgressBar>
+                                </Grid>
+                            </Grid>
+                        </views:MaintenanceCard>
+
+                        <!--
+                        Все внешние источники файлов собраны в одной панели. Эти значения сохраняются
+                        в maintenance.settings.json и используются как Excel-импортом, так и ручным Save.
+                        -->
+                        <views:MaintenanceCard Background="{DynamicResource TechMesPanelBrush}"
+                                               BorderBrush="{DynamicResource TechMesBorderBrush}"
+                                               BorderThickness="1"
+                                               Padding="12">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                                    <TextBlock Text="File source folders"
+                                               Style="{StaticResource SectionTitleText}" />
+                                    <TextBlock Text="PDF and image folders used to store binary file data in PostgreSQL."
+                                               Style="{StaticResource MutedText}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+
+                                <Grid Grid.Row="1" Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="ORDERS PDF"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource MutedText}" />
+                                    <ui:TextBox Grid.Column="1"
+                                                Text="{Binding OrdersPdfSourceRoot, UpdateSourceTrigger=PropertyChanged}"
+                                                Margin="0,0,8,0" />
+                                    <ui:Button Grid.Column="2"
+                                               Content="Browse..."
+                                               MinWidth="96"
+                                               Tag="OrdersPdfSourceRoot"
+                                               Click="OnBrowseImportSourceClick" />
+                                </Grid>
+
+                                <Grid Grid.Row="2" Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="INSTRUCTION PDF"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource MutedText}" />
+                                    <ui:TextBox Grid.Column="1"
+                                                Text="{Binding InstructionPdfSourceRoot, UpdateSourceTrigger=PropertyChanged}"
+                                                Margin="0,0,8,0" />
+                                    <ui:Button Grid.Column="2"
+                                               Content="Browse..."
+                                               MinWidth="96"
+                                               Tag="InstructionPdfSourceRoot"
+                                               Click="OnBrowseImportSourceClick" />
+                                </Grid>
+
+                                <Grid Grid.Row="3" Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="SCHEME PDF"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource MutedText}" />
+                                    <ui:TextBox Grid.Column="1"
+                                                Text="{Binding SchemePdfSourceRoot, UpdateSourceTrigger=PropertyChanged}"
+                                                Margin="0,0,8,0" />
+                                    <ui:Button Grid.Column="2"
+                                               Content="Browse..."
+                                               MinWidth="96"
+                                               Tag="SchemePdfSourceRoot"
+                                               Click="OnBrowseImportSourceClick" />
+                                </Grid>
+
+                                <Grid Grid.Row="4" Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="SUPPLIER logos"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource MutedText}" />
+                                    <ui:TextBox Grid.Column="1"
+                                                Text="{Binding SupplierLogoSourceRoot, UpdateSourceTrigger=PropertyChanged}"
+                                                Margin="0,0,8,0" />
+                                    <ui:Button Grid.Column="2"
+                                               Content="Browse..."
+                                               MinWidth="96"
+                                               Tag="SupplierLogoSourceRoot"
+                                               Click="OnBrowseImportSourceClick" />
+                                </Grid>
+
+                                <Grid Grid.Row="5" Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="INSTRUCTION images"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource MutedText}" />
+                                    <ui:TextBox Grid.Column="1"
+                                                Text="{Binding InstructionImageSourceRoot, UpdateSourceTrigger=PropertyChanged}"
+                                                Margin="0,0,8,0" />
+                                    <ui:Button Grid.Column="2"
+                                               Content="Browse..."
+                                               MinWidth="96"
+                                               Tag="InstructionImageSourceRoot"
+                                               Click="OnBrowseImportSourceClick" />
+                                </Grid>
+
+                                <Grid Grid.Row="6" Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="SCHEME images"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource MutedText}" />
+                                    <ui:TextBox Grid.Column="1"
+                                                Text="{Binding SchemeImageSourceRoot, UpdateSourceTrigger=PropertyChanged}"
+                                                Margin="0,0,8,0" />
+                                    <ui:Button Grid.Column="2"
+                                               Content="Browse..."
+                                               MinWidth="96"
+                                               Tag="SchemeImageSourceRoot"
+                                               Click="OnBrowseImportSourceClick" />
+                                </Grid>
+
+                                <TextBlock Grid.Row="7"
+                                           Text="{Binding ImportExcelStatusText}"
+                                           Margin="0,10,0,0"
+                                           HorizontalAlignment="Center"
+                                           Style="{StaticResource MutedText}"
+                                           TextWrapping="Wrap" />
+
+                                <ui:Button Grid.Row="8"
+                                           Content="Save"
+                                           MinWidth="120"
+                                           Margin="0,12,0,0"
+                                           HorizontalAlignment="Right"
+                                           Appearance="Primary"
+                                           Click="OnSaveImportSourcePathsClick" />
+                            </Grid>
+                        </views:MaintenanceCard>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <TabItem x:Name="SupplierTab" Tag="SUPPLIER">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -467,24 +709,6 @@
                                 <TextBlock Text="Редактирует public.equip_order. PDF source folder нужен как рабочий источник для будущего добавления новых PDF-файлов."
                                        Style="{StaticResource MutedText}"
                                        TextWrapping="Wrap" />
-                                <Grid Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="150" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="PDF source folder"
-                                           VerticalAlignment="Center"
-                                           Style="{StaticResource MutedText}" />
-                                    <ui:TextBox Grid.Column="1"
-                                         Text="{Binding OrdersPdfSourceRoot, UpdateSourceTrigger=PropertyChanged}"
-                                         LostFocus="OnOrdersPdfSourceLostFocus"
-                                         Margin="0,0,8,0" />
-                                    <ui:Button Grid.Column="2"
-                                        Content="Browse..."
-                                        MinWidth="96"
-                                        Click="OnBrowseOrdersPdfSourceClick" />
-                                </Grid>
                             </StackPanel>
                         </Grid>
                     </views:MaintenanceCard>
@@ -735,28 +959,6 @@
                             <TextBlock Text="Runtime provides Station, Type and Equipment. Select only Product code; Supplier, Source, Description and Image are filled automatically from ORDERS."
                                        Style="{StaticResource MutedText}"
                                        TextWrapping="Wrap" />
-
-                            <Grid Margin="0,10,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="150" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Text="PDF source folder"
-                                           VerticalAlignment="Center"
-                                           Style="{StaticResource MutedText}" />
-
-                                <ui:TextBox Grid.Column="1"
-                                            Text="{Binding InstructionPdfSourceRoot, UpdateSourceTrigger=PropertyChanged}"
-                                            LostFocus="OnInstructionPdfSourceLostFocus"
-                                            Margin="0,0,8,0" />
-
-                                <ui:Button Grid.Column="2"
-                                           Content="Browse..."
-                                           MinWidth="96"
-                                           Click="OnBrowseInstructionPdfSourceClick" />
-                            </Grid>
                         </StackPanel>
                     </views:MaintenanceCard>
 
@@ -1005,28 +1207,6 @@
                             <TextBlock Text="The upper table is the scheme file library. The lower table links Runtime equipment to selected scheme files."
                                        Style="{StaticResource MutedText}"
                                        TextWrapping="Wrap" />
-
-                            <Grid Margin="0,10,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="150" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Text="PDF source folder"
-                                           VerticalAlignment="Center"
-                                           Style="{StaticResource MutedText}" />
-
-                                <ui:TextBox Grid.Column="1"
-                                            Text="{Binding SchemePdfSourceRoot, UpdateSourceTrigger=PropertyChanged}"
-                                            LostFocus="OnSchemePdfSourceLostFocus"
-                                            Margin="0,0,8,0" />
-
-                                <ui:Button Grid.Column="2"
-                                           Content="Browse..."
-                                           MinWidth="96"
-                                           Click="OnBrowseSchemePdfSourceClick" />
-                            </Grid>
                         </StackPanel>
                     </views:MaintenanceCard>
 
@@ -1284,6 +1464,17 @@
                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="0,1,0,0">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSelected, ElementName=ImportTab}"
+                                     Value="True">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
 
             <Grid>
                 <Grid.ColumnDefinitions>

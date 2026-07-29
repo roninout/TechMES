@@ -147,6 +147,11 @@ public class MaintenancePageControl : UserControl
     public void OnExportBackupZipClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnImportBackupZipClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnImportTabSelectionChanged(object sender, SelectionChangedEventArgs e) => ForwardSelectionChangedEvent(sender, e);
+    public void OnBrowseExcelImportFileClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnImportExcelClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnBrowseImportSourceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnImportSourcePathLostFocus(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnSaveImportSourcePathsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnRefreshImportSuppliersClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnSaveImportSuppliersClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnSupplierGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => ForwardRoutedEvent(sender, e);

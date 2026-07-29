@@ -354,6 +354,7 @@ public partial class MainWindow
             var saved = await _infoImportEditStore.SaveInstructionsAsync(
                 GetRuntimeDatabaseConnectionString(),
                 InstructionPdfSourceRoot,
+                InstructionImageSourceRoot,
                 ImportInstructions);
 
             PersistImportEditOptions();
@@ -440,6 +441,7 @@ public partial class MainWindow
             var saved = await _infoImportEditStore.SaveSchemesAsync(
                 GetRuntimeDatabaseConnectionString(),
                 SchemePdfSourceRoot,
+                SchemeImageSourceRoot,
                 ImportSchemeFiles,
                 ImportSchemeLinks);
 
@@ -495,6 +497,133 @@ public partial class MainWindow
         return dialog.ShowDialog(this) == true
             ? dialog.FolderName
             : null;
+    }
+
+    /// <summary>
+    /// Открывает стандартный диалог выбора книги Excel для пакетного импорта.
+    /// Последняя выбранная папка используется как начальная, но сам импорт
+    /// запускается только отдельной кнопкой Import.
+    /// </summary>
+    private void OnBrowseExcelImportFileClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Select Excel import file",
+            Filter = "Excel workbook (*.xlsx)|*.xlsx|All files (*.*)|*.*",
+            CheckFileExists = true,
+            CheckPathExists = true,
+            Multiselect = false,
+            AddExtension = true,
+            DefaultExt = ".xlsx"
+        };
+
+        if (!string.IsNullOrWhiteSpace(ExcelImportFilePath))
+        {
+            try
+            {
+                var fullPath = Path.GetFullPath(ExcelImportFilePath);
+                var directory = Path.GetDirectoryName(fullPath);
+
+                if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+                    dialog.InitialDirectory = directory;
+
+                if (File.Exists(fullPath))
+                    dialog.FileName = Path.GetFileName(fullPath);
+            }
+            catch (Exception)
+            {
+                // Некорректный ранее введённый путь не должен блокировать выбор нового файла.
+            }
+        }
+
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        ExcelImportFilePath = dialog.FileName;
+        ImportExcelStatusText = $"Excel file selected: {Path.GetFileName(dialog.FileName)}";
+    }
+
+    /// <summary>
+    /// Открывает единый стандартный диалог выбора папки для одного из файловых
+    /// источников IMPORT. Имя редактируемого свойства передаётся через Tag кнопки,
+    /// поэтому вся централизованная панель использует один обработчик Browse.
+    /// Выбранный путь изменяется в форме, но записывается в JSON только кнопкой Save.
+    /// </summary>
+    private void OnBrowseImportSourceClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string propertyName })
+            return;
+
+        var (title, currentPath) = propertyName switch
+        {
+            nameof(OrdersPdfSourceRoot) =>
+                ("Choose ORDERS PDF source folder", OrdersPdfSourceRoot),
+            nameof(InstructionPdfSourceRoot) =>
+                ("Choose INSTRUCTION PDF source folder", InstructionPdfSourceRoot),
+            nameof(SchemePdfSourceRoot) =>
+                ("Choose SCHEME PDF source folder", SchemePdfSourceRoot),
+            nameof(SupplierLogoSourceRoot) =>
+                ("Choose SUPPLIER logo source folder", SupplierLogoSourceRoot),
+            nameof(InstructionImageSourceRoot) =>
+                ("Choose INSTRUCTION image source folder", InstructionImageSourceRoot),
+            nameof(SchemeImageSourceRoot) =>
+                ("Choose SCHEME image source folder", SchemeImageSourceRoot),
+            _ => (string.Empty, string.Empty)
+        };
+
+        if (string.IsNullOrWhiteSpace(title))
+            return;
+
+        var folder = ChooseImportSourceFolder(title, currentPath);
+        if (folder is null)
+            return;
+
+        switch (propertyName)
+        {
+            case nameof(OrdersPdfSourceRoot):
+                OrdersPdfSourceRoot = folder;
+                break;
+            case nameof(InstructionPdfSourceRoot):
+                InstructionPdfSourceRoot = folder;
+                break;
+            case nameof(SchemePdfSourceRoot):
+                SchemePdfSourceRoot = folder;
+                break;
+            case nameof(SupplierLogoSourceRoot):
+                SupplierLogoSourceRoot = folder;
+                break;
+            case nameof(InstructionImageSourceRoot):
+                InstructionImageSourceRoot = folder;
+                break;
+            case nameof(SchemeImageSourceRoot):
+                SchemeImageSourceRoot = folder;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Сохраняет Excel-файл и все централизованные файловые источники IMPORT
+    /// одним действием в maintenance.settings.json.
+    /// </summary>
+    private void OnSaveImportSourcePathsClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            PersistImportEditOptions();
+            ImportExcelStatusText = "Import/Edit file source paths saved.";
+            AppendDiagnostics(ImportExcelStatusText);
+        }
+        catch (Exception ex)
+        {
+            ImportExcelStatusText = $"Import/Edit paths save failed: {ex.Message}";
+            AppendDiagnostics(ImportExcelStatusText);
+            MessageBox.Show(
+                this,
+                ImportExcelStatusText,
+                "IMPORT",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     /// <summary>
@@ -1095,9 +1224,13 @@ public partial class MainWindow
     /// </summary>
     private void PersistImportEditOptions()
     {
+        _configuration.ImportEdit.ExcelImportFilePath = ExcelImportFilePath;
         _configuration.ImportEdit.OrdersPdfSourceRoot = OrdersPdfSourceRoot;
         _configuration.ImportEdit.InstructionPdfSourceRoot = InstructionPdfSourceRoot;
         _configuration.ImportEdit.SchemePdfSourceRoot = SchemePdfSourceRoot;
+        _configuration.ImportEdit.SupplierLogoSourceRoot = SupplierLogoSourceRoot;
+        _configuration.ImportEdit.InstructionImageSourceRoot = InstructionImageSourceRoot;
+        _configuration.ImportEdit.SchemeImageSourceRoot = SchemeImageSourceRoot;
         _configurationStore.Save(_configuration);
     }
 

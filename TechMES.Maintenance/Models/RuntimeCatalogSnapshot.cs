@@ -28,6 +28,12 @@ public sealed class RuntimeCatalogSnapshot
     public IReadOnlyList<RuntimeCatalogEquipmentItem> EquipmentItems { get; init; } = [];
 
     /// <summary>
+    /// Групповые узлы Runtime. Они не показываются как обычное оборудование,
+    /// но нужны Excel-импорту SCHEME для раскрытия связи «группа -> схема».
+    /// </summary>
+    public IReadOnlyList<RuntimeCatalogEquipmentItem> GroupItems { get; init; } = [];
+
+    /// <summary>
     /// Сколько узлов Runtime вернул всего, включая группы, если Runtime их отдаёт.
     /// </summary>
     public int TotalCount { get; init; }

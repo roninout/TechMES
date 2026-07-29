@@ -262,7 +262,8 @@ public sealed class InfoImportEditStore
     /// </summary>
     public async Task<int> SaveInstructionsAsync(
         string connectionString,
-        string sourceRoot,
+        string pdfSourceRoot,
+        string imageSourceRoot,
         IEnumerable<ImportInstructionRowViewModel> instructions,
         CancellationToken cancellationToken = default)
     {
@@ -314,7 +315,7 @@ public sealed class InfoImportEditStore
                 var sortOrder = 0;
                 foreach (var source in SplitSourceValues(item.Source))
                 {
-                    var filePath = ResolveSourceFilePath(sourceRoot, source);
+                    var filePath = ResolveSourceFilePath(pdfSourceRoot, source);
                     var instructionId = await SaveLibraryFileAsync(
                         connection,
                         transaction,
@@ -337,7 +338,10 @@ public sealed class InfoImportEditStore
                 var photoSortOrder = 0;
                 foreach (var image in SplitSourceValues(item.Image))
                 {
-                    var filePath = ResolveInstructionImageFilePath(sourceRoot, image);
+                    var filePath = ResolveInstructionImageFilePath(
+                        pdfSourceRoot,
+                        imageSourceRoot,
+                        image);
                     var photoId = await SaveLibraryFileAsync(
                         connection,
                         transaction,
@@ -448,7 +452,8 @@ public sealed class InfoImportEditStore
     /// </summary>
     public async Task<int> SaveSchemesAsync(
         string connectionString,
-        string sourceRoot,
+        string pdfSourceRoot,
+        string imageSourceRoot,
         IEnumerable<ImportSchemeFileRowViewModel> files,
         IEnumerable<ImportSchemeLinkRowViewModel> links,
         CancellationToken cancellationToken = default)
@@ -473,7 +478,9 @@ public sealed class InfoImportEditStore
         {
             foreach (var file in cleanFiles)
             {
-                var filePath = ResolveSourceFilePath(sourceRoot, file.Source);
+                var filePath = ResolveSourceFilePath(
+                    [pdfSourceRoot, imageSourceRoot],
+                    file.Source);
                 await SaveLibraryFileAsync(
                     connection,
                     transaction,
@@ -693,22 +700,56 @@ public sealed class InfoImportEditStore
         return filePath;
     }
 
-    private static string ResolveInstructionImageFilePath(string sourceRoot, string image)
+    /// <summary>
+    /// Ищет файл в нескольких каталогах источников в заданном порядке.
+    /// Абсолютный путь проверяется только один раз и не зависит от списка корней.
+    /// </summary>
+    private static string ResolveSourceFilePath(
+        IEnumerable<string> sourceRoots,
+        string source)
+    {
+        var value = source.Trim();
+        if (Path.IsPathRooted(value))
+            return ResolveSourceFilePath("", value);
+
+        var attemptedPaths = new List<string>();
+        foreach (var sourceRoot in sourceRoots.Where(x => !string.IsNullOrWhiteSpace(x)))
+        {
+            var candidate = Path.Combine(sourceRoot, value);
+            attemptedPaths.Add(candidate);
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        var attempted = attemptedPaths.Count == 0
+            ? value
+            : string.Join("; ", attemptedPaths);
+        throw new FileNotFoundException(
+            $"Import source file not found. Checked: {attempted}",
+            attemptedPaths.FirstOrDefault() ?? value);
+    }
+
+    /// <summary>
+    /// Ищет изображение инструкции в выделенном image-каталоге.
+    /// Для совместимости со старой конфигурацией также проверяет Images рядом
+    /// с PDF и сам PDF-каталог.
+    /// </summary>
+    private static string ResolveInstructionImageFilePath(
+        string pdfSourceRoot,
+        string imageSourceRoot,
+        string image)
     {
         var value = image.Trim();
         if (Path.IsPathRooted(value))
-            return ResolveSourceFilePath(sourceRoot ?? "", value);
+            return ResolveSourceFilePath("", value);
 
-        /*
-         * The legacy WPF import keeps instruction images in an Images folder
-         * next to instruction PDFs. The fallback supports manually selected
-         * files that are placed directly in the configured source folder.
-         */
-        var imagesFolderPath = Path.Combine(sourceRoot ?? "", "Images", value);
-        if (File.Exists(imagesFolderPath))
-            return imagesFolderPath;
-
-        return ResolveSourceFilePath(sourceRoot ?? "", value);
+        return ResolveSourceFilePath(
+            [
+                imageSourceRoot,
+                Path.Combine(pdfSourceRoot ?? "", "Images"),
+                pdfSourceRoot ?? ""
+            ],
+            value);
     }
 
     private static async Task EnsureInfoRowAsync(

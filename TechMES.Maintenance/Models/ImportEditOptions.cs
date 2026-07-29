@@ -7,18 +7,40 @@ namespace TechMES.Maintenance.Models;
 public sealed class ImportEditOptions
 {
     /// <summary>
+    /// Последний выбранный Excel-файл комплексного импорта.
+    /// Путь сохраняется, чтобы оператор мог повторить импорт после проверки или исправления файла.
+    /// </summary>
+    public string ExcelImportFilePath { get; set; } = "";
+
+    /// <summary>
     /// Папка-источник, из которой оператор будет выбирать новые PDF-файлы для строк ORDERS.
     /// Сами записи ORDERS хранят в БД только имя/относительный путь файла, а этот путь помогает быстро брать файлы из общего архива.
     /// </summary>
     public string OrdersPdfSourceRoot { get; set; } = "";
 
     /// <summary>
-    /// Source folder for instruction PDF files imported into equip_instruction.
+    /// Папка-источник PDF-инструкций, сохраняемых в equip_info_instruction.
     /// </summary>
     public string InstructionPdfSourceRoot { get; set; } = "";
 
     /// <summary>
-    /// Source folder for scheme PDF/image files imported into equip_scheme.
+    /// Папка-источник PDF-схем, сохраняемых в equip_info_scheme.
     /// </summary>
     public string SchemePdfSourceRoot { get; set; } = "";
+
+    /// <summary>
+    /// Папка с логотипами поставщиков для листа SUPPLIER.
+    /// </summary>
+    public string SupplierLogoSourceRoot { get; set; } = "";
+
+    /// <summary>
+    /// Папка с изображениями оборудования, указанными в строках ORDERS/INSTRUCTION.
+    /// </summary>
+    public string InstructionImageSourceRoot { get; set; } = "";
+
+    /// <summary>
+    /// Папка с растровыми изображениями схем.
+    /// PDF и изображения разделены, чтобы одинаковые имена файлов не создавали неоднозначность.
+    /// </summary>
+    public string SchemeImageSourceRoot { get; set; } = "";
 }

@@ -50,6 +50,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     private readonly CleanupService _cleanupService;
     private readonly PostgreSqlProbeService _postgreSqlProbeService = new();
     private readonly InfoImportEditStore _infoImportEditStore = new();
+    private readonly ExcelInfoImportReader _excelInfoImportReader = new();
     private readonly RuntimeCatalogClient _runtimeCatalogClient = new();
 
     private string _diagnosticsText = "";
@@ -78,6 +79,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     private string _ordersPdfSourceRoot = "";
     private string _instructionPdfSourceRoot = "";
     private string _schemePdfSourceRoot = "";
+    private string _excelImportFilePath = "";
+    private string _supplierLogoSourceRoot = "";
+    private string _instructionImageSourceRoot = "";
+    private string _schemeImageSourceRoot = "";
+    private string _importExcelStatusText = "Excel import has not been started.";
+    private bool _isExcelImportRunning;
     private string _importSupplierStatusText = "Supplier table has not been loaded.";
     private string _importOrderStatusText = "Orders table has not been loaded.";
     private string _importInstructionStatusText = "Instruction table has not been loaded.";
@@ -396,6 +403,106 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             _schemePdfSourceRoot = value;
             _configuration.ImportEdit.SchemePdfSourceRoot = value;
             OnPropertyChanged(nameof(SchemePdfSourceRoot));
+        }
+    }
+
+    /// <summary>
+    /// Путь к Excel-файлу, из которого выполняется пакетный импорт данных Info-модуля.
+    /// </summary>
+    public string ExcelImportFilePath
+    {
+        get => _excelImportFilePath;
+        set
+        {
+            if (_excelImportFilePath == value)
+                return;
+
+            _excelImportFilePath = value;
+            _configuration.ImportEdit.ExcelImportFilePath = value;
+            OnPropertyChanged(nameof(ExcelImportFilePath));
+        }
+    }
+
+    /// <summary>
+    /// Папка с изображениями логотипов поставщиков для Excel-импорта.
+    /// </summary>
+    public string SupplierLogoSourceRoot
+    {
+        get => _supplierLogoSourceRoot;
+        set
+        {
+            if (_supplierLogoSourceRoot == value)
+                return;
+
+            _supplierLogoSourceRoot = value;
+            _configuration.ImportEdit.SupplierLogoSourceRoot = value;
+            OnPropertyChanged(nameof(SupplierLogoSourceRoot));
+        }
+    }
+
+    /// <summary>
+    /// Папка с фотографиями оборудования, связанными с листом INSTRUCTION.
+    /// </summary>
+    public string InstructionImageSourceRoot
+    {
+        get => _instructionImageSourceRoot;
+        set
+        {
+            if (_instructionImageSourceRoot == value)
+                return;
+
+            _instructionImageSourceRoot = value;
+            _configuration.ImportEdit.InstructionImageSourceRoot = value;
+            OnPropertyChanged(nameof(InstructionImageSourceRoot));
+        }
+    }
+
+    /// <summary>
+    /// Папка с изображениями схем, связанными с листом SCHEME.
+    /// </summary>
+    public string SchemeImageSourceRoot
+    {
+        get => _schemeImageSourceRoot;
+        set
+        {
+            if (_schemeImageSourceRoot == value)
+                return;
+
+            _schemeImageSourceRoot = value;
+            _configuration.ImportEdit.SchemeImageSourceRoot = value;
+            OnPropertyChanged(nameof(SchemeImageSourceRoot));
+        }
+    }
+
+    /// <summary>
+    /// Краткий результат последней операции пакетного Excel-импорта.
+    /// </summary>
+    public string ImportExcelStatusText
+    {
+        get => _importExcelStatusText;
+        set
+        {
+            if (_importExcelStatusText == value)
+                return;
+
+            _importExcelStatusText = value;
+            OnPropertyChanged(nameof(ImportExcelStatusText));
+        }
+    }
+
+    /// <summary>
+    /// Показывает, что Excel читается и его данные сохраняются в PostgreSQL.
+    /// </summary>
+    public bool IsExcelImportRunning
+    {
+        get => _isExcelImportRunning;
+        private set
+        {
+            if (_isExcelImportRunning == value)
+                return;
+
+            _isExcelImportRunning = value;
+            OnPropertyChanged(nameof(IsExcelImportRunning));
         }
     }
 
@@ -1234,6 +1341,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         OrdersPdfSourceRoot = _configuration.ImportEdit.OrdersPdfSourceRoot;
         InstructionPdfSourceRoot = _configuration.ImportEdit.InstructionPdfSourceRoot;
         SchemePdfSourceRoot = _configuration.ImportEdit.SchemePdfSourceRoot;
+        ExcelImportFilePath = _configuration.ImportEdit.ExcelImportFilePath;
+        SupplierLogoSourceRoot = _configuration.ImportEdit.SupplierLogoSourceRoot;
+        InstructionImageSourceRoot = _configuration.ImportEdit.InstructionImageSourceRoot;
+        SchemeImageSourceRoot = _configuration.ImportEdit.SchemeImageSourceRoot;
 
         DataContext = this;
 

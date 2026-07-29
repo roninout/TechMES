@@ -75,8 +75,12 @@
     "RequireScadaAudit": true
   },
   "ImportEdit": {
+    "ExcelImportFilePath": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Import.xlsx",
     "OrdersPdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction",
     "InstructionPdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction",
-    "SchemePdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Scheme"
+    "SchemePdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Scheme",
+    "SupplierLogoSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction\\Supplier_logo",
+    "InstructionImageSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction\\Images",
+    "SchemeImageSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Scheme\\Images"
   }
 }
