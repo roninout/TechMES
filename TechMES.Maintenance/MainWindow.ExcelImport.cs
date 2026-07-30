@@ -372,13 +372,13 @@ public partial class MainWindow
             instructionRows,
             schemeFiles
                 .GroupBy(
-                    x => $"{x.Type}\u001f{x.Source}",
+                    x => x.Source,
                     StringComparer.OrdinalIgnoreCase)
                 .Select(x => x.First())
                 .ToList(),
             schemeLinks
                 .GroupBy(
-                    x => $"{x.Equipment}\u001f{x.Type}\u001f{x.Scheme}",
+                    x => $"{x.Equipment}\u001f{x.Scheme}",
                     StringComparer.OrdinalIgnoreCase)
                 .Select(x => x.First())
                 .ToList());

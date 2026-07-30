@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.IO;
 using Npgsql;
+using NpgsqlTypes;
 using TechMES.Maintenance.ViewModels;
 
 namespace TechMES.Maintenance.Services;
@@ -11,6 +12,23 @@ namespace TechMES.Maintenance.Services;
 /// </summary>
 public sealed class InfoImportEditStore
 {
+    /// <summary>
+    /// Нормализованная строка для пакетного сохранения общей информации об оборудовании.
+    /// </summary>
+    private sealed record InfoRow(
+        string EquipmentName,
+        string ProductCode,
+        string Supplier,
+        string Description);
+
+    /// <summary>
+    /// Связь оборудования с одним библиотечным файлом и ее порядок отображения.
+    /// </summary>
+    private sealed record DocumentLinkRow(
+        string EquipmentName,
+        long DocumentId,
+        int SortOrder);
+
     /// <summary>
     /// Загружает вкладку SUPPLIER из public.equip_supplier.
     /// Бинарный logo_data не читается полностью, UI показывает только факт наличия логотипа и имя файла.
@@ -282,57 +300,65 @@ public sealed class InfoImportEditStore
 
         try
         {
-            foreach (var item in clean)
-            {
-                await EnsureInfoRowAsync(
-                    connection,
-                    transaction,
+            /*
+             * Библиотечные файлы общие для всего оборудования. Кэш не дает
+             * повторно читать и обновлять один PDF или рисунок для каждой
+             * строки оборудования в рамках одной операции сохранения.
+             */
+            var instructionFileIds = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            var photoFileIds = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            var instructionLinks = new List<DocumentLinkRow>();
+            var photoLinks = new List<DocumentLinkRow>();
+            var equipmentNames = clean.Select(x => x.Equipment.Trim()).ToArray();
+
+            await EnsureInfoRowsAsync(
+                connection,
+                transaction,
+                clean.Select(item => new InfoRow(
                     item.Equipment,
                     item.ProductCode,
                     item.Supplier,
-                    item.Description,
-                    cancellationToken);
+                    item.Description)),
+                cancellationToken);
 
-                /*
-                 * Synchronize links, not just append new ones.
-                 *
-                 * If ORDERS.Source was changed from one PDF to another, the old
-                 * instruction_id must be removed from equip_info_instruction before
-                 * the current Source list is inserted.
-                 */
-                await DeleteInstructionLinksAsync(
-                    connection,
-                    transaction,
-                    item.Equipment,
-                    cancellationToken);
+            /*
+             * Сначала удаляем прежние связи сразу для всего набора оборудования.
+             * После этого новые связи формируются в памяти и вставляются пакетно.
+             */
+            await DeleteDocumentLinksAsync(
+                connection,
+                transaction,
+                "public.equip_info_instruction",
+                "instruction_id",
+                equipmentNames,
+                cancellationToken);
+            await DeleteDocumentLinksAsync(
+                connection,
+                transaction,
+                "public.equip_info_photo",
+                "photo_id",
+                equipmentNames,
+                cancellationToken);
 
-                await DeletePhotoLinksAsync(
-                    connection,
-                    transaction,
-                    item.Equipment,
-                    cancellationToken);
-
+            foreach (var item in clean)
+            {
                 var sortOrder = 0;
                 foreach (var source in SplitSourceValues(item.Source))
                 {
                     var filePath = ResolveSourceFilePath(pdfSourceRoot, source);
-                    var instructionId = await SaveLibraryFileAsync(
+                    var instructionId = await SaveLibraryFileOnceAsync(
                         connection,
                         transaction,
                         "public.equip_instruction",
                         item.Type,
                         filePath,
+                        instructionFileIds,
                         cancellationToken);
 
-                    await EnsureDocumentLinkAsync(
-                        connection,
-                        transaction,
-                        "public.equip_info_instruction",
-                        "instruction_id",
+                    instructionLinks.Add(new DocumentLinkRow(
                         item.Equipment,
                         instructionId,
-                        sortOrder++,
-                        cancellationToken);
+                        sortOrder++));
                 }
 
                 var photoSortOrder = 0;
@@ -342,25 +368,36 @@ public sealed class InfoImportEditStore
                         pdfSourceRoot,
                         imageSourceRoot,
                         image);
-                    var photoId = await SaveLibraryFileAsync(
+                    var photoId = await SaveLibraryFileOnceAsync(
                         connection,
                         transaction,
                         "public.equip_photo",
                         item.Type,
                         filePath,
+                        photoFileIds,
                         cancellationToken);
 
-                    await EnsureDocumentLinkAsync(
-                        connection,
-                        transaction,
-                        "public.equip_info_photo",
-                        "photo_id",
+                    photoLinks.Add(new DocumentLinkRow(
                         item.Equipment,
                         photoId,
-                        photoSortOrder++,
-                        cancellationToken);
+                        photoSortOrder++));
                 }
             }
+
+            await EnsureDocumentLinksAsync(
+                connection,
+                transaction,
+                "public.equip_info_instruction",
+                "instruction_id",
+                instructionLinks,
+                cancellationToken);
+            await EnsureDocumentLinksAsync(
+                connection,
+                transaction,
+                "public.equip_info_photo",
+                "photo_id",
+                photoLinks,
+                cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
             return clean.Count;
@@ -459,15 +496,18 @@ public sealed class InfoImportEditStore
         CancellationToken cancellationToken = default)
     {
         var cleanFiles = files
-            .Where(x => !string.IsNullOrWhiteSpace(x.Type))
             .Where(x => !string.IsNullOrWhiteSpace(x.Source))
-            .GroupBy(x => $"{x.Type.Trim()}\u001f{x.Source.Trim()}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(x => x.Source.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(x => x.Last())
             .ToList();
 
         var cleanLinks = links
             .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
             .Where(x => !string.IsNullOrWhiteSpace(x.Scheme))
+            .GroupBy(
+                x => $"{x.Equipment.Trim()}\u001f{Path.GetFileName(x.Scheme.Trim())}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.Last())
             .ToList();
 
         await using var connection = new NpgsqlConnection(connectionString);
@@ -476,54 +516,81 @@ public sealed class InfoImportEditStore
 
         try
         {
+            var schemeFileIdsByPath = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            var schemeFileIdsByName = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var file in cleanFiles)
             {
                 var filePath = ResolveSourceFilePath(
                     [pdfSourceRoot, imageSourceRoot],
                     file.Source);
-                await SaveLibraryFileAsync(
+                var schemeId = await SaveLibraryFileOnceAsync(
                     connection,
                     transaction,
                     "public.equip_scheme",
                     file.Type,
                     filePath,
+                    schemeFileIdsByPath,
                     cancellationToken);
+
+                // SaveLibraryFileAsync дедуплицирует библиотеку по хэшу. Поэтому
+                // существующий бинарный файл может вернуться с именем, отличным
+                // от имени в текущем Excel. Связи должны использовать уже
+                // полученный ID, а не выполнять повторный поиск только по имени.
+                var fileName = Path.GetFileName(filePath);
+                if (schemeFileIdsByName.TryGetValue(fileName, out var existingId)
+                    && existingId != schemeId)
+                {
+                    throw new InvalidOperationException(
+                        $"Several different scheme files have the same name in the import: {fileName}");
+                }
+
+                schemeFileIdsByName[fileName] = schemeId;
             }
 
             var sortOrderByEquipment = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var schemeLinks = new List<DocumentLinkRow>();
+
+            await EnsureInfoRowsAsync(
+                connection,
+                transaction,
+                cleanLinks.Select(link => new InfoRow(
+                    link.Equipment,
+                    ProductCode: "",
+                    Supplier: "",
+                    Description: "")),
+                cancellationToken);
+
             foreach (var link in cleanLinks)
             {
-                await EnsureInfoRowAsync(
-                    connection,
-                    transaction,
-                    link.Equipment,
-                    productCode: "",
-                    supplier: "",
-                    description: "",
-                    cancellationToken);
-
-                var schemeId = await ResolveLibraryFileIdAsync(
-                    connection,
-                    transaction,
-                    "public.equip_scheme",
-                    link.Type,
-                    link.Scheme,
-                    cancellationToken);
+                var schemeFileName = Path.GetFileName(link.Scheme.Trim());
+                var schemeId = schemeFileIdsByName.TryGetValue(schemeFileName, out var importedSchemeId)
+                    ? importedSchemeId
+                    : await ResolveLibraryFileIdAsync(
+                        connection,
+                        transaction,
+                        "public.equip_scheme",
+                        link.Type,
+                        schemeFileName,
+                        cancellationToken);
 
                 var key = link.Equipment.Trim();
                 sortOrderByEquipment.TryGetValue(key, out var sortOrder);
                 sortOrderByEquipment[key] = sortOrder + 1;
 
-                await EnsureDocumentLinkAsync(
-                    connection,
-                    transaction,
-                    "public.equip_info_scheme",
-                    "scheme_id",
+                schemeLinks.Add(new DocumentLinkRow(
                     link.Equipment,
                     schemeId,
-                    sortOrder,
-                    cancellationToken);
+                    sortOrder));
             }
+
+            await EnsureDocumentLinksAsync(
+                connection,
+                transaction,
+                "public.equip_info_scheme",
+                "scheme_id",
+                schemeLinks,
+                cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
             return cleanFiles.Count + cleanLinks.Count;
@@ -684,7 +751,8 @@ public sealed class InfoImportEditStore
     {
         return (source ?? "")
             .Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(x => !string.IsNullOrWhiteSpace(x));
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
     }
 
     private static string ResolveSourceFilePath(string sourceRoot, string source)
@@ -752,15 +820,25 @@ public sealed class InfoImportEditStore
             value);
     }
 
-    private static async Task EnsureInfoRowAsync(
+    /// <summary>
+    /// Одним запросом добавляет или обновляет equip_info для всего набора оборудования.
+    /// Пустые значения не затирают уже заполненные поля в базе данных.
+    /// </summary>
+    private static async Task EnsureInfoRowsAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
-        string equipmentName,
-        string productCode,
-        string supplier,
-        string description,
+        IEnumerable<InfoRow> rows,
         CancellationToken cancellationToken)
     {
+        var clean = rows
+            .Where(x => !string.IsNullOrWhiteSpace(x.EquipmentName))
+            .GroupBy(x => x.EquipmentName.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.Last())
+            .ToArray();
+
+        if (clean.Length == 0)
+            return;
+
         const string sql = """
             INSERT INTO public.equip_info
             (
@@ -770,14 +848,19 @@ public sealed class InfoImportEditStore
                 description,
                 updated_at
             )
-            VALUES
-            (
-                @equip_name,
-                NULLIF(@product_code, ''),
-                NULLIF(@supplier, ''),
-                NULLIF(@description, ''),
+            SELECT
+                source.equip_name,
+                NULLIF(source.product_code, ''),
+                NULLIF(source.supplier, ''),
+                NULLIF(source.description, ''),
                 now()
-            )
+            FROM unnest
+            (
+                @equip_names::text[],
+                @product_codes::text[],
+                @suppliers::text[],
+                @descriptions::text[]
+            ) AS source(equip_name, product_code, supplier, description)
             ON CONFLICT (equip_name)
             DO UPDATE SET
                 product_code = COALESCE(NULLIF(EXCLUDED.product_code, ''), public.equip_info.product_code),
@@ -787,10 +870,22 @@ public sealed class InfoImportEditStore
             """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("equip_name", equipmentName.Trim());
-        command.Parameters.AddWithValue("product_code", productCode?.Trim() ?? "");
-        command.Parameters.AddWithValue("supplier", supplier?.Trim() ?? "");
-        command.Parameters.AddWithValue("description", description?.Trim() ?? "");
+        command.Parameters.Add(
+            "equip_names",
+            NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
+            clean.Select(x => x.EquipmentName.Trim()).ToArray();
+        command.Parameters.Add(
+            "product_codes",
+            NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
+            clean.Select(x => x.ProductCode?.Trim() ?? "").ToArray();
+        command.Parameters.Add(
+            "suppliers",
+            NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
+            clean.Select(x => x.Supplier?.Trim() ?? "").ToArray();
+        command.Parameters.Add(
+            "descriptions",
+            NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
+            clean.Select(x => x.Description?.Trim() ?? "").ToArray();
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -809,21 +904,39 @@ public sealed class InfoImportEditStore
         var fileHash = ComputeSha256(fileData);
         var updatedAt = File.GetLastWriteTime(filePath);
 
-        var existingId = await FindLibraryFileIdAsync(
+        /*
+         * Совпадение хэша означает, что бинарный файл уже хранится в библиотеке.
+         * Возвращаем его ID без UPDATE: это исключает повторную передачу bytea
+         * в PostgreSQL для каждого оборудования и сохраняет исходную строку файла.
+         */
+        var existingHashId = await FindLibraryFileIdByHashAsync(
+            connection,
+            transaction,
+            tableName,
+            fileHash,
+            cancellationToken);
+
+        if (existingHashId is not null)
+            return existingHashId.Value;
+
+        /*
+         * Если имя и тип прежние, но содержимое изменилось, обновляем существующую
+         * логическую запись. В этом случае запись file_data действительно нужна.
+         */
+        var existingLogicalId = await FindLibraryFileIdByLogicalKeyAsync(
             connection,
             transaction,
             tableName,
             type,
             fileName,
-            fileHash,
             cancellationToken);
 
-        if (existingId is not null)
+        if (existingLogicalId is not null)
         {
             var updateSql = $"""
                 UPDATE {tableName}
                 SET
-                    equip_type_group = NULLIF(@equip_type_group, ''),
+                    equip_type_group = COALESCE(equip_type_group, NULLIF(@equip_type_group, '')),
                     file_name = @file_name,
                     display_name = @display_name,
                     file_hash = @file_hash,
@@ -833,10 +946,10 @@ public sealed class InfoImportEditStore
                 """;
 
             await using var updateCommand = new NpgsqlCommand(updateSql, connection, transaction);
-            updateCommand.Parameters.AddWithValue("id", existingId.Value);
+            updateCommand.Parameters.AddWithValue("id", existingLogicalId.Value);
             AddLibraryFileParameters(updateCommand, type, fileName, fileHash, fileData, updatedAt);
             await updateCommand.ExecuteNonQueryAsync(cancellationToken);
-            return existingId.Value;
+            return existingLogicalId.Value;
         }
 
         var insertSql = $"""
@@ -867,6 +980,35 @@ public sealed class InfoImportEditStore
         return Convert.ToInt64(scalar);
     }
 
+    /// <summary>
+    /// Сохраняет библиотечный файл не более одного раза за текущую операцию.
+    /// Ключ строится по полному пути без учета регистра; оборудование затем
+    /// получает отдельную связь с уже сохраненной строкой библиотеки.
+    /// </summary>
+    private static async Task<long> SaveLibraryFileOnceAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string tableName,
+        string type,
+        string filePath,
+        IDictionary<string, long> savedFileIds,
+        CancellationToken cancellationToken)
+    {
+        var cacheKey = Path.GetFullPath(filePath);
+        if (savedFileIds.TryGetValue(cacheKey, out var savedId))
+            return savedId;
+
+        savedId = await SaveLibraryFileAsync(
+            connection,
+            transaction,
+            tableName,
+            type,
+            filePath,
+            cancellationToken);
+        savedFileIds[cacheKey] = savedId;
+        return savedId;
+    }
+
     private static async Task<long> ResolveLibraryFileIdAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -881,7 +1023,6 @@ public sealed class InfoImportEditStore
             SELECT id
             FROM {tableName}
             WHERE lower(file_name) = lower(@file_name)
-              AND (NULLIF(@equip_type_group, '') IS NULL OR lower(COALESCE(equip_type_group, '')) = lower(@equip_type_group))
             ORDER BY
                 CASE WHEN lower(COALESCE(equip_type_group, '')) = lower(@equip_type_group) THEN 0 ELSE 1 END,
                 id
@@ -898,12 +1039,13 @@ public sealed class InfoImportEditStore
         return Convert.ToInt64(scalar);
     }
 
-    private static async Task<long?> FindLibraryFileIdAsync(
+    /// <summary>
+    /// Ищет уже сохраненный бинарный файл по его SHA-256.
+    /// </summary>
+    private static async Task<long?> FindLibraryFileIdByHashAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string tableName,
-        string type,
-        string fileName,
         string fileHash,
         CancellationToken cancellationToken)
     {
@@ -912,65 +1054,103 @@ public sealed class InfoImportEditStore
         var sql = $"""
             SELECT id
             FROM {tableName}
+            WHERE file_hash = @file_hash
+            ORDER BY id
+            LIMIT 1;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("file_hash", fileHash);
+        var scalar = await command.ExecuteScalarAsync(cancellationToken);
+        return scalar is null or DBNull ? null : Convert.ToInt64(scalar);
+    }
+
+    /// <summary>
+    /// Ищет строку библиотеки по ее логическому ключу, когда файл с тем же именем
+    /// был изменен и должен заменить прежнее содержимое.
+    /// </summary>
+    private static async Task<long?> FindLibraryFileIdByLogicalKeyAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string tableName,
+        string type,
+        string fileName,
+        CancellationToken cancellationToken)
+    {
+        ValidateLibraryTableName(tableName);
+
+        var sql = $"""
+            SELECT id
+            FROM {tableName}
             WHERE lower(COALESCE(equip_type_group, '')) = lower(@equip_type_group)
-              AND (file_hash = @file_hash OR lower(file_name) = lower(@file_name))
-            ORDER BY
-                CASE WHEN file_hash = @file_hash THEN 0 ELSE 1 END,
-                id
+              AND lower(file_name) = lower(@file_name)
+            ORDER BY id
             LIMIT 1;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("equip_type_group", type?.Trim() ?? "");
         command.Parameters.AddWithValue("file_name", fileName);
-        command.Parameters.AddWithValue("file_hash", fileHash);
         var scalar = await command.ExecuteScalarAsync(cancellationToken);
         return scalar is null or DBNull ? null : Convert.ToInt64(scalar);
     }
 
-    private static async Task DeleteInstructionLinksAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        string equipmentName,
-        CancellationToken cancellationToken)
-    {
-        const string sql = """
-            DELETE FROM public.equip_info_instruction
-            WHERE equip_name = @equip_name;
-            """;
-
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("equip_name", equipmentName.Trim());
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    private static async Task DeletePhotoLinksAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        string equipmentName,
-        CancellationToken cancellationToken)
-    {
-        const string sql = """
-            DELETE FROM public.equip_info_photo
-            WHERE equip_name = @equip_name;
-            """;
-
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("equip_name", equipmentName.Trim());
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    private static async Task EnsureDocumentLinkAsync(
+    /// <summary>
+    /// Одним запросом удаляет старые связи для всего изменяемого оборудования.
+    /// </summary>
+    private static async Task DeleteDocumentLinksAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string linkTableName,
         string documentIdColumnName,
-        string equipmentName,
-        long documentId,
-        int sortOrder,
+        IEnumerable<string> equipmentNames,
         CancellationToken cancellationToken)
     {
         ValidateLinkTableName(linkTableName, documentIdColumnName);
+
+        var clean = equipmentNames
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (clean.Length == 0)
+            return;
+
+        var sql = $"""
+            DELETE FROM {linkTableName}
+            WHERE equip_name = ANY(@equip_names);
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.Add(
+            "equip_names",
+            NpgsqlDbType.Array | NpgsqlDbType.Text).Value = clean;
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Одним INSERT ... SELECT FROM unnest добавляет или обновляет набор связей.
+    /// </summary>
+    private static async Task EnsureDocumentLinksAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string linkTableName,
+        string documentIdColumnName,
+        IEnumerable<DocumentLinkRow> links,
+        CancellationToken cancellationToken)
+    {
+        ValidateLinkTableName(linkTableName, documentIdColumnName);
+
+        var clean = links
+            .Where(x => !string.IsNullOrWhiteSpace(x.EquipmentName))
+            .GroupBy(
+                x => (Equipment: x.EquipmentName.Trim().ToUpperInvariant(), x.DocumentId))
+            .Select(x => x.Last())
+            .ToArray();
+
+        if (clean.Length == 0)
+            return;
 
         var sql = $"""
             INSERT INTO {linkTableName}
@@ -979,20 +1159,33 @@ public sealed class InfoImportEditStore
                 {documentIdColumnName},
                 sort_order
             )
-            VALUES
+            SELECT
+                source.equip_name,
+                source.document_id,
+                source.sort_order
+            FROM unnest
             (
-                @equip_name,
-                @document_id,
-                @sort_order
-            )
+                @equip_names::text[],
+                @document_ids::bigint[],
+                @sort_orders::integer[]
+            ) AS source(equip_name, document_id, sort_order)
             ON CONFLICT (equip_name, {documentIdColumnName})
             DO UPDATE SET sort_order = EXCLUDED.sort_order;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("equip_name", equipmentName.Trim());
-        command.Parameters.AddWithValue("document_id", documentId);
-        command.Parameters.AddWithValue("sort_order", sortOrder);
+        command.Parameters.Add(
+            "equip_names",
+            NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
+            clean.Select(x => x.EquipmentName.Trim()).ToArray();
+        command.Parameters.Add(
+            "document_ids",
+            NpgsqlDbType.Array | NpgsqlDbType.Bigint).Value =
+            clean.Select(x => x.DocumentId).ToArray();
+        command.Parameters.Add(
+            "sort_orders",
+            NpgsqlDbType.Array | NpgsqlDbType.Integer).Value =
+            clean.Select(x => x.SortOrder).ToArray();
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
