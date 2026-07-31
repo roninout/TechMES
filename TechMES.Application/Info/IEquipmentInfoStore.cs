@@ -30,10 +30,12 @@ public interface IEquipmentInfoStore
         CancellationToken ct = default);
 
     /// <summary>
-    /// Возвращает избранное оборудование для конкретного устройства/пользователя.
+    /// Возвращает избранное оборудование для конкретного Windows-пользователя.
+    /// Физическая колонка PostgreSQL по-прежнему называется device_name для совместимости
+    /// с существующей схемой, но хранит в ней имя пользователя.
     /// </summary>
     Task<IReadOnlyCollection<string>> GetFavoriteEquipNamesAsync(
-        string deviceName,
+        string userName,
         CancellationToken ct = default);
 
     /// <summary>
@@ -42,7 +44,7 @@ public interface IEquipmentInfoStore
     Task SetFavoriteAsync(
         string equipName,
         bool isFavorite,
-        string deviceName,
+        string userName,
         CancellationToken ct = default);
 
     /// <summary>

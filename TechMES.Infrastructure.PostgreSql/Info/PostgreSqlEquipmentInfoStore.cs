@@ -259,13 +259,14 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Возвращает имена оборудования, добавленного в избранное для текущего устройства/пользователя.
+    /// Возвращает имена оборудования, добавленного в избранное для текущего Windows-пользователя.
+    /// Название колонки device_name сохранено только ради совместимости с существующей схемой БД.
     /// </summary>
     public async Task<IReadOnlyCollection<string>> GetFavoriteEquipNamesAsync(
-        string deviceName,
+        string userName,
         CancellationToken ct = default)
     {
-        deviceName = NormalizeUser(deviceName);
+        userName = NormalizeUser(userName);
 
         await using var conn = await OpenConnectionAsync(ct);
 
@@ -278,7 +279,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
             """,
             conn);
 
-        cmd.Parameters.AddWithValue("device_name", deviceName);
+        cmd.Parameters.AddWithValue("device_name", userName);
 
         var result = new List<string>();
 
@@ -300,11 +301,11 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     public async Task SetFavoriteAsync(
         string equipName,
         bool isFavorite,
-        string deviceName,
+        string userName,
         CancellationToken ct = default)
     {
         equipName = NormalizeName(equipName);
-        deviceName = NormalizeUser(deviceName);
+        userName = NormalizeUser(userName);
 
         if (string.IsNullOrWhiteSpace(equipName))
             throw new InvalidOperationException("Equipment name is empty.");
@@ -333,7 +334,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
                 """,
                 conn);
 
-            cmd.Parameters.AddWithValue("device_name", deviceName);
+            cmd.Parameters.AddWithValue("device_name", userName);
             cmd.Parameters.AddWithValue("equip_name", equipName);
 
             await cmd.ExecuteNonQueryAsync(ct);
@@ -348,7 +349,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
             """,
             conn))
         {
-            cmd.Parameters.AddWithValue("device_name", deviceName);
+            cmd.Parameters.AddWithValue("device_name", userName);
             cmd.Parameters.AddWithValue("equip_name", equipName);
 
             await cmd.ExecuteNonQueryAsync(ct);
