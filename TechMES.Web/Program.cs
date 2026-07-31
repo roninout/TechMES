@@ -105,6 +105,10 @@ builder.Services.AddScoped<SelectedEquipmentState>();
 builder.Services.AddScoped<EquipmentFooterState>();
 builder.Services.AddScoped<QrScannerState>();
 
+// Текущий Windows-пользователь как владелец Favorites.
+// Anonymous/read-only режим не получает персональное избранное и не может его менять.
+builder.Services.AddScoped<FavoriteOwnerContext>();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())

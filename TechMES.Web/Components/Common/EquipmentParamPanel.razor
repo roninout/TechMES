@@ -38,9 +38,9 @@
                                 <RadzenButton Icon="@GetFavoriteIcon(Equipment)"
                                               ButtonStyle="ButtonStyle.Light"
                                               Size="ButtonSize.Small"
-                                              Disabled="@IsFavoriteSaving"
+                                              Disabled="@(!CanEditFavorites || IsFavoriteSaving)"
                                               class="@GetFavoriteButtonClass(Equipment)"
-                                              title="Favorite"
+                                              title="@(CanEditFavorites ? "Favorite" : "Login is required to use Favorites")"
                                               Click="@ToggleFavoriteAsync" />
                             }
                         </div>
@@ -1249,6 +1249,13 @@
     /// </summary>
     [Parameter]
     public bool IsFavoriteSaving { get; set; }
+
+    /// <summary>
+    /// true, если текущий пользователь может редактировать Favorites.
+    /// В anonymous/read-only режиме кнопка звезды отключена.
+    /// </summary>
+    [Parameter]
+    public bool CanEditFavorites { get; set; }
 
     /// <summary>
     /// Команда переключения favorite, реализованная в Equipment.razor.

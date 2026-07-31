@@ -1,7 +1,6 @@
 using TechMES.Application.Equipment;
 using TechMES.Application.Info;
 using TechMES.Contracts.Equipment;
-using TechMES.Runtime.Service.Runtime;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
@@ -12,6 +11,8 @@ namespace TechMES.Runtime.Service.Endpoints;
 /// </summary>
 public static class EquipmentEndpoints
 {
+    private const string AnonymousFavoriteOwner = "__anonymous__";
+
     /// <summary>
     /// Подключает endpoints списка, карточки оборудования и favorite-флага.
     /// </summary>
@@ -26,17 +27,19 @@ public static class EquipmentEndpoints
 
     /// <summary>
     /// Возвращает полный каталог оборудования для дерева/списка WEB.
-    /// Перед ответом добавляет favorite-флаги текущего устройства и счетчики Info-модуля.
+    /// Перед ответом добавляет favorite-флаги текущего Windows-пользователя и счетчики Info-модуля.
     /// </summary>
     private static async Task<IResult> GetEquipmentListAsync(
         IEquipmentCatalogProvider equipmentCatalog,
         IEquipmentInfoStore infoStore,
-        IAppRuntimeContext runtime,
+        string? userName,
         string? deviceName,
         CancellationToken ct)
     {
         var response = CloneResponse(await equipmentCatalog.GetEquipmentListAsync(ct));
-        await ApplyFavoriteFlagsAsync(response, infoStore, ResolveDeviceName(deviceName, runtime), ct);
+
+        var favoriteOwner = ResolveFavoriteOwner(userName, deviceName);
+        await ApplyFavoriteFlagsAsync(response, infoStore, favoriteOwner, ct);
         await ApplyInfoSummariesAsync(response, infoStore, ct);
 
         return Results.Ok(response);
@@ -49,13 +52,17 @@ public static class EquipmentEndpoints
         string name,
         IEquipmentCatalogProvider equipmentCatalog,
         IEquipmentInfoStore infoStore,
-        IAppRuntimeContext runtime,
+        string? userName,
         string? deviceName,
         CancellationToken ct)
     {
         var equipment = CloneEquipment(await equipmentCatalog.GetEquipmentByNameAsync(name, ct));
+
         if (equipment is not null)
-            await ApplyFavoriteFlagAsync(equipment, infoStore, ResolveDeviceName(deviceName, runtime), ct);
+        {
+            var favoriteOwner = ResolveFavoriteOwner(userName, deviceName);
+            await ApplyFavoriteFlagAsync(equipment, infoStore, favoriteOwner, ct);
+        }
 
         return equipment is null
             ? Results.NotFound()
@@ -63,24 +70,39 @@ public static class EquipmentEndpoints
     }
 
     /// <summary>
-    /// Сохраняет favorite в пользовательском PostgreSQL-хранилище и синхронизирует
-    /// in-memory/CtApi представление, чтобы текущий ответ сразу отразил новое состояние.
+    /// Сохраняет favorite в пользовательском PostgreSQL-хранилище.
+    ///
+    /// Важно:
+    /// больше не вызываем equipmentCatalog.SetFavoriteAsync(), потому что catalog provider общий
+    /// для всех WEB-пользователей. Favorite — это не свойство оборудования, а персональное свойство
+    /// конкретного Windows-пользователя.
     /// </summary>
     private static async Task<IResult> SetEquipmentFavoriteAsync(
         string name,
         EquipmentFavoriteRequest request,
         IEquipmentCatalogProvider equipmentCatalog,
         IEquipmentInfoStore infoStore,
-        IAppRuntimeContext runtime,
+        string? userName,
         string? deviceName,
         CancellationToken ct)
     {
-        var resolvedDeviceName = ResolveDeviceName(deviceName, runtime);
-        await infoStore.SetFavoriteAsync(name, request.IsFavorite, resolvedDeviceName, ct);
+        var favoriteOwner = ResolveFavoriteOwner(userName, deviceName);
 
-        var equipment = await equipmentCatalog.SetFavoriteAsync(name, request.IsFavorite, ct);
+        if (IsAnonymousFavoriteOwner(favoriteOwner))
+        {
+            return Results.Problem(
+                title: "Favorites require Windows login.",
+                detail: "Windows login is required to use Favorites.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        await infoStore.SetFavoriteAsync(name, request.IsFavorite, favoriteOwner, ct);
+
+        var equipment = CloneEquipment(await equipmentCatalog.GetEquipmentByNameAsync(name, ct));
         if (equipment is not null)
+        {
             equipment.IsFavorite = request.IsFavorite;
+        }
 
         return equipment is null
             ? Results.NotFound()
@@ -95,7 +117,11 @@ public static class EquipmentEndpoints
     {
         return new EquipmentListResponse
         {
-            Equipments = response.Equipments.Select(CloneEquipment).Where(x => x is not null).Select(x => x!).ToList(),
+            Equipments = response.Equipments
+                .Select(CloneEquipment)
+                .Where(x => x is not null)
+                .Select(x => x!)
+                .ToList(),
             Stations = response.Stations.ToList(),
             TypeGroups = response.TypeGroups.ToList(),
             TotalCount = response.TotalCount
@@ -134,15 +160,25 @@ public static class EquipmentEndpoints
 
     /// <summary>
     /// Проставляет IsFavorite для всех негрупповых элементов каталога.
-    /// Favorites хранятся по имени устройства/клиента.
+    /// Favorites хранятся по Windows-пользователю.
     /// </summary>
     private static async Task ApplyFavoriteFlagsAsync(
         EquipmentListResponse response,
         IEquipmentInfoStore infoStore,
-        string deviceName,
+        string favoriteOwner,
         CancellationToken ct)
     {
-        var favorites = await infoStore.GetFavoriteEquipNamesAsync(deviceName, ct);
+        // Сначала сбрасываем флаг, чтобы исключить протекание старого состояния из cache provider-а.
+        foreach (var equipment in response.Equipments)
+        {
+            if (!equipment.IsGroup)
+                equipment.IsFavorite = false;
+        }
+
+        if (IsAnonymousFavoriteOwner(favoriteOwner))
+            return;
+
+        var favorites = await infoStore.GetFavoriteEquipNamesAsync(favoriteOwner, ct);
         var favoriteSet = new HashSet<string>(favorites, StringComparer.OrdinalIgnoreCase);
 
         foreach (var equipment in response.Equipments)
@@ -189,24 +225,50 @@ public static class EquipmentEndpoints
     private static async Task ApplyFavoriteFlagAsync(
         EquipmentDto equipment,
         IEquipmentInfoStore infoStore,
-        string deviceName,
+        string favoriteOwner,
         CancellationToken ct)
     {
         if (equipment.IsGroup)
             return;
 
-        var favorites = await infoStore.GetFavoriteEquipNamesAsync(deviceName, ct);
+        equipment.IsFavorite = false;
+
+        if (IsAnonymousFavoriteOwner(favoriteOwner))
+            return;
+
+        var favorites = await infoStore.GetFavoriteEquipNamesAsync(favoriteOwner, ct);
         equipment.IsFavorite = favorites.Contains(equipment.Name, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
-    /// Определяет имя клиента. Если WEB не передал deviceName, используем DeviceName Runtime.Service.
+    /// Определяет владельца Favorites.
+    ///
+    /// userName — новый основной параметр WEB.
+    /// deviceName оставлен только как legacy fallback для старых клиентов.
+    /// Если ничего не передано, больше не используем имя Runtime-сервера.
     /// </summary>
-    private static string ResolveDeviceName(string? deviceName, IAppRuntimeContext runtime)
+    private static string ResolveFavoriteOwner(string? userName, string? deviceName)
     {
-        return string.IsNullOrWhiteSpace(deviceName)
-            ? runtime.DeviceName
-            : deviceName.Trim();
+        var value = !string.IsNullOrWhiteSpace(userName)
+            ? userName
+            : deviceName;
+
+        value = (value ?? "").Trim();
+
+        if (string.IsNullOrWhiteSpace(value))
+            return AnonymousFavoriteOwner;
+
+        return value.Length <= 256
+            ? value
+            : value[..256];
+    }
+
+    private static bool IsAnonymousFavoriteOwner(string favoriteOwner)
+    {
+        return string.Equals(
+            favoriteOwner,
+            AnonymousFavoriteOwner,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed record EquipmentFavoriteRequest(bool IsFavorite);

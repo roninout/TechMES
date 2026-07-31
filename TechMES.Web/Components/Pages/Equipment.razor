@@ -7,6 +7,7 @@
 @inject SelectedEquipmentState SelectedEquipmentState
 @inject EquipmentFooterState EquipmentFooterState
 @inject QrScannerState QrScannerState
+@inject FavoriteOwnerContext FavoriteOwnerContext
 @inject NavigationManager NavigationManager
 @implements IDisposable
 
@@ -227,6 +228,7 @@
                     <EquipmentParamPanel Equipment="@_selectedEquipment"
                                          IsActive="@IsParamMode"
                                          IsFavoriteSaving="@_isFavoriteSaving"
+                                         CanEditFavorites="@_canEditFavorites"
                                          OnToggleFavorite="@ToggleSelectedFavoriteAsync"
                                          OnSelectEquipment="@SelectEquipmentByNameAsync" />
                 }
@@ -234,6 +236,7 @@
                 {
                     <EquipmentInfoPanel Equipment="@_selectedEquipment"
                                         IsFavoriteSaving="@_isFavoriteSaving"
+                                        CanEditFavorites="@_canEditFavorites"
                                         OnToggleFavorite="@ToggleSelectedFavoriteAsync"
                                         OnInfoCountsChanged="@OnInfoCountsChanged" />
                 }
@@ -339,6 +342,16 @@
     private bool _isFavoriteSaving;
 
     /// <summary>
+    /// true, если текущий WEB-пользователь авторизован и может менять Favorites.
+    /// </summary>
+    private bool _canEditFavorites;
+
+    /// <summary>
+    /// Текстовое имя текущего владельца Favorites. Используется только для диагностики/сообщений.
+    /// </summary>
+    private string _favoriteOwnerDisplayName = "Read-only";
+
+    /// <summary>
     /// Определяет, свернута ли левая зона каталога оборудования.
     /// Одно состояние одновременно управляет CSS-grid и фильтрами станции/типа,
     /// поэтому после сворачивания правая рабочая зона получает всю доступную ширину.
@@ -378,7 +391,26 @@
         NavigationManager.LocationChanged += OnLocationChanged;
         QrScannerState.Scanned += SelectEquipmentFromQrAsync;
         RememberEquipmentMode(NavigationManager.Uri);
+
+        await RefreshFavoriteOwnerAsync();
         await LoadAsync();
+    }
+
+    /// <summary>
+    /// Обновляет состояние текущего владельца Favorites.
+    /// В read-only / anonymous режиме Favorites не редактируются и фильтр Favorites скрывается.
+    /// </summary>
+    private async Task RefreshFavoriteOwnerAsync()
+    {
+        var owner = await FavoriteOwnerContext.GetCurrentAsync();
+
+        _canEditFavorites = owner.CanEditFavorites;
+        _favoriteOwnerDisplayName = owner.DisplayName;
+
+        if (!_canEditFavorites && IsFavoritesTypeFilterActive())
+        {
+            _selectedType = AllTypesText;
+        }
     }
 
     /// <summary>
@@ -466,8 +498,22 @@
             _stationItems = [AllStationsText];
             _stationItems.AddRange(response.Stations);
 
-            _typeItems = [AllTypesText, FavoritesTypeText];
-            _typeItems.AddRange(response.TypeGroups.Select(x => x.ToString()));
+            var typeItems = new List<string> { AllTypesText };
+
+            // Favorites показываем только авторизованному пользователю.
+            // В read-only / anonymous режиме звездочки не редактируются и Favorites-фильтр скрыт.
+            if (_canEditFavorites)
+            {
+                typeItems.Add(FavoritesTypeText);
+            }
+
+            typeItems.AddRange(response.TypeGroups.Select(x => x.ToString()));
+            _typeItems = typeItems;
+
+            if (!_canEditFavorites && IsFavoritesTypeFilterActive())
+            {
+                _selectedType = AllTypesText;
+            }
 
             // При первой загрузке раскрываем группы, чтобы пользователь сразу увидел,
             // что WEB уже получил не плоский список, а структуру для дерева.
@@ -938,6 +984,19 @@
     {
         if (_selectedEquipment is null || _selectedEquipment.IsGroup || _isFavoriteSaving)
             return;
+
+        if (!_canEditFavorites)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Warning,
+                Summary = "Favorite",
+                Detail = "Windows login is required to use Favorites.",
+                Duration = 3500
+            });
+
+            return;
+        }
 
         var equipmentName = _selectedEquipment.Name;
         var preferredNodeId = _selectedEquipment.NodeId;

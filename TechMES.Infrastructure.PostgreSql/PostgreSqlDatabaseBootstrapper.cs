@@ -271,6 +271,9 @@ public sealed class PostgreSqlDatabaseBootstrapper
             CONSTRAINT pk_equip_favorite PRIMARY KEY (device_name, equip_name)
         );
 
+        COMMENT ON COLUMN public.equip_favorite.device_name
+        IS 'Logical favorite owner. Stores Windows user name for Web favorites; column name is kept for compatibility.';
+
         CREATE TABLE IF NOT EXISTS public.equip_supplier
         (
             id             bigserial PRIMARY KEY,
