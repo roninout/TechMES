@@ -30,6 +30,9 @@ public static class PostgreSqlServiceCollectionExtensions
         // Регистрируем PostgreSQL-адаптер как реализацию IMessageStore.
         // Runtime.Service продолжает работать только с интерфейсом IMessageStore
         // и не зависит от Npgsql или SQL-запросов напрямую.
+
+        services.TryAddSingleton<PostgreSqlDatabaseBootstrapper>();
+
         services.AddScoped<IMessageStore, PostgreSqlMessageStore>();
         services.TryAddScoped<IEquipmentInfoStore, PostgreSqlEquipmentInfoStore>();
         services.TryAddScoped<IParamTuneStore, PostgreSqlParamTuneStore>();
@@ -44,6 +47,8 @@ public static class PostgreSqlServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddPostgreSqlInfoInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        services.TryAddSingleton<PostgreSqlDatabaseBootstrapper>();
+
         services.TryAddScoped<IEquipmentInfoStore, PostgreSqlEquipmentInfoStore>();
         services.TryAddScoped<IParamTuneStore, PostgreSqlParamTuneStore>();
 

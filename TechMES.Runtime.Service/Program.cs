@@ -128,6 +128,23 @@ app.UseHttpsRedirection();
 // Для PostgreSQL здесь создаются таблицы equip_message/equip_message_view, если их нет.
 using (var scope = app.Services.CreateScope())
 {
+    /*
+        Инициализируем основную PostgreSQL-БД до старта модулей Runtime.
+
+        Почему это нужно делать здесь:
+        - MessageStore умеет создавать только свои таблицы Messages.
+        - Info/Favorites/Orders/Notes раньше ожидали уже готовую БД.
+        - На новом сервере /api/equipment падал с ошибкой:
+          relation "public.equip_favorite" does not exist.
+
+        Теперь Runtime сам:
+        1. создает Database из Database:ConnectionString, если ее нет;
+        2. создает недостающие таблицы Info/Favorites/Orders/Notes/ParamTune;
+        3. после этого запускает Messages, CtApi и Equipment catalog.
+    */
+    var databaseBootstrapper = scope.ServiceProvider.GetRequiredService<PostgreSqlDatabaseBootstrapper>();
+    await databaseBootstrapper.InitializeMainDatabaseAsync();
+
     var messageStore = scope.ServiceProvider.GetRequiredService<IMessageStore>();
     await messageStore.InitializeAsync();
 
