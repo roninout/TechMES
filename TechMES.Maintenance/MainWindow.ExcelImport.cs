@@ -342,7 +342,16 @@ public partial class MainWindow
                     {
                         Type = target.Type,
                         Source = file,
-                        Description = schemeName
+                        Description = schemeName,
+                        Station = source.Scope == ExcelSchemeScope.Station
+                            ? source.Target.Trim()
+                            : "",
+                        GroupNames = source.Scope == ExcelSchemeScope.Group
+                            ? source.Target.Trim()
+                            : "",
+                        Equipments = source.Scope == ExcelSchemeScope.Equipment
+                            ? source.Target.Trim()
+                            : ""
                     });
 
                     schemeLinks.Add(new ImportSchemeLinkRowViewModel
@@ -370,12 +379,7 @@ public partial class MainWindow
             supplierRows,
             orderRows,
             instructionRows,
-            schemeFiles
-                .GroupBy(
-                    x => x.Source,
-                    StringComparer.OrdinalIgnoreCase)
-                .Select(x => x.First())
-                .ToList(),
+            schemeFiles,
             schemeLinks
                 .GroupBy(
                     x => $"{x.Equipment}\u001f{x.Scheme}",

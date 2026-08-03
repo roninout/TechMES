@@ -410,24 +410,27 @@ public sealed class InfoImportEditStore
     }
 
     /// <summary>
-    /// Loads scheme file library rows.
+    /// Loads scheme file library rows from public.equip_scheme.
     /// </summary>
-    public async Task<IReadOnlyList<ImportSchemeFileRowViewModel>> LoadSchemeFilesAsync(
-        string connectionString,
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ImportSchemeFileRowViewModel>> LoadSchemeFilesAsync(string connectionString, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT
-                COALESCE(equip_type_group, '') AS equip_type_group,
-                COALESCE(file_name, '') AS file_name,
-                COALESCE(display_name, '') AS display_name
-            FROM public.equip_scheme
-            ORDER BY equip_type_group, file_name;
-            """;
+        SELECT
+            COALESCE(equip_type_group, '') AS equip_type_group,
+            COALESCE(file_name, '') AS file_name,
+            COALESCE(display_name, '') AS display_name,
+            COALESCE(station, '') AS station,
+            COALESCE(group_names, '') AS group_names,
+            COALESCE(equipments, '') AS equipments
+        FROM public.equip_scheme
+        ORDER BY file_name;
+        """;
 
         var result = new List<ImportSchemeFileRowViewModel>();
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
+
+        await EnsureSchemeScopeColumnsAsync(connection, cancellationToken);
 
         await using var command = new NpgsqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -438,7 +441,10 @@ public sealed class InfoImportEditStore
             {
                 Type = reader.GetString(0),
                 Source = reader.GetString(1),
-                Description = reader.GetString(2)
+                Description = reader.GetString(2),
+                Station = reader.GetString(3),
+                GroupNames = reader.GetString(4),
+                Equipments = reader.GetString(5)
             });
         }
 
@@ -485,21 +491,16 @@ public sealed class InfoImportEditStore
     }
 
     /// <summary>
-    /// Saves scheme library files and their equipment links.
+    /// Saves scheme library files, stores Station/Group/Equipment scope columns
+    /// and rebuilds public.equip_info_scheme links for the edited scheme files.
+    ///
+    /// Existing DB scheme rows do not require the physical PDF file to exist on disk.
+    /// If Source points to an existing file, the binary library row is created/updated.
+    /// If Source is only an existing DB file_name, only scope columns and links are updated.
     /// </summary>
-    public async Task<int> SaveSchemesAsync(
-        string connectionString,
-        string pdfSourceRoot,
-        string imageSourceRoot,
-        IEnumerable<ImportSchemeFileRowViewModel> files,
-        IEnumerable<ImportSchemeLinkRowViewModel> links,
-        CancellationToken cancellationToken = default)
+    public async Task<int> SaveSchemesAsync(string connectionString, string pdfSourceRoot, string imageSourceRoot, IEnumerable<ImportSchemeFileRowViewModel> files, IEnumerable<ImportSchemeLinkRowViewModel> links, CancellationToken cancellationToken = default)
     {
-        var cleanFiles = files
-            .Where(x => !string.IsNullOrWhiteSpace(x.Source))
-            .GroupBy(x => x.Source.Trim(), StringComparer.OrdinalIgnoreCase)
-            .Select(x => x.Last())
-            .ToList();
+        var cleanFiles = MergeSchemeFileRows(files);
 
         var cleanLinks = links
             .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
@@ -512,32 +513,40 @@ public sealed class InfoImportEditStore
 
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
+        await EnsureSchemeScopeColumnsAsync(connection, cancellationToken);
+
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         try
         {
-            var schemeFileIdsByPath = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            var schemeFileIdsByPathOrName = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
             var schemeFileIdsByName = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            var schemeIdsForCurrentRows = new HashSet<long>();
 
             foreach (var file in cleanFiles)
             {
-                var filePath = ResolveSourceFilePath(
-                    [pdfSourceRoot, imageSourceRoot],
-                    file.Source);
-                var schemeId = await SaveLibraryFileOnceAsync(
+                var schemeId = await ResolveOrSaveSchemeFileAsync(
                     connection,
                     transaction,
-                    "public.equip_scheme",
-                    file.Type,
-                    filePath,
-                    schemeFileIdsByPath,
+                    pdfSourceRoot,
+                    imageSourceRoot,
+                    file,
+                    schemeFileIdsByPathOrName,
                     cancellationToken);
 
-                // SaveLibraryFileAsync дедуплицирует библиотеку по хэшу. Поэтому
-                // существующий бинарный файл может вернуться с именем, отличным
-                // от имени в текущем Excel. Связи должны использовать уже
-                // полученный ID, а не выполнять повторный поиск только по имени.
-                var fileName = Path.GetFileName(filePath);
+                schemeIdsForCurrentRows.Add(schemeId);
+
+                await UpdateSchemeScopeAsync(
+                    connection,
+                    transaction,
+                    schemeId,
+                    file.Station,
+                    file.GroupNames,
+                    file.Equipments,
+                    cancellationToken);
+
+                var fileName = Path.GetFileName(file.Source.Trim());
+
                 if (schemeFileIdsByName.TryGetValue(fileName, out var existingId)
                     && existingId != schemeId)
                 {
@@ -564,6 +573,7 @@ public sealed class InfoImportEditStore
             foreach (var link in cleanLinks)
             {
                 var schemeFileName = Path.GetFileName(link.Scheme.Trim());
+
                 var schemeId = schemeFileIdsByName.TryGetValue(schemeFileName, out var importedSchemeId)
                     ? importedSchemeId
                     : await ResolveLibraryFileIdAsync(
@@ -584,6 +594,17 @@ public sealed class InfoImportEditStore
                     sortOrder));
             }
 
+            /*
+             * SCHEME tab is now the master editor for scheme-file targets.
+             * For every scheme row currently saved we first remove old links,
+             * then insert rebuilt links from Station/Group/Equipment columns.
+             */
+            await DeleteSchemeLinksForSchemeIdsAsync(
+                connection,
+                transaction,
+                schemeIdsForCurrentRows,
+                cancellationToken);
+
             await EnsureDocumentLinksAsync(
                 connection,
                 transaction,
@@ -600,6 +621,249 @@ public sealed class InfoImportEditStore
             await transaction.RollbackAsync(cancellationToken);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Resolves one SCHEME row to public.equip_scheme.id.
+    ///
+    /// If the physical file exists, it is saved/updated in the library.
+    /// If the physical file does not exist, an existing DB row with the same file_name is reused.
+    /// This allows editing Station/Group/Equipment targets for already stored PDF files without
+    /// requiring the original source folder to still contain the file.
+    /// </summary>
+    private static async Task<long> ResolveOrSaveSchemeFileAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string pdfSourceRoot, string imageSourceRoot, ImportSchemeFileRowViewModel file, IDictionary<string, long> resolvedSchemeFileIds, CancellationToken cancellationToken)
+    {
+        var source = file.Source?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(source))
+            throw new InvalidOperationException("SCHEME row has empty Source.");
+
+        var physicalFilePath = TryResolveExistingSourceFilePath(
+            [pdfSourceRoot, imageSourceRoot],
+            source,
+            out var checkedPaths);
+
+        if (!string.IsNullOrWhiteSpace(physicalFilePath))
+        {
+            var cacheKey = Path.GetFullPath(physicalFilePath);
+
+            if (resolvedSchemeFileIds.TryGetValue(cacheKey, out var cachedId))
+                return cachedId;
+
+            var savedId = await SaveLibraryFileAsync(
+                connection,
+                transaction,
+                "public.equip_scheme",
+                file.Type,
+                physicalFilePath,
+                cancellationToken);
+
+            resolvedSchemeFileIds[cacheKey] = savedId;
+            return savedId;
+        }
+
+        /*
+         * Physical file was not found. This is normal for rows loaded from public.equip_scheme:
+         * their Source is only file_name, while file_data is already stored in PostgreSQL.
+         */
+        var fileName = Path.GetFileName(source);
+        var existingDbId = await FindSchemeFileIdByFileNameAsync(
+            connection,
+            transaction,
+            fileName,
+            cancellationToken);
+
+        if (existingDbId is not null)
+        {
+            resolvedSchemeFileIds["db:" + fileName] = existingDbId.Value;
+            return existingDbId.Value;
+        }
+
+        var checkedMessage = checkedPaths.Count == 0
+            ? source
+            : string.Join("; ", checkedPaths);
+
+        throw new FileNotFoundException(
+            $"Import source file not found and scheme library row does not exist in DB. Checked: {checkedMessage}",
+            checkedPaths.FirstOrDefault() ?? source);
+    }
+
+    /// <summary>
+    /// Tries to find a physical source file without throwing.
+    /// Used by SCHEME Save because existing DB rows should not require the original PDF file.
+    /// </summary>
+    private static string? TryResolveExistingSourceFilePath(IEnumerable<string> sourceRoots, string source, out List<string> checkedPaths)
+    {
+        checkedPaths = [];
+
+        var value = (source ?? "").Trim().Trim('"');
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        if (Path.IsPathRooted(value))
+        {
+            checkedPaths.Add(value);
+
+            return File.Exists(value)
+                ? Path.GetFullPath(value)
+                : null;
+        }
+
+        foreach (var sourceRoot in sourceRoots.Where(x => !string.IsNullOrWhiteSpace(x)))
+        {
+            var candidate = Path.Combine(sourceRoot, value);
+            checkedPaths.Add(candidate);
+
+            if (File.Exists(candidate))
+                return Path.GetFullPath(candidate);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Finds an existing SCHEME library row by file_name.
+    /// Used when the UI row was loaded from DB and the physical PDF source file is no longer available.
+    /// </summary>
+    private static async Task<long?> FindSchemeFileIdByFileNameAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string fileName, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return null;
+
+        const string sql = """
+        SELECT id
+        FROM public.equip_scheme
+        WHERE lower(file_name) = lower(@file_name)
+        ORDER BY id
+        LIMIT 1;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("file_name", Path.GetFileName(fileName.Trim()));
+
+        var scalar = await command.ExecuteScalarAsync(cancellationToken);
+        return scalar is null or DBNull
+            ? null
+            : Convert.ToInt64(scalar);
+    }
+
+    /// <summary>
+    /// Adds new nullable scope columns to public.equip_scheme.
+    /// This is intentionally safe to run on every Maintenance load/save.
+    /// </summary>
+    private static async Task EnsureSchemeScopeColumnsAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        const string sql = """
+        ALTER TABLE public.equip_scheme
+        ADD COLUMN IF NOT EXISTS station text NULL;
+
+        ALTER TABLE public.equip_scheme
+        ADD COLUMN IF NOT EXISTS group_names text NULL;
+
+        ALTER TABLE public.equip_scheme
+        ADD COLUMN IF NOT EXISTS equipments text NULL;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Merges duplicated scheme rows by Source.
+    /// Excel import can produce many rows for the same physical scheme file,
+    /// because one file can be linked to many stations/groups/equipment.
+    /// </summary>
+    private static List<ImportSchemeFileRowViewModel> MergeSchemeFileRows(IEnumerable<ImportSchemeFileRowViewModel> files)
+    {
+        return files
+            .Where(x => !string.IsNullOrWhiteSpace(x.Source))
+            .GroupBy(x => x.Source.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var last = group.Last();
+
+                return new ImportSchemeFileRowViewModel
+                {
+                    Type = MergeDelimitedText(group.Select(x => x.Type)),
+                    Source = last.Source.Trim(),
+                    Description = last.Description?.Trim() ?? "",
+                    Station = MergeDelimitedText(group.Select(x => x.Station)),
+                    GroupNames = MergeDelimitedText(group.Select(x => x.GroupNames)),
+                    Equipments = MergeDelimitedText(group.Select(x => x.Equipments))
+                };
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Normalizes several comma/semicolon separated text cells into one semicolon separated text.
+    /// </summary>
+    private static string MergeDelimitedText(IEnumerable<string?> values)
+    {
+        return string.Join(
+            "; ",
+            values
+                .SelectMany(SplitDelimitedValues)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static IEnumerable<string> SplitDelimitedValues(string? value)
+    {
+        return (value ?? "")
+            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x));
+    }
+
+    /// <summary>
+    /// Updates Station/Group/Equipment scope columns for one scheme library row.
+    /// </summary>
+    private static async Task UpdateSchemeScopeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long schemeId, string station, string groupNames, string equipments, CancellationToken cancellationToken)
+    {
+        const string sql = """
+        UPDATE public.equip_scheme
+        SET
+            station = NULLIF(@station, ''),
+            group_names = NULLIF(@group_names, ''),
+            equipments = NULLIF(@equipments, ''),
+            updated_at = now()
+        WHERE id = @id;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("id", schemeId);
+        command.Parameters.AddWithValue("station", MergeDelimitedText([station]));
+        command.Parameters.AddWithValue("group_names", MergeDelimitedText([groupNames]));
+        command.Parameters.AddWithValue("equipments", MergeDelimitedText([equipments]));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Removes previous links for scheme files currently edited by the SCHEME tab.
+    /// </summary>
+    private static async Task DeleteSchemeLinksForSchemeIdsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        IEnumerable<long> schemeIds,
+        CancellationToken cancellationToken)
+    {
+        var clean = schemeIds
+            .Distinct()
+            .ToArray();
+
+        if (clean.Length == 0)
+            return;
+
+        const string sql = """
+        DELETE FROM public.equip_info_scheme
+        WHERE scheme_id = ANY(@scheme_ids);
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.Add(
+            "scheme_ids",
+            NpgsqlDbType.Array | NpgsqlDbType.Bigint).Value = clean;
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task SaveSupplierMetadataAsync(

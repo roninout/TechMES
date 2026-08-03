@@ -54,8 +54,8 @@ public partial class MainWindow
                     await RefreshImportInstructionsAsync();
                     break;
 
-                case "SCHEME" when ImportSchemeFiles.Count == 0 && ImportSchemeLinks.Count == 0:
-                    if (!await EnsureImportDocumentLookupDataAsync())
+                case "SCHEME" when ImportSchemeFiles.Count == 0:
+                    if (!await EnsureRuntimeCatalogForImportAsync())
                         break;
 
                     await RefreshImportSchemesAsync();
@@ -393,13 +393,14 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Reloads SCHEME file and equipment-link rows.
+    /// Reloads SCHEME rows from public.equip_scheme.
+    /// Runtime catalog is required because SCHEME rows can target Station, Group and Equipment.
     /// </summary>
     private async void OnRefreshImportSchemesClick(object sender, RoutedEventArgs e)
     {
         try
         {
-            if (!await EnsureImportDocumentLookupDataAsync())
+            if (!await EnsureRuntimeCatalogForImportAsync())
                 return;
 
             await RefreshImportSchemesAsync();
@@ -412,27 +413,27 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Saves SCHEME files and the equipment-to-scheme link table.
+    /// Saves SCHEME file library rows and rebuilds equipment links
+    /// from Station, Group and Equipment columns.
     /// </summary>
     private async void OnSaveImportSchemesClick(object sender, RoutedEventArgs e)
     {
         try
         {
-            if (!await EnsureImportDocumentLookupDataAsync())
+            if (!await EnsureRuntimeCatalogForImportAsync())
                 return;
 
-            RefreshImportSchemeSourceOptions();
+            var linkBuildResult = BuildImportSchemeLinksFromFileRows(
+                ImportSchemeFiles,
+                _importRuntimeCatalog!);
 
-            var invalidLookupMessages = GetInvalidImportLookupMessages(ImportSchemeFiles)
-                .Concat(GetInvalidImportLookupMessages(ImportSchemeLinks))
-                .ToList();
-            if (invalidLookupMessages.Count > 0)
+            if (linkBuildResult.Errors.Count > 0)
             {
-                ImportSchemeStatusText = $"Scheme contains invalid lookup values: {invalidLookupMessages.Count}.";
+                ImportSchemeStatusText = $"Scheme contains invalid Runtime targets: {linkBuildResult.Errors.Count}.";
                 MessageBox.Show(
                     this,
-                    string.Join(Environment.NewLine, invalidLookupMessages.Take(12)),
-                    "SCHEME lookup validation",
+                    string.Join(Environment.NewLine, linkBuildResult.Errors.Take(16)),
+                    "SCHEME target validation",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
                 return;
@@ -443,7 +444,7 @@ public partial class MainWindow
                 SchemePdfSourceRoot,
                 SchemeImageSourceRoot,
                 ImportSchemeFiles,
-                ImportSchemeLinks);
+                linkBuildResult.Links);
 
             PersistImportEditOptions();
             ImportSchemeStatusText = $"Scheme rows saved: {saved}.";
@@ -942,45 +943,141 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Loads SCHEME library files and equipment links from PostgreSQL.
-    /// Link rows are enriched with Station from the cached Runtime catalog when possible.
+    /// Loads SCHEME rows from public.equip_scheme.
+    /// The SCHEME tab displays one generalized table with Source, Station, Group and Equipment.
     /// </summary>
     private async Task RefreshImportSchemesAsync()
     {
-        if (_importRuntimeCatalog is null)
-            throw new InvalidOperationException("Runtime catalog is not loaded.");
+        ImportSchemeStatusText = "Loading scheme rows...";
 
-        ImportSchemeStatusText = "Loading scheme tables...";
-
-        var files = await _infoImportEditStore.LoadSchemeFilesAsync(GetRuntimeDatabaseConnectionString());
-        var links = await _infoImportEditStore.LoadSchemeLinksAsync(GetRuntimeDatabaseConnectionString());
-        var equipmentByName = _importRuntimeCatalog.EquipmentItems
-            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
-            .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var files = await _infoImportEditStore.LoadSchemeFilesAsync(
+            GetRuntimeDatabaseConnectionString());
 
         ImportSchemeFiles.Clear();
         foreach (var row in files)
             ImportSchemeFiles.Add(row);
 
+        // Lower Equipment links table is no longer displayed.
+        // Links are rebuilt from ImportSchemeFiles on Save.
+        ImportSchemeLinks.Clear();
+
         RefreshImportSchemeSourceOptions();
 
-        ImportSchemeLinks.Clear();
-        foreach (var row in links)
+        ImportSchemeStatusText =
+            $"Scheme rows loaded: {ImportSchemeFiles.Count}.";
+    }
+
+    /// <summary>
+    /// Builds public.equip_info_scheme link rows from the generalized SCHEME table.
+    /// Station expands to all Runtime equipment in the station.
+    /// Group links only the group node.
+    /// Equipment links exact equipment nodes.
+    /// </summary>
+    private static SchemeLinkBuildResult BuildImportSchemeLinksFromFileRows(IEnumerable<ImportSchemeFileRowViewModel> files, RuntimeCatalogSnapshot runtime)
+    {
+        var links = new List<ImportSchemeLinkRowViewModel>();
+        var errors = new List<string>();
+
+        var equipmentByName = runtime.EquipmentItems
+            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+            .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+
+        var groupsByName = runtime.GroupItems
+            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+            .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in files)
         {
-            if (equipmentByName.TryGetValue(row.Equipment.Trim(), out var equipment))
+            if (string.IsNullOrWhiteSpace(row.Source))
+                continue;
+
+            var schemeName = Path.GetFileName(row.Source.Trim());
+            if (string.IsNullOrWhiteSpace(schemeName))
             {
-                row.Station = equipment.Station;
-                if (string.IsNullOrWhiteSpace(row.Type))
-                    row.Type = equipment.Type;
+                errors.Add("SCHEME row has empty Source.");
+                continue;
             }
 
-            ImportSchemeLinks.Add(row);
+            foreach (var station in SplitSchemeTargetNames(row.Station))
+            {
+                var stationTargets = runtime.EquipmentItems
+                    .Where(x => string.Equals(
+                        x.Station,
+                        station,
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (stationTargets.Count == 0)
+                {
+                    errors.Add($"SCHEME source '{schemeName}': station '{station}' was not found in Runtime.");
+                    continue;
+                }
+
+                foreach (var target in stationTargets)
+                {
+                    links.Add(new ImportSchemeLinkRowViewModel
+                    {
+                        Station = target.Station,
+                        Type = target.Type,
+                        Equipment = target.Equipment,
+                        Scheme = schemeName,
+                        Description = schemeName
+                    });
+                }
+            }
+
+            foreach (var groupName in SplitSchemeTargetNames(row.GroupNames))
+            {
+                if (!groupsByName.TryGetValue(groupName, out var group))
+                {
+                    errors.Add($"SCHEME source '{schemeName}': group '{groupName}' was not found in Runtime.");
+                    continue;
+                }
+
+                links.Add(new ImportSchemeLinkRowViewModel
+                {
+                    Station = group.Station,
+                    Type = group.Type,
+                    Equipment = group.Equipment,
+                    Scheme = schemeName,
+                    Description = schemeName
+                });
+            }
+
+            foreach (var equipmentName in SplitSchemeTargetNames(row.Equipments))
+            {
+                if (!equipmentByName.TryGetValue(equipmentName, out var equipment))
+                {
+                    errors.Add($"SCHEME source '{schemeName}': equipment '{equipmentName}' was not found in Runtime.");
+                    continue;
+                }
+
+                links.Add(new ImportSchemeLinkRowViewModel
+                {
+                    Station = equipment.Station,
+                    Type = equipment.Type,
+                    Equipment = equipment.Equipment,
+                    Scheme = schemeName,
+                    Description = schemeName
+                });
+            }
         }
 
-        ImportSchemeStatusText =
-            $"Scheme files loaded: {ImportSchemeFiles.Count}; links loaded: {ImportSchemeLinks.Count}.";
+        var distinctLinks = links
+            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Scheme))
+            .GroupBy(
+                x => $"{x.Equipment.Trim()}\u001f{Path.GetFileName(x.Scheme.Trim())}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .ToList();
+
+        return new SchemeLinkBuildResult(distinctLinks, errors);
     }
+
+    private sealed record SchemeLinkBuildResult(List<ImportSchemeLinkRowViewModel> Links, List<string> Errors);
 
     /// <summary>
     /// Loads all lookup data required by ORDERS editors.
@@ -1064,6 +1161,7 @@ public partial class MainWindow
             ImportRuntimeStationOptions.Clear();
             ImportRuntimeTypeOptions.Clear();
             ImportRuntimeEquipmentOptions.Clear();
+            ImportRuntimeGroupOptions.Clear();
 
             ImportRuntimeStatusText =
                 $"Runtime catalog load failed: {ex.Message}";
@@ -1112,13 +1210,23 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Rebuilds the Runtime lookup dictionaries used by INSTRUCTION and SCHEME combobox columns.
+    /// Rebuilds the Runtime lookup dictionaries used by Import/Edit combobox columns.
     /// </summary>
     private void RefreshImportRuntimeLookupOptions()
     {
         ReplaceStringOptions(
             ImportRuntimeStationOptions,
             _importRuntimeCatalog?.Stations ?? []);
+
+        ReplaceStringOptions(
+            ImportRuntimeGroupOptions,
+            _importRuntimeCatalog is null
+                ? Enumerable.Empty<string>()
+                : _importRuntimeCatalog.GroupItems
+                    .Select(x => x.Equipment)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
 
         ReplaceStringOptions(
             ImportRuntimeTypeOptions,

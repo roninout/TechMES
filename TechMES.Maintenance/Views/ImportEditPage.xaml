@@ -1160,266 +1160,79 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
                     <views:MaintenanceCard Grid.Row="0"
-                                           Background="{DynamicResource TechMesPanelBrush}"
-                                           BorderBrush="{DynamicResource TechMesBorderBrush}"
-                                           BorderThickness="1"
-                                           Padding="12"
-                                           Margin="0,0,0,10">
+                               Background="{DynamicResource TechMesPanelBrush}"
+                               BorderBrush="{DynamicResource TechMesBorderBrush}"
+                               BorderThickness="1"
+                               Padding="12"
+                               Margin="0,0,0,10">
                         <StackPanel>
                             <TextBlock Text="Schemes"
-                                       Style="{StaticResource SectionTitleText}" />
-                            <TextBlock Text="The upper table is the scheme file library. The lower table links Runtime equipment to selected scheme files."
-                                       Style="{StaticResource MutedText}"
-                                       TextWrapping="Wrap" />
+                           Style="{StaticResource SectionTitleText}" />
+                            <TextBlock Text="Displays public.equip_scheme. Station, Group and Equipment may contain several values separated with comma or semicolon."
+                           Style="{StaticResource MutedText}"
+                           TextWrapping="Wrap" />
                         </StackPanel>
                     </views:MaintenanceCard>
 
-                    <views:MaintenanceSection Grid.Row="1" Margin="0,0,0,10">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
+                    <views:MaintenanceSection Grid.Row="1">
+                        <control:FilterDataGrid Style="{StaticResource ImportGrid}"
+                                    CanUserResizeColumns="True"
+                                    CanUserReorderColumns="True"
+                                    ShowStatusBar="False"
+                                    ShowElapsedTime="False"
+                                    DateFormatString="dd.MM.yyyy"
+                                    FilterLanguage="Russian"
+                                    ItemsSource="{Binding ImportSchemeFiles}">
+                            <control:FilterDataGrid.Columns>
 
-                            <TextBlock Grid.Row="0"
-                                       Text="Scheme files"
-                                       Style="{StaticResource SectionTitleText}"
-                                       Margin="0,0,0,8" />
+                                <control:DataGridTemplateColumn Header="№"
+                                                    Width="50"
+                                                    IsReadOnly="True"
+                                                    IsColumnFiltered="False"
+                                                    CanUserSort="False"
+                                                    CanUserReorder="False"
+                                                    CanUserResize="True">
+                                    <control:DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
+                                                          Converter={StaticResource RowNumberConverter}}"
+                                           Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center" />
+                                        </DataTemplate>
+                                    </control:DataGridTemplateColumn.CellTemplate>
+                                </control:DataGridTemplateColumn>
 
-                            <control:FilterDataGrid Grid.Row="1"
-                                                    Style="{StaticResource ImportGrid}"
-                                                    ShowStatusBar="False"
-                                                    ShowElapsedTime="False"
-                                                    DateFormatString="dd.MM.yyyy"
-                                                    FilterLanguage="Russian"
-                                                    ItemsSource="{Binding ImportSchemeFiles}">
-                                <control:FilterDataGrid.Columns>
-                                    <control:DataGridTemplateColumn Header="№"
-                                                                    Width="50"
-                                                                    IsReadOnly="True"
-                                                                    IsColumnFiltered="False"
-                                                                    CanUserSort="False"
-                                                                    CanUserReorder="False"
-                                                                    CanUserResize="True">
-                                        <control:DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
-                                                                          Converter={StaticResource RowNumberConverter}}"
-                                                Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
-                                                           HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center"
-                                                           TextAlignment="Center" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellTemplate>
-                                    </control:DataGridTemplateColumn>
+                                <control:DataGridTextColumn Header="Source"
+                                                Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
+                                                IsColumnFiltered="True"
+                                                Width="280" />
 
-                                    <control:DataGridTemplateColumn Header="Type"
-                                                                    FieldName="Type"
-                                                                    ClipboardContentBinding="{Binding Type}"
-                                                                    SortMemberPath="Type"
-                                                                    IsColumnFiltered="True"
-                                                                    Width="140">
-                                        <control:DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <ui:TextBlock Text="{Binding Type}"
-                                                              Margin="8,0"
-                                                              VerticalAlignment="Center"
-                                                              TextTrimming="CharacterEllipsis" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellTemplate>
-                                        <control:DataGridTemplateColumn.CellEditingTemplate>
-                                            <DataTemplate>
-                                                <ComboBox ItemsSource="{Binding DataContext.ImportRuntimeTypeOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
-                                                          SelectedItem="{Binding Type, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          IsEditable="False"
-                                                          IsTextSearchEnabled="True"
-                                                          IsSynchronizedWithCurrentItem="False"
-                                                          HorizontalAlignment="Stretch"
-                                                          VerticalAlignment="Center"
-                                                          Loaded="OnOrderLookupComboBoxLoaded" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellEditingTemplate>
-                                    </control:DataGridTemplateColumn>
+                                <control:DataGridTextColumn Header="Station"
+                                                Binding="{Binding Station, UpdateSourceTrigger=PropertyChanged}"
+                                                IsColumnFiltered="True"
+                                                Width="220" />
 
-                                    <control:DataGridTextColumn Header="Source"
-                                                                Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
-                                                                IsColumnFiltered="True"
-                                                                Width="280" />
+                                <control:DataGridTextColumn Header="Group"
+                                                Binding="{Binding GroupNames, UpdateSourceTrigger=PropertyChanged}"
+                                                IsColumnFiltered="True"
+                                                Width="220" />
 
-                                    <control:DataGridTextColumn Header="Description"
-                                                                Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
-                                                                IsColumnFiltered="True"
-                                                                Width="*" />
-                                </control:FilterDataGrid.Columns>
-                            </control:FilterDataGrid>
-                        </Grid>
-                    </views:MaintenanceSection>
+                                <control:DataGridTextColumn Header="Equipment"
+                                                Binding="{Binding Equipments, UpdateSourceTrigger=PropertyChanged}"
+                                                IsColumnFiltered="True"
+                                                Width="*" />
 
-                    <views:MaintenanceSection Grid.Row="2">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <TextBlock Grid.Row="0"
-                                       Text="Equipment links"
-                                       Style="{StaticResource SectionTitleText}"
-                                       Margin="0,0,0,8" />
-
-                            <control:FilterDataGrid Grid.Row="1"
-                                                    Style="{StaticResource ImportGrid}"
-                                                    ShowStatusBar="False"
-                                                    ShowElapsedTime="False"
-                                                    DateFormatString="dd.MM.yyyy"
-                                                    FilterLanguage="Russian"
-                                                    ItemsSource="{Binding ImportSchemeLinks}">
-                                <control:FilterDataGrid.Columns>
-                                    <control:DataGridTemplateColumn Header="№"
-                                                                    Width="50"
-                                                                    IsReadOnly="True"
-                                                                    IsColumnFiltered="False"
-                                                                    CanUserSort="False"
-                                                                    CanUserReorder="False"
-                                                                    CanUserResize="True">
-                                        <control:DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
-                                                                          Converter={StaticResource RowNumberConverter}}"
-                                                Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
-                                                           HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center"
-                                                           TextAlignment="Center" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellTemplate>
-                                    </control:DataGridTemplateColumn>
-
-                                    <control:DataGridTemplateColumn Header="Station"
-                                                                    FieldName="Station"
-                                                                    ClipboardContentBinding="{Binding Station}"
-                                                                    SortMemberPath="Station"
-                                                                    IsColumnFiltered="True"
-                                                                    Width="140">
-                                        <control:DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <ui:TextBlock Text="{Binding Station}"
-                                                              Margin="8,0"
-                                                              VerticalAlignment="Center"
-                                                              TextTrimming="CharacterEllipsis" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellTemplate>
-                                        <control:DataGridTemplateColumn.CellEditingTemplate>
-                                            <DataTemplate>
-                                                <ComboBox ItemsSource="{Binding DataContext.ImportRuntimeStationOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
-                                                          SelectedItem="{Binding Station, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          IsEditable="False"
-                                                          IsTextSearchEnabled="True"
-                                                          IsSynchronizedWithCurrentItem="False"
-                                                          HorizontalAlignment="Stretch"
-                                                          VerticalAlignment="Center"
-                                                          Loaded="OnOrderLookupComboBoxLoaded" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellEditingTemplate>
-                                    </control:DataGridTemplateColumn>
-
-                                    <control:DataGridTemplateColumn Header="Type"
-                                                                    FieldName="Type"
-                                                                    ClipboardContentBinding="{Binding Type}"
-                                                                    SortMemberPath="Type"
-                                                                    IsColumnFiltered="True"
-                                                                    Width="120">
-                                        <control:DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <ui:TextBlock Text="{Binding Type}"
-                                                              Margin="8,0"
-                                                              VerticalAlignment="Center"
-                                                              TextTrimming="CharacterEllipsis" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellTemplate>
-                                        <control:DataGridTemplateColumn.CellEditingTemplate>
-                                            <DataTemplate>
-                                                <ComboBox ItemsSource="{Binding DataContext.ImportRuntimeTypeOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
-                                                          SelectedItem="{Binding Type, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          IsEditable="False"
-                                                          IsTextSearchEnabled="True"
-                                                          IsSynchronizedWithCurrentItem="False"
-                                                          HorizontalAlignment="Stretch"
-                                                          VerticalAlignment="Center"
-                                                          Loaded="OnOrderLookupComboBoxLoaded" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellEditingTemplate>
-                                    </control:DataGridTemplateColumn>
-
-                                    <control:DataGridTemplateColumn Header="Equipment"
-                                                                    FieldName="Equipment"
-                                                                    ClipboardContentBinding="{Binding Equipment}"
-                                                                    SortMemberPath="Equipment"
-                                                                    IsColumnFiltered="True"
-                                                                    Width="220">
-                                        <control:DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <ui:TextBlock Text="{Binding Equipment}"
-                                                              Margin="8,0"
-                                                              VerticalAlignment="Center"
-                                                              TextTrimming="CharacterEllipsis" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellTemplate>
-                                        <control:DataGridTemplateColumn.CellEditingTemplate>
-                                            <DataTemplate>
-                                                <ComboBox ItemsSource="{Binding DataContext.ImportRuntimeEquipmentOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
-                                                          SelectedItem="{Binding Equipment, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          IsEditable="False"
-                                                          IsTextSearchEnabled="True"
-                                                          IsSynchronizedWithCurrentItem="False"
-                                                          HorizontalAlignment="Stretch"
-                                                          VerticalAlignment="Center"
-                                                          Loaded="OnOrderLookupComboBoxLoaded" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellEditingTemplate>
-                                    </control:DataGridTemplateColumn>
-
-                                    <control:DataGridTemplateColumn Header="Scheme"
-                                                                    FieldName="Scheme"
-                                                                    ClipboardContentBinding="{Binding Scheme}"
-                                                                    SortMemberPath="Scheme"
-                                                                    IsColumnFiltered="True"
-                                                                    Width="260">
-                                        <control:DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <ui:TextBlock Text="{Binding Scheme}"
-                                                              Margin="8,0"
-                                                              VerticalAlignment="Center"
-                                                              TextTrimming="CharacterEllipsis" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellTemplate>
-                                        <control:DataGridTemplateColumn.CellEditingTemplate>
-                                            <DataTemplate>
-                                                <ComboBox ItemsSource="{Binding DataContext.ImportSchemeSourceOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
-                                                          SelectedItem="{Binding Scheme, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          IsEditable="False"
-                                                          IsTextSearchEnabled="True"
-                                                          IsSynchronizedWithCurrentItem="False"
-                                                          HorizontalAlignment="Stretch"
-                                                          VerticalAlignment="Center"
-                                                          Loaded="OnOrderLookupComboBoxLoaded" />
-                                            </DataTemplate>
-                                        </control:DataGridTemplateColumn.CellEditingTemplate>
-                                    </control:DataGridTemplateColumn>
-
-                                    <control:DataGridTextColumn Header="Description"
-                                                                Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
-                                                                IsColumnFiltered="True"
-                                                                Width="*" />
-                                </control:FilterDataGrid.Columns>
-                            </control:FilterDataGrid>
-                        </Grid>
+                            </control:FilterDataGrid.Columns>
+                        </control:FilterDataGrid>
                     </views:MaintenanceSection>
                 </Grid>
             </TabItem>
+
         </TabControl>
 
         <!--

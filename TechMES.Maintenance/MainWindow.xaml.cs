@@ -210,6 +210,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     public ObservableCollection<string> ImportRuntimeStationOptions { get; } = [];
 
     /// <summary>
+    /// Runtime Group lookup values reused by SCHEME.
+    /// </summary>
+    public ObservableCollection<string> ImportRuntimeGroupOptions { get; } = [];
+
+    /// <summary>
     /// Runtime Type lookup values reused by ORDERS, INSTRUCTION and SCHEME.
     /// </summary>
     public ObservableCollection<string> ImportRuntimeTypeOptions { get; } = [];

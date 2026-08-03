@@ -225,6 +225,24 @@ public sealed class PostgreSqlDatabaseBootstrapper
             CONSTRAINT uq_equip_scheme_hash UNIQUE (file_hash)
         );
 
+        ALTER TABLE public.equip_scheme
+        ADD COLUMN IF NOT EXISTS station text NULL;
+
+        ALTER TABLE public.equip_scheme
+        ADD COLUMN IF NOT EXISTS group_names text NULL;
+
+        ALTER TABLE public.equip_scheme
+        ADD COLUMN IF NOT EXISTS equipments text NULL;
+
+        COMMENT ON COLUMN public.equip_scheme.station
+        IS 'SCHEME station targets. Several values can be separated with comma or semicolon.';
+
+        COMMENT ON COLUMN public.equip_scheme.group_names
+        IS 'SCHEME group targets. Several values can be separated with comma or semicolon.';
+
+        COMMENT ON COLUMN public.equip_scheme.equipments
+        IS 'SCHEME equipment targets. Several values can be separated with comma or semicolon.';
+
         CREATE TABLE IF NOT EXISTS public.equip_info_photo
         (
             equip_name text NOT NULL REFERENCES public.equip_info(equip_name) ON DELETE CASCADE,
