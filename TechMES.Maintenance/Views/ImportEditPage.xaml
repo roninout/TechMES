@@ -302,8 +302,6 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
                                 <StackPanel Grid.Row="0" Margin="0,0,0,10">
@@ -428,20 +426,6 @@
                                                Click="OnBrowseImportSourceClick" />
                                 </Grid>
 
-                                <TextBlock Grid.Row="7"
-                                           Text="{Binding ImportExcelStatusText}"
-                                           Margin="0,10,0,0"
-                                           HorizontalAlignment="Center"
-                                           Style="{StaticResource MutedText}"
-                                           TextWrapping="Wrap" />
-
-                                <ui:Button Grid.Row="8"
-                                           Content="Save"
-                                           MinWidth="120"
-                                           Margin="0,12,0,0"
-                                           HorizontalAlignment="Right"
-                                           Appearance="Primary"
-                                           Click="OnSaveImportSourcePathsClick" />
                             </Grid>
                         </views:MaintenanceCard>
                     </StackPanel>
@@ -1464,17 +1448,6 @@
                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="0,1,0,0">
-            <Border.Style>
-                <Style TargetType="Border">
-                    <Setter Property="Visibility" Value="Visible" />
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsSelected, ElementName=ImportTab}"
-                                     Value="True">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </Border.Style>
 
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -1591,6 +1564,30 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
+
+                    <!-- IMPORT: Status -->
+                    <TextBlock Grid.Row="0"
+                               Text="{Binding ImportExcelStatusText}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               TextAlignment="Center"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis">
+                        
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock"
+                                        BasedOn="{StaticResource MutedText}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsSelected, ElementName=ImportTab}"
+                                    Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                    </TextBlock>
+
 
                     <TextBlock Grid.Row="0"
                                Text="{Binding ImportSupplierStatusText}"
@@ -1711,6 +1708,31 @@
 
                     </ProgressBar>
                 </Grid>
+
+                <!-- IMPORT: Save source folders -->
+                <ui:Button Grid.Column="2"
+           Content="Save"
+           Width="130"
+           Height="34"
+           HorizontalAlignment="Right"
+           VerticalAlignment="Center"
+           Appearance="Primary"
+           Click="OnSaveImportSourcePathsClick">
+
+                    <ui:Button.Style>
+                        <Style TargetType="{x:Type ui:Button}"
+               BasedOn="{StaticResource TechMesDefaultButtonStyle}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSelected, ElementName=ImportTab}"
+                             Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ui:Button.Style>
+
+                </ui:Button>
 
                 <!-- SUPPLIER: Save -->
                 <ui:Button Grid.Column="2"
