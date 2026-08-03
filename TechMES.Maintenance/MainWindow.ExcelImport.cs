@@ -77,7 +77,8 @@ public partial class MainWindow
                 "",
                 "",
                 prepared.SchemeFiles,
-                prepared.SchemeLinks);
+                prepared.SchemeLinks,
+                preserveExistingTargetsAndLinks: true);
 
             await RefreshImportSuppliersAsync();
             await RefreshImportOrdersAsync();

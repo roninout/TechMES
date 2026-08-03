@@ -492,13 +492,18 @@ public sealed class InfoImportEditStore
 
     /// <summary>
     /// Saves scheme library files, stores Station/Group/Equipment scope columns
-    /// and rebuilds public.equip_info_scheme links for the edited scheme files.
+    /// and rebuilds or extends public.equip_info_scheme links.
     ///
-    /// Existing DB scheme rows do not require the physical PDF file to exist on disk.
-    /// If Source points to an existing file, the binary library row is created/updated.
-    /// If Source is only an existing DB file_name, only scope columns and links are updated.
+    /// preserveExistingTargetsAndLinks = false:
+    ///     Manual SCHEME tab Save. UI table is the master source,
+    ///     so scope columns and links are replaced.
+    ///
+    /// preserveExistingTargetsAndLinks = true:
+    ///     Excel import. Existing DB scope columns and links are preserved,
+    ///     Excel values are merged into station/group_names/equipments,
+    ///     and only new links are added.
     /// </summary>
-    public async Task<int> SaveSchemesAsync(string connectionString, string pdfSourceRoot, string imageSourceRoot, IEnumerable<ImportSchemeFileRowViewModel> files, IEnumerable<ImportSchemeLinkRowViewModel> links, CancellationToken cancellationToken = default)
+    public async Task<int> SaveSchemesAsync(string connectionString, string pdfSourceRoot, string imageSourceRoot, IEnumerable<ImportSchemeFileRowViewModel> files, IEnumerable<ImportSchemeLinkRowViewModel> links, bool preserveExistingTargetsAndLinks = false, CancellationToken cancellationToken = default)
     {
         var cleanFiles = MergeSchemeFileRows(files);
 
@@ -536,13 +541,34 @@ public sealed class InfoImportEditStore
 
                 schemeIdsForCurrentRows.Add(schemeId);
 
+                var station = file.Station;
+                var groupNames = file.GroupNames;
+                var equipments = file.Equipments;
+
+                /*
+                 * Excel import must not wipe manually edited DB values.
+                 * Therefore we merge DB scope columns with imported values.
+                 */
+                if (preserveExistingTargetsAndLinks)
+                {
+                    var existingScope = await LoadSchemeScopeAsync(
+                        connection,
+                        transaction,
+                        schemeId,
+                        cancellationToken);
+
+                    station = MergeDelimitedText(new[] { existingScope.Station, file.Station });
+                    groupNames = MergeDelimitedText(new[] { existingScope.GroupNames, file.GroupNames });
+                    equipments = MergeDelimitedText(new[] { existingScope.Equipments, file.Equipments });
+                }
+
                 await UpdateSchemeScopeAsync(
                     connection,
                     transaction,
                     schemeId,
-                    file.Station,
-                    file.GroupNames,
-                    file.Equipments,
+                    station,
+                    groupNames,
+                    equipments,
                     cancellationToken);
 
                 var fileName = Path.GetFileName(file.Source.Trim());
@@ -595,15 +621,17 @@ public sealed class InfoImportEditStore
             }
 
             /*
-             * SCHEME tab is now the master editor for scheme-file targets.
-             * For every scheme row currently saved we first remove old links,
-             * then insert rebuilt links from Station/Group/Equipment columns.
+             * Manual SCHEME tab Save is a full replacement.
+             * Excel import is additive and must not remove existing DB links.
              */
-            await DeleteSchemeLinksForSchemeIdsAsync(
-                connection,
-                transaction,
-                schemeIdsForCurrentRows,
-                cancellationToken);
+            if (!preserveExistingTargetsAndLinks)
+            {
+                await DeleteSchemeLinksForSchemeIdsAsync(
+                    connection,
+                    transaction,
+                    schemeIdsForCurrentRows,
+                    cancellationToken);
+            }
 
             await EnsureDocumentLinksAsync(
                 connection,
@@ -621,6 +649,42 @@ public sealed class InfoImportEditStore
             await transaction.RollbackAsync(cancellationToken);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Current scope columns stored in public.equip_scheme.
+    /// </summary>
+    private sealed record SchemeScopeValues(string Station, string GroupNames, string Equipments);
+
+    /// <summary>
+    /// Reads existing Station/Group/Equipment scope columns for one scheme row.
+    /// Used by Excel import merge mode so import does not wipe manual DB changes.
+    /// </summary>
+    private static async Task<SchemeScopeValues> LoadSchemeScopeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long schemeId, CancellationToken cancellationToken)
+    {
+        const string sql = """
+        SELECT
+            COALESCE(station, '') AS station,
+            COALESCE(group_names, '') AS group_names,
+            COALESCE(equipments, '') AS equipments
+        FROM public.equip_scheme
+        WHERE id = @id
+        LIMIT 1;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("id", schemeId);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return new SchemeScopeValues("", "", "");
+        }
+
+        return new SchemeScopeValues(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2));
     }
 
     /// <summary>
