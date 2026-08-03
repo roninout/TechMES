@@ -423,7 +423,9 @@ public sealed class InfoImportEditStore
             COALESCE(group_names, '') AS group_names,
             COALESCE(equipments, '') AS equipments
         FROM public.equip_scheme
-        ORDER BY file_name;
+        ORDER BY
+            lower(NULLIF(btrim(station), '')) NULLS LAST,
+            lower(file_name);
         """;
 
         var result = new List<ImportSchemeFileRowViewModel>();

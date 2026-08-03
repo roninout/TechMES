@@ -474,6 +474,157 @@ public partial class MainWindow
     }
 
     /// <summary>
+    /// Opens the SCHEME PDF file picker from the Source cell editor.
+    ///
+    /// PreviewMouseLeftButtonDown is used instead of Click so DataGrid does not
+    /// destroy the CellEditingTemplate before the file dialog is opened.
+    /// </summary>
+    private void OnBrowseSchemeSourceFilePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left)
+            return;
+
+        /*
+         * Не передаём нажатие дальше DataGrid.
+         * Иначе таблица может завершить редактирование ячейки раньше времени.
+         */
+        e.Handled = true;
+
+        if (sender is not FrameworkElement
+            {
+                DataContext: ImportSchemeFileRowViewModel row
+            })
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Choose SCHEME PDF file",
+            Filter = "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*",
+            DefaultExt = ".pdf",
+            CheckFileExists = true,
+            CheckPathExists = true,
+            Multiselect = false,
+            RestoreDirectory = true
+        };
+
+        /*
+         * Основной стартовый путь уже известен из IMPORT:
+         * SchemePdfSourceRoot.
+         */
+        if (Directory.Exists(SchemePdfSourceRoot))
+        {
+            dialog.InitialDirectory = SchemePdfSourceRoot;
+        }
+
+        /*
+         * Если в строке уже выбран существующий абсолютный файл,
+         * открываем диалог в его папке.
+         */
+        if (!string.IsNullOrWhiteSpace(row.Source))
+        {
+            try
+            {
+                var currentSource = row.Source.Trim();
+
+                var currentFullPath = Path.IsPathRooted(currentSource)
+                    ? currentSource
+                    : Path.Combine(SchemePdfSourceRoot, currentSource);
+
+                if (File.Exists(currentFullPath))
+                {
+                    var currentDirectory =
+                        Path.GetDirectoryName(currentFullPath);
+
+                    if (!string.IsNullOrWhiteSpace(currentDirectory)
+                        && Directory.Exists(currentDirectory))
+                    {
+                        dialog.InitialDirectory = currentDirectory;
+                    }
+
+                    dialog.FileName =
+                        Path.GetFileName(currentFullPath);
+                }
+                else
+                {
+                    /*
+                     * Даже когда физический файл сейчас отсутствует,
+                     * показываем существующее имя в поле File name.
+                     */
+                    dialog.FileName =
+                        Path.GetFileName(currentSource);
+                }
+            }
+            catch
+            {
+                /*
+                 * Некорректное старое значение Source не должно
+                 * блокировать выбор нового файла.
+                 */
+            }
+        }
+
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        /*
+         * Если файл находится внутри SchemePdfSourceRoot,
+         * записываем относительный путь.
+         *
+         * Для файла непосредственно в корне это будет только:
+         *     SomeScheme.pdf
+         *
+         * Для подпапки:
+         *     S01\SomeScheme.pdf
+         *
+         * Если пользователь выбрал файл вне настроенного корня,
+         * сохраняем абсолютный путь, чтобы Save всё равно смог его прочитать.
+         */
+        row.Source = GetSchemeSourceValue(dialog.FileName);
+
+        ImportSchemeStatusText = $"SCHEME PDF selected: {Path.GetFileName(dialog.FileName)}";
+    }
+
+    /// <summary>
+    /// Converts the selected SCHEME PDF path to a value suitable for the Source column.
+    ///
+    /// Files inside SchemePdfSourceRoot are stored as relative paths.
+    /// Files outside the configured root are kept as absolute paths.
+    /// </summary>
+    private string GetSchemeSourceValue(string selectedFilePath)
+    {
+        var selectedFullPath =
+            Path.GetFullPath(selectedFilePath);
+
+        if (string.IsNullOrWhiteSpace(SchemePdfSourceRoot)
+            || !Directory.Exists(SchemePdfSourceRoot))
+        {
+            return selectedFullPath;
+        }
+
+        var rootFullPath =
+            Path.GetFullPath(SchemePdfSourceRoot);
+
+        var relativePath =
+            Path.GetRelativePath(rootFullPath, selectedFullPath);
+
+        var isOutsideRoot =
+            string.Equals(
+                relativePath,
+                "..",
+                StringComparison.OrdinalIgnoreCase)
+            || relativePath.StartsWith(
+                $"..{Path.DirectorySeparatorChar}",
+                StringComparison.OrdinalIgnoreCase)
+            || Path.IsPathRooted(relativePath);
+
+        return isOutsideRoot
+            ? selectedFullPath
+            : relativePath;
+    }
+
+    /// <summary>
     /// Persists the SCHEME PDF source folder after manual path editing.
     /// </summary>
     private void OnSchemePdfSourceLostFocus(object sender, RoutedEventArgs e)

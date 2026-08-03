@@ -167,6 +167,7 @@ public class MaintenancePageControl : UserControl
     public void OnRefreshImportSchemesClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnSaveImportSchemesClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnBrowseSchemePdfSourceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnBrowseSchemeSourceFilePreviewMouseLeftButtonDown(object sender,MouseButtonEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnSchemePdfSourceLostFocus(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnImportGridPreviewKeyDown(object sender, KeyEventArgs e) => ForwardKeyEvent(sender, e);
 

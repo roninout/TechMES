@@ -47,11 +47,11 @@
     чтобы секция занимала всю выделенную ей строку Grid.
     -->
     <!--
-Секция Maintenance в стиле WPF UI Gallery:
+    Секция Maintenance в стиле WPF UI Gallery:
 
-Заголовок расположен над карточкой,
-а содержимое — внутри ui:Card.
--->
+    Заголовок расположен над карточкой,
+    а содержимое — внутри ui:Card.
+    -->
     <Style TargetType="{x:Type views:MaintenanceSection}">
 
         <Setter Property="Padding"

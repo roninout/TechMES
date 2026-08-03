@@ -1207,10 +1207,60 @@
                                     </control:DataGridTemplateColumn.CellTemplate>
                                 </control:DataGridTemplateColumn>
 
-                                <control:DataGridTextColumn Header="Source"
-                                                            Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
-                                                            IsColumnFiltered="True"
-                                                            Width="*" />
+                                <control:DataGridTemplateColumn Header="Source"
+                                                                FieldName="Source"
+                                                                ClipboardContentBinding="{Binding Source}"
+                                                                SortMemberPath="Source"
+                                                                IsColumnFiltered="True"
+                                                                CanUserResize="True"
+                                                                Width="*">
+
+                                    <!-- Обычный режим просмотра. -->
+                                    <control:DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ui:TextBlock Text="{Binding Source}"
+                                                          Margin="8,0"
+                                                          VerticalAlignment="Center"
+                                                          TextTrimming="CharacterEllipsis"
+                                                          ToolTip="{Binding Source}" />
+                                        </DataTemplate>
+                                    </control:DataGridTemplateColumn.CellTemplate>
+
+                                    <!--
+                                    Режим редактирования после двойного клика:
+                                    TextBox слева и кнопка выбора PDF справа.
+                                    -->
+                                    <control:DataGridTemplateColumn.CellEditingTemplate>
+                                        <DataTemplate>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBox Grid.Column="0"
+                                                         Text="{Binding Source, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         Height="28"
+                                                         Margin="0,0,4,0"
+                                                         Padding="6,2"
+                                                         VerticalContentAlignment="Center"
+                                                         HorizontalAlignment="Stretch" />
+
+                                                <ui:Button Grid.Column="1"
+                                                           Content="..."
+                                                           Width="36"
+                                                           Height="28"
+                                                           MinWidth="0"
+                                                           Padding="0"
+                                                           Focusable="False"
+                                                           Appearance="Secondary"
+                                                           ToolTip="Choose SCHEME PDF file"
+                                                           PreviewMouseLeftButtonDown="OnBrowseSchemeSourceFilePreviewMouseLeftButtonDown" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </control:DataGridTemplateColumn.CellEditingTemplate>
+
+                                </control:DataGridTemplateColumn>
 
                                 <control:DataGridTemplateColumn Header="Station"
                                                                 FieldName="Station"
