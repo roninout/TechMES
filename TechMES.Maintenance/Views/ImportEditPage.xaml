@@ -6,6 +6,7 @@
                               xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                               xmlns:control="http://filterdatagrid.control.com/2021"
                               xmlns:views="clr-namespace:TechMES.Maintenance.Views"
+                              xmlns:controls="clr-namespace:TechMES.Maintenance.Controls"
                               xmlns:converters="clr-namespace:TechMES.Maintenance.Converters"
                               mc:Ignorable="d">
     <views:MaintenancePageControl.Resources>
@@ -1212,20 +1213,89 @@
                                                 IsColumnFiltered="True"
                                                 Width="280" />
 
-                                <control:DataGridTextColumn Header="Station"
-                                                Binding="{Binding Station, UpdateSourceTrigger=PropertyChanged}"
-                                                IsColumnFiltered="True"
-                                                Width="220" />
+                                <control:DataGridTemplateColumn Header="Station"
+                                                                FieldName="Station"
+                                                                ClipboardContentBinding="{Binding Station}"
+                                                                SortMemberPath="Station"
+                                                                IsColumnFiltered="True"
+                                                                CanUserResize="True"
+                                                                Width="220">
+                                    <control:DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ui:TextBlock Text="{Binding Station}"
+                                                          Margin="8,0"
+                                                          VerticalAlignment="Center"
+                                                          TextTrimming="CharacterEllipsis"
+                                                          ToolTip="{Binding Station}" />
+                                        </DataTemplate>
+                                    </control:DataGridTemplateColumn.CellTemplate>
 
-                                <control:DataGridTextColumn Header="Group"
-                                                Binding="{Binding GroupNames, UpdateSourceTrigger=PropertyChanged}"
-                                                IsColumnFiltered="True"
-                                                Width="220" />
+                                    <control:DataGridTemplateColumn.CellEditingTemplate>
+                                        <DataTemplate>
+                                            <controls:MultiSelectComboBox SelectedText="{Binding Station, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                          ItemsSource="{Binding DataContext.ImportRuntimeStationOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
+                                                                          Placeholder="Select stations..."
+                                                                          HorizontalAlignment="Stretch"
+                                                                          VerticalAlignment="Center" />
+                                        </DataTemplate>
+                                    </control:DataGridTemplateColumn.CellEditingTemplate>
+                                </control:DataGridTemplateColumn>
 
-                                <control:DataGridTextColumn Header="Equipment"
-                                                Binding="{Binding Equipments, UpdateSourceTrigger=PropertyChanged}"
-                                                IsColumnFiltered="True"
-                                                Width="*" />
+                                <control:DataGridTemplateColumn Header="Group"
+                                                                FieldName="GroupNames"
+                                                                ClipboardContentBinding="{Binding GroupNames}"
+                                                                SortMemberPath="GroupNames"
+                                                                IsColumnFiltered="True"
+                                                                CanUserResize="True"
+                                                                Width="240">
+                                    <control:DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ui:TextBlock Text="{Binding GroupNames}"
+                                                          Margin="8,0"
+                                                          VerticalAlignment="Center"
+                                                          TextTrimming="CharacterEllipsis"
+                                                          ToolTip="{Binding GroupNames}" />
+                                        </DataTemplate>
+                                    </control:DataGridTemplateColumn.CellTemplate>
+
+                                    <control:DataGridTemplateColumn.CellEditingTemplate>
+                                        <DataTemplate>
+                                            <controls:MultiSelectComboBox SelectedText="{Binding GroupNames, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                          ItemsSource="{Binding DataContext.ImportRuntimeGroupOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
+                                                                          Placeholder="Select groups..."
+                                                                          HorizontalAlignment="Stretch"
+                                                                          VerticalAlignment="Center" />
+                                        </DataTemplate>
+                                    </control:DataGridTemplateColumn.CellEditingTemplate>
+                                </control:DataGridTemplateColumn>
+
+                                <control:DataGridTemplateColumn Header="Equipment"
+                                                                FieldName="Equipments"
+                                                                ClipboardContentBinding="{Binding Equipments}"
+                                                                SortMemberPath="Equipments"
+                                                                IsColumnFiltered="True"
+                                                                CanUserResize="True"
+                                                                Width="*">
+                                    <control:DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ui:TextBlock Text="{Binding Equipments}"
+                                                          Margin="8,0"
+                                                          VerticalAlignment="Center"
+                                                          TextTrimming="CharacterEllipsis"
+                                                          ToolTip="{Binding Equipments}" />
+                                        </DataTemplate>
+                                    </control:DataGridTemplateColumn.CellTemplate>
+
+                                    <control:DataGridTemplateColumn.CellEditingTemplate>
+                                        <DataTemplate>
+                                            <controls:MultiSelectComboBox SelectedText="{Binding Equipments, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                          ItemsSource="{Binding DataContext.ImportRuntimeEquipmentOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
+                                                                          Placeholder="Select equipment..."
+                                                                          HorizontalAlignment="Stretch"
+                                                                          VerticalAlignment="Center" />
+                                        </DataTemplate>
+                                    </control:DataGridTemplateColumn.CellEditingTemplate>
+                                </control:DataGridTemplateColumn>
 
                             </control:FilterDataGrid.Columns>
                         </control:FilterDataGrid>
