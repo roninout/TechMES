@@ -1198,20 +1198,19 @@
                                                     CanUserResize="True">
                                     <control:DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
-                                                          Converter={StaticResource RowNumberConverter}}"
-                                           Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           TextAlignment="Center" />
+                                            <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}}, Converter={StaticResource RowNumberConverter}}"
+                                                       Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       TextAlignment="Center" />
                                         </DataTemplate>
                                     </control:DataGridTemplateColumn.CellTemplate>
                                 </control:DataGridTemplateColumn>
 
                                 <control:DataGridTextColumn Header="Source"
-                                                Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
-                                                IsColumnFiltered="True"
-                                                Width="280" />
+                                                            Binding="{Binding Source, UpdateSourceTrigger=PropertyChanged}"
+                                                            IsColumnFiltered="True"
+                                                            Width="*" />
 
                                 <control:DataGridTemplateColumn Header="Station"
                                                                 FieldName="Station"
@@ -1219,7 +1218,7 @@
                                                                 SortMemberPath="Station"
                                                                 IsColumnFiltered="True"
                                                                 CanUserResize="True"
-                                                                Width="220">
+                                                                Width="100">
                                     <control:DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <ui:TextBlock Text="{Binding Station}"
@@ -1247,7 +1246,7 @@
                                                                 SortMemberPath="GroupNames"
                                                                 IsColumnFiltered="True"
                                                                 CanUserResize="True"
-                                                                Width="240">
+                                                                Width="200">
                                     <control:DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <ui:TextBlock Text="{Binding GroupNames}"
@@ -1275,7 +1274,7 @@
                                                                 SortMemberPath="Equipments"
                                                                 IsColumnFiltered="True"
                                                                 CanUserResize="True"
-                                                                Width="*">
+                                                                Width="200">
                                     <control:DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <ui:TextBlock Text="{Binding Equipments}"

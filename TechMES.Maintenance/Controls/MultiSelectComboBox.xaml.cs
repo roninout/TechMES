@@ -48,6 +48,17 @@ public partial class MultiSelectComboBox : UserControl
         {
             _ownerWindow.PreviewMouseDown -= OnOwnerWindowPreviewMouseDown;
             _ownerWindow.PreviewMouseDown += OnOwnerWindowPreviewMouseDown;
+
+            /*
+             * Filter input must be handled at Window level.
+             * The DataGrid keeps keyboard focus while the popup is open,
+             * so PreviewTextInput on this UserControl may never fire.
+             */
+            _ownerWindow.PreviewTextInput -= OnOwnerWindowPreviewTextInput;
+            _ownerWindow.PreviewTextInput += OnOwnerWindowPreviewTextInput;
+
+            _ownerWindow.PreviewKeyDown -= OnOwnerWindowPreviewKeyDown;
+            _ownerWindow.PreviewKeyDown += OnOwnerWindowPreviewKeyDown;
         }
     }
 
@@ -59,6 +70,8 @@ public partial class MultiSelectComboBox : UserControl
         if (_ownerWindow is not null)
         {
             _ownerWindow.PreviewMouseDown -= OnOwnerWindowPreviewMouseDown;
+            _ownerWindow.PreviewTextInput -= OnOwnerWindowPreviewTextInput;
+            _ownerWindow.PreviewKeyDown -= OnOwnerWindowPreviewKeyDown;
             _ownerWindow = null;
         }
     }
@@ -401,6 +414,26 @@ public partial class MultiSelectComboBox : UserControl
     }
 
     /// <summary>
+    /// Closes dropdown by operator confirmation.
+    /// Selection is already written to SelectedText when checkboxes are changed,
+    /// so OK only closes the popup and clears temporary filter text.
+    /// </summary>
+    private void OnOkPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        SetCurrentValue(FilterTextProperty, "");
+        SetCurrentValue(IsDropDownOpenProperty, false);
+
+        /*
+         * Do not move focus to the Popup button.
+         * Keep focus in the DataGrid cell editor and only close the dropdown.
+         */
+        PART_ToggleButton.Focus();
+        Keyboard.Focus(PART_ToggleButton);
+
+        e.Handled = true;
+    }
+
+    /// <summary>
     /// Keeps focus on the dropdown toggle when operator clicks the pseudo search field.
     /// A real TextBox focus would close DataGrid cell editing.
     /// </summary>
@@ -409,14 +442,50 @@ public partial class MultiSelectComboBox : UserControl
         if (!IsDropDownOpen)
             IsDropDownOpen = true;
 
-        PART_ToggleButton.Focus();
+        /*
+         * The filter box is visual only. Keep keyboard focus inside the cell editor,
+         * otherwise DataGrid will commit/cancel editing and destroy the popup.
+         */
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Input,
+            new Action(() =>
+            {
+                PART_ToggleButton.Focus();
+                Keyboard.Focus(PART_ToggleButton);
+            }));
+
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// Window-level text input handler.
+    /// Used because keyboard focus can stay on DataGridCell, not on this UserControl.
+    /// </summary>
+    private void OnOwnerWindowPreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        HandleFilterPreviewTextInput(e);
+    }
+
+    /// <summary>
+    /// Window-level key handler for Backspace/Delete/Escape/Space in pseudo filter.
+    /// </summary>
+    private void OnOwnerWindowPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        HandleFilterPreviewKeyDown(e);
     }
 
     /// <summary>
     /// Adds typed characters to the pseudo filter while dropdown is open.
     /// </summary>
     private void OnFilterPreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        HandleFilterPreviewTextInput(e);
+    }
+
+    /// <summary>
+    /// Adds typed characters to the pseudo filter while dropdown is open.
+    /// </summary>
+    private void HandleFilterPreviewTextInput(TextCompositionEventArgs e)
     {
         if (!IsDropDownOpen)
             return;
@@ -433,6 +502,14 @@ public partial class MultiSelectComboBox : UserControl
     /// </summary>
     private void OnFilterPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        HandleFilterPreviewKeyDown(e);
+    }
+
+    /// <summary>
+    /// Handles filter editing keys without moving focus into Popup.
+    /// </summary>
+    private void HandleFilterPreviewKeyDown(KeyEventArgs e)
+    {
         if (!IsDropDownOpen)
             return;
 
@@ -446,8 +523,20 @@ public partial class MultiSelectComboBox : UserControl
                 break;
 
             case Key.Delete:
-            case Key.Escape:
                 SetCurrentValue(FilterTextProperty, "");
+                e.Handled = true;
+                break;
+
+            case Key.Escape:
+                if (!string.IsNullOrEmpty(FilterText))
+                {
+                    SetCurrentValue(FilterTextProperty, "");
+                }
+                else
+                {
+                    IsDropDownOpen = false;
+                }
+
                 e.Handled = true;
                 break;
 
