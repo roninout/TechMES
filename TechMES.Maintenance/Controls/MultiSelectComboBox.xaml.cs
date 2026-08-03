@@ -64,17 +64,36 @@ public partial class MultiSelectComboBox : UserControl
 
     /// <summary>
     /// Closes dropdown when user clicks outside the editor.
-    /// Clicks inside the popup do not pass through this Window event because Popup is a separate HWND.
+    /// Popup is rendered in a separate WPF window, therefore PART_Popup.IsMouseOver
+    /// is not reliable enough. We check Popup.Child.IsMouseOver instead.
     /// </summary>
     private void OnOwnerWindowPreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (!IsDropDownOpen)
             return;
 
-        if (IsMouseOver || PART_ToggleButton.IsMouseOver || PART_Popup.IsMouseOver)
+        if (IsMouseInsideEditorOrPopup())
             return;
 
         IsDropDownOpen = false;
+    }
+
+    /// <summary>
+    /// Returns true when mouse is over the cell editor itself or over the popup content.
+    /// This prevents closing the popup when operator clicks Search, CheckBox or Clear.
+    /// </summary>
+    private bool IsMouseInsideEditorOrPopup()
+    {
+        if (IsMouseOver || PART_ToggleButton.IsMouseOver)
+            return true;
+
+        if (PART_Popup.Child is FrameworkElement popupChild
+            && popupChild.IsMouseOver)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -319,7 +338,26 @@ public partial class MultiSelectComboBox : UserControl
         UpdateSelectedTextFromItems();
     }
 
-    private void OnClearClick(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Clears selected values before focus can leave the DataGrid editing cell.
+    /// We use PreviewMouseDown instead of Click because Click may not fire when DataGrid
+    /// commits/cancels editing after focus moves to the Popup button.
+    /// </summary>
+    private void OnClearPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        ClearSelection();
+
+        // Оставляем dropdown открытым, чтобы оператор сразу видел очищенный список.
+        IsDropDownOpen = true;
+
+        // Не даём клику увести фокус из DataGrid editor до выполнения очистки.
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Clears all selected items and writes an empty string back to SelectedText binding.
+    /// </summary>
+    private void ClearSelection()
     {
         _isInternalUpdate = true;
         try

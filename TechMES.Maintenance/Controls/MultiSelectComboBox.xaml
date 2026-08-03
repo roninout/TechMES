@@ -174,15 +174,25 @@
 
                     <!-- Нижняя панель: кнопка справа и всегда полностью видна. -->
                     <Grid Grid.Row="2"
+                          MinHeight="34"
                           Margin="0,8,0,0"
                           Background="{StaticResource MultiSelectPopupBackgroundBrush}">
-                        <Button Content="Clear"
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="1"
+                                Content="Clear"
                                 Width="76"
                                 Height="28"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Center"
-                                Click="OnClearClick" />
+                                Focusable="False"
+                                PreviewMouseDown="OnClearPreviewMouseDown" />
                     </Grid>
+                    
                 </Grid>
             </Border>
         </Popup>
