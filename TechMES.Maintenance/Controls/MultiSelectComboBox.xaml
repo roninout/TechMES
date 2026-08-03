@@ -3,7 +3,9 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              MinHeight="30"
-             Focusable="False">
+             Focusable="False"
+             PreviewTextInput="OnFilterPreviewTextInput"
+             PreviewKeyDown="OnFilterPreviewKeyDown">
 
     <UserControl.Resources>
 
@@ -145,11 +147,49 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBox x:Name="PART_FilterTextBox"
-                             Grid.Row="0"
-                             Style="{StaticResource MultiSelectPopupTextBoxStyle}"
-                             TextChanged="OnFilterTextChanged"
-                             ToolTip="Filter values" />
+                    <!--
+                    Нефокусируемое поле поиска.
+
+                    Важно:
+                    настоящий TextBox внутри Popup забирает keyboard focus,
+                    из-за чего DataGrid завершает редактирование ячейки и закрывает ComboBox.
+                    Поэтому здесь только визуальное поле, а ввод ловится через PreviewTextInput
+                    на уровне UserControl.
+                    -->
+                    <Border x:Name="PART_FilterBox"
+                            Grid.Row="0"
+                            Height="28"
+                            Margin="0,0,0,6"
+                            Padding="6,2"
+                            Focusable="False"
+                            Background="{StaticResource MultiSelectPopupInnerBackgroundBrush}"
+                            BorderBrush="{StaticResource MultiSelectPopupBorderBrush}"
+                            BorderThickness="1"
+                            PreviewMouseDown="OnFilterBoxPreviewMouseDown"
+                            ToolTip="Click here and type to filter values">
+
+                        <Grid>
+                            <TextBlock Text="Type to filter..."
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                <TextBlock.Style>
+                                    <Style TargetType="{x:Type TextBlock}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding FilterText, ElementName=Root}" Value="">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <TextBlock Text="{Binding FilterText, ElementName=Root}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                    </Border>
 
                     <ListBox Grid.Row="1"
                              MaxHeight="260"
