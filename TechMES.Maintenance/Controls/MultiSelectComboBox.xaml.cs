@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 
 namespace TechMES.Maintenance.Controls;
 
@@ -18,6 +19,7 @@ public partial class MultiSelectComboBox : UserControl
 {
     private readonly ObservableCollection<MultiSelectComboBoxItem> _items = [];
     private bool _isInternalUpdate;
+    private Window? _ownerWindow;
 
     public MultiSelectComboBox()
     {
@@ -26,12 +28,53 @@ public partial class MultiSelectComboBox : UserControl
 
         InitializeComponent();
 
-        Loaded += (_, _) =>
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    /// <summary>
+    /// Initializes popup data and subscribes to the parent Window mouse event.
+    /// Popup has StaysOpen=True, so we close it manually when user clicks outside.
+    /// </summary>
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        RebuildItems();
+        SyncSelectionFromSelectedText();
+        UpdateDisplayText();
+
+        _ownerWindow = Window.GetWindow(this);
+        if (_ownerWindow is not null)
         {
-            RebuildItems();
-            SyncSelectionFromSelectedText();
-            UpdateDisplayText();
-        };
+            _ownerWindow.PreviewMouseDown -= OnOwnerWindowPreviewMouseDown;
+            _ownerWindow.PreviewMouseDown += OnOwnerWindowPreviewMouseDown;
+        }
+    }
+
+    /// <summary>
+    /// Detaches parent Window mouse handler to avoid keeping old controls alive.
+    /// </summary>
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_ownerWindow is not null)
+        {
+            _ownerWindow.PreviewMouseDown -= OnOwnerWindowPreviewMouseDown;
+            _ownerWindow = null;
+        }
+    }
+
+    /// <summary>
+    /// Closes dropdown when user clicks outside the editor.
+    /// Clicks inside the popup do not pass through this Window event because Popup is a separate HWND.
+    /// </summary>
+    private void OnOwnerWindowPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!IsDropDownOpen)
+            return;
+
+        if (IsMouseOver || PART_ToggleButton.IsMouseOver || PART_Popup.IsMouseOver)
+            return;
+
+        IsDropDownOpen = false;
     }
 
     /// <summary>

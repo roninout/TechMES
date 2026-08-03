@@ -10,7 +10,6 @@
         <!--
         Opaque popup colors.
         Не используем Transparent, чтобы под выпадающим списком не просвечивала DataGrid.
-        Цвета подобраны близко к стандартному темному ComboBox popup во вкладке ORDERS.
         -->
         <SolidColorBrush x:Key="MultiSelectPopupBackgroundBrush"
                          Color="#FF252525" />
@@ -116,17 +115,21 @@
 
         </ToggleButton>
 
+        <!--
+        StaysOpen=True:
+        иначе Popup закрывается при переходе фокуса на Search TextBox или Clear Button.
+        Закрытие при клике вне контрола выполняется в code-behind.
+        -->
         <Popup x:Name="PART_Popup"
                PlacementTarget="{Binding ElementName=PART_ToggleButton}"
                Placement="Bottom"
                AllowsTransparency="True"
-               StaysOpen="False"
+               StaysOpen="True"
                IsOpen="{Binding IsDropDownOpen, ElementName=Root, Mode=TwoWay}"
                Closed="OnPopupClosed">
 
             <Border Width="{Binding ActualWidth, ElementName=PART_ToggleButton}"
                     MinWidth="240"
-                    MaxHeight="360"
                     Padding="8"
                     Opacity="1"
                     SnapsToDevicePixels="True"
@@ -138,7 +141,7 @@
                 <Grid Background="{StaticResource MultiSelectPopupBackgroundBrush}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
@@ -149,6 +152,7 @@
                              ToolTip="Filter values" />
 
                     <ListBox Grid.Row="1"
+                             MaxHeight="260"
                              Style="{StaticResource MultiSelectListBoxStyle}"
                              ItemContainerStyle="{StaticResource MultiSelectListBoxItemStyle}"
                              ItemsSource="{Binding ItemsView, ElementName=Root}">
@@ -168,18 +172,17 @@
 
                     </ListBox>
 
-                    <DockPanel Grid.Row="2"
-                               Margin="0,6,0,0"
-                               Background="{StaticResource MultiSelectPopupBackgroundBrush}"
-                               LastChildFill="False">
-
+                    <!-- Нижняя панель: кнопка справа и всегда полностью видна. -->
+                    <Grid Grid.Row="2"
+                          Margin="0,8,0,0"
+                          Background="{StaticResource MultiSelectPopupBackgroundBrush}">
                         <Button Content="Clear"
-                                Width="70"
-                                Height="26"
+                                Width="76"
+                                Height="28"
                                 HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
                                 Click="OnClearClick" />
-
-                    </DockPanel>
+                    </Grid>
                 </Grid>
             </Border>
         </Popup>
