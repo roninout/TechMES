@@ -15,27 +15,24 @@ public sealed class InfoImportEditStore
     /// <summary>
     /// Нормализованная строка для пакетного сохранения общей информации об оборудовании.
     /// </summary>
-    private sealed record InfoRow(
-        string EquipmentName,
-        string ProductCode,
-        string Supplier,
-        string Description);
+    private sealed record InfoRow(string EquipmentName, string ProductCode, string Supplier, string Description);
 
     /// <summary>
     /// Связь оборудования с одним библиотечным файлом и ее порядок отображения.
     /// </summary>
-    private sealed record DocumentLinkRow(
-        string EquipmentName,
-        long DocumentId,
-        int SortOrder);
+    private sealed record DocumentLinkRow(string EquipmentName, long DocumentId, int SortOrder);
+
+    /// <summary>
+    /// Result of checking a selected SCHEME PDF by SHA-256.
+    /// ExistingSchemeId is null when the binary file is not stored yet.
+    /// </summary>
+    public sealed record SchemeFileHashCheckResult(string FileHash, long? ExistingSchemeId, string ExistingFileName);
 
     /// <summary>
     /// Загружает вкладку SUPPLIER из public.equip_supplier.
     /// Бинарный logo_data не читается полностью, UI показывает только факт наличия логотипа и имя файла.
     /// </summary>
-    public async Task<IReadOnlyList<ImportSupplierRowViewModel>> LoadSuppliersAsync(
-        string connectionString,
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ImportSupplierRowViewModel>> LoadSuppliersAsync(string connectionString, CancellationToken cancellationToken = default)
     {
         const string sql = """
             SELECT
@@ -410,43 +407,118 @@ public sealed class InfoImportEditStore
     }
 
     /// <summary>
+    /// Calculates SHA-256 for a selected SCHEME PDF and checks whether the same
+    /// binary content is already stored in public.equip_scheme.
+    /// </summary>
+    public async Task<SchemeFileHashCheckResult> CheckSchemeFileHashAsync(string connectionString, string filePath, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+            throw new ArgumentException("SCHEME file path is empty.", nameof(filePath));
+
+        var fullPath = Path.GetFullPath(filePath);
+
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException(
+                $"SCHEME source file was not found: {fullPath}",
+                fullPath);
+        }
+
+        var fileHash = await ComputeSha256FileAsync(
+            fullPath,
+            cancellationToken);
+
+        const string sql = """
+        SELECT
+            id,
+            file_name
+        FROM public.equip_scheme
+        WHERE file_hash = @file_hash
+        ORDER BY id
+        LIMIT 1;
+        """;
+
+        await using var connection =
+            new NpgsqlConnection(connectionString);
+
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command =
+            new NpgsqlCommand(sql, connection);
+
+        command.Parameters.AddWithValue(
+            "file_hash",
+            fileHash);
+
+        await using var reader =
+            await command.ExecuteReaderAsync(cancellationToken);
+
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return new SchemeFileHashCheckResult(
+                fileHash,
+                ExistingSchemeId: null,
+                ExistingFileName: "");
+        }
+
+        return new SchemeFileHashCheckResult(
+            fileHash,
+            reader.GetInt64(0),
+            reader.GetString(1));
+    }
+
+    /// <summary>
     /// Loads scheme file library rows from public.equip_scheme.
     /// </summary>
-    public async Task<IReadOnlyList<ImportSchemeFileRowViewModel>> LoadSchemeFilesAsync(string connectionString, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ImportSchemeFileRowViewModel>>LoadSchemeFilesAsync(string connectionString, CancellationToken cancellationToken = default)
     {
         const string sql = """
         SELECT
+            id,
             COALESCE(equip_type_group, '') AS equip_type_group,
             COALESCE(file_name, '') AS file_name,
             COALESCE(display_name, '') AS display_name,
             COALESCE(station, '') AS station,
             COALESCE(group_names, '') AS group_names,
-            COALESCE(equipments, '') AS equipments
+            COALESCE(equipments, '') AS equipments,
+            COALESCE(file_hash, '') AS file_hash
         FROM public.equip_scheme
         ORDER BY
             lower(NULLIF(btrim(station), '')) NULLS LAST,
             lower(file_name);
         """;
 
-        var result = new List<ImportSchemeFileRowViewModel>();
-        await using var connection = new NpgsqlConnection(connectionString);
+        var result =
+            new List<ImportSchemeFileRowViewModel>();
+
+        await using var connection =
+            new NpgsqlConnection(connectionString);
+
         await connection.OpenAsync(cancellationToken);
 
-        await EnsureSchemeScopeColumnsAsync(connection, cancellationToken);
+        await EnsureSchemeScopeColumnsAsync(
+            connection,
+            cancellationToken);
 
-        await using var command = new NpgsqlCommand(sql, connection);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await using var command =
+            new NpgsqlCommand(sql, connection);
+
+        await using var reader =
+            await command.ExecuteReaderAsync(cancellationToken);
 
         while (await reader.ReadAsync(cancellationToken))
         {
             result.Add(new ImportSchemeFileRowViewModel
             {
-                Type = reader.GetString(0),
-                Source = reader.GetString(1),
-                Description = reader.GetString(2),
-                Station = reader.GetString(3),
-                GroupNames = reader.GetString(4),
-                Equipments = reader.GetString(5)
+                Id = reader.GetInt64(0),
+                Type = reader.GetString(1),
+                Source = reader.GetString(2),
+                Description = reader.GetString(3),
+                Station = reader.GetString(4),
+                GroupNames = reader.GetString(5),
+                Equipments = reader.GetString(6),
+                FileHash = reader.GetString(7),
+                PendingSourceFilePath = null
             });
         }
 
@@ -456,9 +528,7 @@ public sealed class InfoImportEditStore
     /// <summary>
     /// Loads equipment-to-scheme links.
     /// </summary>
-    public async Task<IReadOnlyList<ImportSchemeLinkRowViewModel>> LoadSchemeLinksAsync(
-        string connectionString,
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ImportSchemeLinkRowViewModel>> LoadSchemeLinksAsync(string connectionString, CancellationToken cancellationToken = default)
     {
         const string sql = """
             SELECT
@@ -690,67 +760,281 @@ public sealed class InfoImportEditStore
     }
 
     /// <summary>
-    /// Resolves one SCHEME row to public.equip_scheme.id.
+    /// Resolves one SCHEME UI row to public.equip_scheme.id.
     ///
-    /// If the physical file exists, it is saved/updated in the library.
-    /// If the physical file does not exist, an existing DB row with the same file_name is reused.
-    /// This allows editing Station/Group/Equipment targets for already stored PDF files without
-    /// requiring the original source folder to still contain the file.
+    /// Existing rows are resolved directly by Id.
+    /// Files selected through Browse are stored from PendingSourceFilePath.
+    /// Excel rows without Id continue to use Source and configured source folders.
     /// </summary>
     private static async Task<long> ResolveOrSaveSchemeFileAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string pdfSourceRoot, string imageSourceRoot, ImportSchemeFileRowViewModel file, IDictionary<string, long> resolvedSchemeFileIds, CancellationToken cancellationToken)
     {
         var source = file.Source?.Trim() ?? "";
+
         if (string.IsNullOrWhiteSpace(source))
-            throw new InvalidOperationException("SCHEME row has empty Source.");
+            throw new InvalidOperationException(
+                "SCHEME row has empty Source.");
 
-        var physicalFilePath = TryResolveExistingSourceFilePath(
-            [pdfSourceRoot, imageSourceRoot],
-            source,
-            out var checkedPaths);
-
-        if (!string.IsNullOrWhiteSpace(physicalFilePath))
+        /*
+         * Browse selection has a dedicated physical path.
+         * Source contains only the display/database file name.
+         */
+        if (!string.IsNullOrWhiteSpace(
+                file.PendingSourceFilePath))
         {
-            var cacheKey = Path.GetFullPath(physicalFilePath);
+            var pendingFullPath =
+                Path.GetFullPath(
+                    file.PendingSourceFilePath.Trim());
 
-            if (resolvedSchemeFileIds.TryGetValue(cacheKey, out var cachedId))
+            if (!File.Exists(pendingFullPath))
+            {
+                throw new FileNotFoundException(
+                    $"Selected SCHEME PDF was not found: {pendingFullPath}",
+                    pendingFullPath);
+            }
+
+            var cacheKey =
+                $"pending:{pendingFullPath}";
+
+            if (resolvedSchemeFileIds.TryGetValue(
+                    cacheKey,
+                    out var cachedId))
+            {
                 return cachedId;
+            }
 
-            var savedId = await SaveLibraryFileAsync(
-                connection,
-                transaction,
-                "public.equip_scheme",
-                file.Type,
-                physicalFilePath,
-                cancellationToken);
+            long savedId;
 
-            resolvedSchemeFileIds[cacheKey] = savedId;
+            if (file.Id is long existingId)
+            {
+                /*
+                 * Browse was used on an existing row.
+                 * Replace that exact library row instead of inserting
+                 * another row based only on the new file name.
+                 */
+                savedId =
+                    await UpdateSchemeLibraryFileByIdAsync(
+                        connection,
+                        transaction,
+                        existingId,
+                        file.Type,
+                        pendingFullPath,
+                        cancellationToken);
+            }
+            else
+            {
+                /*
+                 * New UI/Excel row without an existing database ID.
+                 */
+                savedId =
+                    await SaveLibraryFileAsync(
+                        connection,
+                        transaction,
+                        "public.equip_scheme",
+                        file.Type,
+                        pendingFullPath,
+                        cancellationToken);
+            }
+
+            resolvedSchemeFileIds[cacheKey] =
+                savedId;
+
             return savedId;
         }
 
         /*
-         * Physical file was not found. This is normal for rows loaded from public.equip_scheme:
-         * their Source is only file_name, while file_data is already stored in PostgreSQL.
+         * Existing database rows do not require the physical PDF to remain
+         * in the source directory.
          */
-        var fileName = Path.GetFileName(source);
-        var existingDbId = await FindSchemeFileIdByFileNameAsync(
-            connection,
-            transaction,
-            fileName,
-            cancellationToken);
+        if (file.Id is long databaseId)
+        {
+            if (!await SchemeFileExistsByIdAsync(
+                    connection,
+                    transaction,
+                    databaseId,
+                    cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    $"SCHEME library row no longer exists: ID={databaseId}.");
+            }
+
+            resolvedSchemeFileIds[
+                $"id:{databaseId}"] = databaseId;
+
+            return databaseId;
+        }
+
+        /*
+         * Compatibility path for Excel import and manually typed Source.
+         */
+        var physicalFilePath =
+            TryResolveExistingSourceFilePath(
+                [pdfSourceRoot, imageSourceRoot],
+                source,
+                out var checkedPaths);
+
+        if (!string.IsNullOrWhiteSpace(
+                physicalFilePath))
+        {
+            var cacheKey =
+                Path.GetFullPath(physicalFilePath);
+
+            if (resolvedSchemeFileIds.TryGetValue(
+                    cacheKey,
+                    out var cachedId))
+            {
+                return cachedId;
+            }
+
+            var savedId =
+                await SaveLibraryFileAsync(
+                    connection,
+                    transaction,
+                    "public.equip_scheme",
+                    file.Type,
+                    physicalFilePath,
+                    cancellationToken);
+
+            resolvedSchemeFileIds[cacheKey] =
+                savedId;
+
+            return savedId;
+        }
+
+        var fileName =
+            Path.GetFileName(source);
+
+        var existingDbId =
+            await FindSchemeFileIdByFileNameAsync(
+                connection,
+                transaction,
+                fileName,
+                cancellationToken);
 
         if (existingDbId is not null)
         {
-            resolvedSchemeFileIds["db:" + fileName] = existingDbId.Value;
+            resolvedSchemeFileIds[
+                $"db:{fileName}"] = existingDbId.Value;
+
             return existingDbId.Value;
         }
 
-        var checkedMessage = checkedPaths.Count == 0
-            ? source
-            : string.Join("; ", checkedPaths);
+        var checkedMessage =
+            checkedPaths.Count == 0
+                ? source
+                : string.Join("; ", checkedPaths);
 
         throw new FileNotFoundException(
-            $"Import source file not found and scheme library row does not exist in DB. Checked: {checkedMessage}",
+            "Import source file not found and scheme library row " +
+            $"does not exist in DB. Checked: {checkedMessage}",
             checkedPaths.FirstOrDefault() ?? source);
+    }
+
+    /// <summary>
+    /// Verifies that an existing SCHEME ID is still present.
+    /// </summary>
+    private static async Task<bool> SchemeFileExistsByIdAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long schemeId, CancellationToken cancellationToken)
+    {
+        const string sql = """
+        SELECT 1
+        FROM public.equip_scheme
+        WHERE id = @id
+        LIMIT 1;
+        """;
+
+        await using var command =
+            new NpgsqlCommand(sql, connection, transaction);
+
+        command.Parameters.AddWithValue(
+            "id",
+            schemeId);
+
+        return await command.ExecuteScalarAsync(
+            cancellationToken) is not null;
+    }
+
+    /// <summary>
+    /// Replaces the binary file and metadata of one existing SCHEME row.
+    ///
+    /// The ID is preserved, therefore existing public.equip_info_scheme
+    /// foreign keys continue to reference the same logical scheme.
+    /// </summary>
+    private static async Task<long> UpdateSchemeLibraryFileByIdAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long schemeId, string type, string filePath, CancellationToken cancellationToken)
+    {
+        var fullPath =
+            Path.GetFullPath(filePath);
+
+        var fileName =
+            Path.GetFileName(fullPath);
+
+        var fileData =
+            await File.ReadAllBytesAsync(
+                fullPath,
+                cancellationToken);
+
+        var fileHash =
+            ComputeSha256(fileData);
+
+        var duplicateId =
+            await FindLibraryFileIdByHashAsync(
+                connection,
+                transaction,
+                "public.equip_scheme",
+                fileHash,
+                cancellationToken);
+
+        /*
+         * Browse normally detects this before Save.
+         * This second check protects against concurrent changes.
+         */
+        if (duplicateId is long existingId
+            && existingId != schemeId)
+        {
+            throw new InvalidOperationException(
+                "The selected SCHEME PDF already exists in another " +
+                $"library row. Existing ID: {existingId}.");
+        }
+
+        const string sql = """
+        UPDATE public.equip_scheme
+        SET
+            equip_type_group =
+                COALESCE(
+                    NULLIF(@equip_type_group, ''),
+                    equip_type_group),
+            file_name = @file_name,
+            display_name = @display_name,
+            file_hash = @file_hash,
+            file_data = @file_data,
+            updated_at = @updated_at
+        WHERE id = @id;
+        """;
+
+        await using var command =
+            new NpgsqlCommand(sql, connection, transaction);
+
+        command.Parameters.AddWithValue(
+            "id",
+            schemeId);
+
+        AddLibraryFileParameters(
+            command,
+            type,
+            fileName,
+            fileHash,
+            fileData,
+            File.GetLastWriteTime(fullPath));
+
+        var updated =
+            await command.ExecuteNonQueryAsync(
+                cancellationToken);
+
+        if (updated != 1)
+        {
+            throw new InvalidOperationException(
+                $"SCHEME library row was not found: ID={schemeId}.");
+        }
+
+        return schemeId;
     }
 
     /// <summary>
@@ -834,27 +1118,49 @@ public sealed class InfoImportEditStore
     }
 
     /// <summary>
-    /// Merges duplicated scheme rows by Source.
-    /// Excel import can produce many rows for the same physical scheme file,
-    /// because one file can be linked to many stations/groups/equipment.
+    /// Merges duplicated SCHEME rows.
+    ///
+    /// Existing UI/DB rows are identified by Id.
+    /// Excel rows without Id are identified by Source.
     /// </summary>
-    private static List<ImportSchemeFileRowViewModel> MergeSchemeFileRows(IEnumerable<ImportSchemeFileRowViewModel> files)
+    private static List<ImportSchemeFileRowViewModel>MergeSchemeFileRows(IEnumerable<ImportSchemeFileRowViewModel> files)
     {
         return files
             .Where(x => !string.IsNullOrWhiteSpace(x.Source))
-            .GroupBy(x => x.Source.Trim(), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(
+                x => x.Id is long id
+                    ? $"id:{id}"
+                    : $"source:{x.Source.Trim()}",
+                StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var last = group.Last();
 
                 return new ImportSchemeFileRowViewModel
                 {
-                    Type = MergeDelimitedText(group.Select(x => x.Type)),
+                    Id = last.Id,
+
+                    Type = MergeDelimitedText(
+                        group.Select(x => x.Type)),
+
                     Source = last.Source.Trim(),
-                    Description = last.Description?.Trim() ?? "",
-                    Station = MergeDelimitedText(group.Select(x => x.Station)),
-                    GroupNames = MergeDelimitedText(group.Select(x => x.GroupNames)),
-                    Equipments = MergeDelimitedText(group.Select(x => x.Equipments))
+
+                    Description =
+                        last.Description?.Trim() ?? "",
+
+                    Station = MergeDelimitedText(
+                        group.Select(x => x.Station)),
+
+                    GroupNames = MergeDelimitedText(
+                        group.Select(x => x.GroupNames)),
+
+                    Equipments = MergeDelimitedText(
+                        group.Select(x => x.Equipments)),
+
+                    FileHash = last.FileHash?.Trim() ?? "",
+
+                    PendingSourceFilePath =
+                        last.PendingSourceFilePath
                 };
             })
             .ToList();
@@ -1558,5 +1864,29 @@ public sealed class InfoImportEditStore
     private static string ComputeSha256(byte[] data)
     {
         return Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Calculates SHA-256 without loading the whole PDF into memory.
+    /// </summary>
+    private static async Task<string> ComputeSha256FileAsync(string filePath, CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(
+            filePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 128 * 1024,
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        using var sha256 = SHA256.Create();
+
+        var hash = await sha256.ComputeHashAsync(
+            stream,
+            cancellationToken);
+
+        return Convert
+            .ToHexString(hash)
+            .ToLowerInvariant();
     }
 }

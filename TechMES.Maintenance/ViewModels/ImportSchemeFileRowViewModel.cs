@@ -7,12 +7,25 @@ namespace TechMES.Maintenance.ViewModels;
 /// </summary>
 public sealed class ImportSchemeFileRowViewModel : ObservableObject
 {
+    private long? _id;
     private string _type = "";
     private string _source = "";
     private string _description = "";
     private string _station = "";
     private string _groupNames = "";
     private string _equipments = "";
+    private string _fileHash = "";
+    private string? _pendingSourceFilePath;
+
+    /// <summary>
+    /// Existing public.equip_scheme row ID.
+    /// Null means that the row has not been stored yet.
+    /// </summary>
+    public long? Id
+    {
+        get => _id;
+        set => SetProperty(ref _id, value);
+    }
 
     /// <summary>
     /// Legacy/import type. It is kept for compatibility with existing import code,
@@ -25,8 +38,10 @@ public sealed class ImportSchemeFileRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Scheme file source/name.
-    /// Stored in public.equip_scheme.file_name after Save.
+    /// Scheme file name displayed in the grid and stored in
+    /// public.equip_scheme.file_name.
+    ///
+    /// This property must not be used to preserve the physical Browse path.
     /// </summary>
     public string Source
     {
@@ -35,8 +50,27 @@ public sealed class ImportSchemeFileRowViewModel : ObservableObject
     }
 
     /// <summary>
+    /// SHA-256 stored in public.equip_scheme.file_hash.
+    /// Used to detect duplicate files before Save.
+    /// </summary>
+    public string FileHash
+    {
+        get => _fileHash;
+        set => SetProperty(ref _fileHash, value);
+    }
+
+    /// <summary>
+    /// Full physical path selected through Browse.
+    /// It exists only until Save and is not stored in PostgreSQL.
+    /// </summary>
+    public string? PendingSourceFilePath
+    {
+        get => _pendingSourceFilePath;
+        set => SetProperty(ref _pendingSourceFilePath, value);
+    }
+
+    /// <summary>
     /// Legacy display name/description.
-    /// It is kept for compatibility, but it is no longer displayed on the SCHEME tab.
     /// </summary>
     public string Description
     {
@@ -45,8 +79,7 @@ public sealed class ImportSchemeFileRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Station targets. Several values can be entered with comma or semicolon.
-    /// Stored in public.equip_scheme.station.
+    /// Station targets. Several values can be separated with comma or semicolon.
     /// </summary>
     public string Station
     {
@@ -55,8 +88,7 @@ public sealed class ImportSchemeFileRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Group targets. Several values can be entered with comma or semicolon.
-    /// Stored in public.equip_scheme.group_names.
+    /// Group targets. Several values can be separated with comma or semicolon.
     /// </summary>
     public string GroupNames
     {
@@ -65,8 +97,7 @@ public sealed class ImportSchemeFileRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Equipment targets. Several values can be entered with comma or semicolon.
-    /// Stored in public.equip_scheme.equipments.
+    /// Equipment targets. Several values can be separated with comma or semicolon.
     /// </summary>
     public string Equipments
     {

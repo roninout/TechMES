@@ -474,19 +474,17 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Opens the SCHEME PDF file picker from the Source cell editor.
-    ///
-    /// PreviewMouseLeftButtonDown is used instead of Click so DataGrid does not
-    /// destroy the CellEditingTemplate before the file dialog is opened.
+    /// Opens the SCHEME PDF picker, calculates SHA-256 and rejects duplicate
+    /// binary files before changing the grid row.
     /// </summary>
-    private void OnBrowseSchemeSourceFilePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private async void OnBrowseSchemeSourceFilePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left)
             return;
 
         /*
-         * Не передаём нажатие дальше DataGrid.
-         * Иначе таблица может завершить редактирование ячейки раньше времени.
+         * DataGrid must not destroy the editing template before
+         * the asynchronous file selection is completed.
          */
         e.Handled = true;
 
@@ -509,119 +507,171 @@ public partial class MainWindow
             RestoreDirectory = true
         };
 
-        /*
-         * Основной стартовый путь уже известен из IMPORT:
-         * SchemePdfSourceRoot.
-         */
         if (Directory.Exists(SchemePdfSourceRoot))
-        {
             dialog.InitialDirectory = SchemePdfSourceRoot;
-        }
 
         /*
-         * Если в строке уже выбран существующий абсолютный файл,
-         * открываем диалог в его папке.
+         * Prefer the previously selected pending path.
          */
-        if (!string.IsNullOrWhiteSpace(row.Source))
+        var currentPhysicalPath =
+            row.PendingSourceFilePath;
+
+        if (string.IsNullOrWhiteSpace(currentPhysicalPath)
+            && !string.IsNullOrWhiteSpace(row.Source))
+        {
+            currentPhysicalPath =
+                Path.IsPathRooted(row.Source)
+                    ? row.Source
+                    : Path.Combine(
+                        SchemePdfSourceRoot ?? "",
+                        row.Source);
+        }
+
+        if (!string.IsNullOrWhiteSpace(currentPhysicalPath))
         {
             try
             {
-                var currentSource = row.Source.Trim();
+                var fullCurrentPath =
+                    Path.GetFullPath(currentPhysicalPath);
 
-                var currentFullPath = Path.IsPathRooted(currentSource)
-                    ? currentSource
-                    : Path.Combine(SchemePdfSourceRoot, currentSource);
+                var directory =
+                    Path.GetDirectoryName(fullCurrentPath);
 
-                if (File.Exists(currentFullPath))
+                if (!string.IsNullOrWhiteSpace(directory)
+                    && Directory.Exists(directory))
                 {
-                    var currentDirectory =
-                        Path.GetDirectoryName(currentFullPath);
-
-                    if (!string.IsNullOrWhiteSpace(currentDirectory)
-                        && Directory.Exists(currentDirectory))
-                    {
-                        dialog.InitialDirectory = currentDirectory;
-                    }
-
-                    dialog.FileName =
-                        Path.GetFileName(currentFullPath);
+                    dialog.InitialDirectory =
+                        directory;
                 }
-                else
-                {
-                    /*
-                     * Даже когда физический файл сейчас отсутствует,
-                     * показываем существующее имя в поле File name.
-                     */
-                    dialog.FileName =
-                        Path.GetFileName(currentSource);
-                }
+
+                dialog.FileName =
+                    Path.GetFileName(fullCurrentPath);
             }
             catch
             {
-                /*
-                 * Некорректное старое значение Source не должно
-                 * блокировать выбор нового файла.
-                 */
+                // Invalid old value must not block choosing another file.
             }
         }
 
         if (dialog.ShowDialog(this) != true)
             return;
 
-        /*
-         * Если файл находится внутри SchemePdfSourceRoot,
-         * записываем относительный путь.
-         *
-         * Для файла непосредственно в корне это будет только:
-         *     SomeScheme.pdf
-         *
-         * Для подпапки:
-         *     S01\SomeScheme.pdf
-         *
-         * Если пользователь выбрал файл вне настроенного корня,
-         * сохраняем абсолютный путь, чтобы Save всё равно смог его прочитать.
-         */
-        row.Source = GetSchemeSourceValue(dialog.FileName);
-
-        ImportSchemeStatusText = $"SCHEME PDF selected: {Path.GetFileName(dialog.FileName)}";
-    }
-
-    /// <summary>
-    /// Converts the selected SCHEME PDF path to a value suitable for the Source column.
-    ///
-    /// Files inside SchemePdfSourceRoot are stored as relative paths.
-    /// Files outside the configured root are kept as absolute paths.
-    /// </summary>
-    private string GetSchemeSourceValue(string selectedFilePath)
-    {
-        var selectedFullPath =
-            Path.GetFullPath(selectedFilePath);
-
-        if (string.IsNullOrWhiteSpace(SchemePdfSourceRoot)
-            || !Directory.Exists(SchemePdfSourceRoot))
+        try
         {
-            return selectedFullPath;
+            ImportSchemeStatusText =
+                $"Checking SHA-256: {Path.GetFileName(dialog.FileName)}...";
+
+            var check =
+                await _infoImportEditStore.CheckSchemeFileHashAsync(
+                    GetRuntimeDatabaseConnectionString(),
+                    dialog.FileName);
+
+            /*
+             * Duplicate already stored in PostgreSQL.
+             */
+            if (check.ExistingSchemeId is long existingId)
+            {
+                var sameCurrentRow =
+                    row.Id == existingId;
+
+                var message = sameCurrentRow
+                    ? "The selected PDF is already assigned to this SCHEME row."
+                    : "The selected PDF already exists in the SCHEME library." +
+                      Environment.NewLine +
+                      Environment.NewLine +
+                      $"Stored as: {check.ExistingFileName}" +
+                      Environment.NewLine +
+                      $"Database ID: {existingId}" +
+                      Environment.NewLine +
+                      $"SHA-256: {check.FileHash}" +
+                      Environment.NewLine +
+                      Environment.NewLine +
+                      "Choose another PDF file.";
+
+                MessageBox.Show(
+                    this,
+                    message,
+                    sameCurrentRow
+                        ? "SCHEME file already selected"
+                        : "SCHEME file already exists",
+                    MessageBoxButton.OK,
+                    sameCurrentRow
+                        ? MessageBoxImage.Information
+                        : MessageBoxImage.Warning);
+
+                ImportSchemeStatusText =
+                    sameCurrentRow
+                        ? $"SCHEME PDF is unchanged: {check.ExistingFileName}"
+                        : $"Duplicate SCHEME PDF rejected: {check.ExistingFileName}";
+
+                return;
+            }
+
+            /*
+             * Duplicate selected in another unsaved grid row.
+             */
+            var duplicatePendingRow =
+                ImportSchemeFiles.FirstOrDefault(candidate =>
+                    !ReferenceEquals(candidate, row)
+                    && !string.IsNullOrWhiteSpace(candidate.FileHash)
+                    && string.Equals(
+                        candidate.FileHash,
+                        check.FileHash,
+                        StringComparison.OrdinalIgnoreCase));
+
+            if (duplicatePendingRow is not null)
+            {
+                MessageBox.Show(
+                    this,
+                    "The selected PDF is already used by another unsaved " +
+                    "SCHEME row." +
+                    Environment.NewLine +
+                    Environment.NewLine +
+                    $"Source: {duplicatePendingRow.Source}" +
+                    Environment.NewLine +
+                    $"SHA-256: {check.FileHash}",
+                    "Duplicate SCHEME file",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+
+                ImportSchemeStatusText =
+                    $"Duplicate SCHEME PDF rejected: " +
+                    $"{Path.GetFileName(dialog.FileName)}";
+
+                return;
+            }
+
+            /*
+             * Source stores only the PostgreSQL/display file name.
+             * The physical path is kept separately until Save.
+             */
+            row.PendingSourceFilePath =
+                Path.GetFullPath(dialog.FileName);
+
+            row.Source =
+                Path.GetFileName(dialog.FileName);
+
+            row.FileHash =
+                check.FileHash;
+
+            ImportSchemeStatusText =
+                $"SCHEME PDF selected: {row.Source}";
         }
+        catch (Exception ex)
+        {
+            ImportSchemeStatusText =
+                $"SCHEME PDF selection failed: {ex.Message}";
 
-        var rootFullPath =
-            Path.GetFullPath(SchemePdfSourceRoot);
+            AppendDiagnostics(
+                ImportSchemeStatusText);
 
-        var relativePath =
-            Path.GetRelativePath(rootFullPath, selectedFullPath);
-
-        var isOutsideRoot =
-            string.Equals(
-                relativePath,
-                "..",
-                StringComparison.OrdinalIgnoreCase)
-            || relativePath.StartsWith(
-                $"..{Path.DirectorySeparatorChar}",
-                StringComparison.OrdinalIgnoreCase)
-            || Path.IsPathRooted(relativePath);
-
-        return isOutsideRoot
-            ? selectedFullPath
-            : relativePath;
+            MessageBox.Show(
+                this,
+                ImportSchemeStatusText,
+                "SCHEME",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     /// <summary>
