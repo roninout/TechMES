@@ -1,23 +1,23 @@
 ﻿using System;
 using System.Globalization;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Data;
 
 namespace TechMES.Maintenance.Converters;
 
 /// <summary>
-/// Возвращает визуальный номер строки DataGrid, начиная с единицы.
+/// Converts the zero-based visual row index to a one-based row number.
 ///
-/// Важно: конвертер получает сам DataGridRow и не использует AlternationIndex.
-/// Это не изменяет AlternationCount и не нарушает темозависимый стиль строк WPF UI.
+/// The source value is ItemsControl.AlternationIndex.
+/// WPF recalculates it when rows are sorted, filtered, inserted or removed.
 /// </summary>
 public sealed class RowNumberConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter,CultureInfo culture)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        return value is DataGridRow row
-            ? row.GetIndex() + 1
+        return value is int zeroBasedIndex
+               && zeroBasedIndex >= 0
+            ? zeroBasedIndex + 1
             : string.Empty;
     }
 

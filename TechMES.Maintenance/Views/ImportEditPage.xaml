@@ -11,56 +11,63 @@
                               mc:Ignorable="d">
     <views:MaintenancePageControl.Resources>
         <!-- Номер строки без использования AlternationCount. -->
-        <converters:RowNumberConverter x:Key="RowNumberConverter" />
+        <!--<converters:RowNumberConverter x:Key="RowNumberConverter" />-->
 
-        <!--<Style x:Key="ImportGrid" TargetType="{x:Type control:FilterDataGrid}">-->
         <Style x:Key="ImportGrid"
-               TargetType="{x:Type control:FilterDataGrid}"
-               BasedOn="{StaticResource TechMesFilterDataGridStyle}">
+       TargetType="{x:Type control:FilterDataGrid}"
+       BasedOn="{StaticResource TechMesFilterDataGridStyle}">
 
             <Setter Property="AutoGenerateColumns"
-                    Value="False" />
+            Value="False" />
 
             <Setter Property="CanUserAddRows"
-                    Value="True" />
+            Value="True" />
 
             <Setter Property="CanUserDeleteRows"
-                    Value="True" />
+            Value="True" />
 
             <Setter Property="SelectionMode"
-                    Value="Extended" />
+            Value="Extended" />
 
             <Setter Property="SelectionUnit"
-                    Value="CellOrRowHeader" />
+            Value="CellOrRowHeader" />
 
             <Setter Property="ClipboardCopyMode"
-                    Value="ExcludeHeader" />
+            Value="ExcludeHeader" />
 
             <Setter Property="HeadersVisibility"
-                    Value="Column" />
+            Value="Column" />
 
             <Setter Property="GridLinesVisibility"
-                    Value="Horizontal" />
+            Value="Horizontal" />
 
             <Setter Property="Background"
-                    Value="{DynamicResource TechMesPanelBrush}" />
+            Value="{DynamicResource TechMesPanelBrush}" />
 
-            <!--
-            Явно возвращаем темозависимый заголовок.
-            FilterDataGrid подмешивает собственные локальные ресурсы,
-            поэтому для Import/Edit лучше назначить стиль непосредственно.
-            -->
             <Setter Property="ColumnHeaderStyle"
-                    Value="{StaticResource TechMesFilterDataGridColumnHeaderStyle}" />
+            Value="{StaticResource TechMesFilterDataGridColumnHeaderStyle}" />
 
             <Setter Property="RowBackground"
-                    Value="{DynamicResource TechMesPanelBrush}" />
+            Value="{DynamicResource TechMesPanelBrush}" />
 
             <Setter Property="AlternatingRowBackground"
-                    Value="{DynamicResource TechMesPanelBrush}" />
+            Value="{DynamicResource TechMesPanelBrush}" />
+
+            <!--
+            Loaded и Unloaded являются routed events, поэтому их можно
+            подключать через EventSetter.
+
+            LoadingRow и Sorting подключаются программно в OnImportGridLoaded,
+            поскольку они не являются routed events.
+            -->
+            <EventSetter Event="Loaded"
+             Handler="OnImportGridLoaded" />
+
+            <EventSetter Event="Unloaded"
+             Handler="OnImportGridUnloaded" />
 
             <EventSetter Event="PreviewKeyDown"
-                         Handler="OnImportGridPreviewKeyDown" />
+             Handler="OnImportGridPreviewKeyDown" />
 
         </Style>
 
@@ -447,33 +454,32 @@
                     </views:MaintenanceCard>
 
                     <views:MaintenanceSection Grid.Row="1" Margin="0,12,0,0">
-                        <control:FilterDataGrid
-                        Grid.Row="1"
-                        Style="{StaticResource ImportGrid}"
-                        ColumnHeaderStyle="{StaticResource TechMesFilterDataGridColumnHeaderStyle}"
-                        RowHeight="72"
-                        ColumnHeaderHeight="36"
-                        CanUserSortColumns="True"
-                        ShowStatusBar="False"
-                        ShowElapsedTime="False"
-                        DateFormatString="dd.MM.yyyy"
-                        FilterLanguage="Russian"
-                        ItemsSource="{Binding ImportSuppliers}"
-                        PreviewMouseLeftButtonDown="OnSupplierGridPreviewMouseLeftButtonDown">
+                        <control:FilterDataGrid Grid.Row="1"
+                                                Style="{StaticResource ImportGrid}"
+                                                ColumnHeaderStyle="{StaticResource TechMesFilterDataGridColumnHeaderStyle}"
+                                                RowHeight="72"
+                                                ColumnHeaderHeight="36"
+                                                CanUserSortColumns="True"
+                                                ShowStatusBar="False"
+                                                ShowElapsedTime="False"
+                                                DateFormatString="dd.MM.yyyy"
+                                                FilterLanguage="Russian"
+                                                ItemsSource="{Binding ImportSuppliers}"
+                                                PreviewMouseLeftButtonDown="OnSupplierGridPreviewMouseLeftButtonDown">
                             <!--Важно наследовать штатный темозависимый стиль строки. Раньше локальный RowStyle создавался с нуля и тем самым убирал WPF UI-оформление только у таблицы SUPPLIER.-->
                             <control:FilterDataGrid.RowStyle>
                                 <Style TargetType="{x:Type DataGridRow}"
-                               BasedOn="{StaticResource {x:Type DataGridRow}}">
+                                       BasedOn="{StaticResource {x:Type DataGridRow}}">
 
                                     <Setter Property="Background"
-                                    Value="{DynamicResource TechMesPanelBrush}" />
+                                            Value="{DynamicResource TechMesPanelBrush}" />
 
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsPendingDelete}"
-                                             Value="True">
+                                                     Value="True">
 
                                             <Setter Property="Opacity"
-                                            Value="0.55" />
+                                                    Value="0.55" />
 
                                         </DataTrigger>
                                     </Style.Triggers>
@@ -482,8 +488,8 @@
                             </control:FilterDataGrid.RowStyle>
 
                             <!--
-                    Сохраняем штатный темозависимый стиль ячеек.
-                    -->
+                            Сохраняем штатный темозависимый стиль ячеек.
+                            -->
                             <control:FilterDataGrid.CellStyle>
                                 <Style TargetType="{x:Type DataGridCell}"
                                BasedOn="{StaticResource {x:Type DataGridCell}}">
@@ -502,26 +508,23 @@
                             <control:FilterDataGrid.Columns>
 
 
-                                <!-- Номер строки в текущем представлении DataGrid. -->
-                                <control:DataGridTemplateColumn
-                                    Header="№"
-                                    Width="50"
-                                    IsReadOnly="True"
-                                    IsColumnFiltered="False"
-                                    CanUserSort="False"
-                                    CanUserReorder="False"
-                                    CanUserResize="True">
+                                <!-- Номер строки в текущем отображении таблицы. -->
+                                <control:DataGridTemplateColumn Header="№"
+                                                                Width="50"
+                                                                IsReadOnly="True"
+                                                                IsColumnFiltered="False"
+                                                                CanUserSort="False"
+                                                                CanUserReorder="False"
+                                                                CanUserResize="True">
 
                                     <control:DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
 
-                                            <TextBlock
-                                                Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
-                                                               Converter={StaticResource RowNumberConverter}}"
-                                                Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                TextAlignment="Center" />
+                                            <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}}, Path=Header}"
+                                                       Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       TextAlignment="Center" />
 
                                         </DataTemplate>
                                     </control:DataGridTemplateColumn.CellTemplate>
@@ -529,14 +532,13 @@
                                 </control:DataGridTemplateColumn>
 
                                 <!-- Логотип отображается в WPF UI Card; двойной клик открывает выбор файла. -->
-                                <control:DataGridTemplateColumn
-                                Header="Logo"
-                                FieldName="LogoFileName"
-                                ClipboardContentBinding="{Binding LogoFileName}"
-                                IsColumnFiltered="True"
-                                Width="130"
-                                SortMemberPath="LogoFileName"
-                                IsReadOnly="True">
+                                <control:DataGridTemplateColumn Header="Logo"
+                                                                FieldName="LogoFileName"
+                                                                ClipboardContentBinding="{Binding LogoFileName}"
+                                                                IsColumnFiltered="True"
+                                                                Width="130"
+                                                                SortMemberPath="LogoFileName"
+                                                                IsReadOnly="True">
 
                                     <control:DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
@@ -694,26 +696,23 @@
                         <control:FilterDataGrid.Columns>
 
 
-                            <!-- Номер строки в текущем представлении DataGrid. -->
-                            <control:DataGridTemplateColumn
-                                Header="№"
-                                Width="50"
-                                IsReadOnly="True"
-                                IsColumnFiltered="False"
-                                CanUserSort="False"
-                                CanUserReorder="False"
-                                CanUserResize="True">
+                            <!-- Номер строки в текущем отображении таблицы. -->
+                            <control:DataGridTemplateColumn Header="№"
+                                                            Width="50"
+                                                            IsReadOnly="True"
+                                                            IsColumnFiltered="False"
+                                                            CanUserSort="False"
+                                                            CanUserReorder="False"
+                                                            CanUserResize="True">
 
                                 <control:DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
 
-                                        <TextBlock
-                                            Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
-                                                           Converter={StaticResource RowNumberConverter}}"
-                                                Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            TextAlignment="Center" />
+                                        <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}}, Path=Header}"
+                                                       Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       TextAlignment="Center" />
 
                                     </DataTemplate>
                                 </control:DataGridTemplateColumn.CellTemplate>
@@ -939,6 +938,7 @@
                                             FilterLanguage="Russian"
                                             ItemsSource="{Binding ImportInstructions}">
                         <control:FilterDataGrid.Columns>
+                            <!-- Номер строки в текущем отображении таблицы. -->
                             <control:DataGridTemplateColumn Header="№"
                                                             Width="50"
                                                             IsReadOnly="True"
@@ -946,16 +946,19 @@
                                                             CanUserSort="False"
                                                             CanUserReorder="False"
                                                             CanUserResize="True">
+
                                 <control:DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}},
-                                                                  Converter={StaticResource RowNumberConverter}}"
-                                                Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   TextAlignment="Center" />
+
+                                        <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}}, Path=Header}"
+                                                       Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       TextAlignment="Center" />
+
                                     </DataTemplate>
                                 </control:DataGridTemplateColumn.CellTemplate>
+
                             </control:DataGridTemplateColumn>
 
                             <!--
@@ -1189,22 +1192,27 @@
                                     ItemsSource="{Binding ImportSchemeFiles}">
                             <control:FilterDataGrid.Columns>
 
+                                <!-- Номер строки в текущем отображении таблицы. -->
                                 <control:DataGridTemplateColumn Header="№"
-                                                    Width="50"
-                                                    IsReadOnly="True"
-                                                    IsColumnFiltered="False"
-                                                    CanUserSort="False"
-                                                    CanUserReorder="False"
-                                                    CanUserResize="True">
+                                                                Width="50"
+                                                                IsReadOnly="True"
+                                                                IsColumnFiltered="False"
+                                                                CanUserSort="False"
+                                                                CanUserReorder="False"
+                                                                CanUserResize="True">
+
                                     <control:DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}}, Converter={StaticResource RowNumberConverter}}"
+
+                                            <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}}, Path=Header}"
                                                        Style="{StaticResource ImportReadOnlyRowNumberTextStyle}"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center"
                                                        TextAlignment="Center" />
+
                                         </DataTemplate>
                                     </control:DataGridTemplateColumn.CellTemplate>
+
                                 </control:DataGridTemplateColumn>
 
                                 <control:DataGridTemplateColumn Header="Source"
