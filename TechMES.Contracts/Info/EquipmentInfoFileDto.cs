@@ -16,11 +16,6 @@ public sealed class EquipmentInfoFileDto
     public string EquipName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Ограничение по типу оборудования, если файл общий для группы типов.
-    /// </summary>
-    public string EquipTypeGroupKey { get; set; } = string.Empty;
-
-    /// <summary>
     /// Физическое/исходное имя файла.
     /// </summary>
     public string FileName { get; set; } = string.Empty;
@@ -31,7 +26,7 @@ public sealed class EquipmentInfoFileDto
     public string DisplayName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Хэш файла для cache/version logic.
+    /// SHA-256 файла для cache/version logic.
     /// </summary>
     public string FileHash { get; set; } = string.Empty;
 
@@ -53,7 +48,8 @@ public sealed class EquipmentInfoFileDto
     /// <summary>
     /// HTTP content type.
     /// </summary>
-    public string ContentType { get; set; } = "application/octet-stream";
+    public string ContentType { get; set; } =
+        "application/octet-stream";
 
     /// <summary>
     /// WEB URL для ленивой загрузки бинарного содержимого.

@@ -273,40 +273,49 @@ public sealed class InfoImportEditStore
     }
 
     /// <summary>
-    /// Saves instruction files and equipment links using the same library/link schema as the old WPF import.
+    /// Saves instruction files, instruction images and equipment links.
     /// </summary>
-    public async Task<int> SaveInstructionsAsync(
-        string connectionString,
-        string pdfSourceRoot,
-        string imageSourceRoot,
-        IEnumerable<ImportInstructionRowViewModel> instructions,
-        CancellationToken cancellationToken = default)
+    public async Task<int> SaveInstructionsAsync(string connectionString, string pdfSourceRoot, string imageSourceRoot, IEnumerable<ImportInstructionRowViewModel> instructions, CancellationToken cancellationToken = default)
     {
         var clean = instructions
             .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
-            .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(
+                x => x.Equipment.Trim(),
+                StringComparer.OrdinalIgnoreCase)
             .Select(x => x.Last())
             .ToList();
 
         if (clean.Count == 0)
             return 0;
 
-        await using var connection = new NpgsqlConnection(connectionString);
+        await using var connection =
+            new NpgsqlConnection(connectionString);
+
         await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using var transaction =
+            await connection.BeginTransactionAsync(
+                cancellationToken);
 
         try
         {
-            /*
-             * Библиотечные файлы общие для всего оборудования. Кэш не дает
-             * повторно читать и обновлять один PDF или рисунок для каждой
-             * строки оборудования в рамках одной операции сохранения.
-             */
-            var instructionFileIds = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-            var photoFileIds = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-            var instructionLinks = new List<DocumentLinkRow>();
-            var photoLinks = new List<DocumentLinkRow>();
-            var equipmentNames = clean.Select(x => x.Equipment.Trim()).ToArray();
+            var instructionFileIds =
+                new Dictionary<string, long>(
+                    StringComparer.OrdinalIgnoreCase);
+
+            var photoFileIds =
+                new Dictionary<string, long>(
+                    StringComparer.OrdinalIgnoreCase);
+
+            var instructionLinks =
+                new List<DocumentLinkRow>();
+
+            var photoLinks =
+                new List<DocumentLinkRow>();
+
+            var equipmentNames = clean
+                .Select(x => x.Equipment.Trim())
+                .ToArray();
 
             await EnsureInfoRowsAsync(
                 connection,
@@ -318,10 +327,6 @@ public sealed class InfoImportEditStore
                     item.Description)),
                 cancellationToken);
 
-            /*
-             * Сначала удаляем прежние связи сразу для всего набора оборудования.
-             * После этого новые связи формируются в памяти и вставляются пакетно.
-             */
             await DeleteDocumentLinksAsync(
                 connection,
                 transaction,
@@ -329,6 +334,7 @@ public sealed class InfoImportEditStore
                 "instruction_id",
                 equipmentNames,
                 cancellationToken);
+
             await DeleteDocumentLinksAsync(
                 connection,
                 transaction,
@@ -339,45 +345,57 @@ public sealed class InfoImportEditStore
 
             foreach (var item in clean)
             {
-                var sortOrder = 0;
-                foreach (var source in SplitSourceValues(item.Source))
-                {
-                    var filePath = ResolveSourceFilePath(pdfSourceRoot, source);
-                    var instructionId = await SaveLibraryFileOnceAsync(
-                        connection,
-                        transaction,
-                        "public.equip_instruction",
-                        item.Type,
-                        filePath,
-                        instructionFileIds,
-                        cancellationToken);
+                var instructionSortOrder = 0;
 
-                    instructionLinks.Add(new DocumentLinkRow(
-                        item.Equipment,
-                        instructionId,
-                        sortOrder++));
+                foreach (var source in
+                         SplitSourceValues(item.Source))
+                {
+                    var filePath =
+                        ResolveSourceFilePath(
+                            pdfSourceRoot,
+                            source);
+
+                    var instructionId =
+                        await SaveLibraryFileOnceAsync(
+                            connection,
+                            transaction,
+                            "public.equip_instruction",
+                            filePath,
+                            instructionFileIds,
+                            cancellationToken);
+
+                    instructionLinks.Add(
+                        new DocumentLinkRow(
+                            item.Equipment,
+                            instructionId,
+                            instructionSortOrder++));
                 }
 
                 var photoSortOrder = 0;
-                foreach (var image in SplitSourceValues(item.Image))
-                {
-                    var filePath = ResolveInstructionImageFilePath(
-                        pdfSourceRoot,
-                        imageSourceRoot,
-                        image);
-                    var photoId = await SaveLibraryFileOnceAsync(
-                        connection,
-                        transaction,
-                        "public.equip_photo",
-                        item.Type,
-                        filePath,
-                        photoFileIds,
-                        cancellationToken);
 
-                    photoLinks.Add(new DocumentLinkRow(
-                        item.Equipment,
-                        photoId,
-                        photoSortOrder++));
+                foreach (var image in
+                         SplitSourceValues(item.Image))
+                {
+                    var filePath =
+                        ResolveInstructionImageFilePath(
+                            pdfSourceRoot,
+                            imageSourceRoot,
+                            image);
+
+                    var photoId =
+                        await SaveLibraryFileOnceAsync(
+                            connection,
+                            transaction,
+                            "public.equip_photo",
+                            filePath,
+                            photoFileIds,
+                            cancellationToken);
+
+                    photoLinks.Add(
+                        new DocumentLinkRow(
+                            item.Equipment,
+                            photoId,
+                            photoSortOrder++));
                 }
             }
 
@@ -388,6 +406,7 @@ public sealed class InfoImportEditStore
                 "instruction_id",
                 instructionLinks,
                 cancellationToken);
+
             await EnsureDocumentLinksAsync(
                 connection,
                 transaction,
@@ -396,12 +415,16 @@ public sealed class InfoImportEditStore
                 photoLinks,
                 cancellationToken);
 
-            await transaction.CommitAsync(cancellationToken);
+            await transaction.CommitAsync(
+                cancellationToken);
+
             return clean.Count;
         }
         catch
         {
-            await transaction.RollbackAsync(cancellationToken);
+            await transaction.RollbackAsync(
+                cancellationToken);
+
             throw;
         }
     }
@@ -475,7 +498,6 @@ public sealed class InfoImportEditStore
         const string sql = """
         SELECT
             id,
-            COALESCE(equip_type_group, '') AS equip_type_group,
             COALESCE(file_name, '') AS file_name,
             COALESCE(display_name, '') AS display_name,
             COALESCE(station, '') AS station,
@@ -494,32 +516,33 @@ public sealed class InfoImportEditStore
         await using var connection =
             new NpgsqlConnection(connectionString);
 
-        await connection.OpenAsync(cancellationToken);
-
-        await EnsureSchemeScopeColumnsAsync(
-            connection,
+        await connection.OpenAsync(
             cancellationToken);
 
         await using var command =
-            new NpgsqlCommand(sql, connection);
+            new NpgsqlCommand(
+                sql,
+                connection);
 
         await using var reader =
-            await command.ExecuteReaderAsync(cancellationToken);
+            await command.ExecuteReaderAsync(
+                cancellationToken);
 
-        while (await reader.ReadAsync(cancellationToken))
+        while (await reader.ReadAsync(
+                   cancellationToken))
         {
-            result.Add(new ImportSchemeFileRowViewModel
-            {
-                Id = reader.GetInt64(0),
-                Type = reader.GetString(1),
-                Source = reader.GetString(2),
-                Description = reader.GetString(3),
-                Station = reader.GetString(4),
-                GroupNames = reader.GetString(5),
-                Equipments = reader.GetString(6),
-                FileHash = reader.GetString(7),
-                PendingSourceFilePath = null
-            });
+            result.Add(
+                new ImportSchemeFileRowViewModel
+                {
+                    Id = reader.GetInt64(0),
+                    Source = reader.GetString(1),
+                    Description = reader.GetString(2),
+                    Station = reader.GetString(3),
+                    GroupNames = reader.GetString(4),
+                    Equipments = reader.GetString(5),
+                    FileHash = reader.GetString(6),
+                    PendingSourceFilePath = null
+                });
         }
 
         return result;
@@ -528,35 +551,50 @@ public sealed class InfoImportEditStore
     /// <summary>
     /// Loads equipment-to-scheme links.
     /// </summary>
-    public async Task<IReadOnlyList<ImportSchemeLinkRowViewModel>> LoadSchemeLinksAsync(string connectionString, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ImportSchemeLinkRowViewModel>>LoadSchemeLinksAsync(string connectionString, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT
-                link.equip_name,
-                COALESCE(scheme.equip_type_group, '') AS equip_type_group,
-                COALESCE(scheme.file_name, '') AS file_name,
-                COALESCE(scheme.display_name, '') AS display_name
-            FROM public.equip_info_scheme link
-            JOIN public.equip_scheme scheme ON scheme.id = link.scheme_id
-            ORDER BY link.equip_name, link.sort_order, scheme.file_name;
-            """;
+        SELECT
+            link.equip_name,
+            COALESCE(scheme.file_name, '') AS file_name,
+            COALESCE(scheme.display_name, '') AS display_name
+        FROM public.equip_info_scheme link
+        JOIN public.equip_scheme scheme
+            ON scheme.id = link.scheme_id
+        ORDER BY
+            link.equip_name,
+            link.sort_order,
+            scheme.file_name;
+        """;
 
-        var result = new List<ImportSchemeLinkRowViewModel>();
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
+        var result =
+            new List<ImportSchemeLinkRowViewModel>();
 
-        await using var command = new NpgsqlCommand(sql, connection);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await using var connection =
+            new NpgsqlConnection(connectionString);
 
-        while (await reader.ReadAsync(cancellationToken))
+        await connection.OpenAsync(
+            cancellationToken);
+
+        await using var command =
+            new NpgsqlCommand(
+                sql,
+                connection);
+
+        await using var reader =
+            await command.ExecuteReaderAsync(
+                cancellationToken);
+
+        while (await reader.ReadAsync(
+                   cancellationToken))
         {
-            result.Add(new ImportSchemeLinkRowViewModel
-            {
-                Equipment = reader.GetString(0),
-                Type = reader.GetString(1),
-                Scheme = reader.GetString(2),
-                Description = reader.GetString(3)
-            });
+            result.Add(
+                new ImportSchemeLinkRowViewModel
+                {
+                    Equipment = reader.GetString(0),
+                    Scheme = reader.GetString(1),
+                    Description = reader.GetString(2)
+                });
         }
 
         return result;
@@ -567,71 +605,104 @@ public sealed class InfoImportEditStore
     /// and rebuilds or extends public.equip_info_scheme links.
     ///
     /// preserveExistingTargetsAndLinks = false:
-    ///     Manual SCHEME tab Save. UI table is the master source,
-    ///     so scope columns and links are replaced.
+    ///     Manual SCHEME tab Save. UI table is the master source.
     ///
     /// preserveExistingTargetsAndLinks = true:
-    ///     Excel import. Existing DB scope columns and links are preserved,
-    ///     Excel values are merged into station/group_names/equipments,
-    ///     and only new links are added.
+    ///     Excel import. Existing scope columns and links are preserved.
     /// </summary>
     public async Task<int> SaveSchemesAsync(string connectionString, string pdfSourceRoot, string imageSourceRoot, IEnumerable<ImportSchemeFileRowViewModel> files, IEnumerable<ImportSchemeLinkRowViewModel> links, bool preserveExistingTargetsAndLinks = false, CancellationToken cancellationToken = default)
     {
-        var cleanFiles = MergeSchemeFileRows(files);
+        var cleanFiles =
+            MergeSchemeFileRows(files);
 
         var cleanLinks = links
-            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
-            .Where(x => !string.IsNullOrWhiteSpace(x.Scheme))
+            .Where(x =>
+                !string.IsNullOrWhiteSpace(
+                    x.Equipment))
+            .Where(x =>
+                !string.IsNullOrWhiteSpace(
+                    x.Scheme))
             .GroupBy(
-                x => $"{x.Equipment.Trim()}\u001f{Path.GetFileName(x.Scheme.Trim())}",
+                x =>
+                    $"{x.Equipment.Trim()}\u001f" +
+                    $"{Path.GetFileName(x.Scheme.Trim())}",
                 StringComparer.OrdinalIgnoreCase)
             .Select(x => x.Last())
             .ToList();
 
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await EnsureSchemeScopeColumnsAsync(connection, cancellationToken);
+        await using var connection =
+            new NpgsqlConnection(connectionString);
 
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await connection.OpenAsync(
+            cancellationToken);
+
+        await using var transaction =
+            await connection.BeginTransactionAsync(
+                cancellationToken);
 
         try
         {
-            var schemeFileIdsByPathOrName = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-            var schemeFileIdsByName = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-            var schemeIdsForCurrentRows = new HashSet<long>();
+            var schemeFileIdsByPathOrName =
+                new Dictionary<string, long>(
+                    StringComparer.OrdinalIgnoreCase);
+
+            var schemeFileIdsByName =
+                new Dictionary<string, long>(
+                    StringComparer.OrdinalIgnoreCase);
+
+            var schemeIdsForCurrentRows =
+                new HashSet<long>();
 
             foreach (var file in cleanFiles)
             {
-                var schemeId = await ResolveOrSaveSchemeFileAsync(
-                    connection,
-                    transaction,
-                    pdfSourceRoot,
-                    imageSourceRoot,
-                    file,
-                    schemeFileIdsByPathOrName,
-                    cancellationToken);
-
-                schemeIdsForCurrentRows.Add(schemeId);
-
-                var station = file.Station;
-                var groupNames = file.GroupNames;
-                var equipments = file.Equipments;
-
-                /*
-                 * Excel import must not wipe manually edited DB values.
-                 * Therefore we merge DB scope columns with imported values.
-                 */
-                if (preserveExistingTargetsAndLinks)
-                {
-                    var existingScope = await LoadSchemeScopeAsync(
+                var schemeId =
+                    await ResolveOrSaveSchemeFileAsync(
                         connection,
                         transaction,
-                        schemeId,
+                        pdfSourceRoot,
+                        imageSourceRoot,
+                        file,
+                        schemeFileIdsByPathOrName,
                         cancellationToken);
 
-                    station = MergeDelimitedText(new[] { existingScope.Station, file.Station });
-                    groupNames = MergeDelimitedText(new[] { existingScope.GroupNames, file.GroupNames });
-                    equipments = MergeDelimitedText(new[] { existingScope.Equipments, file.Equipments });
+                schemeIdsForCurrentRows.Add(
+                    schemeId);
+
+                var station =
+                    file.Station;
+
+                var groupNames =
+                    file.GroupNames;
+
+                var equipments =
+                    file.Equipments;
+
+                if (preserveExistingTargetsAndLinks)
+                {
+                    var existingScope =
+                        await LoadSchemeScopeAsync(
+                            connection,
+                            transaction,
+                            schemeId,
+                            cancellationToken);
+
+                    station = MergeDelimitedText(
+                        [
+                            existingScope.Station,
+                        file.Station
+                        ]);
+
+                    groupNames = MergeDelimitedText(
+                        [
+                            existingScope.GroupNames,
+                        file.GroupNames
+                        ]);
+
+                    equipments = MergeDelimitedText(
+                        [
+                            existingScope.Equipments,
+                        file.Equipments
+                        ]);
                 }
 
                 await UpdateSchemeScopeAsync(
@@ -643,59 +714,78 @@ public sealed class InfoImportEditStore
                     equipments,
                     cancellationToken);
 
-                var fileName = Path.GetFileName(file.Source.Trim());
+                var fileName =
+                    Path.GetFileName(
+                        file.Source.Trim());
 
-                if (schemeFileIdsByName.TryGetValue(fileName, out var existingId)
+                if (schemeFileIdsByName.TryGetValue(
+                        fileName,
+                        out var existingId)
                     && existingId != schemeId)
                 {
                     throw new InvalidOperationException(
-                        $"Several different scheme files have the same name in the import: {fileName}");
+                        "Several different scheme files " +
+                        "have the same name in the import: " +
+                        fileName);
                 }
 
-                schemeFileIdsByName[fileName] = schemeId;
+                schemeFileIdsByName[fileName] =
+                    schemeId;
             }
 
-            var sortOrderByEquipment = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var schemeLinks = new List<DocumentLinkRow>();
+            var sortOrderByEquipment =
+                new Dictionary<string, int>(
+                    StringComparer.OrdinalIgnoreCase);
+
+            var schemeLinks =
+                new List<DocumentLinkRow>();
 
             await EnsureInfoRowsAsync(
                 connection,
                 transaction,
-                cleanLinks.Select(link => new InfoRow(
-                    link.Equipment,
-                    ProductCode: "",
-                    Supplier: "",
-                    Description: "")),
+                cleanLinks.Select(link =>
+                    new InfoRow(
+                        link.Equipment,
+                        ProductCode: "",
+                        Supplier: "",
+                        Description: "")),
                 cancellationToken);
 
             foreach (var link in cleanLinks)
             {
-                var schemeFileName = Path.GetFileName(link.Scheme.Trim());
+                var schemeFileName =
+                    Path.GetFileName(
+                        link.Scheme.Trim());
 
-                var schemeId = schemeFileIdsByName.TryGetValue(schemeFileName, out var importedSchemeId)
-                    ? importedSchemeId
-                    : await ResolveLibraryFileIdAsync(
-                        connection,
-                        transaction,
-                        "public.equip_scheme",
-                        link.Type,
+                var schemeId =
+                    schemeFileIdsByName.TryGetValue(
                         schemeFileName,
-                        cancellationToken);
+                        out var importedSchemeId)
+                        ? importedSchemeId
+                        : await ResolveLibraryFileIdAsync(
+                            connection,
+                            transaction,
+                            "public.equip_scheme",
+                            schemeFileName,
+                            cancellationToken);
 
-                var key = link.Equipment.Trim();
-                sortOrderByEquipment.TryGetValue(key, out var sortOrder);
-                sortOrderByEquipment[key] = sortOrder + 1;
+                var equipmentKey =
+                    link.Equipment.Trim();
 
-                schemeLinks.Add(new DocumentLinkRow(
-                    link.Equipment,
-                    schemeId,
-                    sortOrder));
+                sortOrderByEquipment.TryGetValue(
+                    equipmentKey,
+                    out var sortOrder);
+
+                sortOrderByEquipment[equipmentKey] =
+                    sortOrder + 1;
+
+                schemeLinks.Add(
+                    new DocumentLinkRow(
+                        link.Equipment,
+                        schemeId,
+                        sortOrder));
             }
 
-            /*
-             * Manual SCHEME tab Save is a full replacement.
-             * Excel import is additive and must not remove existing DB links.
-             */
             if (!preserveExistingTargetsAndLinks)
             {
                 await DeleteSchemeLinksForSchemeIdsAsync(
@@ -713,12 +803,17 @@ public sealed class InfoImportEditStore
                 schemeLinks,
                 cancellationToken);
 
-            await transaction.CommitAsync(cancellationToken);
-            return cleanFiles.Count + cleanLinks.Count;
+            await transaction.CommitAsync(
+                cancellationToken);
+
+            return cleanFiles.Count +
+                   cleanLinks.Count;
         }
         catch
         {
-            await transaction.RollbackAsync(cancellationToken);
+            await transaction.RollbackAsync(
+                cancellationToken);
+
             throw;
         }
     }
@@ -764,19 +859,21 @@ public sealed class InfoImportEditStore
     ///
     /// Existing rows are resolved directly by Id.
     /// Files selected through Browse are stored from PendingSourceFilePath.
-    /// Excel rows without Id continue to use Source and configured source folders.
+    /// Excel rows without Id use Source and configured source folders.
     /// </summary>
     private static async Task<long> ResolveOrSaveSchemeFileAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string pdfSourceRoot, string imageSourceRoot, ImportSchemeFileRowViewModel file, IDictionary<string, long> resolvedSchemeFileIds, CancellationToken cancellationToken)
     {
-        var source = file.Source?.Trim() ?? "";
+        var source =
+            file.Source?.Trim() ?? "";
 
         if (string.IsNullOrWhiteSpace(source))
+        {
             throw new InvalidOperationException(
                 "SCHEME row has empty Source.");
+        }
 
         /*
-         * Browse selection has a dedicated physical path.
-         * Source contains only the display/database file name.
+         * Файл был выбран через Browse.
          */
         if (!string.IsNullOrWhiteSpace(
                 file.PendingSourceFilePath))
@@ -788,7 +885,8 @@ public sealed class InfoImportEditStore
             if (!File.Exists(pendingFullPath))
             {
                 throw new FileNotFoundException(
-                    $"Selected SCHEME PDF was not found: {pendingFullPath}",
+                    $"Selected SCHEME PDF was not found: " +
+                    pendingFullPath,
                     pendingFullPath);
             }
 
@@ -806,31 +904,21 @@ public sealed class InfoImportEditStore
 
             if (file.Id is long existingId)
             {
-                /*
-                 * Browse was used on an existing row.
-                 * Replace that exact library row instead of inserting
-                 * another row based only on the new file name.
-                 */
                 savedId =
                     await UpdateSchemeLibraryFileByIdAsync(
                         connection,
                         transaction,
                         existingId,
-                        file.Type,
                         pendingFullPath,
                         cancellationToken);
             }
             else
             {
-                /*
-                 * New UI/Excel row without an existing database ID.
-                 */
                 savedId =
                     await SaveLibraryFileAsync(
                         connection,
                         transaction,
                         "public.equip_scheme",
-                        file.Type,
                         pendingFullPath,
                         cancellationToken);
             }
@@ -842,8 +930,8 @@ public sealed class InfoImportEditStore
         }
 
         /*
-         * Existing database rows do not require the physical PDF to remain
-         * in the source directory.
+         * Существующая строка БД не требует наличия
+         * исходного PDF в рабочей папке.
          */
         if (file.Id is long databaseId)
         {
@@ -854,7 +942,8 @@ public sealed class InfoImportEditStore
                     cancellationToken))
             {
                 throw new InvalidOperationException(
-                    $"SCHEME library row no longer exists: ID={databaseId}.");
+                    $"SCHEME library row no longer exists: " +
+                    $"ID={databaseId}.");
             }
 
             resolvedSchemeFileIds[
@@ -864,11 +953,14 @@ public sealed class InfoImportEditStore
         }
 
         /*
-         * Compatibility path for Excel import and manually typed Source.
+         * Excel-import или вручную введенный Source.
          */
         var physicalFilePath =
             TryResolveExistingSourceFilePath(
-                [pdfSourceRoot, imageSourceRoot],
+                [
+                    pdfSourceRoot,
+                imageSourceRoot
+                ],
                 source,
                 out var checkedPaths);
 
@@ -876,7 +968,8 @@ public sealed class InfoImportEditStore
                 physicalFilePath))
         {
             var cacheKey =
-                Path.GetFullPath(physicalFilePath);
+                Path.GetFullPath(
+                    physicalFilePath);
 
             if (resolvedSchemeFileIds.TryGetValue(
                     cacheKey,
@@ -890,7 +983,6 @@ public sealed class InfoImportEditStore
                     connection,
                     transaction,
                     "public.equip_scheme",
-                    file.Type,
                     physicalFilePath,
                     cancellationToken);
 
@@ -913,7 +1005,8 @@ public sealed class InfoImportEditStore
         if (existingDbId is not null)
         {
             resolvedSchemeFileIds[
-                $"db:{fileName}"] = existingDbId.Value;
+                $"db:{fileName}"] =
+                existingDbId.Value;
 
             return existingDbId.Value;
         }
@@ -921,11 +1014,14 @@ public sealed class InfoImportEditStore
         var checkedMessage =
             checkedPaths.Count == 0
                 ? source
-                : string.Join("; ", checkedPaths);
+                : string.Join(
+                    "; ",
+                    checkedPaths);
 
         throw new FileNotFoundException(
-            "Import source file not found and scheme library row " +
-            $"does not exist in DB. Checked: {checkedMessage}",
+            "Import source file not found and " +
+            "scheme library row does not exist in DB. " +
+            $"Checked: {checkedMessage}",
             checkedPaths.FirstOrDefault() ?? source);
     }
 
@@ -953,12 +1049,10 @@ public sealed class InfoImportEditStore
     }
 
     /// <summary>
-    /// Replaces the binary file and metadata of one existing SCHEME row.
-    ///
-    /// The ID is preserved, therefore existing public.equip_info_scheme
-    /// foreign keys continue to reference the same logical scheme.
+    /// Replaces binary data and metadata of one existing SCHEME row.
+    /// The ID is preserved, therefore existing links remain valid.
     /// </summary>
-    private static async Task<long> UpdateSchemeLibraryFileByIdAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long schemeId, string type, string filePath, CancellationToken cancellationToken)
+    private static async Task<long>UpdateSchemeLibraryFileByIdAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long schemeId, string filePath, CancellationToken cancellationToken)
     {
         var fullPath =
             Path.GetFullPath(filePath);
@@ -982,25 +1076,18 @@ public sealed class InfoImportEditStore
                 fileHash,
                 cancellationToken);
 
-        /*
-         * Browse normally detects this before Save.
-         * This second check protects against concurrent changes.
-         */
         if (duplicateId is long existingId
             && existingId != schemeId)
         {
             throw new InvalidOperationException(
-                "The selected SCHEME PDF already exists in another " +
-                $"library row. Existing ID: {existingId}.");
+                "The selected SCHEME PDF already exists " +
+                "in another library row. " +
+                $"Existing ID: {existingId}.");
         }
 
         const string sql = """
         UPDATE public.equip_scheme
         SET
-            equip_type_group =
-                COALESCE(
-                    NULLIF(@equip_type_group, ''),
-                    equip_type_group),
             file_name = @file_name,
             display_name = @display_name,
             file_hash = @file_hash,
@@ -1010,7 +1097,10 @@ public sealed class InfoImportEditStore
         """;
 
         await using var command =
-            new NpgsqlCommand(sql, connection, transaction);
+            new NpgsqlCommand(
+                sql,
+                connection,
+                transaction);
 
         command.Parameters.AddWithValue(
             "id",
@@ -1018,7 +1108,6 @@ public sealed class InfoImportEditStore
 
         AddLibraryFileParameters(
             command,
-            type,
             fileName,
             fileHash,
             fileData,
@@ -1031,7 +1120,8 @@ public sealed class InfoImportEditStore
         if (updated != 1)
         {
             throw new InvalidOperationException(
-                $"SCHEME library row was not found: ID={schemeId}.");
+                $"SCHEME library row was not found: " +
+                $"ID={schemeId}.");
         }
 
         return schemeId;
@@ -1094,27 +1184,6 @@ public sealed class InfoImportEditStore
         return scalar is null or DBNull
             ? null
             : Convert.ToInt64(scalar);
-    }
-
-    /// <summary>
-    /// Adds new nullable scope columns to public.equip_scheme.
-    /// This is intentionally safe to run on every Maintenance load/save.
-    /// </summary>
-    private static async Task EnsureSchemeScopeColumnsAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
-    {
-        const string sql = """
-        ALTER TABLE public.equip_scheme
-        ADD COLUMN IF NOT EXISTS station text NULL;
-
-        ALTER TABLE public.equip_scheme
-        ADD COLUMN IF NOT EXISTS group_names text NULL;
-
-        ALTER TABLE public.equip_scheme
-        ADD COLUMN IF NOT EXISTS equipments text NULL;
-        """;
-
-        await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>
@@ -1212,11 +1281,7 @@ public sealed class InfoImportEditStore
     /// <summary>
     /// Removes previous links for scheme files currently edited by the SCHEME tab.
     /// </summary>
-    private static async Task DeleteSchemeLinksForSchemeIdsAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        IEnumerable<long> schemeIds,
-        CancellationToken cancellationToken)
+    private static async Task DeleteSchemeLinksForSchemeIdsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, IEnumerable<long> schemeIds, CancellationToken cancellationToken)
     {
         var clean = schemeIds
             .Distinct()
@@ -1231,18 +1296,12 @@ public sealed class InfoImportEditStore
         """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.Add(
-            "scheme_ids",
-            NpgsqlDbType.Array | NpgsqlDbType.Bigint).Value = clean;
+        command.Parameters.Add("scheme_ids", NpgsqlDbType.Array | NpgsqlDbType.Bigint).Value = clean;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task SaveSupplierMetadataAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        ImportSupplierRowViewModel item,
-        CancellationToken cancellationToken)
+    private static async Task SaveSupplierMetadataAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ImportSupplierRowViewModel item, CancellationToken cancellationToken)
     {
         const string sql = """
             INSERT INTO public.equip_supplier (name, logo_file_name, updated_at)
@@ -1262,11 +1321,7 @@ public sealed class InfoImportEditStore
     /// <summary>
     /// Сохраняет поставщика вместе с новым logo_data и SHA-256 hash, чтобы поведение совпадало со старым WPF-импортом.
     /// </summary>
-    private static async Task SaveSupplierWithLogoAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        ImportSupplierRowViewModel item,
-        CancellationToken cancellationToken)
+    private static async Task SaveSupplierWithLogoAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ImportSupplierRowViewModel item, CancellationToken cancellationToken)
     {
         const string sql = """
             INSERT INTO public.equip_supplier
@@ -1306,11 +1361,7 @@ public sealed class InfoImportEditStore
     /// Возвращает id поставщика для ORDERS.
     /// Если поставщик указан, но его ещё нет в public.equip_supplier, создаёт пустую строку поставщика.
     /// </summary>
-    private static async Task<long?> ResolveSupplierIdAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        string supplier,
-        CancellationToken cancellationToken)
+    private static async Task<long?> ResolveSupplierIdAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string supplier, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(supplier))
             return null;
@@ -1332,12 +1383,7 @@ public sealed class InfoImportEditStore
     /// <summary>
     /// Обновляет заказ по product_code. Это тот же ключ, который использовался в старом Excel-импорте.
     /// </summary>
-    private static async Task SaveOrderAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        ImportOrderRowViewModel item,
-        long? supplierId,
-        CancellationToken cancellationToken)
+    private static async Task SaveOrderAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ImportOrderRowViewModel item, long? supplierId, CancellationToken cancellationToken)
     {
         const string sql = """
             INSERT INTO public.equip_order
@@ -1408,9 +1454,7 @@ public sealed class InfoImportEditStore
     /// Ищет файл в нескольких каталогах источников в заданном порядке.
     /// Абсолютный путь проверяется только один раз и не зависит от списка корней.
     /// </summary>
-    private static string ResolveSourceFilePath(
-        IEnumerable<string> sourceRoots,
-        string source)
+    private static string ResolveSourceFilePath(IEnumerable<string> sourceRoots, string source)
     {
         var value = source.Trim();
         if (Path.IsPathRooted(value))
@@ -1438,10 +1482,7 @@ public sealed class InfoImportEditStore
     /// Для совместимости со старой конфигурацией также проверяет Images рядом
     /// с PDF и сам PDF-каталог.
     /// </summary>
-    private static string ResolveInstructionImageFilePath(
-        string pdfSourceRoot,
-        string imageSourceRoot,
-        string image)
+    private static string ResolveInstructionImageFilePath(string pdfSourceRoot, string imageSourceRoot, string image)
     {
         var value = image.Trim();
         if (Path.IsPathRooted(value))
@@ -1460,11 +1501,7 @@ public sealed class InfoImportEditStore
     /// Одним запросом добавляет или обновляет equip_info для всего набора оборудования.
     /// Пустые значения не затирают уже заполненные поля в базе данных.
     /// </summary>
-    private static async Task EnsureInfoRowsAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        IEnumerable<InfoRow> rows,
-        CancellationToken cancellationToken)
+    private static async Task EnsureInfoRowsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, IEnumerable<InfoRow> rows, CancellationToken cancellationToken)
     {
         var clean = rows
             .Where(x => !string.IsNullOrWhiteSpace(x.EquipmentName))
@@ -1506,241 +1543,251 @@ public sealed class InfoImportEditStore
             """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.Add(
-            "equip_names",
-            NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
-            clean.Select(x => x.EquipmentName.Trim()).ToArray();
-        command.Parameters.Add(
-            "product_codes",
-            NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
-            clean.Select(x => x.ProductCode?.Trim() ?? "").ToArray();
-        command.Parameters.Add(
-            "suppliers",
-            NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
-            clean.Select(x => x.Supplier?.Trim() ?? "").ToArray();
-        command.Parameters.Add(
-            "descriptions",
-            NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
-            clean.Select(x => x.Description?.Trim() ?? "").ToArray();
+        command.Parameters.Add("equip_names", NpgsqlDbType.Array | NpgsqlDbType.Text).Value = clean.Select(x => x.EquipmentName.Trim()).ToArray();
+        command.Parameters.Add("product_codes", NpgsqlDbType.Array | NpgsqlDbType.Text).Value = clean.Select(x => x.ProductCode?.Trim() ?? "").ToArray();
+        command.Parameters.Add("suppliers", NpgsqlDbType.Array | NpgsqlDbType.Text).Value = clean.Select(x => x.Supplier?.Trim() ?? "").ToArray();
+        command.Parameters.Add("descriptions", NpgsqlDbType.Array | NpgsqlDbType.Text).Value = clean.Select(x => x.Description?.Trim() ?? "").ToArray();
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task<long> SaveLibraryFileAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        string tableName,
-        string type,
-        string filePath,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Saves or updates one file in the selected library table.
+    ///
+    /// Binary duplicates are resolved by SHA-256.
+    /// Changed content with the same file name updates the existing row.
+    /// </summary>
+    private static async Task<long> SaveLibraryFileAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string tableName, string filePath, CancellationToken cancellationToken)
     {
-        ValidateLibraryTableName(tableName);
+        ValidateLibraryTableName(
+            tableName);
 
-        var fileName = Path.GetFileName(filePath);
-        var fileData = await File.ReadAllBytesAsync(filePath, cancellationToken);
-        var fileHash = ComputeSha256(fileData);
-        var updatedAt = File.GetLastWriteTime(filePath);
+        var fullPath =
+            Path.GetFullPath(filePath);
+
+        var fileName =
+            Path.GetFileName(fullPath);
+
+        var fileData =
+            await File.ReadAllBytesAsync(
+                fullPath,
+                cancellationToken);
+
+        var fileHash =
+            ComputeSha256(fileData);
+
+        var updatedAt =
+            File.GetLastWriteTime(fullPath);
 
         /*
-         * Совпадение хэша означает, что бинарный файл уже хранится в библиотеке.
-         * Возвращаем его ID без UPDATE: это исключает повторную передачу bytea
-         * в PostgreSQL для каждого оборудования и сохраняет исходную строку файла.
+         * Полностью одинаковый бинарный файл
+         * повторно не сохраняем.
          */
-        var existingHashId = await FindLibraryFileIdByHashAsync(
-            connection,
-            transaction,
-            tableName,
-            fileHash,
-            cancellationToken);
+        var existingHashId =
+            await FindLibraryFileIdByHashAsync(
+                connection,
+                transaction,
+                tableName,
+                fileHash,
+                cancellationToken);
 
         if (existingHashId is not null)
             return existingHashId.Value;
 
         /*
-         * Если имя и тип прежние, но содержимое изменилось, обновляем существующую
-         * логическую запись. В этом случае запись file_data действительно нужна.
+         * То же имя, но другое содержимое:
+         * обновляем существующую строку.
          */
-        var existingLogicalId = await FindLibraryFileIdByLogicalKeyAsync(
-            connection,
-            transaction,
-            tableName,
-            type,
-            fileName,
-            cancellationToken);
+        var existingLogicalId =
+            await FindLibraryFileIdByLogicalKeyAsync(
+                connection,
+                transaction,
+                tableName,
+                fileName,
+                cancellationToken);
 
         if (existingLogicalId is not null)
         {
             var updateSql = $"""
-                UPDATE {tableName}
-                SET
-                    equip_type_group = COALESCE(equip_type_group, NULLIF(@equip_type_group, '')),
-                    file_name = @file_name,
-                    display_name = @display_name,
-                    file_hash = @file_hash,
-                    file_data = @file_data,
-                    updated_at = @updated_at
-                WHERE id = @id;
-                """;
+            UPDATE {tableName}
+            SET
+                file_name = @file_name,
+                display_name = @display_name,
+                file_hash = @file_hash,
+                file_data = @file_data,
+                updated_at = @updated_at
+            WHERE id = @id;
+            """;
 
-            await using var updateCommand = new NpgsqlCommand(updateSql, connection, transaction);
-            updateCommand.Parameters.AddWithValue("id", existingLogicalId.Value);
-            AddLibraryFileParameters(updateCommand, type, fileName, fileHash, fileData, updatedAt);
-            await updateCommand.ExecuteNonQueryAsync(cancellationToken);
+            await using var updateCommand =
+                new NpgsqlCommand(
+                    updateSql,
+                    connection,
+                    transaction);
+
+            updateCommand.Parameters.AddWithValue(
+                "id",
+                existingLogicalId.Value);
+
+            AddLibraryFileParameters(
+                updateCommand,
+                fileName,
+                fileHash,
+                fileData,
+                updatedAt);
+
+            await updateCommand.ExecuteNonQueryAsync(
+                cancellationToken);
+
             return existingLogicalId.Value;
         }
 
         var insertSql = $"""
-            INSERT INTO {tableName}
-            (
-                equip_type_group,
-                file_name,
-                display_name,
-                file_hash,
-                file_data,
-                updated_at
-            )
-            VALUES
-            (
-                NULLIF(@equip_type_group, ''),
-                @file_name,
-                @display_name,
-                @file_hash,
-                @file_data,
-                @updated_at
-            )
-            RETURNING id;
-            """;
+        INSERT INTO {tableName}
+        (
+            file_name,
+            display_name,
+            file_hash,
+            file_data,
+            updated_at
+        )
+        VALUES
+        (
+            @file_name,
+            @display_name,
+            @file_hash,
+            @file_data,
+            @updated_at
+        )
+        RETURNING id;
+        """;
 
-        await using var insertCommand = new NpgsqlCommand(insertSql, connection, transaction);
-        AddLibraryFileParameters(insertCommand, type, fileName, fileHash, fileData, updatedAt);
-        var scalar = await insertCommand.ExecuteScalarAsync(cancellationToken);
+        await using var insertCommand =
+            new NpgsqlCommand(
+                insertSql,
+                connection,
+                transaction);
+
+        AddLibraryFileParameters(
+            insertCommand,
+            fileName,
+            fileHash,
+            fileData,
+            updatedAt);
+
+        var scalar =
+            await insertCommand.ExecuteScalarAsync(
+                cancellationToken);
+
         return Convert.ToInt64(scalar);
     }
 
     /// <summary>
-    /// Сохраняет библиотечный файл не более одного раза за текущую операцию.
-    /// Ключ строится по полному пути без учета регистра; оборудование затем
-    /// получает отдельную связь с уже сохраненной строкой библиотеки.
+    /// Saves one library file only once during the current operation.
     /// </summary>
-    private static async Task<long> SaveLibraryFileOnceAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        string tableName,
-        string type,
-        string filePath,
-        IDictionary<string, long> savedFileIds,
-        CancellationToken cancellationToken)
+    private static async Task<long> SaveLibraryFileOnceAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string tableName, string filePath, IDictionary<string, long> savedFileIds, CancellationToken cancellationToken)
     {
         var cacheKey = Path.GetFullPath(filePath);
-        if (savedFileIds.TryGetValue(cacheKey, out var savedId))
-            return savedId;
 
-        savedId = await SaveLibraryFileAsync(
-            connection,
-            transaction,
-            tableName,
-            type,
-            filePath,
-            cancellationToken);
+        if (savedFileIds.TryGetValue(cacheKey, out var savedId))
+        {
+            return savedId;
+        }
+
+        savedId = await SaveLibraryFileAsync(connection, transaction, tableName, filePath, cancellationToken);
+
         savedFileIds[cacheKey] = savedId;
+
         return savedId;
     }
 
-    private static async Task<long> ResolveLibraryFileIdAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        string tableName,
-        string type,
-        string fileName,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Resolves a library row by file name.
+    /// </summary>
+    private static async Task<long> ResolveLibraryFileIdAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string tableName, string fileName, CancellationToken cancellationToken)
     {
         ValidateLibraryTableName(tableName);
 
         var sql = $"""
-            SELECT id
-            FROM {tableName}
-            WHERE lower(file_name) = lower(@file_name)
-            ORDER BY
-                CASE WHEN lower(COALESCE(equip_type_group, '')) = lower(@equip_type_group) THEN 0 ELSE 1 END,
-                id
-            LIMIT 1;
-            """;
+        SELECT id
+        FROM {tableName}
+        WHERE lower(file_name) =
+              lower(@file_name)
+        ORDER BY id
+        LIMIT 1;
+        """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
+
         command.Parameters.AddWithValue("file_name", Path.GetFileName(fileName.Trim()));
-        command.Parameters.AddWithValue("equip_type_group", type?.Trim() ?? "");
+
         var scalar = await command.ExecuteScalarAsync(cancellationToken);
+
         if (scalar is null or DBNull)
-            throw new InvalidOperationException($"Scheme file is not found in the library: {fileName}");
+        {
+            throw new InvalidOperationException($"Library file was not found: {fileName}");
+        }
 
         return Convert.ToInt64(scalar);
     }
 
     /// <summary>
-    /// Ищет уже сохраненный бинарный файл по его SHA-256.
+    /// Finds an existing binary file by SHA-256.
     /// </summary>
-    private static async Task<long?> FindLibraryFileIdByHashAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        string tableName,
-        string fileHash,
-        CancellationToken cancellationToken)
+    private static async Task<long?> FindLibraryFileIdByHashAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string tableName, string fileHash, CancellationToken cancellationToken)
     {
         ValidateLibraryTableName(tableName);
 
         var sql = $"""
-            SELECT id
-            FROM {tableName}
-            WHERE file_hash = @file_hash
-            ORDER BY id
-            LIMIT 1;
-            """;
+        SELECT id
+        FROM {tableName}
+        WHERE file_hash = @file_hash
+        ORDER BY id
+        LIMIT 1;
+        """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
+
         command.Parameters.AddWithValue("file_hash", fileHash);
+
         var scalar = await command.ExecuteScalarAsync(cancellationToken);
-        return scalar is null or DBNull ? null : Convert.ToInt64(scalar);
+
+        return scalar is null or DBNull
+            ? null
+            : Convert.ToInt64(scalar);
     }
 
     /// <summary>
-    /// Ищет строку библиотеки по ее логическому ключу, когда файл с тем же именем
-    /// был изменен и должен заменить прежнее содержимое.
+    /// Finds a library row by its file name.
+    /// Used when the file content changed and must replace the old binary data.
     /// </summary>
-    private static async Task<long?> FindLibraryFileIdByLogicalKeyAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        string tableName,
-        string type,
-        string fileName,
-        CancellationToken cancellationToken)
+    private static async Task<long?>FindLibraryFileIdByLogicalKeyAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string tableName, string fileName, CancellationToken cancellationToken)
     {
         ValidateLibraryTableName(tableName);
 
         var sql = $"""
-            SELECT id
-            FROM {tableName}
-            WHERE lower(COALESCE(equip_type_group, '')) = lower(@equip_type_group)
-              AND lower(file_name) = lower(@file_name)
-            ORDER BY id
-            LIMIT 1;
-            """;
+        SELECT id
+        FROM {tableName}
+        WHERE lower(file_name) =
+              lower(@file_name)
+        ORDER BY id
+        LIMIT 1;
+        """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("equip_type_group", type?.Trim() ?? "");
-        command.Parameters.AddWithValue("file_name", fileName);
+
+        command.Parameters.AddWithValue("file_name", Path.GetFileName(fileName.Trim()));
+
         var scalar = await command.ExecuteScalarAsync(cancellationToken);
-        return scalar is null or DBNull ? null : Convert.ToInt64(scalar);
+
+        return scalar is null or DBNull
+            ? null
+            : Convert.ToInt64(scalar);
     }
 
     /// <summary>
     /// Одним запросом удаляет старые связи для всего изменяемого оборудования.
     /// </summary>
-    private static async Task DeleteDocumentLinksAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        string linkTableName,
-        string documentIdColumnName,
-        IEnumerable<string> equipmentNames,
-        CancellationToken cancellationToken)
+    private static async Task DeleteDocumentLinksAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string linkTableName, string documentIdColumnName, IEnumerable<string> equipmentNames, CancellationToken cancellationToken)
     {
         ValidateLinkTableName(linkTableName, documentIdColumnName);
 
@@ -1759,22 +1806,14 @@ public sealed class InfoImportEditStore
             """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.Add(
-            "equip_names",
-            NpgsqlDbType.Array | NpgsqlDbType.Text).Value = clean;
+        command.Parameters.Add("equip_names", NpgsqlDbType.Array | NpgsqlDbType.Text).Value = clean;
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>
     /// Одним INSERT ... SELECT FROM unnest добавляет или обновляет набор связей.
     /// </summary>
-    private static async Task EnsureDocumentLinksAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        string linkTableName,
-        string documentIdColumnName,
-        IEnumerable<DocumentLinkRow> links,
-        CancellationToken cancellationToken)
+    private static async Task EnsureDocumentLinksAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string linkTableName, string documentIdColumnName, IEnumerable<DocumentLinkRow> links, CancellationToken cancellationToken)
     {
         ValidateLinkTableName(linkTableName, documentIdColumnName);
 
@@ -1810,30 +1849,14 @@ public sealed class InfoImportEditStore
             """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.Add(
-            "equip_names",
-            NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
-            clean.Select(x => x.EquipmentName.Trim()).ToArray();
-        command.Parameters.Add(
-            "document_ids",
-            NpgsqlDbType.Array | NpgsqlDbType.Bigint).Value =
-            clean.Select(x => x.DocumentId).ToArray();
-        command.Parameters.Add(
-            "sort_orders",
-            NpgsqlDbType.Array | NpgsqlDbType.Integer).Value =
-            clean.Select(x => x.SortOrder).ToArray();
+        command.Parameters.Add("equip_names", NpgsqlDbType.Array | NpgsqlDbType.Text).Value = clean.Select(x => x.EquipmentName.Trim()).ToArray();
+        command.Parameters.Add("document_ids", NpgsqlDbType.Array | NpgsqlDbType.Bigint).Value = clean.Select(x => x.DocumentId).ToArray();
+        command.Parameters.Add("sort_orders", NpgsqlDbType.Array | NpgsqlDbType.Integer).Value = clean.Select(x => x.SortOrder).ToArray();
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static void AddLibraryFileParameters(
-        NpgsqlCommand command,
-        string type,
-        string fileName,
-        string fileHash,
-        byte[] fileData,
-        DateTime updatedAt)
+    private static void AddLibraryFileParameters(NpgsqlCommand command, string fileName, string fileHash, byte[] fileData, DateTime updatedAt)
     {
-        command.Parameters.AddWithValue("equip_type_group", type?.Trim() ?? "");
         command.Parameters.AddWithValue("file_name", fileName);
         command.Parameters.AddWithValue("display_name", fileName);
         command.Parameters.AddWithValue("file_hash", fileHash);
@@ -1871,22 +1894,10 @@ public sealed class InfoImportEditStore
     /// </summary>
     private static async Task<string> ComputeSha256FileAsync(string filePath, CancellationToken cancellationToken)
     {
-        await using var stream = new FileStream(
-            filePath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            bufferSize: 128 * 1024,
-            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-
+        await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 128 * 1024, options: FileOptions.Asynchronous | FileOptions.SequentialScan);
         using var sha256 = SHA256.Create();
+        var hash = await sha256.ComputeHashAsync(stream, cancellationToken);
 
-        var hash = await sha256.ComputeHashAsync(
-            stream,
-            cancellationToken);
-
-        return Convert
-            .ToHexString(hash)
-            .ToLowerInvariant();
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }

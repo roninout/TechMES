@@ -757,57 +757,78 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Читает метаданные файлов через WPF-совместимые link-таблицы без загрузки blob-данных.
+    /// Читает метаданные файлов через link-таблицы без загрузки blob-данных.
     /// Именно эти легкие данные используются для вкладок, счетчиков и списков файлов.
     /// </summary>
-    private static async Task<List<EquipmentInfoFileDto>> LoadLinkedFilesMetadataAsync(
-        NpgsqlConnection conn,
-        string linkTable,
-        string libraryTable,
-        string linkIdColumn,
-        EquipmentInfoFileKind kind,
-        string equipName,
-        CancellationToken ct)
+    private static async Task<List<EquipmentInfoFileDto>>LoadLinkedFilesMetadataAsync(NpgsqlConnection conn, string linkTable, string libraryTable, string linkIdColumn, EquipmentInfoFileKind kind, string equipName, CancellationToken ct)
     {
         await using var cmd = new NpgsqlCommand(
             $"""
-            SELECT
-                lib.id,
-                lib.file_name,
-                lib.display_name,
-                lib.file_hash,
-                link.sort_order,
-                lib.updated_at,
-                lib.equip_type_group
-            FROM {linkTable} link
-            INNER JOIN {libraryTable} lib
-                ON lib.id = link.{linkIdColumn}
-            WHERE link.equip_name = @equip_name
-            ORDER BY link.sort_order, lib.display_name, lib.file_name;
-            """,
+        SELECT
+            lib.id,
+            lib.file_name,
+            lib.display_name,
+            lib.file_hash,
+            link.sort_order,
+            lib.updated_at
+        FROM {linkTable} link
+        INNER JOIN {libraryTable} lib
+            ON lib.id = link.{linkIdColumn}
+        WHERE link.equip_name = @equip_name
+        ORDER BY
+            link.sort_order,
+            lib.display_name,
+            lib.file_name;
+        """,
             conn);
 
-        cmd.Parameters.AddWithValue("equip_name", equipName);
+        cmd.Parameters.AddWithValue(
+            "equip_name",
+            equipName);
 
-        var result = new List<EquipmentInfoFileDto>();
+        var result =
+            new List<EquipmentInfoFileDto>();
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        await using var reader =
+            await cmd.ExecuteReaderAsync(ct);
+
         while (await reader.ReadAsync(ct))
         {
-            var fileName = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+            var fileName = reader.IsDBNull(1)
+                ? string.Empty
+                : reader.GetString(1);
 
             result.Add(new EquipmentInfoFileDto
             {
-                Id = reader.IsDBNull(0) ? 0 : reader.GetInt64(0),
+                Id = reader.IsDBNull(0)
+                    ? 0
+                    : reader.GetInt64(0),
+
                 EquipName = equipName,
+
                 FileName = fileName,
-                DisplayName = reader.IsDBNull(2) ? fileName : reader.GetString(2),
-                FileHash = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                SortOrder = reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
-                UpdatedAt = reader.IsDBNull(5) ? null : reader.GetDateTime(5),
-                EquipTypeGroupKey = reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
+
+                DisplayName = reader.IsDBNull(2)
+                    ? fileName
+                    : reader.GetString(2),
+
+                FileHash = reader.IsDBNull(3)
+                    ? string.Empty
+                    : reader.GetString(3),
+
+                SortOrder = reader.IsDBNull(4)
+                    ? 0
+                    : reader.GetInt32(4),
+
+                UpdatedAt = reader.IsDBNull(5)
+                    ? null
+                    : reader.GetDateTime(5),
+
                 Kind = kind,
-                ContentType = GetContentType(fileName, kind)
+
+                ContentType = GetContentType(
+                    fileName,
+                    kind)
             });
         }
 
