@@ -719,14 +719,13 @@
 
                             </control:DataGridTemplateColumn>
 
-                            <control:DataGridTemplateColumn
-                                Header="Type"
-                                FieldName="Type"
-                                ClipboardContentBinding="{Binding Type}"
-                                SortMemberPath="Type"
-                                IsColumnFiltered="True"
-                                CanUserResize="True"
-                                Width="150">
+                            <control:DataGridTemplateColumn Header="Type"
+                                                            FieldName="Type"
+                                                            ClipboardContentBinding="{Binding Type}"
+                                                            SortMemberPath="Type"
+                                                            IsColumnFiltered="True"
+                                                            CanUserResize="True"
+                                                            Width="150">
 
                                 <!-- Первый клик: только выделение ячейки. -->
                                 <control:DataGridTemplateColumn.CellTemplate>
@@ -760,36 +759,19 @@
 
                             </control:DataGridTemplateColumn>
 
-                            <!--<control:DataGridTemplateColumn Header="Type"
-                                                    FieldName="Type"
-                                                    ClipboardContentBinding="{Binding Type}"
-                                                    SortMemberPath="Type"
-                                                    IsColumnFiltered="True"
-                                                    Width="150">
-                                <control:DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <ComboBox ItemsSource="{Binding DataContext.ImportOrderTypeOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
-                                                  SelectedItem="{Binding Type, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  IsEditable="False"
-                                                  IsTextSearchEnabled="True"
-                                                  MinWidth="120" />
-                                    </DataTemplate>
-                                </control:DataGridTemplateColumn.CellTemplate>
-                            </control:DataGridTemplateColumn>-->
                             <control:DataGridTextColumn Header="Product code"
-                                                    Binding="{Binding ProductCode, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsColumnFiltered="True"
-                                                    CanUserResize="True"
-                                                    Width="210" />
+                                                        Binding="{Binding ProductCode, UpdateSourceTrigger=PropertyChanged}"
+                                                        IsColumnFiltered="True"
+                                                        CanUserResize="True"
+                                                        Width="210" />
 
-                            <control:DataGridTemplateColumn
-                                Header="Supplier"
-                                FieldName="Supplier"
-                                ClipboardContentBinding="{Binding Supplier}"
-                                SortMemberPath="Supplier"
-                                IsColumnFiltered="True"
-                                CanUserResize="True"
-                                Width="180">
+                            <control:DataGridTemplateColumn Header="Supplier"
+                                                            FieldName="Supplier"
+                                                            ClipboardContentBinding="{Binding Supplier}"
+                                                            SortMemberPath="Supplier"
+                                                            IsColumnFiltered="True"
+                                                            CanUserResize="True"
+                                                            Width="180">
 
                                 <!-- Первый клик: только выделение ячейки. -->
                                 <control:DataGridTemplateColumn.CellTemplate>
@@ -823,29 +805,21 @@
 
                             </control:DataGridTemplateColumn>
 
-
-                            <!--<control:DataGridTemplateColumn Header="Supplier"
-                                                    FieldName="Supplier"
-                                                    ClipboardContentBinding="{Binding Supplier}"
-                                                    SortMemberPath="Supplier"
-                                                    IsColumnFiltered="True"
-                                                    Width="180">
-                                <control:DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <ComboBox ItemsSource="{Binding DataContext.ImportOrderSupplierOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
-                                                  SelectedItem="{Binding Supplier, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  IsEditable="False"
-                                                  IsTextSearchEnabled="True"
-                                                  MinWidth="150" />
-                                    </DataTemplate>
-                                </control:DataGridTemplateColumn.CellTemplate>
-                            </control:DataGridTemplateColumn>-->
                             <control:DataGridTextColumn Header="Description"
-                                                    Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsColumnFiltered="True"
-                                                    CanUserResize="True"
-                                                    Width="*" />
+                                                        Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
+                                                        IsColumnFiltered="True"
+                                                        CanUserResize="True"
+                                                        Width="*" />
 
+                            <!-- =========================================================
+                             ORDERS SOURCE
+
+                             Первый клик только выделяет ячейку.
+                             Двойной клик включает редактор MultiSelectComboBox.
+
+                             В Source хранятся только имена PDF-файлов,
+                             разделённые точкой с запятой.
+                             ========================================================= -->
                             <control:DataGridTemplateColumn Header="Source"
                                                             FieldName="Source"
                                                             ClipboardContentBinding="{Binding Source}"
@@ -853,24 +827,37 @@
                                                             IsColumnFiltered="True"
                                                             CanUserResize="True"
                                                             Width="260">
+
+                                <!-- Обычный режим просмотра. -->
                                 <control:DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <ui:TextBlock Text="{Binding Source}"
                                                       Margin="8,0"
                                                       VerticalAlignment="Center"
-                                                      TextTrimming="CharacterEllipsis" />
+                                                      TextTrimming="CharacterEllipsis"
+                                                      ToolTip="{Binding Source}" />
                                     </DataTemplate>
                                 </control:DataGridTemplateColumn.CellTemplate>
 
+                                <!-- Режим редактирования после двойного клика. -->
                                 <control:DataGridTemplateColumn.CellEditingTemplate>
                                     <DataTemplate>
-                                        <TextBox Text="{Binding Source, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                                 HorizontalAlignment="Stretch"
-                                                 VerticalAlignment="Center" />
+                                        <controls:MultiSelectComboBox SelectedText="{Binding Source, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                      ItemsSource="{Binding DataContext.ImportOrderSourceOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
+                                                                      Placeholder="Select PDF files..."
+                                                                      HorizontalAlignment="Stretch"
+                                                                      VerticalAlignment="Center" />
                                     </DataTemplate>
                                 </control:DataGridTemplateColumn.CellEditingTemplate>
+
                             </control:DataGridTemplateColumn>
 
+                            <!-- =========================================================
+                             ORDERS IMAGE
+
+                             В Image хранятся только имена изображений,
+                             разделённые точкой с запятой.
+                             ========================================================= -->
                             <control:DataGridTemplateColumn Header="Image"
                                                             FieldName="Image"
                                                             ClipboardContentBinding="{Binding Image}"
@@ -878,23 +865,31 @@
                                                             IsColumnFiltered="True"
                                                             CanUserResize="True"
                                                             Width="220">
+
+                                <!-- Обычный режим просмотра. -->
                                 <control:DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <ui:TextBlock Text="{Binding Image}"
                                                       Margin="8,0"
                                                       VerticalAlignment="Center"
-                                                      TextTrimming="CharacterEllipsis" />
+                                                      TextTrimming="CharacterEllipsis"
+                                                      ToolTip="{Binding Image}" />
                                     </DataTemplate>
                                 </control:DataGridTemplateColumn.CellTemplate>
 
+                                <!-- Режим редактирования после двойного клика. -->
                                 <control:DataGridTemplateColumn.CellEditingTemplate>
                                     <DataTemplate>
-                                        <TextBox Text="{Binding Image, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                                 HorizontalAlignment="Stretch"
-                                                 VerticalAlignment="Center" />
+                                        <controls:MultiSelectComboBox SelectedText="{Binding Image, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                      ItemsSource="{Binding DataContext.ImportOrderImageOptions, RelativeSource={RelativeSource AncestorType={x:Type control:FilterDataGrid}}}"
+                                                                      Placeholder="Select image files..."
+                                                                      HorizontalAlignment="Stretch"
+                                                                      VerticalAlignment="Center" />
                                     </DataTemplate>
                                 </control:DataGridTemplateColumn.CellEditingTemplate>
+
                             </control:DataGridTemplateColumn>
+                            
                         </control:FilterDataGrid.Columns>
                     </control:FilterDataGrid>
 

@@ -230,42 +230,75 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Saves order rows. Supplier names are resolved to supplier_id in the store layer.
+    /// Saves order rows.
+    ///
+    /// Supplier names are resolved to supplier_id in the store layer.
+    /// Source and Image are stored as file names, never as full paths.
     /// </summary>
-    private async void OnSaveImportOrdersClick(object sender, RoutedEventArgs e)
+    private async void OnSaveImportOrdersClick(object sender,RoutedEventArgs e)
     {
         try
         {
             if (!await EnsureImportOrderLookupDataAsync())
                 return;
 
-            var invalidLookupMessages = GetInvalidImportLookupMessages(ImportOrders);
+            /*
+             * Защита от старых абсолютных путей и от вставки
+             * полного пути через Ctrl+V.
+             */
+            NormalizeImportOrderFileNames();
+
+            var invalidLookupMessages =
+                GetInvalidImportLookupMessages(
+                    ImportOrders);
+
             if (invalidLookupMessages.Count > 0)
             {
-                ImportOrderStatusText = $"Orders contain invalid lookup values: {invalidLookupMessages.Count}.";
+                ImportOrderStatusText =
+                    $"Orders contain invalid lookup values: " +
+                    $"{invalidLookupMessages.Count}.";
+
                 MessageBox.Show(
                     this,
-                    string.Join(Environment.NewLine, invalidLookupMessages.Take(12)),
+                    string.Join(
+                        Environment.NewLine,
+                        invalidLookupMessages.Take(12)),
                     "ORDERS lookup validation",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
+
                 return;
             }
 
-            var saved = await _infoImportEditStore.SaveOrdersAsync(
-                GetRuntimeDatabaseConnectionString(),
-                ImportOrders);
+            var saved =
+                await _infoImportEditStore.SaveOrdersAsync(
+                    GetRuntimeDatabaseConnectionString(),
+                    ImportOrders);
 
             PersistImportEditOptions();
-            ImportOrderStatusText = $"Order rows saved: {saved}.";
-            AppendDiagnostics(ImportOrderStatusText);
+
+            ImportOrderStatusText =
+                $"Order rows saved: {saved}.";
+
+            AppendDiagnostics(
+                ImportOrderStatusText);
+
             await RefreshImportOrdersAsync();
         }
         catch (Exception ex)
         {
-            ImportOrderStatusText = $"Orders save failed: {ex.Message}";
-            AppendDiagnostics(ImportOrderStatusText);
-            MessageBox.Show(this, ImportOrderStatusText, "ORDERS", MessageBoxButton.OK, MessageBoxImage.Error);
+            ImportOrderStatusText =
+                $"Orders save failed: {ex.Message}";
+
+            AppendDiagnostics(
+                ImportOrderStatusText);
+
+            MessageBox.Show(
+                this,
+                ImportOrderStatusText,
+                "ORDERS",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
     }
 
@@ -320,8 +353,14 @@ public partial class MainWindow
 
     /// <summary>
     /// Saves INSTRUCTION source files and equipment links.
+    ///
+    /// PDF names originate from ORDERS.Source and are resolved against
+    /// OrdersPdfSourceRoot.
+    ///
+    /// Image names originate from ORDERS.Image and are resolved against
+    /// InstructionImageSourceRoot.
     /// </summary>
-    private async void OnSaveImportInstructionsClick(object sender, RoutedEventArgs e)
+    private async void OnSaveImportInstructionsClick(object sender,RoutedEventArgs e)
     {
         try
         {
@@ -329,44 +368,73 @@ public partial class MainWindow
                 return;
 
             /*
-             * Source, Supplier, Description and Image in INSTRUCTION are derived
-             * from the selected Product code in ORDERS.
-             *
-             * Source and Image are hidden in the table, so before Save we must
-             * synchronize the INSTRUCTION rows with the current ORDERS rows.
-             * Otherwise SaveInstructionsAsync can save an old Source value.
+             * Source, Supplier, Description and Image in INSTRUCTION
+             * are derived from the selected Product code in ORDERS.
              */
             RefreshImportInstructionOrderDetails();
 
-            var invalidLookupMessages = GetInvalidImportLookupMessages(ImportInstructions);
+            var invalidLookupMessages =
+                GetInvalidImportLookupMessages(
+                    ImportInstructions);
+
             if (invalidLookupMessages.Count > 0)
             {
-                ImportInstructionStatusText = $"Instruction contains invalid lookup values: {invalidLookupMessages.Count}.";
+                ImportInstructionStatusText =
+                    $"Instruction contains invalid lookup values: " +
+                    $"{invalidLookupMessages.Count}.";
+
                 MessageBox.Show(
                     this,
-                    string.Join(Environment.NewLine, invalidLookupMessages.Take(12)),
+                    string.Join(
+                        Environment.NewLine,
+                        invalidLookupMessages.Take(12)),
                     "INSTRUCTION lookup validation",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
+
                 return;
             }
 
-            var saved = await _infoImportEditStore.SaveInstructionsAsync(
-                GetRuntimeDatabaseConnectionString(),
-                InstructionPdfSourceRoot,
-                InstructionImageSourceRoot,
-                ImportInstructions);
+            var saved =
+                await _infoImportEditStore.SaveInstructionsAsync(
+                    GetRuntimeDatabaseConnectionString(),
+
+                    /*
+                     * ORDERS.Source выбирается из этой папки.
+                     */
+                    OrdersPdfSourceRoot,
+
+                    /*
+                     * ORDERS.Image выбирается из этой папки.
+                     */
+                    InstructionImageSourceRoot,
+
+                    ImportInstructions);
 
             PersistImportEditOptions();
-            ImportInstructionStatusText = $"Instruction rows saved: {saved}.";
-            AppendDiagnostics(ImportInstructionStatusText);
+
+            ImportInstructionStatusText =
+                $"Instruction rows saved: {saved}.";
+
+            AppendDiagnostics(
+                ImportInstructionStatusText);
+
             await RefreshImportInstructionsAsync();
         }
         catch (Exception ex)
         {
-            ImportInstructionStatusText = $"Instruction save failed: {ex.Message}";
-            AppendDiagnostics(ImportInstructionStatusText);
-            MessageBox.Show(this, ImportInstructionStatusText, "INSTRUCTION", MessageBoxButton.OK, MessageBoxImage.Error);
+            ImportInstructionStatusText =
+                $"Instruction save failed: {ex.Message}";
+
+            AppendDiagnostics(
+                ImportInstructionStatusText);
+
+            MessageBox.Show(
+                this,
+                ImportInstructionStatusText,
+                "INSTRUCTION",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
     }
 
@@ -746,37 +814,75 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Открывает единый стандартный диалог выбора папки для одного из файловых
-    /// источников IMPORT. Имя редактируемого свойства передаётся через Tag кнопки,
-    /// поэтому вся централизованная панель использует один обработчик Browse.
-    /// Выбранный путь изменяется в форме, но записывается в JSON только кнопкой Save.
+    /// Opens a folder picker for one centralized Import/Edit file source.
+    ///
+    /// After changing ORDERS PDF or INSTRUCTION image folders,
+    /// the ORDERS Source/Image dictionaries are refreshed immediately.
     /// </summary>
     private void OnBrowseImportSourceClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: string propertyName })
-            return;
-
-        var (title, currentPath) = propertyName switch
+        if (sender is not FrameworkElement
+            {
+                Tag: string propertyName
+            })
         {
-            nameof(OrdersPdfSourceRoot) =>
-                ("Choose ORDERS PDF source folder", OrdersPdfSourceRoot),
-            nameof(InstructionPdfSourceRoot) =>
-                ("Choose INSTRUCTION PDF source folder", InstructionPdfSourceRoot),
-            nameof(SchemePdfSourceRoot) =>
-                ("Choose SCHEME PDF source folder", SchemePdfSourceRoot),
-            nameof(SupplierLogoSourceRoot) =>
-                ("Choose SUPPLIER logo source folder", SupplierLogoSourceRoot),
-            nameof(InstructionImageSourceRoot) =>
-                ("Choose INSTRUCTION image source folder", InstructionImageSourceRoot),
-            nameof(SchemeImageSourceRoot) =>
-                ("Choose SCHEME image source folder", SchemeImageSourceRoot),
-            _ => (string.Empty, string.Empty)
-        };
+            return;
+        }
+
+        var (title, currentPath) =
+            propertyName switch
+            {
+                nameof(OrdersPdfSourceRoot) =>
+                    (
+                        "Choose ORDERS PDF source folder",
+                        OrdersPdfSourceRoot
+                    ),
+
+                nameof(InstructionPdfSourceRoot) =>
+                    (
+                        "Choose INSTRUCTION PDF source folder",
+                        InstructionPdfSourceRoot
+                    ),
+
+                nameof(SchemePdfSourceRoot) =>
+                    (
+                        "Choose SCHEME PDF source folder",
+                        SchemePdfSourceRoot
+                    ),
+
+                nameof(SupplierLogoSourceRoot) =>
+                    (
+                        "Choose SUPPLIER logo source folder",
+                        SupplierLogoSourceRoot
+                    ),
+
+                nameof(InstructionImageSourceRoot) =>
+                    (
+                        "Choose INSTRUCTION image source folder",
+                        InstructionImageSourceRoot
+                    ),
+
+                nameof(SchemeImageSourceRoot) =>
+                    (
+                        "Choose SCHEME image source folder",
+                        SchemeImageSourceRoot
+                    ),
+
+                _ =>
+                    (
+                        string.Empty,
+                        string.Empty
+                    )
+            };
 
         if (string.IsNullOrWhiteSpace(title))
             return;
 
-        var folder = ChooseImportSourceFolder(title, currentPath);
+        var folder =
+            ChooseImportSourceFolder(
+                title,
+                currentPath);
+
         if (folder is null)
             return;
 
@@ -785,40 +891,74 @@ public partial class MainWindow
             case nameof(OrdersPdfSourceRoot):
                 OrdersPdfSourceRoot = folder;
                 break;
+
             case nameof(InstructionPdfSourceRoot):
                 InstructionPdfSourceRoot = folder;
                 break;
+
             case nameof(SchemePdfSourceRoot):
                 SchemePdfSourceRoot = folder;
                 break;
+
             case nameof(SupplierLogoSourceRoot):
                 SupplierLogoSourceRoot = folder;
                 break;
+
             case nameof(InstructionImageSourceRoot):
                 InstructionImageSourceRoot = folder;
                 break;
+
             case nameof(SchemeImageSourceRoot):
                 SchemeImageSourceRoot = folder;
                 break;
         }
+
+        /*
+         * Source/Image комбобоксы ORDERS должны сразу увидеть
+         * содержимое вновь выбранных папок.
+         */
+        if (string.Equals(
+                propertyName,
+                nameof(OrdersPdfSourceRoot),
+                StringComparison.Ordinal)
+            || string.Equals(
+                propertyName,
+                nameof(InstructionImageSourceRoot),
+                StringComparison.Ordinal))
+        {
+            RefreshImportOrderFileOptions();
+        }
     }
 
     /// <summary>
-    /// Сохраняет Excel-файл и все централизованные файловые источники IMPORT
-    /// одним действием в maintenance.settings.json.
+    /// Saves Excel path and centralized Import/Edit source folders.
     /// </summary>
     private void OnSaveImportSourcePathsClick(object sender, RoutedEventArgs e)
     {
         try
         {
             PersistImportEditOptions();
-            ImportExcelStatusText = "Import/Edit file source paths saved.";
-            AppendDiagnostics(ImportExcelStatusText);
+
+            /*
+             * Пользователь мог ввести путь вручную,
+             * поэтому перечитываем файлы после Save.
+             */
+            RefreshImportOrderFileOptions();
+
+            ImportExcelStatusText =
+                "Import/Edit file source paths saved.";
+
+            AppendDiagnostics(
+                ImportExcelStatusText);
         }
         catch (Exception ex)
         {
-            ImportExcelStatusText = $"Import/Edit paths save failed: {ex.Message}";
-            AppendDiagnostics(ImportExcelStatusText);
+            ImportExcelStatusText =
+                $"Import/Edit paths save failed: {ex.Message}";
+
+            AppendDiagnostics(
+                ImportExcelStatusText);
+
             MessageBox.Show(
                 this,
                 ImportExcelStatusText,
@@ -882,8 +1022,7 @@ public partial class MainWindow
     /// можно сразу вставить в Product code другой строки.
     /// При выборе нескольких ячеек коды копируются построчно.
     /// </summary>
-    private static bool TryCopyInstructionProductCodes(
-        DataGrid grid)
+    private static bool TryCopyInstructionProductCodes(DataGrid grid)
     {
         var selectedProductCodeCells = grid.SelectedCells
             .Where(cell =>
@@ -991,17 +1130,46 @@ public partial class MainWindow
 
     /// <summary>
     /// Reads orders from PostgreSQL and replaces the editable UI collection.
+    ///
+    /// Legacy absolute Source/Image paths are converted to file names
+    /// before rows are displayed.
     /// </summary>
     private async Task RefreshImportOrdersAsync()
     {
-        ImportOrderStatusText = "Loading orders...";
-        var rows = await _infoImportEditStore.LoadOrdersAsync(GetRuntimeDatabaseConnectionString());
+        ImportOrderStatusText =
+            "Loading orders...";
+
+        var rows =
+            await _infoImportEditStore.LoadOrdersAsync(
+                GetRuntimeDatabaseConnectionString());
+
+        /*
+         * Файловые словари перестраиваются перед заполнением таблицы.
+         */
+        RefreshImportOrderFileOptions();
 
         ImportOrders.Clear();
-        foreach (var row in rows)
-            ImportOrders.Add(row);
 
-        ImportOrderStatusText = $"Order rows loaded: {ImportOrders.Count}.";
+        foreach (var row in rows)
+        {
+            /*
+             * Старые записи в БД могут содержать абсолютные пути.
+             * В интерфейсе ORDERS должны отображаться только имена файлов.
+             */
+            row.Source =
+                NormalizeImportFileSelectionText(
+                    row.Source);
+
+            row.Image =
+                NormalizeImportFileSelectionText(
+                    row.Image);
+
+            ImportOrders.Add(row);
+        }
+
+        ImportOrderStatusText =
+            $"Order rows loaded: {ImportOrders.Count}.";
+
         RefreshImportProductCodeOptions();
 
         /*
@@ -1082,8 +1250,7 @@ public partial class MainWindow
     /// Последняя строка с одинаковым кодом имеет приоритет,
     /// что соответствует текущей логике сохранения ORDERS.
     /// </summary>
-    private Dictionary<string, ImportOrderRowViewModel>
-        CreateImportOrdersByProductCode()
+    private Dictionary<string, ImportOrderRowViewModel>CreateImportOrdersByProductCode()
     {
         return ImportOrders
             .Where(order =>
@@ -1126,8 +1293,7 @@ public partial class MainWindow
     /// <summary>
     /// Обновляет одну строку INSTRUCTION после вставки ProductCode.
     /// </summary>
-    private void RefreshImportInstructionOrderDetails(
-        ImportInstructionRowViewModel row)
+    private void RefreshImportInstructionOrderDetails(ImportInstructionRowViewModel row)
     {
         var productCode =
             row.ProductCode.Trim();
@@ -1282,17 +1448,30 @@ public partial class MainWindow
 
     /// <summary>
     /// Loads all lookup data required by ORDERS editors.
-    /// Suppliers come from PostgreSQL; types come from Runtime catalog.
+    ///
+    /// Suppliers come from PostgreSQL.
+    /// Types come from Runtime.
+    /// Source/Image file names come from configured source folders.
     /// </summary>
     private async Task<bool> EnsureImportOrderLookupDataAsync()
     {
+        /*
+         * File lists do not depend on Runtime and can be refreshed immediately.
+         */
+        RefreshImportOrderFileOptions();
+
         if (ImportSuppliers.Count == 0)
+        {
             await RefreshImportSuppliersAsync();
+        }
 
         RefreshImportOrderSupplierOptions();
 
         if (_importRuntimeCatalog is null)
-            ImportOrderStatusText = "Loading equipment types from Runtime...";
+        {
+            ImportOrderStatusText =
+                "Loading equipment types from Runtime...";
+        }
 
         return await EnsureRuntimeCatalogForImportAsync();
     }
@@ -1461,13 +1640,6 @@ public partial class MainWindow
     /// <summary>
     /// Replaces an observable string list while keeping the same collection instance for XAML bindings.
     /// </summary>
-    //private static void ReplaceStringOptions(ObservableCollection<string> target, IEnumerable<string> source)
-    //{
-    //    target.Clear();
-    //    foreach (var value in source)
-    //        target.Add(value);
-    //}
-
     private static void ReplaceStringOptions(ObservableCollection<string> target, IEnumerable<string> source)
     {
         var values = source
@@ -2106,4 +2278,181 @@ public partial class MainWindow
     /// Describes a writable paste target column.
     /// </summary>
     private sealed record ImportPasteColumn(DataGridColumn Column, string PropertyName);
+
+    /// <summary>
+    /// Rebuilds the file dictionaries used by ORDERS Source and Image editors.
+    ///
+    /// Source PDF files are loaded from OrdersPdfSourceRoot.
+    /// Image files are loaded from InstructionImageSourceRoot.
+    ///
+    /// Only file names are placed in the lookup collections.
+    /// Physical root paths remain separate in Maintenance configuration.
+    /// </summary>
+    private void RefreshImportOrderFileOptions()
+    {
+        ReplaceStringOptions(
+            ImportOrderSourceOptions,
+            EnumerateImportFileNames(
+                OrdersPdfSourceRoot,
+                ".pdf"));
+
+        ReplaceStringOptions(
+            ImportOrderImageOptions,
+            EnumerateImportFileNames(
+                InstructionImageSourceRoot,
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".bmp",
+                ".gif",
+                ".webp",
+                ".tif",
+                ".tiff"));
+    }
+
+    /// <summary>
+    /// Returns file names from one configured folder.
+    ///
+    /// Only the top directory is scanned because ORDERS stores file names,
+    /// not relative or absolute directory paths.
+    /// </summary>
+    private static IReadOnlyList<string> EnumerateImportFileNames(string sourceRoot, params string[] allowedExtensions)
+    {
+        if (string.IsNullOrWhiteSpace(sourceRoot))
+            return [];
+
+        if (!Directory.Exists(sourceRoot))
+            return [];
+
+        var extensions = allowedExtensions
+            .Where(extension =>
+                !string.IsNullOrWhiteSpace(extension))
+            .Select(extension =>
+                extension.StartsWith(
+                    ".",
+                    StringComparison.Ordinal)
+                    ? extension
+                    : $".{extension}")
+            .ToHashSet(
+                StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            return Directory
+                .EnumerateFiles(
+                    sourceRoot,
+                    "*",
+                    SearchOption.TopDirectoryOnly)
+                .Where(filePath =>
+                    extensions.Contains(
+                        Path.GetExtension(filePath)))
+                .Select(filePath =>
+                    Path.GetFileName(filePath))
+                .Where(fileName =>
+                    !string.IsNullOrWhiteSpace(fileName))
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .OrderBy(
+                    fileName => fileName,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return [];
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+        catch (ArgumentException)
+        {
+            return [];
+        }
+        catch (NotSupportedException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Replaces absolute or relative file paths with file names in every
+    /// currently loaded ORDERS row.
+    ///
+    /// The resulting DB format is:
+    ///     Manual.pdf; Service.pdf
+    ///
+    /// instead of:
+    ///     C:\Documents\Manual.pdf; C:\Documents\Service.pdf
+    /// </summary>
+    private void NormalizeImportOrderFileNames()
+    {
+        foreach (var row in ImportOrders)
+        {
+            row.Source =
+                NormalizeImportFileSelectionText(
+                    row.Source);
+
+            row.Image =
+                NormalizeImportFileSelectionText(
+                    row.Image);
+        }
+    }
+
+    /// <summary>
+    /// Normalizes one semicolon/comma-separated file list.
+    ///
+    /// Existing full paths are reduced to Path.GetFileName().
+    /// Duplicate names are removed case-insensitively.
+    /// </summary>
+    private static string NormalizeImportFileSelectionText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var result = value
+            .Split(
+                new[] { ';', ',' },
+                StringSplitOptions.RemoveEmptyEntries |
+                StringSplitOptions.TrimEntries)
+            .Select(NormalizeImportFileName)
+            .Where(fileName =>
+                !string.IsNullOrWhiteSpace(fileName))
+            .Distinct(
+                StringComparer.OrdinalIgnoreCase)
+            .OrderBy(
+                fileName => fileName,
+                StringComparer.OrdinalIgnoreCase);
+
+        return string.Join(
+            "; ",
+            result);
+    }
+
+    /// <summary>
+    /// Returns only the file-name part of one stored Source/Image value.
+    /// Invalid legacy values are preserved instead of throwing.
+    /// </summary>
+    private static string NormalizeImportFileName(string value)
+    {
+        var cleanValue =
+            value.Trim().Trim('"');
+
+        if (string.IsNullOrWhiteSpace(cleanValue))
+            return "";
+
+        try
+        {
+            var fileName =
+                Path.GetFileName(cleanValue);
+
+            return string.IsNullOrWhiteSpace(fileName)
+                ? cleanValue
+                : fileName;
+        }
+        catch
+        {
+            return cleanValue;
+        }
+    }
 }

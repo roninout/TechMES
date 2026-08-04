@@ -205,6 +205,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     public ObservableCollection<string> ImportOrderSupplierOptions { get; } = [];
 
     /// <summary>
+    /// Имена PDF-файлов, доступные для выбора в колонке ORDERS Source.
+    /// </summary>
+    public ObservableCollection<string> ImportOrderSourceOptions { get; } = [];
+
+    /// <summary>
+    /// Image file names available for the ORDERS Image column.
+    ///
+    /// Values are loaded from InstructionImageSourceRoot because ORDERS images
+    /// are later used by the INSTRUCTION equipment links.
+    /// </summary>
+    public ObservableCollection<string> ImportOrderImageOptions { get; } = [];
+
+    /// <summary>
     /// Runtime Station lookup values reused by INSTRUCTION and SCHEME.
     /// </summary>
     public ObservableCollection<string> ImportRuntimeStationOptions { get; } = [];

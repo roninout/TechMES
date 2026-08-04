@@ -24,12 +24,7 @@ public partial class MainWindow
             || !File.Exists(ExcelImportFilePath))
         {
             ImportExcelStatusText = "Select an existing Excel import file first.";
-            MessageBox.Show(
-                this,
-                ImportExcelStatusText,
-                "IMPORT",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            MessageBox.Show(this, ImportExcelStatusText, "IMPORT", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -47,66 +42,45 @@ public partial class MainWindow
             if (!await EnsureRuntimeCatalogForImportAsync())
                 return;
 
-            var prepared = await PrepareExcelImportAsync(
-                excelFilePath,
-                document,
-                _importRuntimeCatalog!);
+            var prepared = await PrepareExcelImportAsync(excelFilePath, document, _importRuntimeCatalog!);
 
             ImportExcelStatusText = "Validation completed. Saving SUPPLIER...";
             var connectionString = GetRuntimeDatabaseConnectionString();
 
-            var suppliersSaved = await _infoImportEditStore.SaveSuppliersAsync(
-                connectionString,
-                prepared.Suppliers);
+            var suppliersSaved = await _infoImportEditStore.SaveSuppliersAsync(connectionString, prepared.Suppliers);
 
             ImportExcelStatusText = "SUPPLIER saved. Saving ORDERS...";
-            var ordersSaved = await _infoImportEditStore.SaveOrdersAsync(
-                connectionString,
-                prepared.Orders);
+
+            /*
+             * prepared.Orders продолжает содержать абсолютные физические пути.
+             * Они уже скопированы в prepared.Instructions и нужны для чтения файлов.
+             *
+             * В public.equip_order записываем отдельные строки только с именами.
+             */
+            var databaseOrders = CreateDatabaseOrderRows(prepared.Orders);
+            var ordersSaved = await _infoImportEditStore.SaveOrdersAsync(connectionString, databaseOrders);
 
             ImportExcelStatusText = "ORDERS saved. Saving INSTRUCTION...";
-            var instructionsSaved = await _infoImportEditStore.SaveInstructionsAsync(
-                connectionString,
-                "",
-                "",
-                prepared.Instructions);
+            var instructionsSaved = await _infoImportEditStore.SaveInstructionsAsync(connectionString, "", "", prepared.Instructions);
 
             ImportExcelStatusText = "INSTRUCTION saved. Saving SCHEME...";
-            var schemesSaved = await _infoImportEditStore.SaveSchemesAsync(
-                connectionString,
-                "",
-                "",
-                prepared.SchemeFiles,
-                prepared.SchemeLinks,
-                preserveExistingTargetsAndLinks: true);
+            var schemesSaved = await _infoImportEditStore.SaveSchemesAsync(connectionString, "", "", prepared.SchemeFiles, prepared.SchemeLinks, preserveExistingTargetsAndLinks: true);
 
             await RefreshImportSuppliersAsync();
             await RefreshImportOrdersAsync();
             await RefreshImportInstructionsAsync();
             await RefreshImportSchemesAsync();
 
-            ImportExcelStatusText =
-                $"Import completed: SUPPLIER {suppliersSaved}, ORDERS {ordersSaved}, "
-                + $"INSTRUCTION {instructionsSaved}, SCHEME {schemesSaved}.";
+            ImportExcelStatusText = $"Import completed: SUPPLIER {suppliersSaved}, ORDERS {ordersSaved}, " + $"INSTRUCTION {instructionsSaved}, SCHEME {schemesSaved}.";
 
             AppendDiagnostics(ImportExcelStatusText);
-            MessageBox.Show(
-                this,
-                ImportExcelStatusText,
-                "IMPORT",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            MessageBox.Show(this, ImportExcelStatusText, "IMPORT", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             ImportExcelStatusText = $"Excel import failed: {ex.Message}";
             AppendDiagnostics(ImportExcelStatusText);
-            MessageBox.Show(
-                this,
-                ImportExcelStatusText,
-                "IMPORT",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            MessageBox.Show(this, ImportExcelStatusText, "IMPORT", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -119,10 +93,7 @@ public partial class MainWindow
     /// Все пути заменяются на абсолютные до вызова методов сохранения, поэтому
     /// SQL-слой не зависит от текущей рабочей папки Maintenance.
     /// </summary>
-    private async Task<PreparedExcelImport> PrepareExcelImportAsync(
-        string excelFilePath,
-        ExcelInfoImportDocument document,
-        RuntimeCatalogSnapshot runtime)
+    private async Task<PreparedExcelImport> PrepareExcelImportAsync(string excelFilePath, ExcelInfoImportDocument document, RuntimeCatalogSnapshot runtime)
     {
         var errors = new List<string>();
         var workbookDirectory = Path.GetDirectoryName(excelFilePath) ?? "";
@@ -396,12 +367,7 @@ public partial class MainWindow
     /// В одной Excel-ячейке разрешено перечислять несколько назначений через
     /// запятую или точку с запятой; каждое имя проверяется независимо.
     /// </summary>
-    private static IReadOnlyList<RuntimeCatalogEquipmentItem> ExpandSchemeTargets(
-        ExcelSchemeImportRow source,
-        RuntimeCatalogSnapshot runtime,
-        IReadOnlyDictionary<string, RuntimeCatalogEquipmentItem> equipmentByName,
-        IReadOnlyDictionary<string, RuntimeCatalogEquipmentItem> groupsByName,
-        ICollection<string> errors)
+    private static IReadOnlyList<RuntimeCatalogEquipmentItem> ExpandSchemeTargets(ExcelSchemeImportRow source, RuntimeCatalogSnapshot runtime, IReadOnlyDictionary<string, RuntimeCatalogEquipmentItem> equipmentByName, IReadOnlyDictionary<string, RuntimeCatalogEquipmentItem> groupsByName, ICollection<string> errors)
     {
         var targets = new List<RuntimeCatalogEquipmentItem>();
 
@@ -466,11 +432,7 @@ public partial class MainWindow
     /// <summary>
     /// Проверяет тип Excel по каноническому списку типов Runtime.
     /// </summary>
-    private static void ValidateRuntimeType(
-        string type,
-        string sheet,
-        IReadOnlySet<string> runtimeTypes,
-        ICollection<string> errors)
+    private static void ValidateRuntimeType(string type, string sheet, IReadOnlySet<string> runtimeTypes, ICollection<string> errors)
     {
         var normalizedType = NormalizeEquipmentTypeAlias(type);
 
@@ -530,11 +492,7 @@ public partial class MainWindow
     /// Разрешает список имён, разделённых запятой или точкой с запятой,
     /// в абсолютные существующие пути.
     /// </summary>
-    private static IReadOnlyList<string> ResolveRequiredImportFiles(
-        string value,
-        string context,
-        ICollection<string> errors,
-        params string?[] roots)
+    private static IReadOnlyList<string> ResolveRequiredImportFiles(string value, string context, ICollection<string> errors,params string?[] roots)
     {
         if (string.IsNullOrWhiteSpace(value))
             return [];
@@ -558,11 +516,7 @@ public partial class MainWindow
     /// Ищет один файл сначала как абсолютный путь, затем во всех заданных
     /// каталогах. Ошибка добавляется в общий отчёт preflight.
     /// </summary>
-    private static string? ResolveRequiredImportFile(
-        string value,
-        string context,
-        ICollection<string> errors,
-        params string?[] roots)
+    private static string? ResolveRequiredImportFile(string value, string context, ICollection<string> errors, params string?[] roots)
     {
         var fileName = value.Trim().Trim('"');
         if (string.IsNullOrWhiteSpace(fileName))
@@ -585,9 +539,7 @@ public partial class MainWindow
     /// <summary>
     /// Делает путь из Excel абсолютным относительно папки книги.
     /// </summary>
-    private static string ResolveWorkbookRoot(
-        string workbookDirectory,
-        string? value)
+    private static string ResolveWorkbookRoot(string workbookDirectory, string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return "";
@@ -613,9 +565,7 @@ public partial class MainWindow
     /// Станционные схемы находятся в корне, групповые — в Group, а схемы
     /// отдельного оборудования — в Equipment.
     /// </summary>
-    private static string ResolveConfiguredSchemeScopeRoot(
-        string schemeRoot,
-        ExcelSchemeScope scope)
+    private static string ResolveConfiguredSchemeScopeRoot(string schemeRoot, ExcelSchemeScope scope)
     {
         return scope switch
         {
@@ -647,10 +597,41 @@ public partial class MainWindow
     /// Полностью подготовленный пакет импорта. После его создания все
     /// внешние ссылки уже проверены и SQL-слой может выполнять запись.
     /// </summary>
-    private sealed record PreparedExcelImport(
-        IReadOnlyList<ImportSupplierRowViewModel> Suppliers,
-        IReadOnlyList<ImportOrderRowViewModel> Orders,
-        IReadOnlyList<ImportInstructionRowViewModel> Instructions,
-        IReadOnlyList<ImportSchemeFileRowViewModel> SchemeFiles,
-        IReadOnlyList<ImportSchemeLinkRowViewModel> SchemeLinks);
+    private sealed record PreparedExcelImport(IReadOnlyList<ImportSupplierRowViewModel> Suppliers, IReadOnlyList<ImportOrderRowViewModel> Orders, IReadOnlyList<ImportInstructionRowViewModel> Instructions, IReadOnlyList<ImportSchemeFileRowViewModel> SchemeFiles, IReadOnlyList<ImportSchemeLinkRowViewModel> SchemeLinks);
+
+    /// <summary>
+    /// Creates ORDERS rows suitable for storing in public.equip_order.
+    ///
+    /// Prepared Excel rows may contain absolute physical paths because
+    /// INSTRUCTION import needs them to read binary files.
+    ///
+    /// The database ORDERS table stores only file names.
+    /// </summary>
+    private static List<ImportOrderRowViewModel>CreateDatabaseOrderRows(IEnumerable<ImportOrderRowViewModel> sourceRows)
+    {
+        return sourceRows
+            .Select(source => new ImportOrderRowViewModel
+            {
+                Type =
+                    source.Type,
+
+                ProductCode =
+                    source.ProductCode,
+
+                Supplier =
+                    source.Supplier,
+
+                Source =
+                    NormalizeImportFileSelectionText(
+                        source.Source),
+
+                Description =
+                    source.Description,
+
+                Image =
+                    NormalizeImportFileSelectionText(
+                        source.Image)
+            })
+            .ToList();
+    }
 }
