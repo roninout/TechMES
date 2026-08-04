@@ -23,13 +23,25 @@ public partial class ImportEditPage : MaintenancePageControl
      * - удаления строки;
      * - Refresh коллекции.
      */
-    private readonly Dictionary<DataGrid,(INotifyCollectionChanged Source,NotifyCollectionChangedEventHandler Handler)> _rowNumberSubscriptions = new();
+    private readonly Dictionary<
+        DataGrid,
+        (
+            INotifyCollectionChanged Source,
+            NotifyCollectionChangedEventHandler Handler
+        )> _rowNumberSubscriptions = new();
 
     /*
      * Не запускаем несколько одинаковых обновлений нумерации
      * одновременно для одной таблицы.
      */
-    private readonly HashSet<DataGrid> _pendingRowNumberRefreshes = new();
+    private readonly HashSet<DataGrid>
+        _pendingRowNumberRefreshes = new();
+
+    /*
+     * Начальная вкладка должна выбираться только один раз,
+     * после подключения страницы к MainWindow.
+     */
+    private bool _initialTabSelectionApplied;
 
     public ImportEditPage()
     {
@@ -42,7 +54,60 @@ public partial class ImportEditPage : MaintenancePageControl
          */
         ImportTabControl.Items.Remove(ImportTab);
         ImportTabControl.Items.Add(ImportTab);
-        ImportTabControl.SelectedIndex = 0;
+
+        /*
+         * Не выбираем SUPPLIER прямо в конструкторе.
+         *
+         * В этот момент страница ещё не подключена к MainWindow,
+         * поэтому SelectionChanged невозможно переадресовать
+         * в MainWindow.OnImportTabSelectionChanged.
+         *
+         * Реальный выбор будет выполнен в OnImportEditPageLoaded.
+         */
+        ImportTabControl.SelectedIndex = -1;
+
+        Loaded += OnImportEditPageLoaded;
+    }
+
+    /// <summary>
+    /// Выбирает SUPPLIER после полного подключения страницы к MainWindow.
+    ///
+    /// Это создаёт настоящее SelectionChanged-событие уже тогда,
+    /// когда MaintenancePageControl может переадресовать его в MainWindow.
+    /// </summary>
+    private void OnImportEditPageLoaded(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_initialTabSelectionApplied)
+            return;
+
+        /*
+         * Откладываем выбор до завершения текущего Loaded-цикла.
+         * К этому времени:
+         * - Window.GetWindow(this) уже возвращает MainWindow;
+         * - базовый MaintenancePageControl установил DataContext;
+         * - визуальное дерево страницы полностью создано.
+         */
+        _ = Dispatcher.BeginInvoke(
+            DispatcherPriority.Loaded,
+            new Action(() =>
+            {
+                if (_initialTabSelectionApplied ||
+                    !IsLoaded)
+                {
+                    return;
+                }
+
+                _initialTabSelectionApplied = true;
+
+                /*
+                 * SUPPLIER теперь выбирается после подключения страницы.
+                 * XAML SelectionChanged вызовет загрузку данных
+                 * через MainWindow.OnImportTabSelectionChanged.
+                 */
+                ImportTabControl.SelectedIndex = 0;
+            }));
     }
 
     /// <summary>
@@ -51,7 +116,9 @@ public partial class ImportEditPage : MaintenancePageControl
     /// LoadingRow и Sorting не являются routed events, поэтому их нельзя
     /// подключить через EventSetter в XAML. Подписываемся здесь программно.
     /// </summary>
-    private void OnImportGridLoaded(object sender, RoutedEventArgs e)
+    private void OnImportGridLoaded(
+        object sender,
+        RoutedEventArgs e)
     {
         if (sender is not DataGrid grid)
             return;
@@ -102,13 +169,16 @@ public partial class ImportEditPage : MaintenancePageControl
     /// <summary>
     /// Удаляет все программные подписки при выгрузке таблицы.
     /// </summary>
-    private void OnImportGridUnloaded(object sender, RoutedEventArgs e)
+    private void OnImportGridUnloaded(
+        object sender,
+        RoutedEventArgs e)
     {
         if (sender is not DataGrid grid)
             return;
 
         /*
-         * Эти события были подключены программно в OnImportGridLoaded.
+         * Эти события были подключены программно
+         * в OnImportGridLoaded.
          */
         grid.LoadingRow -= OnImportGridLoadingRow;
         grid.Sorting -= OnImportGridSorting;
@@ -134,25 +204,33 @@ public partial class ImportEditPage : MaintenancePageControl
     /// когда пользователь прокручивает таблицу, WPF создаёт новый
     /// DataGridRow и сразу получает правильный текущий номер.
     /// </summary>
-    private void OnImportGridLoadingRow(object sender, DataGridRowEventArgs e)
+    private void OnImportGridLoadingRow(
+        object sender,
+        DataGridRowEventArgs e)
     {
-        e.Row.Header = e.Row.GetIndex() + 1;
+        e.Row.Header =
+            e.Row.GetIndex() + 1;
     }
 
     /// <summary>
     /// После сортировки обновляет номера уже отображаемых строк.
     /// </summary>
-    private void OnImportGridSorting(object sender, DataGridSortingEventArgs e)
+    private void OnImportGridSorting(
+        object sender,
+        DataGridSortingEventArgs e)
     {
         if (sender is DataGrid grid)
+        {
             ScheduleRowNumberRefresh(grid);
+        }
     }
 
     /// <summary>
     /// Планирует обновление после завершения текущей операции
     /// сортировки, фильтрации или изменения коллекции.
     /// </summary>
-    private void ScheduleRowNumberRefresh(DataGrid grid)
+    private void ScheduleRowNumberRefresh(
+        DataGrid grid)
     {
         if (!_pendingRowNumberRefreshes.Add(grid))
             return;
@@ -177,7 +255,8 @@ public partial class ImportEditPage : MaintenancePageControl
     /// Остальные виртуализированные строки получат номер через
     /// OnImportGridLoadingRow при прокрутке.
     /// </summary>
-    private static void RefreshVisibleRowNumbers(DataGrid grid)
+    private static void RefreshVisibleRowNumbers(
+        DataGrid grid)
     {
         for (var index = 0;
              index < grid.Items.Count;
@@ -187,7 +266,8 @@ public partial class ImportEditPage : MaintenancePageControl
                     .ContainerFromIndex(index)
                 is DataGridRow row)
             {
-                row.Header = index + 1;
+                row.Header =
+                    index + 1;
             }
         }
     }
@@ -199,7 +279,9 @@ public partial class ImportEditPage : MaintenancePageControl
     /// Первый клик выделяет ячейку/строку.
     /// Второй клик включает редактирование и открывает список.
     /// </summary>
-    private void OnOrderLookupComboBoxLoaded(object sender, RoutedEventArgs e)
+    private void OnOrderLookupComboBoxLoaded(
+        object sender,
+        RoutedEventArgs e)
     {
         if (sender is not ComboBox comboBox)
             return;
