@@ -76,6 +76,7 @@
   },
   "ImportEdit": {
     "ExcelImportFilePath": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Import.xlsx",
+    "ExcelExportFilePath": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\EXPORT\\TechMES_Info_Export.xlsx",
     "OrdersPdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction",
     "InstructionPdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction",
     "SchemePdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Scheme",

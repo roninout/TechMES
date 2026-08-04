@@ -99,10 +99,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// Результат проверки DNS/hosts-алиаса сервера.
     /// Используется в Checks и Server profile, чтобы обе вкладки одинаково трактовали поле Host name.
     /// </summary>
-    private sealed record HostResolutionStatus(
-        string Status,
-        string Details,
-        IReadOnlyList<string> ResolvedIps);
+    private sealed record HostResolutionStatus(string Status, string Details, IReadOnlyList<string> ResolvedIps);
 
     /// <summary>
     /// Событие WPF binding для свойств окна.
@@ -1332,7 +1329,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
     /// <summary>
     /// Инициализирует зависимости окна без DI-контейнера.
-    /// Для небольшого WPF Maintenance это пока проще и прозрачнее.
     /// </summary>
     public MainWindow()
     {
@@ -1340,11 +1336,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         ApplyMaintenanceTheme(_maintenanceTheme);
 
         var repositoryLocator = new RepositoryLocator();
-        _repositoryRoot = repositoryLocator.LocateRepositoryRoot();
 
+        _repositoryRoot = repositoryLocator.LocateRepositoryRoot();
         _configurationStore = new MaintenanceConfigurationStore(_repositoryRoot);
         _configuration = _configurationStore.Load();
-
         _serviceManager = new WindowsServiceManager(new ProcessRunner());
         _deploymentManager = new DeploymentManager(_repositoryRoot, new ProcessRunner(), _serviceManager);
         _firewallManager = new WindowsFirewallManager(new ProcessRunner());
@@ -1353,17 +1348,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         _logFileService = new LogFileService(_repositoryRoot);
         _backupRestoreService = new BackupRestoreService(_repositoryRoot);
         _cleanupService = new CleanupService(_repositoryRoot);
-        BackupRoot = string.IsNullOrWhiteSpace(_configuration.Cleanup.BackupRoot)
-            ? GetDefaultBackupRoot()
-            : _configuration.Cleanup.BackupRoot;
+        BackupRoot = string.IsNullOrWhiteSpace(_configuration.Cleanup.BackupRoot) ? GetDefaultBackupRoot() : _configuration.Cleanup.BackupRoot;
         OrdersPdfSourceRoot = _configuration.ImportEdit.OrdersPdfSourceRoot;
         InstructionPdfSourceRoot = _configuration.ImportEdit.InstructionPdfSourceRoot;
         SchemePdfSourceRoot = _configuration.ImportEdit.SchemePdfSourceRoot;
         ExcelImportFilePath = _configuration.ImportEdit.ExcelImportFilePath;
+        // Отдельный путь экспортного пакета.
+        ExcelExportFilePath = _configuration.ImportEdit.ExcelExportFilePath;
         SupplierLogoSourceRoot = _configuration.ImportEdit.SupplierLogoSourceRoot;
         InstructionImageSourceRoot = _configuration.ImportEdit.InstructionImageSourceRoot;
         SchemeImageSourceRoot = _configuration.ImportEdit.SchemeImageSourceRoot;
-
         DataContext = this;
 
         InitializeServiceRows();

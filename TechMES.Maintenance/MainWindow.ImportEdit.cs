@@ -1701,11 +1701,13 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Saves only Maintenance Import/Edit options, not Runtime/Web appsettings.
+    /// Сохраняет только настройки Maintenance Import/Edit и Export.
+    /// Runtime/Web appsettings этот метод не изменяет.
     /// </summary>
     private void PersistImportEditOptions()
     {
         _configuration.ImportEdit.ExcelImportFilePath = ExcelImportFilePath;
+        _configuration.ImportEdit.ExcelExportFilePath = ExcelExportFilePath;
         _configuration.ImportEdit.OrdersPdfSourceRoot = OrdersPdfSourceRoot;
         _configuration.ImportEdit.InstructionPdfSourceRoot = InstructionPdfSourceRoot;
         _configuration.ImportEdit.SchemePdfSourceRoot = SchemePdfSourceRoot;

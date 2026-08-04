@@ -218,4 +218,20 @@ public class MaintenancePageControl : UserControl
                 grid.ScrollIntoView(grid.Items[^1]);
         });
     }
+
+    /// <summary>
+    /// Передаёт выбор выходного XLSX-файла в MainWindow.
+    /// </summary>
+    public void OnBrowseExcelExportFileClick(object sender, RoutedEventArgs e)
+    {
+        ForwardRoutedEvent(sender, e);
+    }
+
+    /// <summary>
+    /// Передаёт запуск полного экспортного пакета в MainWindow.
+    /// </summary>
+    public void OnExportExcelClick(object sender, RoutedEventArgs e)
+    {
+        ForwardRoutedEvent(sender, e);
+    }
 }

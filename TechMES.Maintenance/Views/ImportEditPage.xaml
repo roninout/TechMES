@@ -278,6 +278,76 @@
                         </views:MaintenanceCard>
 
                         <!--
+                        Отдельная панель Export.
+
+                        ExcelExportFilePath не связан с ExcelImportFilePath.
+                        Все экспортные папки автоматически создаются рядом с XLSX.
+                        -->
+                        <views:MaintenanceCard Background="{DynamicResource TechMesPanelBrush}"
+                                               BorderBrush="{DynamicResource TechMesBorderBrush}"
+                                               BorderThickness="1"
+                                               Padding="12"
+                                               Margin="0,0,0,12">
+
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0">
+                                    <TextBlock Text="Excel export"
+                                               Style="{StaticResource SectionTitleText}" />
+
+                                    <TextBlock Text="Exports SUPPLIER, ORDERS, INSTRUCTION and SCHEME directly from PostgreSQL. Binary files are created in folders next to the XLSX file."
+                                               Style="{StaticResource MutedText}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+
+                                <Grid Grid.Row="1" Margin="0,12,0,0">
+
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Column="0"
+                                               Text="Excel file"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource MutedText}" />
+
+                                    <ui:TextBox Grid.Column="1"
+                                                Text="{Binding ExcelExportFilePath, UpdateSourceTrigger=PropertyChanged}"
+                                                Margin="0,0,8,0" />
+
+                                    <ui:Button Grid.Column="2"
+                                               Content="Browse..."
+                                               MinWidth="96"
+                                               Margin="0,0,8,0"
+                                               Click="OnBrowseExcelExportFileClick" />
+
+                                    <ui:Button Grid.Column="3"
+                                               Content="Export"
+                                               MinWidth="110"
+                                               Appearance="Primary"
+                                               IsEnabled="{Binding CanStartExcelExport}"
+                                               Click="OnExportExcelClick" />
+
+                                </Grid>
+
+                                <TextBlock Grid.Row="2"
+                                           Text="{Binding ExportExcelStatusText}"
+                                           Margin="150,8,0,0"
+                                           Style="{StaticResource MutedText}"
+                                           TextWrapping="Wrap" />
+
+                            </Grid>
+                        </views:MaintenanceCard>
+
+                        <!--
                         Все внешние источники файлов собраны в одной панели. Эти значения сохраняются
                         в maintenance.settings.json и используются как Excel-импортом, так и ручным Save.
                         -->
