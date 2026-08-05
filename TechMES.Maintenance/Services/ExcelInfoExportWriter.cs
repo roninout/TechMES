@@ -593,13 +593,13 @@ public sealed class ExcelInfoExportWriter
             rows.Add(new WorksheetRow(rowNumber,
             [
                 Cell("A", rowNumber, (index + 1).ToString()),
-            FormulaCell("B", rowNumber, stationFormula, item.Station),
-            Cell("C", rowNumber, item.Type),
-            Cell("D", rowNumber, item.Equipment),
-            Cell("E", rowNumber, item.ProductCode),
-            FormulaCell("F", rowNumber, supplierFormula, cachedSupplier),
-            FormulaCell("G", rowNumber, descriptionFormula, cachedDescription)
-            ]));
+                FormulaCell("B", rowNumber, stationFormula, item.Station),
+                Cell("C", rowNumber, item.Type),
+                Cell("D", rowNumber, item.Equipment),
+                Cell("E", rowNumber, item.ProductCode),
+                FormulaCell("F", rowNumber, supplierFormula, cachedSupplier),
+                FormulaCell("G", rowNumber, descriptionFormula, cachedDescription)
+                ]));
         }
 
         var lastInstructionRow = Math.Max(4, data.Instructions.Count + 3);
