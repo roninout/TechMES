@@ -18,6 +18,9 @@ public sealed class ExcelInfoExportWriter
     private const string SpreadsheetNamespace = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     private const string RelationshipNamespace = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private const string XmlNamespace = "http://www.w3.org/XML/1998/namespace";
+    // До этой строки выпадающие списки ORDERS остаются доступными
+    // для добавления новых заказов вручную.
+    private const int EditableOrderLastRow = 10000;
 
     /// <summary>
     /// Асинхронно создаёт Excel-книгу.
@@ -28,7 +31,8 @@ public sealed class ExcelInfoExportWriter
     }
 
     /// <summary>
-    /// Создаёт минимальный валидный XLSX ZIP-контейнер.
+    /// Создаёт валидный XLSX ZIP-контейнер с формулами,
+    /// выпадающими списками и листом TYPE.
     /// </summary>
     private static void Write(string filePath, InfoExportWorkbookData data, CancellationToken cancellationToken)
     {
@@ -42,7 +46,9 @@ public sealed class ExcelInfoExportWriter
         if (File.Exists(filePath))
             File.Delete(filePath);
 
-        using var fileStream =new FileStream(filePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+        var types = BuildTypeList(data);
+
+        using var fileStream = new FileStream(filePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         using var archive = new ZipArchive(fileStream, ZipArchiveMode.Create, leaveOpen: false);
 
         WriteContentTypes(archive);
@@ -50,30 +56,47 @@ public sealed class ExcelInfoExportWriter
         WriteWorkbook(archive);
         WriteWorkbookRelationships(archive);
         WriteStyles(archive);
+
         WriteSupplierSheet(archive, data.Suppliers, cancellationToken);
         WriteOrdersSheet(archive, data.Orders, cancellationToken);
         WriteInstructionSheet(archive, data, cancellationToken);
         WriteSchemeSheet(archive, data, cancellationToken);
+        WriteTypeSheet(archive, types, cancellationToken);
     }
 
     /// <summary>
-    /// Записывает список типов частей XLSX.
+    /// Записывает список частей XLSX.
     /// </summary>
     private static void WriteContentTypes(ZipArchive archive)
     {
         const string content = """
-            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-              <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-              <Default Extension="xml" ContentType="application/xml"/>
-              <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-              <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-              <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-              <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-              <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-              <Override PartName="/xl/worksheets/sheet4.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-            </Types>
-            """;
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+          <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+          <Default Extension="xml" ContentType="application/xml"/>
+
+          <Override PartName="/xl/workbook.xml"
+                    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+
+          <Override PartName="/xl/styles.xml"
+                    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+
+          <Override PartName="/xl/worksheets/sheet1.xml"
+                    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+
+          <Override PartName="/xl/worksheets/sheet2.xml"
+                    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+
+          <Override PartName="/xl/worksheets/sheet3.xml"
+                    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+
+          <Override PartName="/xl/worksheets/sheet4.xml"
+                    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+
+          <Override PartName="/xl/worksheets/sheet5.xml"
+                    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+        </Types>
+        """;
 
         WriteTextEntry(archive, "[Content_Types].xml", content);
     }
@@ -96,54 +119,92 @@ public sealed class ExcelInfoExportWriter
     }
 
     /// <summary>
-    /// Создаёт книгу с четырьмя обязательными листами.
+    /// Создаёт книгу с четырьмя импортными листами и служебным листом TYPE.
+    ///
+    /// Именованные диапазоны используются выпадающими списками и формулами.
+    /// Они автоматически расширяются при добавлении новых строк.
     /// </summary>
     private static void WriteWorkbook(ZipArchive archive)
     {
         const string content = """
-            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-            <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
-                      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-              <bookViews>
-                <workbookView activeTab="0"/>
-              </bookViews>
-              <sheets>
-                <sheet name="SUPPLIER" sheetId="1" r:id="rId1"/>
-                <sheet name="ORDERS" sheetId="2" r:id="rId2"/>
-                <sheet name="INSTRUCTION" sheetId="3" r:id="rId3"/>
-                <sheet name="SCHEME" sheetId="4" r:id="rId4"/>
-              </sheets>
-            </workbook>
-            """;
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+
+          <bookViews>
+            <workbookView activeTab="0"/>
+          </bookViews>
+
+          <sheets>
+            <sheet name="SUPPLIER" sheetId="1" r:id="rId1"/>
+            <sheet name="ORDERS" sheetId="2" r:id="rId2"/>
+            <sheet name="INSTRUCTION" sheetId="3" r:id="rId3"/>
+            <sheet name="SCHEME" sheetId="4" r:id="rId4"/>
+            <sheet name="TYPE" sheetId="5" r:id="rId5"/>
+          </sheets>
+
+          <definedNames>
+            <definedName name="TechMES_TypeList">
+              OFFSET('TYPE'!$B$3,0,0,MAX(1,COUNTA('TYPE'!$B:$B)-1),1)
+            </definedName>
+
+            <definedName name="TechMES_SupplierList">
+              OFFSET('SUPPLIER'!$B$3,0,0,MAX(1,COUNTA('SUPPLIER'!$B:$B)-1),1)
+            </definedName>
+
+            <definedName name="TechMES_ProductCodeList">
+              OFFSET('ORDERS'!$C$3,0,0,MAX(1,COUNTA('ORDERS'!$C:$C)-1),1)
+            </definedName>
+
+            <definedName name="TechMES_OrderLookup">
+              OFFSET('ORDERS'!$C$3,0,0,MAX(1,COUNTA('ORDERS'!$C:$C)-1),4)
+            </definedName>
+          </definedNames>
+
+          <calcPr calcId="191029"
+                  calcMode="auto"
+                  fullCalcOnLoad="1"
+                  forceFullCalc="1"/>
+        </workbook>
+        """;
 
         WriteTextEntry(archive, "xl/workbook.xml", content);
     }
 
     /// <summary>
-    /// Связывает workbook с листами и стилями.
+    /// Связывает workbook с пятью листами и стилями.
     /// </summary>
     private static void WriteWorkbookRelationships(ZipArchive archive)
     {
         const string content = """
-            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-              <Relationship Id="rId1"
-                            Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
-                            Target="worksheets/sheet1.xml"/>
-              <Relationship Id="rId2"
-                            Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
-                            Target="worksheets/sheet2.xml"/>
-              <Relationship Id="rId3"
-                            Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
-                            Target="worksheets/sheet3.xml"/>
-              <Relationship Id="rId4"
-                            Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
-                            Target="worksheets/sheet4.xml"/>
-              <Relationship Id="rId5"
-                            Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
-                            Target="styles.xml"/>
-            </Relationships>
-            """;
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+
+          <Relationship Id="rId1"
+                        Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+                        Target="worksheets/sheet1.xml"/>
+
+          <Relationship Id="rId2"
+                        Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+                        Target="worksheets/sheet2.xml"/>
+
+          <Relationship Id="rId3"
+                        Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+                        Target="worksheets/sheet3.xml"/>
+
+          <Relationship Id="rId4"
+                        Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+                        Target="worksheets/sheet4.xml"/>
+
+          <Relationship Id="rId5"
+                        Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+                        Target="worksheets/sheet5.xml"/>
+
+          <Relationship Id="rId6"
+                        Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
+                        Target="styles.xml"/>
+        </Relationships>
+        """;
 
         WriteTextEntry(archive, "xl/_rels/workbook.xml.rels", content);
     }
@@ -254,6 +315,82 @@ public sealed class ExcelInfoExportWriter
     }
 
     /// <summary>
+    /// Формирует значения листа TYPE.
+    ///
+    /// Сначала добавляются стандартные WEB-типы, затем дополнительные
+    /// фактические значения из ORDERS и INSTRUCTION.
+    /// </summary>
+    private static IReadOnlyList<string> BuildTypeList(InfoExportWorkbookData data)
+    {
+        var standardTypes = new[]
+        {
+        "AI",
+        "DI",
+        "DO",
+        "Motor",
+        "ATV",
+        "VGA",
+        "VGD",
+        "VGA_EL",
+        "Equipment"
+    };
+
+        var actualTypes = data.Orders
+            .Select(x => x.Type)
+            .Concat(data.Instructions.Select(x => x.Type))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase);
+
+        return standardTypes
+            .Concat(actualTypes)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Создаёт служебный лист TYPE, используемый выпадающими списками.
+    /// </summary>
+    private static void WriteTypeSheet(ZipArchive archive, IReadOnlyList<string> types, CancellationToken cancellationToken)
+    {
+        var rows = new List<WorksheetRow>
+    {
+        new(1,
+        [
+            Cell("A", 1, "TechMES Info export", 2)
+        ]),
+
+        new(2,
+        [
+            Cell("A", 2, "№", 1),
+            Cell("B", 2, "Type", 1)
+        ])
+    };
+
+        for (var index = 0; index < types.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var rowNumber = index + 3;
+
+            rows.Add(new WorksheetRow(rowNumber,
+            [
+                Cell("A", rowNumber, (index + 1).ToString()),
+            Cell("B", rowNumber, types[index])
+            ]));
+        }
+
+        WriteWorksheet(
+            archive,
+            "xl/worksheets/sheet5.xml",
+            [7, 24],
+            rows,
+            frozenRows: 2,
+            autoFilterReference: $"B2:B{Math.Max(2, types.Count + 2)}",
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Создаёт лист SUPPLIER.
     /// Данные начинаются с третьей строки, как ожидает импорт.
     /// </summary>
@@ -312,56 +449,58 @@ public sealed class ExcelInfoExportWriter
 
     /// <summary>
     /// Создаёт лист ORDERS.
+    ///
+    /// Type и Supplier имеют выпадающие списки.
+    /// Проверка распространяется до строки 10000, поэтому новые заказы
+    /// можно добавлять вручную без копирования настроек ячеек.
     /// </summary>
     private static void WriteOrdersSheet(ZipArchive archive, IReadOnlyList<InfoExportWorkbookOrderRow> orders, CancellationToken cancellationToken)
     {
-        var rows =
-            new List<WorksheetRow>
-            {
-                new(
-                    1,
-                    [
-                        Cell("A", 1, "TechMES Info export", 2)
-                    ]),
+        var rows = new List<WorksheetRow>
+    {
+        new(1,
+        [
+            Cell("A", 1, "TechMES Info export", 2)
+        ]),
 
-                new(
-                    2,
-                    [
-                        Cell("A", 2, "№", 1),
-                        Cell("B", 2, "Type", 1),
-                        Cell("C", 2, "Product code", 1),
-                        Cell("D", 2, "Supplier", 1),
-                        Cell("E", 2, "Source", 1),
-                        Cell("F", 2, "Description", 1),
-                        Cell("G", 2, "Image", 1)
-                    ])
-            };
+        new(2,
+        [
+            Cell("A", 2, "№", 1),
+            Cell("B", 2, "Type", 1),
+            Cell("C", 2, "Product code", 1),
+            Cell("D", 2, "Supplier", 1),
+            Cell("E", 2, "Source", 1),
+            Cell("F", 2, "Description", 1),
+            Cell("G", 2, "Image", 1)
+        ])
+    };
 
-        for (var index = 0;
-             index < orders.Count;
-             index++)
+        for (var index = 0; index < orders.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var rowNumber =
-                index + 3;
+            var rowNumber = index + 3;
+            var item = orders[index];
 
-            var item =
-                orders[index];
-
-            rows.Add(
-                new WorksheetRow(
-                    rowNumber,
-                    [
-                        Cell("A", rowNumber, (index + 1).ToString()),
-                        Cell("B", rowNumber, item.Type),
-                        Cell("C", rowNumber, item.ProductCode),
-                        Cell("D", rowNumber, item.Supplier),
-                        Cell("E", rowNumber, item.Source),
-                        Cell("F", rowNumber, item.Description),
-                        Cell("G", rowNumber, item.Image)
-                    ]));
+            rows.Add(new WorksheetRow(rowNumber,
+            [
+                Cell("A", rowNumber, (index + 1).ToString()),
+            Cell("B", rowNumber, item.Type),
+            Cell("C", rowNumber, item.ProductCode),
+            Cell("D", rowNumber, item.Supplier),
+            Cell("E", rowNumber, item.Source),
+            Cell("F", rowNumber, item.Description),
+            Cell("G", rowNumber, item.Image)
+            ]));
         }
+
+        var lastValidationRow = Math.Max(EditableOrderLastRow, orders.Count + 2);
+
+        IReadOnlyList<WorksheetDataValidation> dataValidations =
+        [
+            new($"B3:B{lastValidationRow}", "TechMES_TypeList"),
+        new($"D3:D{lastValidationRow}", "TechMES_SupplierList")
+        ];
 
         WriteWorksheet(
             archive,
@@ -369,73 +508,104 @@ public sealed class ExcelInfoExportWriter
             [7, 18, 28, 28, 60, 90, 60],
             rows,
             frozenRows: 2,
-            autoFilterReference:
-                $"B2:G{Math.Max(2, orders.Count + 2)}",
-            cancellationToken);
+            autoFilterReference: $"B2:G{Math.Max(2, orders.Count + 2)}",
+            cancellationToken,
+            dataValidations);
     }
 
     /// <summary>
     /// Создаёт лист INSTRUCTION.
     ///
-    /// B1 содержит относительный корень PDF-файлов.
-    /// Данные начинаются с четвёртой строки.
+    /// Station вычисляется из Equipment.
+    /// Type выбирается из TYPE.
+    /// Product code выбирается из ORDERS.
+    /// Supplier и Description автоматически подтягиваются по Product code.
+    ///
+    /// Каждая формула также содержит сохранённый результат.
+    /// Поэтому файл можно сразу импортировать обратно, не открывая в Excel.
     /// </summary>
     private static void WriteInstructionSheet(ZipArchive archive, InfoExportWorkbookData data, CancellationToken cancellationToken)
     {
-        var rows =
-            new List<WorksheetRow>
-            {
-                new(
-                    1,
-                    [
-                        Cell("A", 1, "Instruction root", 2),
-                        Cell("B", 1, data.InstructionRoot, 2)
-                    ]),
+        var ordersByProductCode = data.Orders
+            .Where(x => !string.IsNullOrWhiteSpace(x.ProductCode))
+            .GroupBy(x => x.ProductCode.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
 
-                new(
-                    2,
-                    [
-                        Cell("A", 2, "TechMES Info export", 2)
-                    ]),
+        var rows = new List<WorksheetRow>
+    {
+        new(1,
+        [
+            Cell("A", 1, "Instruction root", 2),
+            Cell("B", 1, data.InstructionRoot, 2)
+        ]),
 
-                new(
-                    3,
-                    [
-                        Cell("A", 3, "№", 1),
-                        Cell("B", 3, "Station", 1),
-                        Cell("C", 3, "Type", 1),
-                        Cell("D", 3, "Equipment", 1),
-                        Cell("E", 3, "Product code", 1),
-                        Cell("F", 3, "Supplier", 1),
-                        Cell("G", 3, "Description", 1)
-                    ])
-            };
+        new(2,
+        [
+            Cell("A", 2, "TechMES Info export", 2)
+        ]),
 
-        for (var index = 0;
-             index < data.Instructions.Count;
-             index++)
+        new(3,
+        [
+            Cell("A", 3, "№", 1),
+            Cell("B", 3, "Station", 1),
+            Cell("C", 3, "Type", 1),
+            Cell("D", 3, "Equipment", 1),
+            Cell("E", 3, "Product code", 1),
+            Cell("F", 3, "Supplier", 1),
+            Cell("G", 3, "Description", 1)
+        ])
+    };
+
+        for (var index = 0; index < data.Instructions.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var rowNumber =
-                index + 4;
+            var rowNumber = index + 4;
+            var item = data.Instructions[index];
 
-            var item =
-                data.Instructions[index];
+            var stationFormula = $"IFERROR(LEFT(D{rowNumber},FIND(\".\",D{rowNumber})-1),\"\")";
+            var supplierCell = Cell("F", rowNumber, item.Supplier);
+            var descriptionCell = Cell("G", rowNumber, item.Description);
 
-            rows.Add(
-                new WorksheetRow(
-                    rowNumber,
-                    [
-                        Cell("A", rowNumber, (index + 1).ToString()),
-                        Cell("B", rowNumber, item.Station),
-                        Cell("C", rowNumber, item.Type),
-                        Cell("D", rowNumber, item.Equipment),
-                        Cell("E", rowNumber, item.ProductCode),
-                        Cell("F", rowNumber, item.Supplier),
-                        Cell("G", rowNumber, item.Description)
-                    ]));
+            /*
+             * Формулы Supplier и Description добавляем только тогда,
+             * когда Product code реально существует на листе ORDERS.
+             *
+             * Для старых или несвязанных записей оставляем статические значения,
+             * чтобы экспорт не потерял существующие данные.
+             */
+            if (!string.IsNullOrWhiteSpace(item.ProductCode)
+                && ordersByProductCode.TryGetValue(item.ProductCode.Trim(), out var order))
+            {
+                var supplierFormula =
+                    $"IF($E{rowNumber}=\"\",\"\",IFERROR(VLOOKUP($E{rowNumber},TechMES_OrderLookup,2,FALSE),\"\"))";
+
+                var descriptionFormula =
+                    $"IF($E{rowNumber}=\"\",\"\",IFERROR(VLOOKUP($E{rowNumber},TechMES_OrderLookup,4,FALSE),\"\"))";
+
+                supplierCell = FormulaCell("F", rowNumber, supplierFormula, order.Supplier);
+                descriptionCell = FormulaCell("G", rowNumber, descriptionFormula, order.Description);
+            }
+
+            rows.Add(new WorksheetRow(rowNumber,
+            [
+                Cell("A", rowNumber, (index + 1).ToString()),
+            FormulaCell("B", rowNumber, stationFormula, item.Station),
+            Cell("C", rowNumber, item.Type),
+            Cell("D", rowNumber, item.Equipment),
+            Cell("E", rowNumber, item.ProductCode),
+            supplierCell,
+            descriptionCell
+            ]));
         }
+
+        var lastInstructionRow = Math.Max(4, data.Instructions.Count + 3);
+
+        IReadOnlyList<WorksheetDataValidation> dataValidations =
+        [
+            new($"C4:C{lastInstructionRow}", "TechMES_TypeList"),
+        new($"E4:E{lastInstructionRow}", "TechMES_ProductCodeList")
+        ];
 
         WriteWorksheet(
             archive,
@@ -443,9 +613,9 @@ public sealed class ExcelInfoExportWriter
             [7, 14, 18, 42, 28, 28, 90],
             rows,
             frozenRows: 3,
-            autoFilterReference:
-                $"B3:G{Math.Max(3, data.Instructions.Count + 3)}",
-            cancellationToken);
+            autoFilterReference: $"B3:G{Math.Max(3, data.Instructions.Count + 3)}",
+            cancellationToken,
+            dataValidations);
     }
 
     /// <summary>
@@ -603,23 +773,26 @@ public sealed class ExcelInfoExportWriter
 
     /// <summary>
     /// Записывает общий XML worksheet.
+    ///
+    /// Data Validation создаёт стандартные Excel-выпадающие списки.
     /// </summary>
-    private static void WriteWorksheet(ZipArchive archive, string entryPath, IReadOnlyList<double> columnWidths, IReadOnlyList<WorksheetRow> rows, int frozenRows, string? autoFilterReference, CancellationToken cancellationToken)
+    private static void WriteWorksheet(ZipArchive archive, string entryPath, IReadOnlyList<double> columnWidths, IReadOnlyList<WorksheetRow> rows, int frozenRows, string? autoFilterReference, CancellationToken cancellationToken, IReadOnlyList<WorksheetDataValidation>? dataValidations = null)
     {
         var entry = archive.CreateEntry(entryPath, CompressionLevel.Optimal);
 
         var settings = new XmlWriterSettings
-                            {
-                                Encoding = new UTF8Encoding(false),
-                                Indent = false,
-                                CloseOutput = false
-                            };
+        {
+            Encoding = new UTF8Encoding(false),
+            Indent = false,
+            CloseOutput = false
+        };
 
         using var stream = entry.Open();
         using var writer = XmlWriter.Create(stream, settings);
 
         writer.WriteStartDocument(true);
         writer.WriteStartElement("worksheet", SpreadsheetNamespace);
+
         writer.WriteStartElement("sheetViews", SpreadsheetNamespace);
         writer.WriteStartElement("sheetView", SpreadsheetNamespace);
         writer.WriteAttributeString("workbookViewId", "0");
@@ -636,17 +809,18 @@ public sealed class ExcelInfoExportWriter
 
         writer.WriteEndElement();
         writer.WriteEndElement();
+
         writer.WriteStartElement("sheetFormatPr", SpreadsheetNamespace);
         writer.WriteAttributeString("defaultRowHeight", "15");
         writer.WriteEndElement();
+
         writer.WriteStartElement("cols", SpreadsheetNamespace);
 
         for (var index = 0; index < columnWidths.Count; index++)
         {
-            writer.WriteStartElement("col", SpreadsheetNamespace);
-
             var columnNumber = index + 1;
 
+            writer.WriteStartElement("col", SpreadsheetNamespace);
             writer.WriteAttributeString("min", columnNumber.ToString(CultureInfo.InvariantCulture));
             writer.WriteAttributeString("max", columnNumber.ToString(CultureInfo.InvariantCulture));
             writer.WriteAttributeString("width", columnWidths[index].ToString(CultureInfo.InvariantCulture));
@@ -655,6 +829,7 @@ public sealed class ExcelInfoExportWriter
         }
 
         writer.WriteEndElement();
+
         writer.WriteStartElement("sheetData", SpreadsheetNamespace);
 
         foreach (var row in rows)
@@ -665,20 +840,42 @@ public sealed class ExcelInfoExportWriter
             writer.WriteAttributeString("r", row.Index.ToString(CultureInfo.InvariantCulture));
 
             foreach (var cell in row.Cells)
-            {
-                WriteCell(writer,cell);
-            }
+                WriteCell(writer, cell);
 
             writer.WriteEndElement();
         }
 
         writer.WriteEndElement();
 
-        if (!string.IsNullOrWhiteSpace(
-                autoFilterReference))
+        if (!string.IsNullOrWhiteSpace(autoFilterReference))
         {
             writer.WriteStartElement("autoFilter", SpreadsheetNamespace);
             writer.WriteAttributeString("ref", autoFilterReference);
+            writer.WriteEndElement();
+        }
+
+        if (dataValidations is { Count: > 0 })
+        {
+            writer.WriteStartElement("dataValidations", SpreadsheetNamespace);
+            writer.WriteAttributeString("count", dataValidations.Count.ToString(CultureInfo.InvariantCulture));
+
+            foreach (var validation in dataValidations)
+            {
+                writer.WriteStartElement("dataValidation", SpreadsheetNamespace);
+                writer.WriteAttributeString("type", "list");
+                writer.WriteAttributeString("allowBlank", "1");
+                writer.WriteAttributeString("showInputMessage", "1");
+                writer.WriteAttributeString("showErrorMessage", "1");
+                writer.WriteAttributeString("errorStyle", "stop");
+                writer.WriteAttributeString("sqref", validation.SqRef);
+
+                writer.WriteStartElement("formula1", SpreadsheetNamespace);
+                writer.WriteString(validation.Formula1);
+                writer.WriteEndElement();
+
+                writer.WriteEndElement();
+            }
+
             writer.WriteEndElement();
         }
 
@@ -690,30 +887,51 @@ public sealed class ExcelInfoExportWriter
         writer.WriteAttributeString("header", "0.3");
         writer.WriteAttributeString("footer", "0.3");
         writer.WriteEndElement();
+
         writer.WriteEndElement();
         writer.WriteEndDocument();
     }
 
     /// <summary>
-    /// Записывает одну текстовую ячейку inlineStr.
+    /// Записывает обычную текстовую ячейку или формулу
+    /// с сохранённым текстовым результатом.
     /// </summary>
     private static void WriteCell(XmlWriter writer, WorksheetCell cell)
     {
         var value = NormalizeCellText(cell.Value);
+        var formula = NormalizeCellText(cell.Formula);
 
         if (value.Length > 32767)
-        {
-            throw new InvalidOperationException($"Excel cell {cell.Reference} contains more than " + "32767 characters.");
-        }
+            throw new InvalidOperationException($"Excel cell {cell.Reference} contains more than 32767 characters.");
 
         writer.WriteStartElement("c", SpreadsheetNamespace);
         writer.WriteAttributeString("r", cell.Reference);
-        writer.WriteAttributeString("t", "inlineStr");
 
         if (cell.StyleIndex > 0)
-        {
             writer.WriteAttributeString("s", cell.StyleIndex.ToString(CultureInfo.InvariantCulture));
+
+        /*
+         * Формула хранится вместе с cached value.
+         * Excel пересчитает её при открытии, а ExcelInfoImportReader
+         * сможет прочитать cached value сразу.
+         */
+        if (!string.IsNullOrWhiteSpace(formula))
+        {
+            writer.WriteAttributeString("t", "str");
+
+            writer.WriteStartElement("f", SpreadsheetNamespace);
+            writer.WriteString(formula);
+            writer.WriteEndElement();
+
+            writer.WriteStartElement("v", SpreadsheetNamespace);
+            writer.WriteString(value);
+            writer.WriteEndElement();
+
+            writer.WriteEndElement();
+            return;
         }
+
+        writer.WriteAttributeString("t", "inlineStr");
 
         writer.WriteStartElement("is", SpreadsheetNamespace);
         writer.WriteStartElement("t", SpreadsheetNamespace);
@@ -737,7 +955,16 @@ public sealed class ExcelInfoExportWriter
 
     private static WorksheetCell Cell(string column, int row, string? value, int styleIndex = 0)
     {
-        return new WorksheetCell($"{column}{row}", value ?? "", styleIndex);
+        return new WorksheetCell($"{column}{row}", value ?? "", styleIndex, null);
+    }
+
+    /// <summary>
+    /// Создаёт ячейку с формулой и сохранённым результатом.
+    /// Формула передаётся без начального знака "=".
+    /// </summary>
+    private static WorksheetCell FormulaCell(string column, int row, string formula, string? cachedValue, int styleIndex = 0)
+    {
+        return new WorksheetCell($"{column}{row}", cachedValue ?? "", styleIndex, formula);
     }
 
     /// <summary>
@@ -754,5 +981,7 @@ public sealed class ExcelInfoExportWriter
 
     private sealed record WorksheetRow(int Index, IReadOnlyList<WorksheetCell> Cells);
 
-    private sealed record WorksheetCell(string Reference, string Value, int StyleIndex);
+    private sealed record WorksheetCell(string Reference, string Value, int StyleIndex, string? Formula);
+
+    private sealed record WorksheetDataValidation(string SqRef, string Formula1);
 }
