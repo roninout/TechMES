@@ -521,8 +521,11 @@ public sealed class ExcelInfoExportWriter
     /// Product code выбирается из ORDERS.
     /// Supplier и Description автоматически подтягиваются по Product code.
     ///
-    /// Каждая формула также содержит сохранённый результат.
-    /// Поэтому файл можно сразу импортировать обратно, не открывая в Excel.
+    /// Формулы Supplier и Description создаются для каждой строки,
+    /// включая строки, у которых Product code пока не выбран.
+    ///
+    /// Каждая формула содержит сохранённый результат, поэтому файл
+    /// можно сразу импортировать обратно, не открывая его в Excel.
     /// </summary>
     private static void WriteInstructionSheet(ZipArchive archive, InfoExportWorkbookData data, CancellationToken cancellationToken)
     {
@@ -564,27 +567,27 @@ public sealed class ExcelInfoExportWriter
             var item = data.Instructions[index];
 
             var stationFormula = $"IFERROR(LEFT(D{rowNumber},FIND(\".\",D{rowNumber})-1),\"\")";
-            var supplierCell = Cell("F", rowNumber, item.Supplier);
-            var descriptionCell = Cell("G", rowNumber, item.Description);
+            var supplierFormula = $"IF($E{rowNumber}=\"\",\"\",IFERROR(VLOOKUP($E{rowNumber},TechMES_OrderLookup,2,FALSE),\"\"))";
+            var descriptionFormula = $"IF($E{rowNumber}=\"\",\"\",IFERROR(VLOOKUP($E{rowNumber},TechMES_OrderLookup,4,FALSE),\"\"))";
 
             /*
-             * Формулы Supplier и Description добавляем только тогда,
-             * когда Product code реально существует на листе ORDERS.
+             * Cached values нужны для импорта без предварительного
+             * открытия и сохранения файла в Excel.
              *
-             * Для старых или несвязанных записей оставляем статические значения,
-             * чтобы экспорт не потерял существующие данные.
+             * Если Product code найден в ORDERS, сохраняем результат,
+             * который должна вернуть формула.
+             *
+             * Если код пустой или отсутствует в ORDERS, сохраняем текущие
+             * значения equip_info, чтобы экспорт не потерял данные.
              */
+            var cachedSupplier = item.Supplier;
+            var cachedDescription = item.Description;
+
             if (!string.IsNullOrWhiteSpace(item.ProductCode)
                 && ordersByProductCode.TryGetValue(item.ProductCode.Trim(), out var order))
             {
-                var supplierFormula =
-                    $"IF($E{rowNumber}=\"\",\"\",IFERROR(VLOOKUP($E{rowNumber},TechMES_OrderLookup,2,FALSE),\"\"))";
-
-                var descriptionFormula =
-                    $"IF($E{rowNumber}=\"\",\"\",IFERROR(VLOOKUP($E{rowNumber},TechMES_OrderLookup,4,FALSE),\"\"))";
-
-                supplierCell = FormulaCell("F", rowNumber, supplierFormula, order.Supplier);
-                descriptionCell = FormulaCell("G", rowNumber, descriptionFormula, order.Description);
+                cachedSupplier = order.Supplier;
+                cachedDescription = order.Description;
             }
 
             rows.Add(new WorksheetRow(rowNumber,
@@ -594,8 +597,8 @@ public sealed class ExcelInfoExportWriter
             Cell("C", rowNumber, item.Type),
             Cell("D", rowNumber, item.Equipment),
             Cell("E", rowNumber, item.ProductCode),
-            supplierCell,
-            descriptionCell
+            FormulaCell("F", rowNumber, supplierFormula, cachedSupplier),
+            FormulaCell("G", rowNumber, descriptionFormula, cachedDescription)
             ]));
         }
 
