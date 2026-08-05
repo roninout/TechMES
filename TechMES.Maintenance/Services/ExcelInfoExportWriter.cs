@@ -273,7 +273,7 @@ public sealed class ExcelInfoExportWriter
                     [
                         Cell("A", 2, "№", 1),
                         Cell("B", 2, "Supplier", 1),
-                        Cell("C", 2, "Logo", 1)
+                        Cell("C", 2, "Supplier_logo", 1)
                     ])
             };
 

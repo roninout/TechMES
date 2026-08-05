@@ -134,12 +134,7 @@ public partial class MainWindow
 
             if (!string.IsNullOrWhiteSpace(source.LogoFileName))
             {
-                var logoPath = ResolveRequiredImportFile(
-                    source.LogoFileName,
-                    "SUPPLIER logo",
-                    errors,
-                    SupplierLogoSourceRoot,
-                    workbookDirectory);
+                var logoPath = ResolveRequiredImportFile(source.LogoFileName, "SUPPLIER logo", errors, SupplierLogoSourceRoot, Path.Combine(workbookDirectory, "Supplier_logo"), workbookDirectory);
 
                 if (logoPath is not null)
                 {

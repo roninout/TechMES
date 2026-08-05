@@ -134,39 +134,16 @@ public sealed class InfoExportPackageService
 
             if (supplier.LogoData is { Length: > 0 })
             {
-                var preferredName =
-                    string.IsNullOrWhiteSpace(
-                        supplier.LogoFileName)
-                        ? $"{supplier.Supplier}.bin"
-                        : supplier.LogoFileName;
-
-                var exportedName =
-                    await WriteBinaryFileAsync(
-                        targetDirectory,
-                        preferredName,
-                        supplier.LogoFileHash,
-                        supplier.LogoData,
-                        usedNames,
-                        cancellationToken);
-
-                logoReference =
-                    CombineExcelPath(
-                        SupplierLogoFolderName,
-                        exportedName);
+                var preferredName = string.IsNullOrWhiteSpace(supplier.LogoFileName) ? $"{supplier.Supplier}.bin" : supplier.LogoFileName;
+                var exportedName = await WriteBinaryFileAsync(targetDirectory, preferredName, supplier.LogoFileHash, supplier.LogoData, usedNames, cancellationToken);
+                logoReference = exportedName;
             }
-            else if (!string.IsNullOrWhiteSpace(
-                         supplier.LogoFileName))
+            else if (!string.IsNullOrWhiteSpace(supplier.LogoFileName))
             {
-                warnings.Add(
-                    $"SUPPLIER '{supplier.Supplier}' contains " +
-                    $"logo file name '{supplier.LogoFileName}', " +
-                    "but logo_data is empty.");
+                warnings.Add($"SUPPLIER '{supplier.Supplier}' contains " + $"logo file name '{supplier.LogoFileName}', " + "but logo_data is empty.");
             }
 
-            result.Add(
-                new InfoExportWorkbookSupplierRow(
-                    supplier.Supplier,
-                    logoReference));
+            result.Add(new InfoExportWorkbookSupplierRow(supplier.Supplier, logoReference));
         }
 
         return result;
@@ -224,23 +201,17 @@ public sealed class InfoExportPackageService
     /// <summary>
     /// Формирует строки листа ORDERS.
     ///
-    /// Значения Source и Image преобразуются в относительные пути
-    /// экспортного пакета.
-    ///
-    /// Если текстовая ссылка существует в public.equip_order,
-    /// но соответствующий бинарный файл отсутствует в библиотеке,
-    /// такая ссылка не записывается в экспортный Excel.
-    /// Экспорт при этом продолжается, а пользователю добавляется
-    /// предупреждение.
+    /// В Source и Image записываются только имена файлов.
+    /// Физические файлы при этом остаются в папках Instruction
+    /// и Instruction\Images экспортного пакета.
     /// </summary>
-    private static IReadOnlyList<InfoExportWorkbookOrderRow>BuildWorkbookOrders(IReadOnlyList<InfoExportOrderRow> orders, IReadOnlyDictionary<string, string> instructionFiles, IReadOnlyDictionary<string, string> photoFiles, ICollection<string> warnings)
+    private static IReadOnlyList<InfoExportWorkbookOrderRow> BuildWorkbookOrders(IReadOnlyList<InfoExportOrderRow> orders, IReadOnlyDictionary<string, string> instructionFiles, IReadOnlyDictionary<string, string> photoFiles, ICollection<string> warnings)
     {
         return orders
             .Select(order => new InfoExportWorkbookOrderRow(order.Type, order.ProductCode, order.Supplier,
-                    // PDF-файлы ORDERS находятся в экспортной папке Instruction.
-                    RewriteStoredFileList(order.Source, instructionFiles, InstructionFolderName, $"ORDERS product '{order.ProductCode}' Source", warnings), order.Description,
-                    // Изображения ORDERS находятся в экспортной папке Instruction\Images.
-                    RewriteStoredFileList(order.Image, photoFiles, CombineExcelPath(InstructionFolderName, InstructionImageFolderName), $"ORDERS product '{order.ProductCode}' Image", warnings)))
+                RewriteStoredFileList(order.Source, instructionFiles, $"ORDERS product '{order.ProductCode}' Source", warnings),
+                order.Description,
+                RewriteStoredFileList(order.Image, photoFiles, $"ORDERS product '{order.ProductCode}' Image", warnings)))
             .OrderBy(order => order.Type, StringComparer.OrdinalIgnoreCase)
             .ThenBy(order => order.ProductCode, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -343,133 +314,127 @@ public sealed class InfoExportPackageService
 
     /// <summary>
     /// Экспортирует SCHEME в соответствующие папки области назначения.
+    ///
+    /// Несколько Station / Group / Equipment, относящихся к одной схеме,
+    /// сохраняются вместе в одной ячейке через "; ".
+    ///
+    /// Если несколько файлов имеют полностью одинаковый набор назначений,
+    /// их имена объединяются в одной ячейке Source через "; ".
     /// </summary>
-    private static async Task<IReadOnlyList<InfoExportWorkbookSchemeRow>>ExportSchemesAsync(IReadOnlyList<InfoExportSchemeFile> schemes, string stationDirectory, string groupDirectory, string equipmentDirectory, IDictionary<string, Dictionary<string, string>> usedNames, ICollection<string> warnings, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<InfoExportWorkbookSchemeRow>> ExportSchemesAsync(IReadOnlyList<InfoExportSchemeFile> schemes, string stationDirectory, string groupDirectory, string equipmentDirectory, IDictionary<string, Dictionary<string, string>> usedNames, ICollection<string> warnings, CancellationToken cancellationToken)
     {
-        var result =
-            new List<InfoExportWorkbookSchemeRow>();
+        // key   = полный набор назначений одной схемы;
+        // value = файлы, относящиеся к этому набору назначений.
+        var stationSources = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var groupSources = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var equipmentSources = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var scheme in schemes)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var stations =
-                SplitStoredValues(scheme.Station);
+            var stations = SplitStoredValues(scheme.Station);
+            var groups = SplitStoredValues(scheme.GroupNames);
+            var equipments = SplitStoredValues(scheme.Equipments);
+            var hasScope = stations.Count > 0 || groups.Count > 0 || equipments.Count > 0;
 
-            var groups =
-                SplitStoredValues(scheme.GroupNames);
-
-            var equipments =
-                SplitStoredValues(scheme.Equipments);
-
-            var hasScope =
-                stations.Count > 0
-                || groups.Count > 0
-                || equipments.Count > 0;
-
+            // Station scope.
             if (stations.Count > 0)
             {
-                var exportedName =
-                    await WriteBinaryFileAsync(
-                        stationDirectory,
-                        scheme.FileName,
-                        scheme.FileHash,
-                        scheme.FileData,
-                        usedNames,
-                        cancellationToken);
-
-                foreach (var station in stations)
-                {
-                    result.Add(
-                        new InfoExportWorkbookSchemeRow(
-                            InfoExportSchemeScope.Station,
-                            station,
-                            exportedName));
-                }
+                var exportedName = await WriteBinaryFileAsync(stationDirectory, scheme.FileName, scheme.FileHash, scheme.FileData, usedNames, cancellationToken);
+                AddSource(stationSources, stations, exportedName);
             }
 
+            // Group scope.
             if (groups.Count > 0)
             {
-                var exportedName =
-                    await WriteBinaryFileAsync(
-                        groupDirectory,
-                        scheme.FileName,
-                        scheme.FileHash,
-                        scheme.FileData,
-                        usedNames,
-                        cancellationToken);
-
-                foreach (var group in groups)
-                {
-                    result.Add(
-                        new InfoExportWorkbookSchemeRow(
-                            InfoExportSchemeScope.Group,
-                            group,
-                            exportedName));
-                }
+                var exportedName = await WriteBinaryFileAsync(groupDirectory, scheme.FileName, scheme.FileHash, scheme.FileData, usedNames, cancellationToken);
+                AddSource(groupSources, groups, exportedName);
             }
 
+            // Equipment scope.
             if (equipments.Count > 0)
             {
-                var exportedName =
-                    await WriteBinaryFileAsync(
-                        equipmentDirectory,
-                        scheme.FileName,
-                        scheme.FileHash,
-                        scheme.FileData,
-                        usedNames,
-                        cancellationToken);
-
-                foreach (var equipment in equipments)
-                {
-                    result.Add(
-                        new InfoExportWorkbookSchemeRow(
-                            InfoExportSchemeScope.Equipment,
-                            equipment,
-                            exportedName));
-                }
+                var exportedName = await WriteBinaryFileAsync(equipmentDirectory, scheme.FileName, scheme.FileHash, scheme.FileData, usedNames, cancellationToken);
+                AddSource(equipmentSources, equipments, exportedName);
             }
 
+            // Файл без области назначения экспортируем физически,
+            // но в лист SCHEME не включаем.
             if (!hasScope)
             {
-                await WriteBinaryFileAsync(
-                    stationDirectory,
-                    scheme.FileName,
-                    scheme.FileHash,
-                    scheme.FileData,
-                    usedNames,
-                    cancellationToken);
+                await WriteBinaryFileAsync(stationDirectory, scheme.FileName, scheme.FileHash, scheme.FileData, usedNames, cancellationToken);
 
                 warnings.Add(
-                    $"SCHEME '{scheme.FileName}' has no Station, " +
-                    "Group or Equipment target. The file was exported, " +
-                    "but it is not referenced by the SCHEME worksheet.");
+                    $"SCHEME '{scheme.FileName}' has no Station, Group or Equipment target. " +
+                    "The file was exported, but it is not referenced by the SCHEME worksheet.");
             }
         }
 
+        var result = new List<InfoExportWorkbookSchemeRow>();
+
+        AddRows(result, InfoExportSchemeScope.Station, stationSources);
+        AddRows(result, InfoExportSchemeScope.Group, groupSources);
+        AddRows(result, InfoExportSchemeScope.Equipment, equipmentSources);
+
         return result;
+
+        // Добавляет файл к полному набору назначений одной схемы.
+        static void AddSource(IDictionary<string, List<string>> targetMap, IReadOnlyList<string> targets, string source)
+        {
+            if (targets.Count == 0 || string.IsNullOrWhiteSpace(source))
+                return;
+
+            // Не разбиваем список на отдельные строки.
+            // Например: S02.R02; S02.R05 остаётся одной ячейкой.
+            var targetKey = string.Join(
+                "; ",
+                targets
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+
+            if (string.IsNullOrWhiteSpace(targetKey))
+                return;
+
+            if (!targetMap.TryGetValue(targetKey, out var sources))
+            {
+                sources = new List<string>();
+                targetMap[targetKey] = sources;
+            }
+
+            if (!sources.Contains(source, StringComparer.OrdinalIgnoreCase))
+                sources.Add(source);
+        }
+
+        // Создаёт одну строку Excel на один полный набор назначений.
+        static void AddRows(List<InfoExportWorkbookSchemeRow> result, InfoExportSchemeScope scope, IDictionary<string, List<string>> targetMap)
+        {
+            foreach (var item in targetMap.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                var sources = string.Join(
+                    "; ",
+                    item.Value
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct(StringComparer.OrdinalIgnoreCase));
+
+                result.Add(new InfoExportWorkbookSchemeRow(scope, item.Key, sources));
+            }
+        }
     }
 
     /// <summary>
-    /// Преобразует список имён файлов из БД в относительные пути
-    /// экспортного пакета.
+    /// Преобразует сохранённый список файлов в список имён,
+    /// реально созданных в экспортном пакете.
     ///
-    /// Пример:
+    /// Пути к папкам в Excel не записываются.
+    /// Несколько файлов разделяются через "; ".
     ///
-    ///     Manual.pdf; Service.pdf
-    ///
-    /// превращается в:
-    ///
-    ///     Instruction\Manual.pdf; Instruction\Service.pdf
-    ///
-    /// Если public.equip_order содержит имя файла, которого нет
-    /// в соответствующей бинарной библиотеке PostgreSQL,
+    /// Если соответствующего бинарного файла нет в PostgreSQL,
     /// ссылка пропускается и добавляется предупреждение.
-    ///
-    /// Благодаря этому Excel не будет ссылаться на физически
-    /// отсутствующий файл и останется пригодным для импорта.
     /// </summary>
-    private static string RewriteStoredFileList(string value, IReadOnlyDictionary<string, string> exportedFiles, string relativeFolder, string context, ICollection<string> warnings)
+    private static string RewriteStoredFileList(string value, IReadOnlyDictionary<string, string> exportedFiles, string context, ICollection<string> warnings)
     {
         var sourceNames = SplitStoredValues(value);
 
@@ -480,12 +445,8 @@ public sealed class InfoExportPackageService
 
         foreach (var storedValue in sourceNames)
         {
-            // В старых строках могут находиться:
-            // test.jpg
-            // либо:
-            // C:\SomeFolder\test.jpg
-            // Для поиска в библиотеке используется только имя файла.
-             
+            // В БД может находиться как простое имя, так и старый полный путь.
+            // Для поиска экспортированного файла используем только имя.
             var originalName = GetFileNameOnly(storedValue);
 
             if (string.IsNullOrWhiteSpace(originalName))
@@ -493,9 +454,7 @@ public sealed class InfoExportPackageService
 
             if (!exportedFiles.TryGetValue(originalName, out var exportedName))
             {
-                var warning = $"{context} references '{originalName}', " + "but this binary file is missing in PostgreSQL. " + "The file reference was skipped.";
-
-                // Одинаковое предупреждение несколько раз в итоговый список не добавляем.
+                var warning = $"{context} references '{originalName}', but this binary file is missing in PostgreSQL. The file reference was skipped.";
 
                 if (!warnings.Contains(warning))
                     warnings.Add(warning);
@@ -503,7 +462,7 @@ public sealed class InfoExportPackageService
                 continue;
             }
 
-            result.Add(CombineExcelPath(relativeFolder, exportedName));
+            result.Add(exportedName);
         }
 
         return string.Join("; ", result.Distinct(StringComparer.OrdinalIgnoreCase));
@@ -606,117 +565,150 @@ public sealed class InfoExportPackageService
 
     /// <summary>
     /// Атомарно заменяет предыдущий пакет через временный backup-каталог.
+    ///
+    /// При ошибке:
+    /// 1) удаляются только новые элементы, которые действительно успели
+    ///    установиться из staging;
+    /// 2) старые элементы восстанавливаются из backup в обратном порядке;
+    /// 3) если восстановление завершилось не полностью, backup сохраняется
+    ///    для ручного восстановления.
     /// </summary>
-    private static void ReplaceTargetPackage(string stageRoot,string targetExcelPath)
+    private static void ReplaceTargetPackage(string stageRoot, string targetExcelPath)
     {
-        var targetRoot =
-            Path.GetDirectoryName(targetExcelPath)!;
-
-        var stageExcelPath =
-            Path.Combine(
-                stageRoot,
-                Path.GetFileName(targetExcelPath));
-
-        var replacements =
-            new List<(string Source, string Target)>
+        var targetRoot = Path.GetDirectoryName(targetExcelPath)!;
+        var stageExcelPath = Path.Combine(stageRoot, Path.GetFileName(targetExcelPath));
+        var replacements = new List<(string Source, string Target)>
             {
                 (
                     stageExcelPath,
                     targetExcelPath
                 ),
                 (
-                    Path.Combine(
-                        stageRoot,
-                        SupplierLogoFolderName),
-                    Path.Combine(
-                        targetRoot,
-                        SupplierLogoFolderName)
+                    Path.Combine(stageRoot, SupplierLogoFolderName),
+                    Path.Combine(targetRoot, SupplierLogoFolderName)
                 ),
                 (
-                    Path.Combine(
-                        stageRoot,
-                        InstructionFolderName),
-                    Path.Combine(
-                        targetRoot,
-                        InstructionFolderName)
+                    Path.Combine(stageRoot, InstructionFolderName),
+                    Path.Combine(targetRoot, InstructionFolderName)
                 ),
                 (
-                    Path.Combine(
-                        stageRoot,
-                        SchemeFolderName),
-                    Path.Combine(
-                        targetRoot,
-                        SchemeFolderName)
+                    Path.Combine(stageRoot, SchemeFolderName),
+                    Path.Combine(targetRoot, SchemeFolderName)
                 )
             };
 
-        var backupRoot =
-            Path.Combine(
-                targetRoot,
-                $".techmes-info-export-backup-{Guid.NewGuid():N}");
-
+        var backupRoot = Path.Combine(targetRoot, $".techmes-info-export-backup-{Guid.NewGuid():N}");
         Directory.CreateDirectory(backupRoot);
 
-        var backups =
-            new List<(string Backup, string Target)>();
+        // Здесь хранятся только старые элементы, которые действительно были успешно перенесены в backup.
+        var backups = new List<(string Backup, string Target)>();
+
+        // Здесь хранятся только новые элементы, которые действительно были успешно перенесены из staging в целевую папку.
+        var installedTargets = new List<string>();
 
         try
         {
-            for (var index = 0;
-                 index < replacements.Count;
-                 index++)
+            // Шаг 1. Переносим существующий экспортный пакет в backup.
+            for (var index = 0; index < replacements.Count; index++)
             {
-                var target =
-                    replacements[index].Target;
+                var target = replacements[index].Target;
 
                 if (!PathExists(target))
                     continue;
 
-                var backup =
-                    Path.Combine(
-                        backupRoot,
-                        $"{index}_{Path.GetFileName(target)}");
+                var backup = Path.Combine(backupRoot, $"{index}_{Path.GetFileName(target)}");
+                MovePath(target, backup);
 
-                MovePath(
-                    target,
-                    backup);
-
-                backups.Add(
-                    (backup, target));
+                // Добавляем запись только после успешного MovePath.
+                backups.Add((backup, target));
             }
 
+            // Шаг 2. Устанавливаем новый пакет из staging.
             foreach (var replacement in replacements)
             {
-                MovePath(
-                    replacement.Source,
-                    replacement.Target);
-            }
+                MovePath(replacement.Source, replacement.Target);
 
-            DeletePathIfExists(backupRoot);
+                // Добавляем target только после успешной установки.
+                installedTargets.Add(replacement.Target);
+            }
         }
-        catch
+        catch (Exception replacementException)
         {
-            foreach (var replacement in replacements)
-            {
-                DeletePathIfExists(
-                    replacement.Target);
-            }
+            var rollbackErrors = new List<Exception>();
 
-            foreach (var backup in backups)
+            // Сначала удаляем только те элементы нового пакета, которые действительно успели установиться.
+            // Старые элементы, которые backup-цикл ещё не успел переместить, не затрагиваются.
+            for (var index = installedTargets.Count - 1; index >= 0; index--)
             {
-                if (PathExists(backup.Backup))
+                var installedTarget = installedTargets[index];
+
+                try
                 {
-                    MovePath(
-                        backup.Backup,
-                        backup.Target);
+                    DeletePathIfExists(installedTarget);
+                }
+                catch (Exception ex)
+                {
+                    rollbackErrors.Add(new IOException("Failed to remove partially installed export path: " + installedTarget, ex));
                 }
             }
 
+            // Восстанавливаем старый пакет в обратном порядке.
+            for (var index = backups.Count - 1; index >= 0; index--)
+            {
+                var backup = backups[index];
+
+                if (!PathExists(backup.Backup))
+                    continue;
+
+                try
+                {
+                    // Не удаляем существующий target автоматически. Если он остался после неудачного удаления нового пакета, безопаснее сохранить backup и сообщить об ошибке.
+                    if (PathExists(backup.Target))
+                    {
+                        throw new IOException("Cannot restore export backup because " + "the target still exists: " + backup.Target);
+                    }
+
+                    MovePath(backup.Backup, backup.Target);
+                }
+                catch (Exception ex)
+                {
+                    rollbackErrors.Add(new IOException($"Failed to restore export backup " + $"'{backup.Backup}' to '{backup.Target}'.", ex));
+                }
+            }
+
+            // Если хотя бы один элемент не удалось восстановить, backupRoot не удаляем.
+            // В сообщении будет указан путь, откуда можно вручную восстановить старые файлы.
+            if (rollbackErrors.Count > 0)
+            {
+                var allErrors = new List<Exception>{replacementException};
+                allErrors.AddRange(rollbackErrors);
+                throw new AggregateException("Export package replacement failed and automatic " + "rollback was incomplete. " + $"The remaining backup was preserved at: {backupRoot}", allErrors);
+            }
+
+            // Старый пакет полностью восстановлен. Удаляем оставшийся пустой backup-каталог.
+            // Ошибка очистки пустой папки не должна скрывать первоначальную ошибку замены пакета.
+            try
+            {
+                DeletePathIfExists(backupRoot);
+            }
+            catch
+            {
+                // Старый пакет уже восстановлен.
+            }
+
+            // Повторно выбрасываем исходную ошибку замены, сохраняя её первоначальный stack trace.
             throw;
         }
-        finally
+
+        // Новый пакет полностью установлен.
+        // Очистку backup выполняем отдельно от блока замены: ошибка удаления backup не должна запускать rollback уже успешно установленного нового пакета.
+        try
         {
             DeletePathIfExists(backupRoot);
+        }
+        catch (Exception cleanupException)
+        {
+            throw new IOException("The export package was replaced successfully, " + "but the previous package backup could not be removed. " + $"Backup path: {backupRoot}", cleanupException);
         }
     }
 

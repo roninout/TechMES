@@ -235,47 +235,66 @@ public sealed class InfoExportStore
     /// <summary>
     /// Загружает SCHEME вместе с бинарными данными и областями назначения.
     ///
-    /// Для старых строк с пустым equipments используется fallback
-    /// из public.equip_info_scheme.
+    /// Для старых строк, у которых не заполнена ни одна область назначения,
+    /// используется fallback из public.equip_info_scheme.
+    ///
+    /// Если схема назначена Station или Group, раскрытые связи оборудования
+    /// из public.equip_info_scheme не превращаются в дополнительные прямые
+    /// Equipment-назначения.
     /// </summary>
-    private static async Task<IReadOnlyList<InfoExportSchemeFile>>LoadSchemeFilesAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<InfoExportSchemeFile>> LoadSchemeFilesAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
     {
         const string sql = """
+        SELECT
+            scheme.id,
+            scheme.file_name,
+            scheme.file_hash,
+            scheme.file_data,
+            COALESCE(scheme.station, ''),
+            COALESCE(scheme.group_names, ''),
+
+            CASE
+                /*
+                 * Связи из equip_info_scheme используем только для старых
+                 * записей, у которых полностью отсутствует информация
+                 * об области назначения схемы.
+                 *
+                 * Если указана Station или Group, equip_info_scheme уже
+                 * содержит раскрытые WEB-связи с оборудованием, и экспортировать
+                 * их дополнительно как Equipment назначения не нужно.
+                 */
+                WHEN NULLIF(btrim(scheme.station), '') IS NULL
+                 AND NULLIF(btrim(scheme.group_names), '') IS NULL
+                 AND NULLIF(btrim(scheme.equipments), '') IS NULL
+                THEN COALESCE(linked_equipment.equipments, '')
+
+                /*
+                 * Для нормальных записей возвращаем только явно сохранённые
+                 * прямые Equipment назначения.
+                 */
+                ELSE COALESCE(scheme.equipments, '')
+            END AS equipments
+
+        FROM public.equip_scheme scheme
+
+        LEFT JOIN LATERAL
+        (
             SELECT
-                scheme.id,
-                scheme.file_name,
-                scheme.file_hash,
-                scheme.file_data,
-                COALESCE(scheme.station, ''),
-                COALESCE(scheme.group_names, ''),
-
-                COALESCE
-                (
-                    NULLIF(btrim(scheme.equipments), ''),
-                    linked_equipment.equipments,
-                    ''
+                string_agg(
+                    link.equip_name,
+                    '; '
+                    ORDER BY lower(link.equip_name)
                 ) AS equipments
+            FROM public.equip_info_scheme link
+            WHERE link.scheme_id = scheme.id
+        ) linked_equipment
+            ON TRUE
 
-            FROM public.equip_scheme scheme
-
-            LEFT JOIN LATERAL
-            (
-                SELECT
-                    string_agg(
-                        link.equip_name,
-                        '; '
-                        ORDER BY lower(link.equip_name)
-                    ) AS equipments
-                FROM public.equip_info_scheme link
-                WHERE link.scheme_id = scheme.id
-            ) linked_equipment
-                ON TRUE
-
-            ORDER BY
-                lower(NULLIF(btrim(scheme.station), '')) NULLS LAST,
-                lower(scheme.file_name),
-                scheme.id;
-            """;
+        ORDER BY
+            lower(NULLIF(btrim(scheme.station), '')) NULLS LAST,
+            lower(scheme.file_name),
+            scheme.id;
+        """;
 
         var result = new List<InfoExportSchemeFile>();
         await using var command = new NpgsqlCommand(sql, connection);
