@@ -47,11 +47,8 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
                 $"Calculation definition '{definition.Code}' requires version '{definition.Version}', but version '{request.DefinitionVersion}' was supplied.");
         }
 
-        /*
-         * Управляемую запись в SCADA добавим отдельным этапом.
-         * Пока конфигурация сохраняется только в shadow/read-only режиме.
-         */
-        if (request.WriteEnabled || request.Outputs.Any(output => output.WriteEnabled))
+        // Управляемую запись в SCADA добавим отдельным этапом. Пока конфигурация сохраняется только в shadow/read-only режиме.
+        if (request.WriteEnabled || (request.Outputs?.Any(output => output is not null && output.WriteEnabled) ?? false))
             return Invalid("calc.write-not-supported", "Calculation result writing is not supported yet.");
 
         var inputValidation = ValidateInputs(definition, request.Inputs ?? []);

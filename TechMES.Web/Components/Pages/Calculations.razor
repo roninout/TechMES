@@ -1,6 +1,7 @@
 ﻿@page "/calculations"
 @inject CalcApiClient CalcApi
 @inject NotificationService NotificationService
+@inject NavigationManager NavigationManager
 
 <PageTitle>Calculations</PageTitle>
 
@@ -19,6 +20,12 @@
         @if (_selectedDefinition is not null)
         {
             <RadzenBadge Text="@($"Version: {_selectedDefinition.Version}")" BadgeStyle="BadgeStyle.Light" />
+
+            <RadzenButton Text="Jobs"
+                          Icon="settings"
+                          ButtonStyle="ButtonStyle.Light"
+                          Disabled="@_isLoading"
+                          Click="@OpenJobs" />
         }
 
         <div class="calc-toolbar-spacer"></div>
@@ -407,6 +414,14 @@
             Detail = message,
             Duration = 4000
         });
+    }
+
+    /// <summary>
+    /// Открывает редактор сохранённых расчётных заданий.
+    /// </summary>
+    private void OpenJobs()
+    {
+        NavigationManager.NavigateTo("/calculations/jobs");
     }
 
     /// <summary>

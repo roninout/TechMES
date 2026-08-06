@@ -1,0 +1,859 @@
+﻿@page "/calculations/jobs"
+@using System.Net
+@using System.Text.Json
+@inject CalcApiClient CalcApi
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Calculation jobs</PageTitle>
+
+<div class="calc-jobs-page">
+    <div class="calc-jobs-toolbar">
+        <RadzenButton Text="New"
+                      Icon="add"
+                      ButtonStyle="ButtonStyle.Secondary"
+                      Disabled="@_isBusy"
+                      Click="@BeginNew" />
+
+        <RadzenButton Text="Refresh"
+                      Icon="refresh"
+                      ButtonStyle="ButtonStyle.Light"
+                      Disabled="@_isBusy"
+                      Click="@RefreshAsync" />
+
+        <RadzenButton Text="Test calculations"
+                      Icon="calculate"
+                      ButtonStyle="ButtonStyle.Light"
+                      Disabled="@_isBusy"
+                      Click="@OpenTester" />
+
+        <div class="calc-jobs-toolbar-spacer"></div>
+
+        <RadzenBadge Text="@($"Jobs: {_jobs.Count}")" BadgeStyle="BadgeStyle.Info" />
+    </div>
+
+    @if (_isBusy)
+    {
+        <TechMesLoadingBar />
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_statusText))
+    {
+        <RadzenAlert AlertStyle="@_statusStyle"
+                     ShowIcon="true"
+                     AllowClose="true"
+                     Close="@ClearStatus">
+            @_statusText
+        </RadzenAlert>
+    }
+
+    <RadzenSplitter Style="height: calc(100vh - 165px); min-height: 580px;">
+        <RadzenSplitterPane Size="31%" Min="310px">
+            <div class="calc-job-list">
+                @if (_jobs.Count == 0 && !_isBusy)
+                {
+                    <RadzenCard>
+                        <RadzenText Text="No calculation jobs" TextStyle="TextStyle.Subtitle1" />
+                        <RadzenText Text="Create the first shadow calculation with the New button."
+                                    TextStyle="TextStyle.Caption"
+                                    Style="color: gray;" />
+                    </RadzenCard>
+                }
+                else
+                {
+                    <RadzenDataList Data="@_jobs" TItem="CalcJobDto">
+                        <Template Context="job">
+                            <RadzenCard Style="@GetJobCardStyle(job)" @onclick="() => SelectJob(job)">
+                                <div class="calc-job-card-header">
+                                    <b>@job.Name</b>
+                                    <RadzenBadge Text="@(job.Enabled ? "Enabled" : "Disabled")"
+                                                 BadgeStyle="@(job.Enabled ? BadgeStyle.Success : BadgeStyle.Light)" />
+                                </div>
+
+                                <div class="calc-job-card-code">@job.DefinitionCode · v@job.DefinitionVersion</div>
+
+                                @if (!string.IsNullOrWhiteSpace(job.EquipmentName))
+                                {
+                                    <div class="calc-job-card-meta">Equipment: @job.EquipmentName</div>
+                                }
+
+                                <div class="calc-job-card-meta">
+                                    Period: @job.PeriodMs ms · Revision: @job.Revision
+                                </div>
+                            </RadzenCard>
+                        </Template>
+                    </RadzenDataList>
+                }
+            </div>
+        </RadzenSplitterPane>
+
+        <RadzenSplitterPane>
+            @if (_editor is null)
+            {
+                <div class="calc-job-empty">Select a job or create a new one.</div>
+            }
+            else
+            {
+                <div class="calc-job-editor">
+                    <div class="calc-job-editor-header">
+                        <div>
+                            <RadzenText Text="@(_editor.Id <= 0 ? "New calculation job" : _editor.Name)"
+                                        TextStyle="TextStyle.H6" />
+                            <div class="calc-job-card-code">@_editor.DefinitionCode · v@_editor.DefinitionVersion</div>
+                        </div>
+
+                        @if (_editor.Id > 0)
+                        {
+                            <RadzenBadge Text="@($"Revision: {_editor.Revision}")" BadgeStyle="BadgeStyle.Light" />
+                        }
+                    </div>
+
+                    <section class="calc-job-section">
+                        <RadzenText Text="General" TextStyle="TextStyle.Subtitle1" />
+
+                        <div class="calc-job-general-grid">
+                            <div class="calc-job-field calc-job-field-wide">
+                                <RadzenLabel Text="Name *" />
+                                <RadzenTextBox @bind-Value="_editor.Name" Disabled="@_isBusy" Style="width:100%;" />
+                            </div>
+
+                            <div class="calc-job-field">
+                                <RadzenLabel Text="Equipment" />
+                                <RadzenTextBox @bind-Value="_editor.EquipmentName" Disabled="@_isBusy" Style="width:100%;" />
+                            </div>
+
+                            <div class="calc-job-field">
+                                <RadzenLabel Text="Calculation *" />
+                                <RadzenDropDown TValue="string"
+                                                Data="@_definitions"
+                                                TextProperty="@nameof(CalcDefinitionDto.Name)"
+                                                ValueProperty="@nameof(CalcDefinitionDto.Code)"
+                                                Value="@_editor.DefinitionCode"
+                                                Change="@OnDefinitionChanged"
+                                                Disabled="@_isBusy"
+                                                Style="width:100%;" />
+                            </div>
+
+                            <div class="calc-job-field">
+                                <RadzenLabel Text="Period, ms" />
+                                <RadzenNumeric TValue="int"
+                                               @bind-Value="_editor.PeriodMs"
+                                               Min="1"
+                                               Disabled="@_isBusy"
+                                               Style="width:100%;" />
+                            </div>
+
+                            <div class="calc-job-field">
+                                <RadzenLabel Text="Sort order" />
+                                <RadzenNumeric TValue="int"
+                                               @bind-Value="_editor.SortOrder"
+                                               Disabled="@_isBusy"
+                                               Style="width:100%;" />
+                            </div>
+
+                            <div class="calc-job-field calc-job-enabled">
+                                <RadzenCheckBox TValue="bool" @bind-Value="_editor.Enabled" Disabled="@_isBusy" />
+                                <span>Enabled</span>
+                            </div>
+
+                            <div class="calc-job-field calc-job-field-full">
+                                <RadzenLabel Text="Description" />
+                                <RadzenTextArea @bind-Value="_editor.Description"
+                                                Rows="3"
+                                                Disabled="@_isBusy"
+                                                Style="width:100%;" />
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="calc-job-section">
+                        <div class="calc-job-section-header">
+                            <RadzenText Text="Inputs" TextStyle="TextStyle.Subtitle1" />
+                            <span>Tag and Constant sources are supported.</span>
+                        </div>
+
+                        <div class="calc-job-table-wrap">
+                            <table class="calc-job-table">
+                                <thead>
+                                    <tr>
+                                        <th class="calc-job-use-column">Use</th>
+                                        <th>Parameter</th>
+                                        <th>Source</th>
+                                        <th>Value / tag</th>
+                                        <th class="calc-job-age-column">Max age, s</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var input in _editor.Inputs)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <RadzenCheckBox TValue="bool"
+                                                                @bind-Value="input.UseBinding"
+                                                                Disabled="@(_isBusy || input.IsRequired)" />
+                                            </td>
+                                            <td>
+                                                <b>@input.Parameter.Name</b>
+                                                <div class="calc-job-binding-key">
+                                                    @input.Parameter.Key
+                                                    @if (!string.IsNullOrWhiteSpace(input.Parameter.Unit))
+                                                    {
+                                                        <span> · @input.Parameter.Unit</span>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <RadzenDropDown TValue="CalcInputSourceTypeDto"
+                                                                Data="@_sourceTypes"
+                                                                @bind-Value="input.SourceType"
+                                                                Disabled="@(_isBusy || !input.UseBinding)"
+                                                                Style="width:145px;" />
+                                            </td>
+                                            <td>
+                                                @if (input.SourceType == CalcInputSourceTypeDto.Tag)
+                                                {
+                                                    <RadzenTextBox @bind-Value="input.TagName"
+                                                                   Placeholder="SCADA tag"
+                                                                   Disabled="@(_isBusy || !input.UseBinding)"
+                                                                   Style="width:100%;" />
+                                                }
+                                                else
+                                                {
+                                                    @switch (input.Parameter.Type)
+                                                    {
+                                                        case CalcParameterTypeDto.Number:
+                                                            <RadzenNumeric TValue="double?"
+                                                                           @bind-Value="input.NumberValue"
+                                                                           Disabled="@(_isBusy || !input.UseBinding)"
+                                                                           Style="width:100%;" />
+                                                            break;
+
+                                                        case CalcParameterTypeDto.Integer:
+                                                            <RadzenNumeric TValue="int?"
+                                                                           @bind-Value="input.IntegerValue"
+                                                                           Disabled="@(_isBusy || !input.UseBinding)"
+                                                                           Style="width:100%;" />
+                                                            break;
+
+                                                        case CalcParameterTypeDto.Boolean:
+                                                            <div class="calc-job-boolean">
+                                                                <RadzenCheckBox TValue="bool"
+                                                                                @bind-Value="input.BooleanValue"
+                                                                                Disabled="@(_isBusy || !input.UseBinding)" />
+                                                                <span>@(input.BooleanValue ? "True" : "False")</span>
+                                                            </div>
+                                                            break;
+
+                                                        case CalcParameterTypeDto.Selection:
+                                                            <RadzenDropDown TValue="string"
+                                                                            Data="@input.Parameter.Options"
+                                                                            TextProperty="@nameof(CalcParameterOptionDto.Name)"
+                                                                            ValueProperty="@nameof(CalcParameterOptionDto.Value)"
+                                                                            @bind-Value="input.TextValue"
+                                                                            Disabled="@(_isBusy || !input.UseBinding)"
+                                                                            Style="width:100%;" />
+                                                            break;
+
+                                                        case CalcParameterTypeDto.Text:
+                                                            <RadzenTextBox @bind-Value="input.TextValue"
+                                                                           Disabled="@(_isBusy || !input.UseBinding)"
+                                                                           Style="width:100%;" />
+                                                            break;
+                                                    }
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (input.SourceType == CalcInputSourceTypeDto.Tag)
+                                                {
+                                                    <RadzenNumeric TValue="int?"
+                                                                   @bind-Value="input.MaxAgeSeconds"
+                                                                   Min="1"
+                                                                   Disabled="@(_isBusy || !input.UseBinding)"
+                                                                   Style="width:110px;" />
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="calc-job-section">
+                        <div class="calc-job-section-header">
+                            <RadzenText Text="Outputs" TextStyle="TextStyle.Subtitle1" />
+                            <span>Writing is disabled. Target tags are stored only for future activation.</span>
+                        </div>
+
+                        <div class="calc-job-table-wrap">
+                            <table class="calc-job-table">
+                                <thead>
+                                    <tr>
+                                        <th class="calc-job-use-column">Use</th>
+                                        <th>Output</th>
+                                        <th>Target tag</th>
+                                        <th class="calc-job-number-column">Scale</th>
+                                        <th class="calc-job-number-column">Offset</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var output in _editor.Outputs)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <RadzenCheckBox TValue="bool"
+                                                                @bind-Value="output.UseBinding"
+                                                                Disabled="@_isBusy" />
+                                            </td>
+                                            <td>
+                                                <b>@output.Definition.Name</b>
+                                                <div class="calc-job-binding-key">
+                                                    @output.Definition.Key
+                                                    @if (!string.IsNullOrWhiteSpace(output.Definition.Unit))
+                                                    {
+                                                        <span> · @output.Definition.Unit</span>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <RadzenTextBox @bind-Value="output.TagName"
+                                                               Placeholder="Optional"
+                                                               Disabled="@(_isBusy || !output.UseBinding)"
+                                                               Style="width:100%;" />
+                                            </td>
+                                            <td>
+                                                <RadzenNumeric TValue="double"
+                                                               @bind-Value="output.Scale"
+                                                               Disabled="@(_isBusy || !output.UseBinding)"
+                                                               Style="width:100px;" />
+                                            </td>
+                                            <td>
+                                                <RadzenNumeric TValue="double"
+                                                               @bind-Value="output.Offset"
+                                                               Disabled="@(_isBusy || !output.UseBinding)"
+                                                               Style="width:100px;" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <div class="calc-job-actions">
+                        <RadzenButton Text="Save"
+                                      Icon="save"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@(!CanSave())"
+                                      Click="@SaveAsync" />
+
+                        <RadzenButton Text="Cancel"
+                                      Icon="close"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Disabled="@_isBusy"
+                                      Click="@CancelEdit" />
+
+                        @if (_editor.Id > 0)
+                        {
+                            <RadzenButton Text="Delete"
+                                          Icon="delete"
+                                          ButtonStyle="ButtonStyle.Danger"
+                                          Disabled="@_isBusy"
+                                          Click="@DeleteAsync" />
+                        }
+                    </div>
+                </div>
+            }
+        </RadzenSplitterPane>
+    </RadzenSplitter>
+</div>
+
+@code {
+    private readonly CalcInputSourceTypeDto[] _sourceTypes =
+    [
+        CalcInputSourceTypeDto.Tag,
+        CalcInputSourceTypeDto.Constant
+    ];
+
+    private List<CalcDefinitionDto> _definitions = [];
+    private List<CalcJobDto> _jobs = [];
+    private CalcJobEditor? _editor;
+    private bool _isBusy;
+    private string _statusText = "";
+    private AlertStyle _statusStyle = AlertStyle.Info;
+
+    /// <summary>
+    /// Загружает каталог и существующие задания.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    /// <summary>
+    /// Перечитывает данные с сохранением выбранного задания.
+    /// </summary>
+    private Task RefreshAsync()
+    {
+        return LoadAsync(_editor?.Id);
+    }
+
+    /// <summary>
+    /// Загружает определения и задания.
+    /// </summary>
+    private async Task LoadAsync(long? preferredJobId = null)
+    {
+        _isBusy = true;
+
+        try
+        {
+            _definitions = (await CalcApi.GetDefinitionsAsync()).ToList();
+            _jobs = (await CalcApi.GetJobsAsync()).ToList();
+
+            var selected = preferredJobId.HasValue
+                ? _jobs.FirstOrDefault(job => job.Id == preferredJobId.Value)
+                : _jobs.FirstOrDefault();
+
+            if (selected is not null)
+                LoadEditor(selected);
+            else
+                BeginNew();
+
+            ClearStatus();
+        }
+        catch (Exception ex)
+        {
+            ShowError("Cannot load calculation jobs: " + ex.Message);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Открывает новое пустое задание.
+    /// </summary>
+    private void BeginNew()
+    {
+        var definition = _definitions.FirstOrDefault();
+
+        if (definition is null)
+        {
+            _editor = null;
+            ShowError("No calculation definitions are available.");
+            return;
+        }
+
+        _editor = new CalcJobEditor
+        {
+            Name = "",
+            DefinitionCode = definition.Code,
+            DefinitionVersion = definition.Version,
+            PeriodMs = 5000
+        };
+
+        BuildBindings(_editor, definition, null);
+        ClearStatus();
+    }
+
+    /// <summary>
+    /// Загружает выбранное задание в редактор.
+    /// </summary>
+    private void SelectJob(CalcJobDto job)
+    {
+        if (_isBusy)
+            return;
+
+        LoadEditor(job);
+        ClearStatus();
+    }
+
+    private void LoadEditor(CalcJobDto job)
+    {
+        var definition = FindDefinition(job.DefinitionCode);
+
+        if (definition is null)
+        {
+            _editor = null;
+            ShowError($"Definition '{job.DefinitionCode}' is not installed in Runtime.");
+            return;
+        }
+
+        _editor = new CalcJobEditor
+        {
+            Id = job.Id,
+            Revision = job.Revision,
+            EquipmentName = job.EquipmentName ?? "",
+            Name = job.Name,
+            Description = job.Description ?? "",
+            DefinitionCode = job.DefinitionCode,
+            DefinitionVersion = job.DefinitionVersion,
+            Enabled = job.Enabled,
+            PeriodMs = job.PeriodMs,
+            SortOrder = job.SortOrder
+        };
+
+        BuildBindings(_editor, definition, job);
+    }
+
+    /// <summary>
+    /// Перестраивает входы и выходы выбранного алгоритма.
+    /// </summary>
+    private void OnDefinitionChanged(object? value)
+    {
+        if (_editor is null)
+            return;
+
+        var definition = FindDefinition(value?.ToString());
+
+        if (definition is null)
+            return;
+
+        _editor.DefinitionCode = definition.Code;
+        _editor.DefinitionVersion = definition.Version;
+        BuildBindings(_editor, definition, null);
+    }
+
+    private void BuildBindings(CalcJobEditor editor, CalcDefinitionDto definition, CalcJobDto? job)
+    {
+        editor.Inputs = definition.Parameters
+            .OrderBy(parameter => parameter.Order)
+            .Select(parameter => CreateInputEditor(parameter,
+                job?.Inputs.FirstOrDefault(input => string.Equals(input.ParameterKey, parameter.Key, StringComparison.OrdinalIgnoreCase))))
+            .ToList();
+
+        editor.Outputs = definition.Outputs
+            .OrderBy(output => output.Order)
+            .Select(output => CreateOutputEditor(output,
+                job?.Outputs.FirstOrDefault(item => string.Equals(item.OutputKey, output.Key, StringComparison.OrdinalIgnoreCase))))
+            .ToList();
+    }
+
+    private static CalcJobInputEditor CreateInputEditor(CalcParameterDefinitionDto parameter, CalcJobInputDto? stored)
+    {
+        var editor = new CalcJobInputEditor
+        {
+            Parameter = parameter,
+            IsRequired = parameter.IsRequired && !parameter.DefaultValue.HasValue,
+            UseBinding = stored is not null || (parameter.IsRequired && !parameter.DefaultValue.HasValue),
+            SourceType = stored?.SourceType ?? CalcInputSourceTypeDto.Constant,
+            TagName = stored?.TagName ?? "",
+            MaxAgeSeconds = stored?.MaxAgeSeconds
+        };
+
+        LoadConstantValue(editor, stored?.ConstantValue ?? parameter.DefaultValue);
+        return editor;
+    }
+
+    private static CalcJobOutputEditor CreateOutputEditor(CalcOutputDefinitionDto definition, CalcJobOutputDto? stored)
+    {
+        return new CalcJobOutputEditor
+        {
+            Definition = definition,
+            UseBinding = stored is not null || definition.Order >= 0,
+            TagName = stored?.TagName ?? "",
+            Scale = stored?.Scale ?? 1.0,
+            Offset = stored?.Offset ?? 0.0
+        };
+    }
+
+    /// <summary>
+    /// Загружает JSON-константу в типизированное поле редактора.
+    /// </summary>
+    private static void LoadConstantValue(CalcJobInputEditor editor, JsonElement? value)
+    {
+        if (!value.HasValue)
+            return;
+
+        var element = value.Value;
+
+        switch (editor.Parameter.Type)
+        {
+            case CalcParameterTypeDto.Number when element.TryGetDouble(out var number):
+                editor.NumberValue = number;
+                break;
+
+            case CalcParameterTypeDto.Integer when element.TryGetInt32(out var integer):
+                editor.IntegerValue = integer;
+                break;
+
+            case CalcParameterTypeDto.Boolean when element.ValueKind is JsonValueKind.True or JsonValueKind.False:
+                editor.BooleanValue = element.GetBoolean();
+                break;
+
+            case CalcParameterTypeDto.Selection:
+            case CalcParameterTypeDto.Text:
+                editor.TextValue = element.ValueKind == JsonValueKind.String ? element.GetString() ?? "" : "";
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Создаёт или обновляет задание.
+    /// </summary>
+    private async Task SaveAsync()
+    {
+        if (_editor is null)
+            return;
+
+        _isBusy = true;
+
+        try
+        {
+            var isNew = _editor.Id <= 0;
+            var request = BuildSaveRequest(_editor);
+
+            var saved = isNew
+                ? await CalcApi.CreateJobAsync(request)
+                : await CalcApi.UpdateJobAsync(_editor.Id, request);
+
+            await LoadAsync(saved.Id);
+            Notify(NotificationSeverity.Success, "Calculations", isNew ? "Calculation job created." : "Calculation job updated.");
+        }
+        catch (CalcApiClientException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+        {
+            var revisionText = ex.CurrentRevision.HasValue ? $" Current revision: {ex.CurrentRevision}." : "";
+            ShowWarning(ex.Message + revisionText + " Press Refresh before saving again.");
+        }
+        catch (Exception ex)
+        {
+            ShowError("Cannot save calculation job: " + ex.Message);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Удаляет выбранное задание после подтверждения.
+    /// </summary>
+    private async Task DeleteAsync()
+    {
+        if (_editor is null || _editor.Id <= 0)
+            return;
+
+        var confirmed = await DialogService.Confirm(
+            $"Delete calculation job \"{_editor.Name}\"?",
+            "Delete calculation job",
+            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+
+        if (confirmed != true)
+            return;
+
+        _isBusy = true;
+
+        try
+        {
+            await CalcApi.DeleteJobAsync(_editor.Id);
+            await LoadAsync();
+            Notify(NotificationSeverity.Success, "Calculations", "Calculation job deleted.");
+        }
+        catch (Exception ex)
+        {
+            ShowError("Cannot delete calculation job: " + ex.Message);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private void CancelEdit()
+    {
+        if (_editor?.Id > 0)
+        {
+            var stored = _jobs.FirstOrDefault(job => job.Id == _editor.Id);
+
+            if (stored is not null)
+            {
+                LoadEditor(stored);
+                ClearStatus();
+                return;
+            }
+        }
+
+        if (_jobs.Count > 0)
+            LoadEditor(_jobs[0]);
+        else
+            BeginNew();
+
+        ClearStatus();
+    }
+
+    private CalcJobSaveRequest BuildSaveRequest(CalcJobEditor editor)
+    {
+        var definition = FindDefinition(editor.DefinitionCode)
+            ?? throw new InvalidOperationException($"Definition '{editor.DefinitionCode}' is not available.");
+
+        return new CalcJobSaveRequest
+        {
+            EquipmentName = NullIfEmpty(editor.EquipmentName),
+            Name = editor.Name.Trim(),
+            Description = NullIfEmpty(editor.Description),
+            DefinitionCode = definition.Code,
+            DefinitionVersion = definition.Version,
+            Enabled = editor.Enabled,
+            PeriodMs = editor.PeriodMs,
+            WriteEnabled = false,
+            SortOrder = editor.SortOrder,
+            ExpectedRevision = editor.Id > 0 ? editor.Revision : null,
+            Inputs = editor.Inputs.Where(input => input.UseBinding).Select(BuildInputBinding).ToList(),
+            Outputs = editor.Outputs.Where(output => output.UseBinding).Select(BuildOutputBinding).ToList()
+        };
+    }
+
+    private static CalcJobInputSaveDto BuildInputBinding(CalcJobInputEditor input)
+    {
+        var result = new CalcJobInputSaveDto
+        {
+            ParameterKey = input.Parameter.Key,
+            SourceType = input.SourceType,
+            SortOrder = input.Parameter.Order
+        };
+
+        if (input.SourceType == CalcInputSourceTypeDto.Tag)
+        {
+            result.TagName = NullIfEmpty(input.TagName);
+            result.MaxAgeSeconds = input.MaxAgeSeconds;
+        }
+        else
+        {
+            result.ConstantValue = CreateConstantValue(input);
+        }
+
+        return result;
+    }
+
+    private static CalcJobOutputSaveDto BuildOutputBinding(CalcJobOutputEditor output)
+    {
+        return new CalcJobOutputSaveDto
+        {
+            OutputKey = output.Definition.Key,
+            TagName = NullIfEmpty(output.TagName),
+            WriteEnabled = false,
+            Scale = output.Scale,
+            Offset = output.Offset,
+            SortOrder = output.Definition.Order
+        };
+    }
+
+    private static JsonElement? CreateConstantValue(CalcJobInputEditor input)
+    {
+        object? value = input.Parameter.Type switch
+        {
+            CalcParameterTypeDto.Number => input.NumberValue,
+            CalcParameterTypeDto.Integer => input.IntegerValue,
+            CalcParameterTypeDto.Boolean => input.BooleanValue,
+            CalcParameterTypeDto.Selection => NullIfEmpty(input.TextValue),
+            CalcParameterTypeDto.Text => NullIfEmpty(input.TextValue),
+            _ => null
+        };
+
+        return value is null ? null : JsonSerializer.SerializeToElement(value, value.GetType());
+    }
+
+    private bool CanSave()
+    {
+        return !_isBusy
+            && _editor is not null
+            && !string.IsNullOrWhiteSpace(_editor.Name)
+            && !string.IsNullOrWhiteSpace(_editor.DefinitionCode)
+            && _editor.PeriodMs > 0;
+    }
+
+    private CalcDefinitionDto? FindDefinition(string? code)
+    {
+        return _definitions.FirstOrDefault(definition =>
+            string.Equals(definition.Code, code, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string GetJobCardStyle(CalcJobDto job)
+    {
+        return _editor?.Id == job.Id
+            ? "margin-bottom:8px; cursor:pointer; border:2px solid var(--rz-primary);"
+            : "margin-bottom:8px; cursor:pointer;";
+    }
+
+    private static string? NullIfEmpty(string? value)
+    {
+        var normalized = (value ?? "").Trim();
+        return normalized.Length == 0 ? null : normalized;
+    }
+
+    private void OpenTester()
+    {
+        NavigationManager.NavigateTo("/calculations");
+    }
+
+    private void ClearStatus()
+    {
+        _statusText = "";
+    }
+
+    private void ShowWarning(string message)
+    {
+        _statusStyle = AlertStyle.Warning;
+        _statusText = message;
+        Notify(NotificationSeverity.Warning, "Calculations", message);
+    }
+
+    private void ShowError(string message)
+    {
+        _statusStyle = AlertStyle.Danger;
+        _statusText = message;
+        Notify(NotificationSeverity.Error, "Calculations", message);
+    }
+
+    private void Notify(NotificationSeverity severity, string summary, string detail)
+    {
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = severity,
+            Summary = summary,
+            Detail = detail,
+            Duration = 4000
+        });
+    }
+
+    private sealed class CalcJobEditor
+    {
+        public long Id { get; set; }
+        public long Revision { get; set; }
+        public string EquipmentName { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string DefinitionCode { get; set; } = "";
+        public string DefinitionVersion { get; set; } = "";
+        public bool Enabled { get; set; }
+        public int PeriodMs { get; set; } = 5000;
+        public int SortOrder { get; set; }
+        public List<CalcJobInputEditor> Inputs { get; set; } = [];
+        public List<CalcJobOutputEditor> Outputs { get; set; } = [];
+    }
+
+    private sealed class CalcJobInputEditor
+    {
+        public CalcParameterDefinitionDto Parameter { get; set; } = new();
+        public bool IsRequired { get; set; }
+        public bool UseBinding { get; set; }
+        public CalcInputSourceTypeDto SourceType { get; set; } = CalcInputSourceTypeDto.Constant;
+        public string TagName { get; set; } = "";
+        public int? MaxAgeSeconds { get; set; }
+        public double? NumberValue { get; set; }
+        public int? IntegerValue { get; set; }
+        public bool BooleanValue { get; set; }
+        public string TextValue { get; set; } = "";
+    }
+
+    private sealed class CalcJobOutputEditor
+    {
+        public CalcOutputDefinitionDto Definition { get; set; } = new();
+        public bool UseBinding { get; set; }
+        public string TagName { get; set; } = "";
+        public double Scale { get; set; } = 1.0;
+        public double Offset { get; set; }
+    }
+}
