@@ -23,9 +23,7 @@ public sealed class PostgreSqlDatabaseBootstrapper
     private readonly IConfiguration _configuration;
     private readonly ILogger<PostgreSqlDatabaseBootstrapper> _logger;
 
-    public PostgreSqlDatabaseBootstrapper(
-        IConfiguration configuration,
-        ILogger<PostgreSqlDatabaseBootstrapper> logger)
+    public PostgreSqlDatabaseBootstrapper(IConfiguration configuration, ILogger<PostgreSqlDatabaseBootstrapper> logger)
     {
         _configuration = configuration;
         _logger = logger;
@@ -65,9 +63,7 @@ public sealed class PostgreSqlDatabaseBootstrapper
         return connectionString;
     }
 
-    private async Task EnsureDatabaseExistsAsync(
-        string connectionString,
-        CancellationToken cancellationToken)
+    private async Task EnsureDatabaseExistsAsync(string connectionString, CancellationToken cancellationToken)
     {
         var targetBuilder = new NpgsqlConnectionStringBuilder(connectionString);
         var databaseName = targetBuilder.Database?.Trim();
@@ -133,9 +129,7 @@ public sealed class PostgreSqlDatabaseBootstrapper
             databaseName);
     }
 
-    private static async Task<NpgsqlConnection> OpenAdminConnectionAsync(
-        string targetConnectionString,
-        CancellationToken cancellationToken)
+    private static async Task<NpgsqlConnection> OpenAdminConnectionAsync(string targetConnectionString, CancellationToken cancellationToken)
     {
         var adminBuilder = new NpgsqlConnectionStringBuilder(targetConnectionString)
         {
@@ -161,17 +155,39 @@ public sealed class PostgreSqlDatabaseBootstrapper
         return connection;
     }
 
-    private async Task EnsureMainSchemaAsync(
-        string connectionString,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Создаёт основную схему TechMES и таблицы расчётного модуля.
+    /// Все изменения выполняются одной транзакцией.
+    /// </summary>
+    private async Task EnsureMainSchemaAsync(string connectionString, CancellationToken cancellationToken)
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
 
-        await using var command = new NpgsqlCommand(MainSchemaSql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        _logger.LogInformation("PostgreSQL main TechMES schema is ready.");
+        try
+        {
+            await ExecuteSchemaAsync(connection, transaction, MainSchemaSql, cancellationToken);
+            await ExecuteSchemaAsync(connection, transaction, CalcSchemaSql, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+
+        _logger.LogInformation("PostgreSQL main TechMES and Calc schemas are ready.");
+    }
+
+    /// <summary>
+    /// Выполняет один блок DDL внутри общей транзакции bootstrapper.
+    /// </summary>
+    private static async Task ExecuteSchemaAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string sql, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static string QuoteIdentifier(string value)
@@ -409,4 +425,208 @@ public sealed class PostgreSqlDatabaseBootstrapper
         ON public.equip_note
         (equip_name, created_at DESC, id DESC);
     """;
+
+    /// <summary>
+    /// Таблицы эксплуатационной конфигурации расчётов.
+    ///
+    /// Формулы и коэффициенты здесь не хранятся.
+    /// Они остаются в версионируемом проекте TechMES.Calc.
+    /// </summary>
+    private const string CalcSchemaSql = """
+        CREATE TABLE IF NOT EXISTS public.calc_job
+        (
+            id                 bigserial PRIMARY KEY,
+            equipment_name     text NULL,
+            name               text NOT NULL,
+            description        text NULL,
+            definition_code    text NOT NULL,
+            definition_version text NOT NULL,
+            enabled            boolean NOT NULL DEFAULT false,
+            period_ms          integer NOT NULL DEFAULT 5000,
+            write_enabled      boolean NOT NULL DEFAULT false,
+            sort_order         integer NOT NULL DEFAULT 0,
+            revision           bigint NOT NULL DEFAULT 1,
+            created_by         text NULL,
+            updated_by         text NULL,
+            created_at         timestamp with time zone NOT NULL DEFAULT now(),
+            updated_at         timestamp with time zone NOT NULL DEFAULT now(),
+
+            CONSTRAINT ck_calc_job_name_not_empty
+                CHECK (NULLIF(btrim(name), '') IS NOT NULL),
+
+            CONSTRAINT ck_calc_job_definition_code_not_empty
+                CHECK (NULLIF(btrim(definition_code), '') IS NOT NULL),
+
+            CONSTRAINT ck_calc_job_definition_version_not_empty
+                CHECK (NULLIF(btrim(definition_version), '') IS NOT NULL),
+
+            CONSTRAINT ck_calc_job_period_positive
+                CHECK (period_ms > 0),
+
+            CONSTRAINT ck_calc_job_revision_positive
+                CHECK (revision > 0)
+        );
+
+        CREATE TABLE IF NOT EXISTS public.calc_job_input
+        (
+            id                bigserial PRIMARY KEY,
+            job_id            bigint NOT NULL
+                REFERENCES public.calc_job(id)
+                ON DELETE CASCADE,
+
+            parameter_key     text NOT NULL,
+            source_type       text NOT NULL,
+            tag_name          text NULL,
+            constant_value    jsonb NULL,
+
+            source_job_id     bigint NULL
+                REFERENCES public.calc_job(id)
+                ON DELETE RESTRICT,
+
+            source_output_key text NULL,
+            max_age_seconds   integer NULL,
+            sort_order        integer NOT NULL DEFAULT 0,
+
+            CONSTRAINT uq_calc_job_input_parameter
+                UNIQUE (job_id, parameter_key),
+
+            CONSTRAINT ck_calc_job_input_parameter_not_empty
+                CHECK (NULLIF(btrim(parameter_key), '') IS NOT NULL),
+
+            CONSTRAINT ck_calc_job_input_source_type
+                CHECK (source_type IN ('Tag', 'Constant', 'CalculationOutput')),
+
+            CONSTRAINT ck_calc_job_input_max_age
+                CHECK (max_age_seconds IS NULL OR max_age_seconds > 0),
+
+            CONSTRAINT ck_calc_job_input_not_self_reference
+                CHECK (source_job_id IS NULL OR source_job_id <> job_id),
+
+            CONSTRAINT ck_calc_job_input_source_fields
+                CHECK
+                (
+                    (
+                        source_type = 'Tag'
+                        AND NULLIF(btrim(tag_name), '') IS NOT NULL
+                        AND constant_value IS NULL
+                        AND source_job_id IS NULL
+                        AND source_output_key IS NULL
+                    )
+                    OR
+                    (
+                        source_type = 'Constant'
+                        AND tag_name IS NULL
+                        AND constant_value IS NOT NULL
+                        AND source_job_id IS NULL
+                        AND source_output_key IS NULL
+                    )
+                    OR
+                    (
+                        source_type = 'CalculationOutput'
+                        AND tag_name IS NULL
+                        AND constant_value IS NULL
+                        AND source_job_id IS NOT NULL
+                        AND NULLIF(btrim(source_output_key), '') IS NOT NULL
+                    )
+                )
+        );
+
+        CREATE TABLE IF NOT EXISTS public.calc_job_output
+        (
+            id            bigserial PRIMARY KEY,
+            job_id        bigint NOT NULL
+                REFERENCES public.calc_job(id)
+                ON DELETE CASCADE,
+
+            output_key    text NOT NULL,
+            tag_name      text NULL,
+            write_enabled boolean NOT NULL DEFAULT false,
+            scale         double precision NOT NULL DEFAULT 1,
+            offset_value  double precision NOT NULL DEFAULT 0,
+            sort_order    integer NOT NULL DEFAULT 0,
+
+            CONSTRAINT uq_calc_job_output_key
+                UNIQUE (job_id, output_key),
+
+            CONSTRAINT ck_calc_job_output_key_not_empty
+                CHECK (NULLIF(btrim(output_key), '') IS NOT NULL),
+
+            CONSTRAINT ck_calc_job_output_write_target
+                CHECK
+                (
+                    NOT write_enabled
+                    OR NULLIF(btrim(tag_name), '') IS NOT NULL
+                )
+        );
+
+        CREATE TABLE IF NOT EXISTS public.calc_job_state
+        (
+            job_id                bigint PRIMARY KEY
+                REFERENCES public.calc_job(id)
+                ON DELETE CASCADE,
+
+            status                text NOT NULL DEFAULT 'NeverRun',
+            reason_code           text NULL,
+            reason_message        text NULL,
+            definition_version    text NULL,
+            configuration_revision bigint NULL,
+            cycle_number          bigint NOT NULL DEFAULT 0,
+            last_started_at       timestamp with time zone NULL,
+            last_completed_at     timestamp with time zone NULL,
+            last_success_at       timestamp with time zone NULL,
+            last_duration_ms      bigint NULL,
+            last_inputs           jsonb NULL,
+            last_outputs          jsonb NULL,
+            updated_at            timestamp with time zone NOT NULL DEFAULT now(),
+
+            CONSTRAINT ck_calc_job_state_status
+                CHECK (status IN ('NeverRun', 'Running', 'Success', 'Skipped', 'Error')),
+
+            CONSTRAINT ck_calc_job_state_cycle
+                CHECK (cycle_number >= 0),
+
+            CONSTRAINT ck_calc_job_state_duration
+                CHECK (last_duration_ms IS NULL OR last_duration_ms >= 0)
+        );
+
+        COMMENT ON TABLE public.calc_job
+        IS 'Configured calculation jobs. Mathematical algorithms are stored in TechMES.Calc code.';
+
+        COMMENT ON COLUMN public.calc_job.definition_version
+        IS 'Expected mathematical behavior version. A mismatch blocks job execution.';
+
+        COMMENT ON COLUMN public.calc_job.write_enabled
+        IS 'Master write permission. SCADA writing remains disabled unless both job and output allow it.';
+
+        COMMENT ON COLUMN public.calc_job_input.constant_value
+        IS 'Simple JSON value for constant parameters: number, integer, boolean or string.';
+
+        COMMENT ON COLUMN public.calc_job_input.source_type
+        IS 'Tag and Constant are supported first. CalculationOutput is reserved for dependency graph support.';
+
+        CREATE INDEX IF NOT EXISTS ix_calc_job_enabled_period
+            ON public.calc_job (enabled, period_ms, sort_order);
+
+        CREATE INDEX IF NOT EXISTS ix_calc_job_equipment
+            ON public.calc_job (equipment_name)
+            WHERE equipment_name IS NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS ix_calc_job_definition
+            ON public.calc_job (definition_code, definition_version);
+
+        CREATE INDEX IF NOT EXISTS ix_calc_job_input_tag
+            ON public.calc_job_input (lower(tag_name))
+            WHERE tag_name IS NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS ix_calc_job_input_source_job
+            ON public.calc_job_input (source_job_id)
+            WHERE source_job_id IS NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS ix_calc_job_output_tag
+            ON public.calc_job_output (lower(tag_name))
+            WHERE tag_name IS NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS ix_calc_job_state_status
+            ON public.calc_job_state (status, updated_at DESC);
+        """;
 }
