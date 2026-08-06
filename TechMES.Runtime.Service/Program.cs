@@ -13,6 +13,7 @@ using TechMES.Runtime.Service.Runtime;
 using TechMES.Runtime.Service.Settings;
 using TechMES.Runtime.Service.Workers;
 using TechMES.Calc.Abstractions;
+using TechMES.Runtime.Service.Calc;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,18 +34,18 @@ builder.Logging.AddSimpleFile(builder.Configuration);
 // Настройки Runtime.Service из appsettings.json.
 builder.Services.Configure<RuntimeOptions>(builder.Configuration.GetSection("Runtime"));
 
-// Настройки модуля Messages.
-// Здесь задаётся период фоновой проверки БД на внешние изменения.
+// Настройки модуля Messages. Здесь задаётся период фоновой проверки БД на внешние изменения.
 builder.Services.Configure<MessagesOptions>(builder.Configuration.GetSection("Messages"));
 builder.Services.Configure<SoeOptions>(builder.Configuration.GetSection("Soe"));
 builder.Services.Configure<ParamWriteOptions>(builder.Configuration.GetSection("ParamWrites"));
 
-// Настройки каталога оборудования.
-// Provider выбирается из appsettings.json: InMemory или CtApi.
+// Настройки каталога оборудования. Provider выбирается из appsettings.json: InMemory или CtApi.
 builder.Services.Configure<EquipmentCatalogOptions>(builder.Configuration.GetSection("EquipmentCatalog"));
 
-// Runtime-контекст регистрируем как Singleton,
-// потому что имя устройства/версия не меняются во время работы процесса.
+// Настройки API редактирования расчётных заданий.
+builder.Services.Configure<CalcConfigurationOptions>(builder.Configuration.GetSection("CalcConfiguration"));
+
+// Runtime-контекст регистрируем как Singleton, потому что имя устройства/версия не меняются во время работы процесса.
 builder.Services.AddSingleton<IAppRuntimeContext, AppRuntimeContext>();
 
 /*
@@ -57,6 +58,9 @@ builder.Services.AddSingleton<IAppRuntimeContext, AppRuntimeContext>();
  * неизменяемы в течение всего времени работы Runtime.
  */
 builder.Services.AddSingleton(_ => BuiltInCalculationCatalog.Create());
+
+// Валидатор проверяет задания по реальному каталогу алгоритмов.
+builder.Services.AddSingleton<CalcJobValidator>();
 
 // SignalR нужен для live-обновлений.
 // Например: один клиент создал сообщение, остальные клиенты сразу получили событие.
@@ -94,9 +98,7 @@ else if (string.Equals(messageStorageProvider, "PostgreSql", StringComparison.Or
 }
 else
 {
-    throw new InvalidOperationException(
-        $"Неизвестный MessageStorage:Provider = '{messageStorageProvider}'. " +
-        "Поддерживаются значения: InMemory, PostgreSql.");
+    throw new InvalidOperationException($"Неизвестный MessageStorage:Provider = '{messageStorageProvider}'. " + "Поддерживаются значения: InMemory, PostgreSql.");
 }
 
 // Info-модуль использует существующие PostgreSQL-таблицы из WPF БД.

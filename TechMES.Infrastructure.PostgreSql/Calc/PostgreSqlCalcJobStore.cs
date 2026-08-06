@@ -98,7 +98,8 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
         }
         catch
         {
-            await transaction.RollbackAsync(ct);
+            // Ошибка rollback не должна скрывать исходную ошибку сохранения.
+            await SafeRollbackAsync(transaction, ct);
             throw;
         }
 
@@ -211,6 +212,9 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
     /// <summary>
     /// Удаляет задание. Дочерние входы, выходы и состояние
     /// удаляются каскадно средствами PostgreSQL.
+    ///
+    /// Если результат задания используется другим расчётом,
+    /// PostgreSQL RESTRICT не позволит удалить запись.
     /// </summary>
     public async Task<bool> DeleteAsync(long id, CancellationToken ct = default)
     {
@@ -220,10 +224,10 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
         await using var connection = await OpenConnectionAsync(ct);
 
         const string sql = """
-        DELETE FROM public.calc_job
-        WHERE id = @id
-        RETURNING id;
-        """;
+    DELETE FROM public.calc_job
+    WHERE id = @id
+    RETURNING id;
+    """;
 
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("id", id);
@@ -234,9 +238,7 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
         }
         catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation)
         {
-            throw new InvalidOperationException(
-                $"Calculation job {id} cannot be deleted because another calculation depends on it.",
-                ex);
+            throw new CalcJobDependencyException(id, $"Calculation job {id} cannot be deleted because another calculation depends on it.", ex);
         }
     }
 

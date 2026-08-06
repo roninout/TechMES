@@ -310,3 +310,15 @@ public sealed class CalcJobsResponse
 {
     public List<CalcJobDto> Items { get; set; } = [];
 }
+
+/// <summary>
+/// Ответ HTTP 409 при конфликте одновременного редактирования.
+/// </summary>
+public sealed class CalcJobRevisionConflictResponse
+{
+    public string ErrorCode { get; set; } = "job.revision-conflict";
+    public string ErrorMessage { get; set; } = "";
+    public long JobId { get; set; }
+    public long ExpectedRevision { get; set; }
+    public long CurrentRevision { get; set; }
+}
