@@ -1,4 +1,5 @@
 ﻿@page "/calculations/jobs"
+@implements IAsyncDisposable
 @using System.Net
 @using System.Text.Json
 @inject CalcApiClient CalcApi
@@ -65,10 +66,17 @@
                     <RadzenDataList Data="@_jobs" TItem="CalcJobDto">
                         <Template Context="job">
                             <RadzenCard Style="@GetJobCardStyle(job)" @onclick="() => SelectJob(job)">
+
                                 <div class="calc-job-card-header">
                                     <b>@job.Name</b>
-                                    <RadzenBadge Text="@(job.Enabled ? "Enabled" : "Disabled")"
-                                                 BadgeStyle="@(job.Enabled ? BadgeStyle.Success : BadgeStyle.Light)" />
+
+                                    <div class="calc-job-card-badges">
+                                        <RadzenBadge Text="@GetStateText(job.Id)"
+                                                     BadgeStyle="@GetStateBadgeStyle(job.Id)" />
+
+                                        <RadzenBadge Text="@(job.Enabled ? "Enabled" : "Disabled")"
+                                                     BadgeStyle="@(job.Enabled ? BadgeStyle.Success : BadgeStyle.Light)" />
+                                    </div>
                                 </div>
 
                                 <div class="calc-job-card-code">@job.DefinitionCode · v@job.DefinitionVersion</div>
@@ -81,6 +89,13 @@
                                 <div class="calc-job-card-meta">
                                     Period: @job.PeriodMs ms · Revision: @job.Revision
                                 </div>
+
+                                @if (GetState(job.Id)?.LastCompletedAtUtc is { } completedAtUtc)
+                                {
+                                    <div class="calc-job-card-meta">
+                                        Last cycle: @FormatDateTime(completedAtUtc)
+                                    </div>
+                                }
                             </RadzenCard>
                         </Template>
                     </RadzenDataList>
@@ -105,7 +120,13 @@
 
                         @if (_editor.Id > 0)
                         {
-                            <RadzenBadge Text="@($"Revision: {_editor.Revision}")" BadgeStyle="BadgeStyle.Light" />
+                            <div class="calc-job-header-badges">
+                                <RadzenBadge Text="@GetStateText(_editor.Id)"
+                                             BadgeStyle="@GetStateBadgeStyle(_editor.Id)" />
+
+                                <RadzenBadge Text="@($"Revision: {_editor.Revision}")"
+                                             BadgeStyle="BadgeStyle.Light" />
+                            </div>
                         }
                     </div>
 
@@ -166,6 +187,158 @@
                             </div>
                         </div>
                     </section>
+
+                    @if (_editor.Id > 0)
+                    {
+                        var runtimeState = GetState(_editor.Id);
+
+                        <section class="calc-job-section">
+                            <div class="calc-job-section-header">
+                                <RadzenText Text="Runtime state" TextStyle="TextStyle.Subtitle1" />
+
+                                <div class="calc-job-state-header-actions">
+                                    @if (runtimeState is not null)
+                                    {
+                                        <RadzenBadge Text="@runtimeState.Status.ToString()"
+                                                     BadgeStyle="@GetStateBadgeStyle(runtimeState.Status)" />
+                                    }
+
+                                    <RadzenButton Icon="refresh"
+                                                  Size="ButtonSize.Small"
+                                                  ButtonStyle="ButtonStyle.Light"
+                                                  Disabled="@_isStateRefreshBusy"
+                                                  Click="@RefreshStatesAsync" />
+                                </div>
+                            </div>
+
+                            @if (runtimeState is null)
+                            {
+                                <div class="calc-job-state-empty">
+                                    Runtime state is not available.
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="calc-job-state-summary">
+                                    <div class="calc-job-state-item">
+                                        <span>Status</span>
+                                        <strong>@runtimeState.Status</strong>
+                                    </div>
+
+                                    <div class="calc-job-state-item">
+                                        <span>Persisted cycle</span>
+                                        <strong>@runtimeState.CycleNumber</strong>
+                                    </div>
+
+                                    <div class="calc-job-state-item">
+                                        <span>Configuration revision</span>
+                                        <strong>@(runtimeState.ConfigurationRevision?.ToString() ?? "—")</strong>
+                                    </div>
+
+                                    <div class="calc-job-state-item">
+                                        <span>Duration</span>
+                                        <strong>@FormatDuration(runtimeState.LastDurationMs)</strong>
+                                    </div>
+
+                                    <div class="calc-job-state-item">
+                                        <span>Last completed</span>
+                                        <strong>@FormatDateTime(runtimeState.LastCompletedAtUtc)</strong>
+                                    </div>
+
+                                    <div class="calc-job-state-item">
+                                        <span>Last success</span>
+                                        <strong>@FormatDateTime(runtimeState.LastSuccessAtUtc)</strong>
+                                    </div>
+
+                                    <div class="calc-job-state-item">
+                                        <span>Updated</span>
+                                        <strong>@FormatDateTime(runtimeState.UpdatedAtUtc)</strong>
+                                    </div>
+                                </div>
+
+                                @if (runtimeState.Status is CalcJobStateStatusDto.Skipped or CalcJobStateStatusDto.Error)
+                                {
+                                    <RadzenAlert AlertStyle="@(runtimeState.Status == CalcJobStateStatusDto.Error ? AlertStyle.Danger : AlertStyle.Warning)"
+                                                 ShowIcon="true"
+                                                 AllowClose="false">
+                                        @if (!string.IsNullOrWhiteSpace(runtimeState.ReasonCode))
+                                        {
+                                            <strong>@runtimeState.ReasonCode</strong>
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(runtimeState.ReasonMessage))
+                                        {
+                                            <div>@runtimeState.ReasonMessage</div>
+                                        }
+                                    </RadzenAlert>
+                                }
+
+                                <div class="calc-job-state-values">
+                                    <div>
+                                        <div class="calc-job-state-values-title">Last inputs</div>
+
+                                        @if (GetStateValues(runtimeState.LastInputs, outputValues: false).Count == 0)
+                                        {
+                                            <div class="calc-job-state-empty">No input values.</div>
+                                        }
+                                        else
+                                        {
+                                            <table class="calc-job-state-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Input</th>
+                                                        <th>Value</th>
+                                                        <th>Unit</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var item in GetStateValues(runtimeState.LastInputs, outputValues: false))
+                                                    {
+                                                        <tr>
+                                                            <td>@item.Key</td>
+                                                            <td>@item.Value</td>
+                                                            <td>@item.Unit</td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        }
+                                    </div>
+
+                                    <div>
+                                        <div class="calc-job-state-values-title">Last outputs</div>
+
+                                        @if (GetStateValues(runtimeState.LastOutputs, outputValues: true).Count == 0)
+                                        {
+                                            <div class="calc-job-state-empty">No output values.</div>
+                                        }
+                                        else
+                                        {
+                                            <table class="calc-job-state-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Output</th>
+                                                        <th>Value</th>
+                                                        <th>Unit</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var item in GetStateValues(runtimeState.LastOutputs, outputValues: true))
+                                                    {
+                                                        <tr>
+                                                            <td>@item.Key</td>
+                                                            <td>@item.Value</td>
+                                                            <td>@item.Unit</td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </section>
+                    }
 
                     <section class="calc-job-section">
                         <div class="calc-job-section-header">
@@ -376,6 +549,11 @@
         CalcInputSourceTypeDto.Constant
     ];
 
+    private readonly CancellationTokenSource _disposeCts = new();
+    private Dictionary<long, CalcJobStateDto> _statesByJobId = [];
+    private Task? _stateRefreshTask;
+    private bool _isStateRefreshBusy;
+
     private List<CalcDefinitionDto> _definitions = [];
     private List<CalcJobDto> _jobs = [];
     private CalcJobEditor? _editor;
@@ -384,11 +562,16 @@
     private AlertStyle _statusStyle = AlertStyle.Info;
 
     /// <summary>
-    /// Загружает каталог и существующие задания.
+    /// Загружает каталог, задания и состояния, после чего запускает
+    /// отдельное фоновое обновление диагностики.
+    ///
+    /// Фоновое обновление не перечитывает настройки jobs и поэтому
+    /// не затирает несохранённые изменения редактора.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
+        _stateRefreshTask = RefreshStatesLoopAsync(_disposeCts.Token);
     }
 
     /// <summary>
@@ -400,7 +583,7 @@
     }
 
     /// <summary>
-    /// Загружает определения и задания.
+    /// Загружает определения, задания и их текущие состояния.
     /// </summary>
     private async Task LoadAsync(long? preferredJobId = null)
     {
@@ -408,8 +591,15 @@
 
         try
         {
-            _definitions = (await CalcApi.GetDefinitionsAsync()).ToList();
-            _jobs = (await CalcApi.GetJobsAsync()).ToList();
+            var definitionsTask = CalcApi.GetDefinitionsAsync();
+            var jobsTask = CalcApi.GetJobsAsync();
+            var statesTask = CalcApi.GetStatesAsync();
+
+            await Task.WhenAll(definitionsTask, jobsTask, statesTask);
+
+            _definitions = (await definitionsTask).ToList();
+            _jobs = (await jobsTask).ToList();
+            ApplyStates(await statesTask);
 
             var selected = preferredJobId.HasValue
                 ? _jobs.FirstOrDefault(job => job.Id == preferredJobId.Value)
@@ -870,5 +1060,196 @@
         public string TagName { get; set; } = "";
         public double Scale { get; set; } = 1.0;
         public double Offset { get; set; }
+    }
+
+    private sealed class CalcStateValueRow
+    {
+        public string Key { get; set; } = "";
+        public string Value { get; set; } = "";
+        public string Unit { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Ручное обновление runtime-состояний.
+    /// </summary>
+    private async Task RefreshStatesAsync()
+    {
+        await RefreshStatesCoreAsync(showError: true, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Периодически обновляет только calc_job_state.
+    ///
+    /// Конфигурация и содержимое редактора не перечитываются.
+    /// </summary>
+    private async Task RefreshStatesLoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+                await RefreshStatesCoreAsync(showError: false, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Нормальное закрытие страницы.
+        }
+    }
+
+    /// <summary>
+    /// Получает состояния через Runtime и применяет их в UI-контексте.
+    /// </summary>
+    private async Task RefreshStatesCoreAsync(bool showError, CancellationToken ct)
+    {
+        if (_isStateRefreshBusy)
+            return;
+
+        _isStateRefreshBusy = true;
+
+        try
+        {
+            var states = await CalcApi.GetStatesAsync(ct);
+
+            await InvokeAsync(() =>
+            {
+                ApplyStates(states);
+                StateHasChanged();
+            });
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Нормальное закрытие страницы.
+        }
+        catch (Exception ex)
+        {
+            if (showError)
+                await InvokeAsync(() => ShowError("Cannot refresh calculation states: " + ex.Message));
+        }
+        finally
+        {
+            _isStateRefreshBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Заменяет локальный snapshot состояний.
+    /// </summary>
+    private void ApplyStates(IReadOnlyList<CalcJobStateDto> states)
+    {
+        _statesByJobId = states.ToDictionary(state => state.JobId);
+    }
+
+    private CalcJobStateDto? GetState(long jobId)
+    {
+        return _statesByJobId.GetValueOrDefault(jobId);
+    }
+
+    private string GetStateText(long jobId)
+    {
+        return GetState(jobId)?.Status.ToString() ?? "Unknown";
+    }
+
+    private BadgeStyle GetStateBadgeStyle(long jobId)
+    {
+        return GetStateBadgeStyle(GetState(jobId)?.Status);
+    }
+
+    private static BadgeStyle GetStateBadgeStyle(CalcJobStateStatusDto? status)
+    {
+        return status switch
+        {
+            CalcJobStateStatusDto.Success => BadgeStyle.Success,
+            CalcJobStateStatusDto.Skipped => BadgeStyle.Warning,
+            CalcJobStateStatusDto.Error => BadgeStyle.Danger,
+            CalcJobStateStatusDto.Running => BadgeStyle.Info,
+            CalcJobStateStatusDto.NeverRun => BadgeStyle.Light,
+            _ => BadgeStyle.Light
+        };
+    }
+
+    /// <summary>
+    /// Преобразует сохранённый JSON object в строки диагностической таблицы.
+    /// </summary>
+    private IReadOnlyList<CalcStateValueRow> GetStateValues(JsonElement? source, bool outputValues)
+    {
+        if (!source.HasValue || source.Value.ValueKind != JsonValueKind.Object)
+            return [];
+
+        var definition = FindDefinition(_editor?.DefinitionCode);
+        var result = new List<CalcStateValueRow>();
+
+        foreach (var property in source.Value.EnumerateObject())
+        {
+            var unit = outputValues
+                ? definition?.Outputs.FirstOrDefault(item =>
+                    string.Equals(item.Key, property.Name, StringComparison.OrdinalIgnoreCase))?.Unit
+                : definition?.Parameters.FirstOrDefault(item =>
+                    string.Equals(item.Key, property.Name, StringComparison.OrdinalIgnoreCase))?.Unit;
+
+            result.Add(new CalcStateValueRow
+            {
+                Key = property.Name,
+                Value = FormatJsonValue(property.Value),
+                Unit = unit ?? ""
+            });
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Форматирует простое JSON-значение без лишних кавычек.
+    /// </summary>
+    private static string FormatJsonValue(JsonElement value)
+    {
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? "",
+            JsonValueKind.Number => value.GetRawText(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.Null => "null",
+            _ => value.GetRawText()
+        };
+    }
+
+    private static string FormatDuration(long? durationMs)
+    {
+        return durationMs.HasValue ? $"{durationMs.Value} ms" : "—";
+    }
+
+    private static string FormatDateTime(DateTimeOffset? value)
+    {
+        return value.HasValue
+            ? value.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+            : "—";
+    }
+
+    private static string FormatDateTime(DateTimeOffset value)
+    {
+        return value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+    }
+
+    /// <summary>
+    /// Останавливает фоновое обновление состояния при уходе со страницы.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        _disposeCts.Cancel();
+
+        if (_stateRefreshTask is not null)
+        {
+            try
+            {
+                await _stateRefreshTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Ожидаемая остановка фонового цикла.
+            }
+        }
+
+        _disposeCts.Dispose();
     }
 }

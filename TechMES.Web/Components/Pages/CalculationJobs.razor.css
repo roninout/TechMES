@@ -144,9 +144,75 @@
     color: var(--rz-text-secondary-color);
 }
 
+.calc-job-card-badges,
+.calc-job-header-badges,
+.calc-job-state-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.calc-job-state-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(130px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.calc-job-state-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+    border: 1px solid var(--rz-base-300);
+    border-radius: 6px;
+    background: var(--rz-base-100);
+}
+
+.calc-job-state-item span,
+.calc-job-state-empty {
+    color: var(--rz-text-secondary-color);
+    font-size: 0.82rem;
+}
+
+.calc-job-state-values {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(280px, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+}
+
+.calc-job-state-values-title {
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+
+.calc-job-state-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.calc-job-state-table th,
+.calc-job-state-table td {
+    padding: 7px 8px;
+    border: 1px solid var(--rz-base-300);
+    text-align: left;
+}
+
+.calc-job-state-table th {
+    background: var(--rz-base-100);
+}
+
 @media (max-width: 1100px) {
     .calc-job-general-grid {
         grid-template-columns: repeat(2, minmax(170px, 1fr));
+    }
+    .calc-job-state-summary {
+        grid-template-columns: repeat(2, minmax(150px, 1fr));
+    }
+
+    .calc-job-state-values {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -158,5 +224,9 @@
     .calc-job-field-wide,
     .calc-job-field-full {
         grid-column: auto;
+    }
+
+    .calc-job-state-summary {
+        grid-template-columns: 1fr;
     }
 }

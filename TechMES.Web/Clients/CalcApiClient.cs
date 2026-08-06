@@ -58,6 +58,23 @@ public sealed class CalcApiClient(IHttpClientFactory httpClientFactory)
     }
 
     /// <summary>
+    /// Возвращает текущие состояния всех расчётных заданий.
+    /// </summary>
+    public async Task<IReadOnlyList<CalcJobStateDto>> GetStatesAsync(CancellationToken ct = default)
+    {
+        var response = await SendAsync<CalcJobStatesResponse>(HttpMethod.Get, "api/calc/states", null, ct);
+        return response.Items;
+    }
+
+    /// <summary>
+    /// Возвращает текущее состояние одного задания.
+    /// </summary>
+    public Task<CalcJobStateDto> GetJobStateAsync(long jobId, CancellationToken ct = default)
+    {
+        return SendAsync<CalcJobStateDto>(HttpMethod.Get, $"api/calc/jobs/{jobId}/state", null, ct);
+    }
+
+    /// <summary>
     /// Возвращает одно расчётное задание.
     /// </summary>
     public Task<CalcJobDto> GetJobAsync(long id, CancellationToken ct = default)
