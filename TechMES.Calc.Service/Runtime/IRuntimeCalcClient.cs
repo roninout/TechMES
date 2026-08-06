@@ -11,7 +11,12 @@ public interface IRuntimeCalcClient
     Task<CalcConfigurationSnapshotDto> GetConfigurationSnapshotAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Пакетно читает уникальные входные теги активной конфигурации.
+    /// Пакетно читает уникальные SCADA-теги.
     /// </summary>
     Task<ScadaTagBatchReadResponse> ReadTagsAsync(IReadOnlyCollection<string> tagNames, CancellationToken ct = default);
+
+    /// <summary>
+    /// Передаёт диагностические результаты shadow-расчётов.
+    /// </summary>
+    Task<CalcExecutionResultBatchResponse> SaveExecutionResultsAsync(CalcExecutionResultBatchRequest request, CancellationToken ct = default);
 }

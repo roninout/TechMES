@@ -31,6 +31,7 @@ public static class PostgreSqlServiceCollectionExtensions
         services.TryAddScoped<IEquipmentInfoStore, PostgreSqlEquipmentInfoStore>();
         services.TryAddScoped<IParamTuneStore, PostgreSqlParamTuneStore>();
         services.TryAddScoped<ICalcJobStore, PostgreSqlCalcJobStore>();
+        services.TryAddScoped<ICalcJobStateStore, PostgreSqlCalcJobStateStore>();
 
         return services;
     }
@@ -49,6 +50,7 @@ public static class PostgreSqlServiceCollectionExtensions
         services.TryAddScoped<IEquipmentInfoStore, PostgreSqlEquipmentInfoStore>();
         services.TryAddScoped<IParamTuneStore, PostgreSqlParamTuneStore>();
         services.TryAddScoped<ICalcJobStore, PostgreSqlCalcJobStore>();
+        services.TryAddScoped<ICalcJobStateStore, PostgreSqlCalcJobStateStore>();
 
         return services;
     }

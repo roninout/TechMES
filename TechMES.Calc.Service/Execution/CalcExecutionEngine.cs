@@ -487,6 +487,7 @@ internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, I
             CycleNumber = request.CycleNumber,
             JobName = request.Job.Name,
             DefinitionCode = request.Job.DefinitionCode,
+            DefinitionVersion = request.Job.DefinitionVersion,
             Status = status,
             ReasonCode = reasonCode,
             ReasonMessage = reasonMessage,

@@ -31,6 +31,7 @@ internal sealed class CalcJobExecutionResult
     public string JobName { get; init; } = "";
     public string DefinitionCode { get; init; } = "";
     public CalcJobExecutionStatus Status { get; init; }
+    public string DefinitionVersion { get; init; } = "";
     public string? ReasonCode { get; init; }
     public string? ReasonMessage { get; init; }
     public DateTimeOffset StartedAtUtc { get; init; }

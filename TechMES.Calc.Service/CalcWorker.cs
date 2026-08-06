@@ -7,6 +7,7 @@ using TechMES.Calc.Service.Execution;
 using TechMES.Calc.Service.Runtime;
 using TechMES.Calc.Service.Settings;
 using TechMES.Contracts.Calc;
+using System.Text.Json;
 
 namespace TechMES.Calc.Service;
 
@@ -19,6 +20,7 @@ namespace TechMES.Calc.Service;
 internal sealed class CalcWorker(ILogger<CalcWorker> logger,IRuntimeCalcClient runtimeClient,CalculationCatalog localCatalog,CalcExecutionEngine executionEngine,IOptions<CalcRuntimeClientOptions> runtimeOptions,IOptions<CalcExecutionOptions> executionOptions) : BackgroundService
 {
     private readonly Dictionary<long, CalcScheduledJobState> _scheduledJobs = [];
+    private readonly string _serviceInstanceId = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
     private string? _lastSnapshotVersion;
     private DateTimeOffset _nextConfigurationRefreshUtc = DateTimeOffset.MinValue;
 
@@ -194,7 +196,8 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger,IRuntimeCalcClient r
     /// <summary>
     /// Запускает все задания, время которых наступило.
     ///
-    /// Все их SCADA-входы читаются общим batch перед расчётами.
+    /// Все SCADA-входы читаются общим batch, после чего результаты
+    /// отправляются Runtime для сохранения в calc_job_state.
     /// </summary>
     private async Task ExecuteDueJobsAsync(DateTimeOffset nowUtc, CancellationToken stoppingToken)
     {
@@ -208,9 +211,7 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger,IRuntimeCalcClient r
             return;
 
         var requests = dueStates
-            .Select(state => new CalcJobExecutionRequest(
-                state.Job,
-                state.NextCycleNumber))
+            .Select(state => new CalcJobExecutionRequest(state.Job, state.NextCycleNumber))
             .ToList();
 
         try
@@ -219,6 +220,8 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger,IRuntimeCalcClient r
 
             foreach (var result in results)
                 LogExecutionResult(result);
+
+            await SaveExecutionResultsAsync(results, stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -240,6 +243,84 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger,IRuntimeCalcClient r
                     state.MarkAttemptCompleted(completedAtUtc);
             }
         }
+    }
+
+    /// <summary>
+    /// Отправляет результаты Runtime.Service.
+    ///
+    /// Ошибка диагностического сохранения не останавливает scheduler
+    /// и не приводит к немедленному повторному выполнению расчётов.
+    /// </summary>
+    private async Task SaveExecutionResultsAsync(IReadOnlyList<CalcJobExecutionResult> results, CancellationToken stoppingToken)
+    {
+        if (results.Count == 0)
+            return;
+
+        try
+        {
+            var request = new CalcExecutionResultBatchRequest
+            {
+                ServiceInstanceId = _serviceInstanceId,
+                SubmittedAtUtc = DateTimeOffset.UtcNow,
+
+                Items = results.Select(result => new CalcExecutionResultItemDto
+                {
+                    JobId = result.JobId,
+                    ConfigurationRevision = result.Revision,
+                    ServiceCycleNumber = result.CycleNumber,
+                    DefinitionCode = result.DefinitionCode,
+                    DefinitionVersion = result.DefinitionVersion,
+                    Status = ToStateStatus(result.Status),
+                    ReasonCode = result.ReasonCode,
+                    ReasonMessage = result.ReasonMessage,
+                    StartedAtUtc = result.StartedAtUtc,
+                    CompletedAtUtc = result.CompletedAtUtc,
+                    DurationMs = result.DurationMs,
+                    Inputs = JsonSerializer.SerializeToElement(result.Inputs),
+                    Outputs = JsonSerializer.SerializeToElement(result.Outputs)
+                }).ToList()
+            };
+
+            var response = await runtimeClient.SaveExecutionResultsAsync(request, stoppingToken);
+
+            logger.LogInformation(
+                "Calculation states submitted. Requested={Requested}, Accepted={Accepted}, Rejected={Rejected}.",
+                response.RequestedCount,
+                response.AcceptedCount,
+                response.RejectedCount);
+
+            foreach (var item in response.Items.Where(item => !item.Accepted))
+            {
+                logger.LogWarning(
+                    "Calculation state rejected. JobId={JobId}, ServiceCycle={ServiceCycle}, Code={ErrorCode}, Error={ErrorMessage}.",
+                    item.JobId,
+                    item.ServiceCycleNumber,
+                    item.ErrorCode,
+                    item.ErrorMessage);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Cannot save calculation states through Runtime.Service.");
+        }
+    }
+
+    /// <summary>
+    /// Преобразует внутренний статус движка в транспортный статус.
+    /// </summary>
+    private static CalcJobStateStatusDto ToStateStatus(CalcJobExecutionStatus status)
+    {
+        return status switch
+        {
+            CalcJobExecutionStatus.Success => CalcJobStateStatusDto.Success,
+            CalcJobExecutionStatus.Skipped => CalcJobStateStatusDto.Skipped,
+            CalcJobExecutionStatus.Error => CalcJobStateStatusDto.Error,
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unsupported calculation status.")
+        };
     }
 
     /// <summary>

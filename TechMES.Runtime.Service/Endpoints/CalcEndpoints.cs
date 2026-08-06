@@ -28,6 +28,10 @@ public static class CalcEndpoints
 
         app.MapGet("/api/calc/configuration/snapshot", GetConfigurationSnapshotAsync);
 
+        app.MapGet("/api/calc/states", GetStatesAsync);
+        app.MapGet("/api/calc/jobs/{id:long}/state", GetJobStateAsync);
+        app.MapPost("/api/calc/execution/results", SaveExecutionResultsAsync);
+
         app.MapGet("/api/calc/jobs", GetJobsAsync);
         app.MapGet("/api/calc/jobs/{id:long}", GetJobAsync);
         app.MapPost("/api/calc/jobs", CreateJobAsync);
@@ -330,4 +334,153 @@ public static class CalcEndpoints
                 ErrorMessage = "Calculation configuration editing is disabled."
             },
             statusCode: StatusCodes.Status403Forbidden);
+
+    /// <summary>
+    /// Возвращает состояния всех заданий.
+    /// </summary>
+    private static async Task<IResult> GetStatesAsync(ICalcJobStateStore store, CancellationToken ct)
+    {
+        var states = await store.GetAllAsync(ct);
+        return Results.Ok(new CalcJobStatesResponse { Items = states.ToList() });
+    }
+
+    /// <summary>
+    /// Возвращает текущее состояние одного задания.
+    /// </summary>
+    private static async Task<IResult> GetJobStateAsync(long id, ICalcJobStateStore store, CancellationToken ct)
+    {
+        var state = await store.GetAsync(id, ct);
+
+        return state is null
+            ? NotFound("state.not-found", $"Calculation state for job {id} was not found.")
+            : Results.Ok(state);
+    }
+
+    /// <summary>
+    /// Принимает пакет результатов shadow-расчётов от Calc.Service.
+    ///
+    /// Endpoint обновляет только диагностическое состояние PostgreSQL.
+    /// Запись результатов в SCADA здесь отсутствует.
+    /// </summary>
+    private static async Task<IResult> SaveExecutionResultsAsync(CalcExecutionResultBatchRequest? request, ICalcJobStateStore store, CancellationToken ct)
+    {
+        var error = ValidateExecutionResults(request);
+
+        if (error is not null)
+            return Results.BadRequest(error);
+
+        return Results.Ok(await store.SaveResultsAsync(request!, ct));
+    }
+
+    /// <summary>
+    /// Проверяет структуру пакета до обращения к PostgreSQL.
+    /// </summary>
+    private static CalcApiErrorResponse? ValidateExecutionResults(CalcExecutionResultBatchRequest? request)
+    {
+        if (request is null)
+            return ApiError("request.missing", "Calculation execution result request is required.");
+
+        if (string.IsNullOrWhiteSpace(request.ServiceInstanceId))
+            return ApiError("service.instance-empty", "Calc Service instance id is required.");
+
+        if (request.ServiceInstanceId.Trim().Length > 200)
+            return ApiError("service.instance-too-long", "Calc Service instance id cannot exceed 200 characters.");
+
+        if (request.Items is null || request.Items.Count == 0)
+            return ApiError("result.items-empty", "At least one calculation result is required.");
+
+        if (request.Items.Count > 500)
+            return ApiError("result.items-too-many", "A maximum of 500 calculation results can be submitted at once.");
+
+        foreach (var item in request.Items)
+        {
+            var itemError = ValidateExecutionResult(item);
+
+            if (itemError is not null)
+                return itemError;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Проверяет один результат выполнения.
+    /// </summary>
+    private static CalcApiErrorResponse? ValidateExecutionResult(CalcExecutionResultItemDto? item)
+    {
+        if (item is null)
+            return ApiError("result.item-null", "Calculation result item cannot be null.");
+
+        if (item.JobId <= 0)
+            return ApiError("result.job-id-invalid", "Calculation result JobId must be greater than zero.");
+
+        if (item.ConfigurationRevision <= 0)
+            return ApiError("result.revision-invalid", "Calculation result revision must be greater than zero.");
+
+        if (item.ServiceCycleNumber <= 0)
+            return ApiError("result.cycle-invalid", "Calculation result service cycle must be greater than zero.");
+
+        if (string.IsNullOrWhiteSpace(item.DefinitionCode)
+            || string.IsNullOrWhiteSpace(item.DefinitionVersion))
+        {
+            return ApiError("result.definition-empty", "Calculation definition code and version are required.");
+        }
+
+        if (item.Status is not CalcJobStateStatusDto.Success
+            and not CalcJobStateStatusDto.Skipped
+            and not CalcJobStateStatusDto.Error)
+        {
+            return ApiError("result.status-invalid", "Execution result status must be Success, Skipped or Error.");
+        }
+
+        if (item.StartedAtUtc == default || item.CompletedAtUtc == default
+            || item.CompletedAtUtc < item.StartedAtUtc)
+        {
+            return ApiError("result.time-invalid", "Calculation result contains an invalid start or completion time.");
+        }
+
+        if (item.DurationMs < 0)
+            return ApiError("result.duration-invalid", "Calculation result duration cannot be negative.");
+
+        if (item.Inputs.ValueKind != System.Text.Json.JsonValueKind.Object)
+            return ApiError("result.inputs-invalid", "Calculation result Inputs must be a JSON object.");
+
+        if (item.Outputs.ValueKind != System.Text.Json.JsonValueKind.Object)
+            return ApiError("result.outputs-invalid", "Calculation result Outputs must be a JSON object.");
+
+        foreach (var output in item.Outputs.EnumerateObject())
+        {
+            if (output.Value.ValueKind != System.Text.Json.JsonValueKind.Number
+                || !output.Value.TryGetDouble(out var number)
+                || !double.IsFinite(number))
+            {
+                return ApiError(
+                    "result.output-invalid",
+                    $"Calculation output '{output.Name}' must be a finite number.");
+            }
+        }
+
+        if (item.Status is CalcJobStateStatusDto.Skipped or CalcJobStateStatusDto.Error
+            && string.IsNullOrWhiteSpace(item.ReasonCode))
+        {
+            return ApiError("result.reason-empty", "Skipped and Error results require ReasonCode.");
+        }
+
+        if ((item.ReasonCode?.Length ?? 0) > 200
+            || (item.ReasonMessage?.Length ?? 0) > 4000)
+        {
+            return ApiError("result.reason-too-long", "Calculation result reason is too long.");
+        }
+
+        return null;
+    }
+
+    private static CalcApiErrorResponse ApiError(string code, string message)
+    {
+        return new CalcApiErrorResponse
+        {
+            ErrorCode = code,
+            ErrorMessage = message
+        };
+    }
 }

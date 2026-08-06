@@ -87,6 +87,34 @@ public sealed class RuntimeCalcClient(HttpClient httpClient) : IRuntimeCalcClien
     }
 
     /// <summary>
+    /// Сохраняет пакет диагностических результатов через Runtime.Service.
+    /// </summary>
+    public async Task<CalcExecutionResultBatchResponse> SaveExecutionResultsAsync(CalcExecutionResultBatchRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var response = await httpClient.PostAsJsonAsync(
+            "api/calc/execution/results",
+            request,
+            JsonOptions,
+            ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseText = await response.Content.ReadAsStringAsync(ct);
+            var message = $"Runtime Calc result request failed with HTTP {(int)response.StatusCode}.";
+
+            if (!string.IsNullOrWhiteSpace(responseText))
+                message += $" Response: {LimitText(responseText, 500)}";
+
+            throw new HttpRequestException(message, null, response.StatusCode);
+        }
+
+        return await response.Content.ReadFromJsonAsync<CalcExecutionResultBatchResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Runtime returned an empty Calc result response.");
+    }
+
+    /// <summary>
     /// Выполняет один HTTP batch размером не более 500 тегов.
     /// </summary>
     private async Task<ScadaTagBatchReadResponse> ReadTagChunkAsync(IReadOnlyCollection<string> tagNames, CancellationToken ct)
