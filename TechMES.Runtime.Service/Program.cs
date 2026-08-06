@@ -12,6 +12,7 @@ using TechMES.Runtime.Service.Messages;
 using TechMES.Runtime.Service.Runtime;
 using TechMES.Runtime.Service.Settings;
 using TechMES.Runtime.Service.Workers;
+using TechMES.Calc.Abstractions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -45,6 +46,17 @@ builder.Services.Configure<EquipmentCatalogOptions>(builder.Configuration.GetSec
 // Runtime-контекст регистрируем как Singleton,
 // потому что имя устройства/версия не меняются во время работы процесса.
 builder.Services.AddSingleton<IAppRuntimeContext, AppRuntimeContext>();
+
+/*
+ * Каталог содержит только встроенные расчётные алгоритмы.
+ *
+ * Он не открывает соединения, не запускает фоновые циклы
+ * и не обращается к PostgreSQL или CtApi.
+ *
+ * Singleton подходит, потому что определения алгоритмов
+ * неизменяемы в течение всего времени работы Runtime.
+ */
+builder.Services.AddSingleton(_ => BuiltInCalculationCatalog.Create());
 
 // SignalR нужен для live-обновлений.
 // Например: один клиент создал сообщение, остальные клиенты сразу получили событие.

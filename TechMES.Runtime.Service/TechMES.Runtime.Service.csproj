@@ -15,6 +15,7 @@
     <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
     <ProjectReference Include="..\TechMES.Infrastructure.CtApi\TechMES.Infrastructure.CtApi.csproj" />
     <ProjectReference Include="..\TechMES.Infrastructure.PostgreSql\TechMES.Infrastructure.PostgreSql.csproj" />
+    <ProjectReference Include="..\TechMES.Calc\TechMES.Calc.csproj" />
   </ItemGroup>
 
 </Project>

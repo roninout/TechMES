@@ -2,15 +2,20 @@ namespace TechMES.Runtime.Service.Endpoints;
 
 /// <summary>
 /// Единая точка подключения всех HTTP endpoints Runtime.Service.
-/// Program.cs вызывает только этот метод, а отдельные модули регистрируются здесь.
+///
+/// Program.cs вызывает только этот метод,
+/// а каждый функциональный модуль регистрируется отдельно.
 /// </summary>
 public static class RuntimeEndpointRouteBuilderExtensions
 {
     /// <summary>
-    /// Регистрирует API модулей: health, messages, equipment, info, param,
-    /// event log, SOE и низкоуровневую SCADA-диагностику.
+    /// Регистрирует API модулей Runtime.Service.
+    ///
+    /// Calc endpoints на этом этапе предоставляют только каталог
+    /// алгоритмов и ручное read-only тестирование.
     /// </summary>
-    public static IEndpointRouteBuilder MapRuntimeEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapRuntimeEndpoints(
+        this IEndpointRouteBuilder app)
     {
         app.MapHealthEndpoints();
         app.MapMessageEndpoints();
@@ -20,6 +25,7 @@ public static class RuntimeEndpointRouteBuilderExtensions
         app.MapEventLogEndpoints();
         app.MapSoeEndpoints();
         app.MapScadaEndpoints();
+        app.MapCalcEndpoints();
 
         return app;
     }
