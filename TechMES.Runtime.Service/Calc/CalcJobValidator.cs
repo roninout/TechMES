@@ -59,6 +59,55 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
     }
 
     /// <summary>
+    /// Повторно проверяет задание, прочитанное из PostgreSQL.
+    ///
+    /// Такая проверка необходима, потому что конфигурация могла быть
+    /// изменена напрямую в БД либо создана старой версией Runtime.
+    /// </summary>
+    public CalcJobValidationResult ValidateStored(CalcJobDto job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        var request = new CalcJobSaveRequest
+        {
+            EquipmentName = job.EquipmentName,
+            Name = job.Name,
+            Description = job.Description,
+            DefinitionCode = job.DefinitionCode,
+            DefinitionVersion = job.DefinitionVersion,
+            Enabled = job.Enabled,
+            PeriodMs = job.PeriodMs,
+            WriteEnabled = job.WriteEnabled,
+            SortOrder = job.SortOrder,
+            ExpectedRevision = job.Revision,
+
+            Inputs = (job.Inputs ?? []).Select(input => new CalcJobInputSaveDto
+            {
+                ParameterKey = input.ParameterKey,
+                SourceType = input.SourceType,
+                TagName = input.TagName,
+                ConstantValue = input.ConstantValue?.Clone(),
+                SourceJobId = input.SourceJobId,
+                SourceOutputKey = input.SourceOutputKey,
+                MaxAgeSeconds = input.MaxAgeSeconds,
+                SortOrder = input.SortOrder
+            }).ToList(),
+
+            Outputs = (job.Outputs ?? []).Select(output => new CalcJobOutputSaveDto
+            {
+                OutputKey = output.OutputKey,
+                TagName = output.TagName,
+                WriteEnabled = output.WriteEnabled,
+                Scale = output.Scale,
+                Offset = output.Offset,
+                SortOrder = output.SortOrder
+            }).ToList()
+        };
+
+        return Validate(request, isUpdate: true);
+    }
+
+    /// <summary>
     /// Проверяет полный набор входных привязок.
     /// </summary>
     private static CalcJobValidationResult ValidateInputs(ICalculationDefinition definition, IReadOnlyList<CalcJobInputSaveDto> inputs)

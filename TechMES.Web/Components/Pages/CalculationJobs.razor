@@ -516,18 +516,30 @@
         BuildBindings(_editor, definition, null);
     }
 
+    /// <summary>
+    /// Перестраивает входы и выходы выбранного алгоритма.
+    ///
+    /// Для нового задания все выходы включаются по умолчанию.
+    /// При редактировании существующего задания сохраняется фактический
+    /// набор выходных привязок из PostgreSQL.
+    /// </summary>
     private void BuildBindings(CalcJobEditor editor, CalcDefinitionDto definition, CalcJobDto? job)
     {
         editor.Inputs = definition.Parameters
             .OrderBy(parameter => parameter.Order)
             .Select(parameter => CreateInputEditor(parameter,
-                job?.Inputs.FirstOrDefault(input => string.Equals(input.ParameterKey, parameter.Key, StringComparison.OrdinalIgnoreCase))))
+                job?.Inputs.FirstOrDefault(input =>
+                    string.Equals(input.ParameterKey, parameter.Key, StringComparison.OrdinalIgnoreCase))))
             .ToList();
+
+        var isNewJob = job is null;
 
         editor.Outputs = definition.Outputs
             .OrderBy(output => output.Order)
             .Select(output => CreateOutputEditor(output,
-                job?.Outputs.FirstOrDefault(item => string.Equals(item.OutputKey, output.Key, StringComparison.OrdinalIgnoreCase))))
+                job?.Outputs.FirstOrDefault(item =>
+                    string.Equals(item.OutputKey, output.Key, StringComparison.OrdinalIgnoreCase)),
+                isNewJob))
             .ToList();
     }
 
@@ -547,12 +559,15 @@
         return editor;
     }
 
-    private static CalcJobOutputEditor CreateOutputEditor(CalcOutputDefinitionDto definition, CalcJobOutputDto? stored)
+    /// <summary>
+    /// Создаёт редактор одного выходного значения.
+    /// </summary>
+    private static CalcJobOutputEditor CreateOutputEditor(CalcOutputDefinitionDto definition, CalcJobOutputDto? stored, bool useByDefault)
     {
         return new CalcJobOutputEditor
         {
             Definition = definition,
-            UseBinding = stored is not null || definition.Order >= 0,
+            UseBinding = stored is not null || useByDefault,
             TagName = stored?.TagName ?? "",
             Scale = stored?.Scale ?? 1.0,
             Offset = stored?.Offset ?? 0.0

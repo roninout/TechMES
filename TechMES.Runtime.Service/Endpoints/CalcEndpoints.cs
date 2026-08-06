@@ -6,6 +6,8 @@ using TechMES.Contracts.Calc;
 using TechMES.Runtime.Service.Calc;
 using TechMES.Runtime.Service.Runtime;
 using TechMES.Runtime.Service.Settings;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
@@ -23,6 +25,8 @@ public static class CalcEndpoints
         app.MapGet("/api/calc/definitions", GetDefinitions);
         app.MapGet("/api/calc/definitions/{code}", GetDefinition);
         app.MapPost("/api/calc/test", TestCalculation);
+
+        app.MapGet("/api/calc/configuration/snapshot", GetConfigurationSnapshotAsync);
 
         app.MapGet("/api/calc/jobs", GetJobsAsync);
         app.MapGet("/api/calc/jobs/{id:long}", GetJobAsync);
@@ -180,6 +184,116 @@ public static class CalcEndpoints
                 ErrorMessage = ex.Message
             });
         }
+    }
+
+    /// <summary>
+    /// Возвращает read-only снимок enabled-заданий для Calc.Service.
+    ///
+    /// В snapshot попадают только задания, которые прошли повторную
+    /// проверку по текущему CalculationCatalog Runtime.Service.
+    /// </summary>
+    private static async Task<IResult> GetConfigurationSnapshotAsync(ICalcJobStore store, CalcJobValidator validator, CancellationToken ct)
+    {
+        var enabledJobs = (await store.GetAllAsync(ct))
+            .Where(job => job.Enabled)
+            .OrderBy(job => job.SortOrder)
+            .ThenBy(job => job.Id)
+            .ToList();
+
+        var jobs = new List<CalcExecutionJobDto>();
+        var issues = new List<CalcConfigurationIssueDto>();
+
+        foreach (var job in enabledJobs)
+        {
+            var validation = validator.ValidateStored(job);
+
+            if (!validation.IsValid)
+            {
+                issues.Add(new CalcConfigurationIssueDto
+                {
+                    JobId = job.Id,
+                    JobName = job.Name,
+                    ErrorCode = validation.ErrorCode ?? "job.invalid",
+                    ErrorMessage = validation.ErrorMessage ?? "Calculation job configuration is invalid."
+                });
+
+                continue;
+            }
+
+            jobs.Add(ToExecutionJob(job));
+        }
+
+        return Results.Ok(new CalcConfigurationSnapshotDto
+        {
+            Version = BuildSnapshotVersion(enabledJobs),
+            GeneratedAtUtc = DateTimeOffset.UtcNow,
+            EnabledJobCount = enabledJobs.Count,
+            Jobs = jobs,
+            Issues = issues
+        });
+    }
+
+    /// <summary>
+    /// Преобразует сохранённое задание в компактную модель выполнения.
+    /// </summary>
+    private static CalcExecutionJobDto ToExecutionJob(CalcJobDto job)
+    {
+        return new CalcExecutionJobDto
+        {
+            Id = job.Id,
+            Revision = job.Revision,
+            Name = job.Name,
+            EquipmentName = job.EquipmentName,
+            DefinitionCode = job.DefinitionCode,
+            DefinitionVersion = job.DefinitionVersion,
+            PeriodMs = job.PeriodMs,
+            SortOrder = job.SortOrder,
+            WriteEnabled = job.WriteEnabled,
+
+            Inputs = job.Inputs
+                .OrderBy(input => input.SortOrder)
+                .ThenBy(input => input.Id)
+                .Select(input => new CalcExecutionInputDto
+                {
+                    ParameterKey = input.ParameterKey,
+                    SourceType = input.SourceType,
+                    TagName = input.TagName,
+                    ConstantValue = input.ConstantValue?.Clone(),
+                    MaxAgeSeconds = input.MaxAgeSeconds,
+                    SortOrder = input.SortOrder
+                })
+                .ToList(),
+
+            Outputs = job.Outputs
+                .OrderBy(output => output.SortOrder)
+                .ThenBy(output => output.Id)
+                .Select(output => new CalcExecutionOutputDto
+                {
+                    OutputKey = output.OutputKey,
+                    TagName = output.TagName,
+                    WriteEnabled = output.WriteEnabled,
+                    Scale = output.Scale,
+                    Offset = output.Offset,
+                    SortOrder = output.SortOrder
+                })
+                .ToList()
+        };
+    }
+
+    /// <summary>
+    /// Создаёт компактную версию snapshot по Id и Revision
+    /// всех enabled-заданий.
+    ///
+    /// Revision увеличивается при каждом поддерживаемом изменении задания.
+    /// </summary>
+    private static string BuildSnapshotVersion(IReadOnlyList<CalcJobDto> jobs)
+    {
+        var source = string.Join("|", jobs
+            .OrderBy(job => job.Id)
+            .Select(job => $"{job.Id}:{job.Revision}"));
+
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(source));
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     /// <summary>
