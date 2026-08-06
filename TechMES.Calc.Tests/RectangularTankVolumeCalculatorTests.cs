@@ -51,6 +51,54 @@ public sealed class RectangularTankVolumeCalculatorTests
         Assert.Equal(12.0, calculation.VolumeM3, 10);
     }
 
+    /// <summary>
+    /// Проверяет конфигурацию, в которой DistanceToPointA меньше DistanceA.
+    ///
+    /// Эти параметры описывают разные расстояния, поэтому такое соотношение
+    /// само по себе не является ошибкой. Новая реализация должна повторять
+    /// результат старой формулы.
+    /// </summary>
+    [Fact]
+    public void MatchesLegacyWhenDistanceToPointAIsLessThanDistanceA()
+    {
+        const int levelMm = 1000;
+        const int heightMm = 4000;
+        const int widthMm = 2000;
+        const int lengthMm = 3000;
+        const int distanceToPointAMm = 50;
+        const int distanceAMm = 100;
+        const int distanceBMm = 3100;
+
+        var legacyVolume =
+            LegacyRectangularTankVolumeCalculator.Calculate(
+                levelMm,
+                heightMm,
+                widthMm,
+                lengthMm,
+                distanceToPointAMm,
+                distanceAMm,
+                distanceBMm);
+
+        var input = new RectangularTankVolumeInput(
+            MeasuredLevelMm: levelMm,
+            Tank: new RectangularTankGeometry(
+                HeightMm: heightMm,
+                WidthMm: widthMm,
+                LengthMm: lengthMm),
+            Measurement: new TankLevelMeasurementGeometry(
+                DistanceToPointAMm: distanceToPointAMm,
+                DistanceAMm: distanceAMm,
+                DistanceBMm: distanceBMm));
+
+        var calculation =
+            RectangularTankVolumeCalculator.Calculate(input);
+
+        Assert.Equal(
+            legacyVolume,
+            calculation.VolumeM3,
+            precision: 10);
+    }
+
     [Fact]
     public void RejectsInvalidMeasurementOrder()
     {

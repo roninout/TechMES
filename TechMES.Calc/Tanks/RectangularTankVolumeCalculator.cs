@@ -61,6 +61,10 @@ public static class RectangularTankVolumeCalculator
 
     /// <summary>
     /// Проверяет геометрию резервуара и параметры датчика.
+    ///
+    /// Проверки не должны вводить ограничений, которых не было
+    /// в старой рабочей формуле, если такие ограничения не следуют
+    /// непосредственно из математического смысла параметров.
     /// </summary>
     private static void ValidateInput(RectangularTankVolumeInput input)
     {
@@ -99,19 +103,19 @@ public static class RectangularTankVolumeCalculator
             "tank.measurement.distance-b-invalid",
             "Distance B cannot be negative.");
 
+        /*
+         * DistanceA и DistanceB задают границы одного измерительного диапазона,
+         * поэтому их порядок можно проверять.
+         *
+         * DistanceToPointA описывает другое геометрическое расстояние.
+         * Сравнивать его напрямую с DistanceA нельзя: старая формула
+         * такого ограничения не содержала.
+         */
         if (input.Measurement.DistanceBMm < input.Measurement.DistanceAMm)
         {
             throw new CalculationException(
                 "tank.measurement.distance-order-invalid",
                 "Distance B cannot be less than Distance A.");
-        }
-
-        // Это ограничение явно присутствовало в комментарии старой LevelTank-модели.
-        if (input.Measurement.DistanceToPointAMm < input.Measurement.DistanceAMm)
-        {
-            throw new CalculationException(
-                "tank.measurement.distance-to-a-order-invalid",
-                "Distance to point A cannot be less than Distance A.");
         }
     }
 
