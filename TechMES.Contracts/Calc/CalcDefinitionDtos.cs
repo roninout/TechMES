@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TechMES.Contracts.Calc;
 
@@ -8,6 +9,7 @@ namespace TechMES.Contracts.Calc;
 /// DTO enum отделён от внутреннего CalculationParameterType,
 /// чтобы WEB и Maintenance не зависели от проекта TechMES.Calc.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum CalcParameterTypeDto
 {
     Number,

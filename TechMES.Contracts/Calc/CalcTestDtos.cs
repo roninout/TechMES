@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TechMES.Contracts.Calc;
 
@@ -33,6 +34,7 @@ public sealed class CalcTestRequest
 /// <summary>
 /// Уровень сообщения, возвращённого алгоритмом.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum CalcMessageSeverityDto
 {
     Information,

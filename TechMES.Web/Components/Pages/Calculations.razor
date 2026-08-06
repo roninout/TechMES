@@ -1,0 +1,422 @@
+﻿@page "/calculations"
+@inject CalcApiClient CalcApi
+@inject NotificationService NotificationService
+
+<PageTitle>Calculations</PageTitle>
+
+<div class="calc-page">
+    <div class="calc-toolbar">
+        <RadzenDropDown TValue="string"
+                        Data="@_definitions"
+                        TextProperty="@nameof(CalcDefinitionDto.Name)"
+                        ValueProperty="@nameof(CalcDefinitionDto.Code)"
+                        @bind-Value="_selectedDefinitionCode"
+                        Change="@OnDefinitionChanged"
+                        Placeholder="Select calculation..."
+                        Disabled="@_isLoading"
+                        Style="min-width: 320px;" />
+
+        @if (_selectedDefinition is not null)
+        {
+            <RadzenBadge Text="@($"Version: {_selectedDefinition.Version}")" BadgeStyle="BadgeStyle.Light" />
+        }
+
+        <div class="calc-toolbar-spacer"></div>
+
+        <div class="calc-trace-toggle">
+            <RadzenCheckBox TValue="bool" @bind-Value="_includeTrace" />
+            <span>Include trace</span>
+        </div>
+
+        <RadzenButton Text="Calculate"
+                      Icon="calculate"
+                      ButtonStyle="ButtonStyle.Primary"
+                      Disabled="@(_isLoading || _selectedDefinition is null)"
+                      Click="@CalculateAsync" />
+    </div>
+
+    @if (_isLoading)
+    {
+        <TechMesLoadingBar />
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_statusText))
+    {
+        <RadzenAlert AlertStyle="@_statusStyle"
+                     ShowIcon="true"
+                     AllowClose="true"
+                     Close="@(() => _statusText = string.Empty)">
+            @_statusText
+        </RadzenAlert>
+    }
+
+    @if (_selectedDefinition is not null)
+    {
+        <div class="calc-content">
+            <section class="calc-panel">
+                <div class="calc-panel-header">
+                    <div>
+                        <RadzenText Text="@_selectedDefinition.Name" TextStyle="TextStyle.H6" />
+                        <div class="calc-definition-code">@_selectedDefinition.Code</div>
+                    </div>
+
+                    <RadzenBadge Text="@_selectedDefinition.Category" BadgeStyle="BadgeStyle.Info" />
+                </div>
+
+                <div class="calc-fields">
+                    @foreach (var parameter in _selectedDefinition.Parameters.OrderBy(item => item.Order))
+                    {
+                        <div class="calc-field">
+                            <div class="calc-field-title">
+                                <label>@parameter.Name</label>
+
+                                @if (parameter.IsRequired)
+                                {
+                                    <span class="calc-required">*</span>
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(parameter.Unit))
+                                {
+                                    <span class="calc-unit">@parameter.Unit</span>
+                                }
+                            </div>
+
+                            @switch (parameter.Type)
+                            {
+                                case CalcParameterTypeDto.Number:
+                                    <RadzenNumeric TValue="double?"
+                                                   @bind-Value="_parameterValues[parameter.Key].Number"
+                                                   Disabled="@_isLoading"
+                                                   Style="width: 100%;" />
+                                    break;
+
+                                case CalcParameterTypeDto.Integer:
+                                    <RadzenNumeric TValue="int?"
+                                                   @bind-Value="_parameterValues[parameter.Key].Integer"
+                                                   Disabled="@_isLoading"
+                                                   Style="width: 100%;" />
+                                    break;
+
+                                case CalcParameterTypeDto.Boolean:
+                                    <div class="calc-boolean-editor">
+                                        <RadzenCheckBox TValue="bool"
+                                                        @bind-Value="_parameterValues[parameter.Key].Boolean"
+                                                        Disabled="@_isLoading" />
+                                        <span>@(_parameterValues[parameter.Key].Boolean ? "Enabled" : "Disabled")</span>
+                                    </div>
+                                    break;
+
+                                case CalcParameterTypeDto.Selection:
+                                    <RadzenDropDown TValue="string"
+                                                    Data="@parameter.Options"
+                                                    TextProperty="@nameof(CalcParameterOptionDto.Name)"
+                                                    ValueProperty="@nameof(CalcParameterOptionDto.Value)"
+                                                    @bind-Value="_parameterValues[parameter.Key].Text"
+                                                    AllowClear="@(!parameter.IsRequired)"
+                                                    Disabled="@_isLoading"
+                                                    Style="width: 100%;" />
+                                    break;
+
+                                case CalcParameterTypeDto.Text:
+                                    <RadzenTextBox @bind-Value="_parameterValues[parameter.Key].Text"
+                                                   Disabled="@_isLoading"
+                                                   Style="width: 100%;" />
+                                    break;
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(parameter.Description))
+                            {
+                                <div class="calc-field-description">@parameter.Description</div>
+                            }
+
+                            @if (parameter.Minimum.HasValue || parameter.Maximum.HasValue)
+                            {
+                                <div class="calc-field-range">
+                                    Allowed:
+                                    @(parameter.Minimum?.ToString() ?? "−∞")
+                                    …
+                                    @(parameter.Maximum?.ToString() ?? "+∞")
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </section>
+
+            <section class="calc-panel">
+                <div class="calc-panel-header">
+                    <RadzenText Text="Result" TextStyle="TextStyle.H6" />
+
+                    @if (_result is not null)
+                    {
+                        <RadzenBadge Text="@(_result.IsSuccess ? "Success" : "Failed")"
+                                     BadgeStyle="@(_result.IsSuccess ? BadgeStyle.Success : BadgeStyle.Danger)" />
+                    }
+                </div>
+
+                @if (_result is null)
+                {
+                    <div class="calc-empty">Enter the parameters and press Calculate.</div>
+                }
+                else
+                {
+                    @if (!_result.IsSuccess)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" AllowClose="false">
+                            <strong>@_result.ErrorCode</strong>
+                            <div>@_result.ErrorMessage</div>
+                        </RadzenAlert>
+                    }
+
+                    @if (_result.Outputs.Count > 0)
+                    {
+                        <div class="calc-output-grid">
+                            @foreach (var output in _result.Outputs)
+                            {
+                                <div class="calc-output-card">
+                                    <div class="calc-output-name">@output.Name</div>
+                                    <div class="calc-output-value">
+                                        @FormatOutput(output)
+                                        <span>@output.Unit</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @foreach (var message in _result.Messages)
+                    {
+                        <RadzenAlert AlertStyle="@(message.Severity == CalcMessageSeverityDto.Warning ? AlertStyle.Warning : AlertStyle.Info)"
+                                     ShowIcon="true"
+                                     AllowClose="false">
+                            <strong>@message.Code</strong>
+                            <div>@message.Message</div>
+                        </RadzenAlert>
+                    }
+
+                    @if (_result.Trace.Count > 0)
+                    {
+                        <RadzenDataGrid Data="@_result.Trace"
+                                        TItem="CalcTraceItemDto"
+                                        Density="Density.Compact"
+                                        AllowSorting="false"
+                                        class="calc-trace-grid">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="CalcTraceItemDto" Property="Name" Title="Trace item" />
+                                <RadzenDataGridColumn TItem="CalcTraceItemDto" Property="Value" Title="Value" Width="180px" />
+                                <RadzenDataGridColumn TItem="CalcTraceItemDto" Property="Unit" Title="Unit" Width="100px" />
+                            </Columns>
+                        </RadzenDataGrid>
+                    }
+                }
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    private List<CalcDefinitionDto> _definitions = [];
+    private readonly Dictionary<string, CalcEditorValue> _parameterValues = new(StringComparer.OrdinalIgnoreCase);
+    private CalcDefinitionDto? _selectedDefinition;
+    private CalcTestResponse? _result;
+    private string _selectedDefinitionCode = "";
+    private string _statusText = "";
+    private AlertStyle _statusStyle = AlertStyle.Info;
+    private bool _includeTrace = true;
+    private bool _isLoading;
+
+    /// <summary>
+    /// Загружает каталог алгоритмов и выбирает первый доступный расчёт.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        _isLoading = true;
+
+        try
+        {
+            _definitions = (await CalcApi.GetDefinitionsAsync()).ToList();
+            _selectedDefinitionCode = _definitions.FirstOrDefault()?.Code ?? "";
+            SelectDefinition();
+        }
+        catch (Exception ex)
+        {
+            ShowError("Cannot load calculation definitions: " + ex.Message);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Переключает активное определение и создаёт редакторы его параметров.
+    /// </summary>
+    private void OnDefinitionChanged(object? value)
+    {
+        _selectedDefinitionCode = value?.ToString() ?? "";
+        SelectDefinition();
+    }
+
+    /// <summary>
+    /// Находит выбранный алгоритм и применяет его значения по умолчанию.
+    /// </summary>
+    private void SelectDefinition()
+    {
+        _selectedDefinition = _definitions.FirstOrDefault(item =>
+            string.Equals(item.Code, _selectedDefinitionCode, StringComparison.OrdinalIgnoreCase));
+
+        _parameterValues.Clear();
+        _result = null;
+        _statusText = "";
+
+        if (_selectedDefinition is null)
+            return;
+
+        foreach (var parameter in _selectedDefinition.Parameters)
+            _parameterValues[parameter.Key] = CreateEditorValue(parameter);
+    }
+
+    /// <summary>
+    /// Выполняет ручной расчёт через Runtime.Service.
+    /// </summary>
+    private async Task CalculateAsync()
+    {
+        if (_selectedDefinition is null)
+            return;
+
+        _isLoading = true;
+        _result = null;
+        _statusText = "";
+
+        try
+        {
+            _result = await CalcApi.TestAsync(
+                _selectedDefinition.Code,
+                BuildParameterValues(),
+                _includeTrace);
+        }
+        catch (Exception ex)
+        {
+            ShowError("Cannot execute calculation: " + ex.Message);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Формирует универсальный набор значений для API.
+    /// Пустые nullable-поля не отправляются и будут обработаны как missing.
+    /// </summary>
+    private Dictionary<string, object?> BuildParameterValues()
+    {
+        var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        if (_selectedDefinition is null)
+            return result;
+
+        foreach (var parameter in _selectedDefinition.Parameters)
+        {
+            var editor = _parameterValues[parameter.Key];
+
+            switch (parameter.Type)
+            {
+                case CalcParameterTypeDto.Number when editor.Number.HasValue:
+                    result[parameter.Key] = editor.Number.Value;
+                    break;
+
+                case CalcParameterTypeDto.Integer when editor.Integer.HasValue:
+                    result[parameter.Key] = editor.Integer.Value;
+                    break;
+
+                case CalcParameterTypeDto.Boolean:
+                    result[parameter.Key] = editor.Boolean;
+                    break;
+
+                case CalcParameterTypeDto.Selection:
+                case CalcParameterTypeDto.Text:
+                    if (!string.IsNullOrWhiteSpace(editor.Text))
+                        result[parameter.Key] = editor.Text.Trim();
+                    break;
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Создаёт состояние редактора из DefaultValue определения.
+    /// </summary>
+    private static CalcEditorValue CreateEditorValue(CalcParameterDefinitionDto parameter)
+    {
+        var editor = new CalcEditorValue();
+
+        if (!parameter.DefaultValue.HasValue)
+            return editor;
+
+        var value = parameter.DefaultValue.Value;
+
+        switch (parameter.Type)
+        {
+            case CalcParameterTypeDto.Number when value.TryGetDouble(out var number):
+                editor.Number = number;
+                break;
+
+            case CalcParameterTypeDto.Integer when value.TryGetInt32(out var integer):
+                editor.Integer = integer;
+                break;
+
+            case CalcParameterTypeDto.Boolean when value.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False:
+                editor.Boolean = value.GetBoolean();
+                break;
+
+            case CalcParameterTypeDto.Selection:
+            case CalcParameterTypeDto.Text:
+                editor.Text = value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
+                break;
+        }
+
+        return editor;
+    }
+
+    /// <summary>
+    /// Форматирует результат с количеством знаков из определения алгоритма.
+    /// </summary>
+    private string FormatOutput(CalcOutputDto output)
+    {
+        var decimals = _selectedDefinition?.Outputs
+            .FirstOrDefault(item => string.Equals(item.Key, output.Key, StringComparison.OrdinalIgnoreCase))
+            ?.Decimals ?? 3;
+
+        return output.Value.ToString($"F{decimals}");
+    }
+
+    /// <summary>
+    /// Показывает ошибку страницы и краткое всплывающее уведомление.
+    /// </summary>
+    private void ShowError(string message)
+    {
+        _statusStyle = AlertStyle.Danger;
+        _statusText = message;
+
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Error,
+            Summary = "Calculations",
+            Detail = message,
+            Duration = 4000
+        });
+    }
+
+    /// <summary>
+    /// Типизированное состояние одного динамического редактора.
+    /// </summary>
+    private sealed class CalcEditorValue
+    {
+        public double? Number { get; set; }
+        public int? Integer { get; set; }
+        public bool Boolean { get; set; }
+        public string? Text { get; set; }
+    }
+}
