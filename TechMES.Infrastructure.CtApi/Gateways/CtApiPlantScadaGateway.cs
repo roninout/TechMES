@@ -353,14 +353,10 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
                 }
             }
 
-            /*
-             * Один неправильный тег не должен отключать весь CtApi adapter.
-             * Состояние меняем на Disconnected только когда не удалось
-             * прочитать ни одного тега из непустого batch.
-             */
-            if (items.Count > 0 && items.All(item => !item.Success))
-                SetState(PlantScadaConnectionStatus.Disconnected, "All tags in the batch read failed.");
-
+             // Ошибки отдельных тегов не изменяют состояние CtApi-соединения.
+             // Неправильное имя тега не означает потерю связи с сервером.
+             //
+             // Состояние Connected/Disconnected определяет отдельный health probe.
             return BuildBatchResponse(tagNames.Count, normalizedNames.Count, readAtUtc, items);
         }
         finally

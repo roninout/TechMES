@@ -10,6 +10,8 @@ namespace TechMES.Calc.Service.Runtime;
 /// </summary>
 public sealed class RuntimeCalcClient(HttpClient httpClient) : IRuntimeCalcClient
 {
+    private const int MaximumBatchSize = 500;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -38,15 +40,64 @@ public sealed class RuntimeCalcClient(HttpClient httpClient) : IRuntimeCalcClien
     }
 
     /// <summary>
-    /// Передаёт набор тегов Runtime одним HTTP-запросом.
+    /// Читает уникальные теги через один или несколько ограниченных batch.
+    ///
+    /// При количестве до 500 тегов выполняется ровно один HTTP-запрос.
     /// </summary>
     public async Task<ScadaTagBatchReadResponse> ReadTagsAsync(IReadOnlyCollection<string> tagNames, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(tagNames);
 
+        var normalizedNames = tagNames
+            .Select(tagName => (tagName ?? "").Trim())
+            .Where(tagName => tagName.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalizedNames.Count == 0)
+        {
+            return new ScadaTagBatchReadResponse
+            {
+                ReadAtUtc = DateTimeOffset.UtcNow,
+                RequestedCount = tagNames.Count
+            };
+        }
+
+        var items = new List<ScadaTagBatchReadItem>(normalizedNames.Count);
+        var latestReadAtUtc = DateTimeOffset.MinValue;
+
+        foreach (var chunk in normalizedNames.Chunk(MaximumBatchSize))
+        {
+            var response = await ReadTagChunkAsync(chunk, ct);
+            items.AddRange(response.Items);
+
+            if (response.ReadAtUtc > latestReadAtUtc)
+                latestReadAtUtc = response.ReadAtUtc;
+        }
+
+        return new ScadaTagBatchReadResponse
+        {
+            ReadAtUtc = latestReadAtUtc,
+            RequestedCount = tagNames.Count,
+            UniqueCount = normalizedNames.Count,
+            SuccessCount = items.Count(item => item.Success),
+            FailureCount = items.Count(item => !item.Success),
+            Items = items
+        };
+    }
+
+    /// <summary>
+    /// Выполняет один HTTP batch размером не более 500 тегов.
+    /// </summary>
+    private async Task<ScadaTagBatchReadResponse> ReadTagChunkAsync(IReadOnlyCollection<string> tagNames, CancellationToken ct)
+    {
         var request = new ScadaTagBatchReadRequest { TagNames = tagNames.ToList() };
 
-        using var response = await httpClient.PostAsJsonAsync("api/scada/tags/read-batch", request, JsonOptions, ct);
+        using var response = await httpClient.PostAsJsonAsync(
+            "api/scada/tags/read-batch",
+            request,
+            JsonOptions,
+            ct);
 
         if (!response.IsSuccessStatusCode)
         {

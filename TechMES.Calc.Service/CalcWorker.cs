@@ -1,59 +1,75 @@
-﻿using Microsoft.Extensions.Hosting;
+﻿using System.Globalization;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TechMES.Calc.Abstractions;
+using TechMES.Calc.Service.Execution;
 using TechMES.Calc.Service.Runtime;
 using TechMES.Calc.Service.Settings;
 using TechMES.Contracts.Calc;
-using TechMES.Contracts.Scada;
 
 namespace TechMES.Calc.Service;
 
 /// <summary>
-/// Фоновая служба расчётов TechMES.
+/// Фоновая служба shadow-расчётов TechMES.
 ///
-/// На текущем этапе служба:
-/// - загружает configuration snapshot;
-/// - проверяет локальную совместимость алгоритмов;
-/// - один раз читает все уникальные Tag-входы новой конфигурации.
-///
-/// Расчёты и запись результатов ещё не выполняются.
+/// Служба периодически обновляет configuration snapshot,
+/// запускает задания по их PeriodMs и не записывает результаты в SCADA.
 /// </summary>
-public sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient runtimeClient, CalculationCatalog localCatalog, IOptions<CalcRuntimeClientOptions> options) : BackgroundService
+internal sealed class CalcWorker(ILogger<CalcWorker> logger,IRuntimeCalcClient runtimeClient,CalculationCatalog localCatalog,CalcExecutionEngine executionEngine,IOptions<CalcRuntimeClientOptions> runtimeOptions,IOptions<CalcExecutionOptions> executionOptions) : BackgroundService
 {
+    private readonly Dictionary<long, CalcScheduledJobState> _scheduledJobs = [];
     private string? _lastSnapshotVersion;
+    private DateTimeOffset _nextConfigurationRefreshUtc = DateTimeOffset.MinValue;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var refreshPeriod = TimeSpan.FromSeconds(options.Value.ConfigurationRefreshSeconds);
+        var schedulerTick = TimeSpan.FromMilliseconds(
+            executionOptions.Value.SchedulerTickMilliseconds);
 
         logger.LogInformation(
-            "TechMES Calc Service started. Runtime={RuntimeAddress}, ConfigurationRefresh={RefreshSeconds} sec.",
-            options.Value.BaseAddress,
-            options.Value.ConfigurationRefreshSeconds);
+            "TechMES Calc Service started. Runtime={RuntimeAddress}, ConfigurationRefresh={RefreshSeconds} sec, SchedulerTick={SchedulerTick} ms.",
+            runtimeOptions.Value.BaseAddress,
+            runtimeOptions.Value.ConfigurationRefreshSeconds,
+            executionOptions.Value.SchedulerTickMilliseconds);
 
         try
         {
-            await RefreshConfigurationAsync(stoppingToken);
+            using var timer = new PeriodicTimer(schedulerTick);
 
-            using var timer = new PeriodicTimer(refreshPeriod);
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                var nowUtc = DateTimeOffset.UtcNow;
 
-            while (await timer.WaitForNextTickAsync(stoppingToken))
-                await RefreshConfigurationAsync(stoppingToken);
+                await RefreshConfigurationIfDueAsync(nowUtc, stoppingToken);
+                await ExecuteDueJobsAsync(nowUtc, stoppingToken);
+
+                if (!await timer.WaitForNextTickAsync(stoppingToken))
+                    break;
+            }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Нормальное завершение Windows-службы.
+            // Нормальная остановка Windows-службы.
         }
 
         logger.LogInformation("TechMES Calc Service stopped.");
     }
 
     /// <summary>
-    /// Принимает новый snapshot и выполняет первое контрольное batch-чтение.
+    /// Обновляет snapshot с заданной периодичностью.
+    ///
+    /// При временной ошибке Runtime последняя принятая конфигурация
+    /// продолжает выполняться.
     /// </summary>
-    private async Task RefreshConfigurationAsync(CancellationToken stoppingToken)
+    private async Task RefreshConfigurationIfDueAsync(DateTimeOffset nowUtc, CancellationToken stoppingToken)
     {
+        if (nowUtc < _nextConfigurationRefreshUtc)
+            return;
+
+        _nextConfigurationRefreshUtc = nowUtc.AddSeconds(
+            runtimeOptions.Value.ConfigurationRefreshSeconds);
+
         try
         {
             var snapshot = await runtimeClient.GetConfigurationSnapshotAsync(stoppingToken);
@@ -62,32 +78,17 @@ public sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient ru
                 return;
 
             var compatibleJobs = ValidateLocalCompatibility(snapshot);
-            var tagNames = GetUniqueTagNames(compatibleJobs);
+            ApplySnapshot(compatibleJobs, nowUtc);
 
-            if (tagNames.Count > 0)
-            {
-                var batch = await runtimeClient.ReadTagsAsync(tagNames, stoppingToken);
-                LogBatchResult(batch);
-            }
-            else
-            {
-                logger.LogInformation("Calculation configuration does not contain SCADA Tag inputs.");
-            }
-
-            /*
-             * Версию принимаем только после успешного HTTP batch-запроса.
-             * При сетевой ошибке следующий refresh повторит загрузку и чтение.
-             */
             _lastSnapshotVersion = snapshot.Version;
 
             logger.LogInformation(
-                "Calculation configuration accepted. Version={Version}, Enabled={EnabledCount}, RuntimeAccepted={AcceptedCount}, LocalCompatible={CompatibleCount}, Issues={IssueCount}, UniqueTags={UniqueTagCount}",
+                "Calculation configuration accepted. Version={Version}, Enabled={EnabledCount}, RuntimeAccepted={AcceptedCount}, LocalCompatible={CompatibleCount}, Issues={IssueCount}.",
                 snapshot.Version,
                 snapshot.EnabledJobCount,
                 snapshot.Jobs.Count,
                 compatibleJobs.Count,
-                snapshot.Issues.Count,
-                tagNames.Count);
+                snapshot.Issues.Count);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -95,12 +96,14 @@ public sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient ru
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Cannot load or verify calculation configuration from Runtime.Service.");
+            logger.LogWarning(
+                ex,
+                "Cannot refresh calculation configuration. The last accepted snapshot remains active.");
         }
     }
 
     /// <summary>
-    /// Оставляет только задания, поддерживаемые локальной библиотекой.
+    /// Оставляет задания, совместимые с локальной TechMES.Calc.
     /// </summary>
     private IReadOnlyList<CalcExecutionJobDto> ValidateLocalCompatibility(CalcConfigurationSnapshotDto snapshot)
     {
@@ -121,7 +124,7 @@ public sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient ru
             if (!localCatalog.TryGet(job.DefinitionCode, out var definition) || definition is null)
             {
                 logger.LogError(
-                    "Calculation job is not supported by local Calc.Service. JobId={JobId}, Definition={DefinitionCode}",
+                    "Calculation job is not supported locally. JobId={JobId}, Definition={DefinitionCode}.",
                     job.Id,
                     job.DefinitionCode);
 
@@ -131,7 +134,7 @@ public sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient ru
             if (!string.Equals(definition.Version, job.DefinitionVersion, StringComparison.Ordinal))
             {
                 logger.LogError(
-                    "Calculation definition version mismatch. JobId={JobId}, Definition={DefinitionCode}, RuntimeVersion={RuntimeVersion}, LocalVersion={LocalVersion}",
+                    "Calculation definition version mismatch. JobId={JobId}, Definition={DefinitionCode}, RuntimeVersion={RuntimeVersion}, LocalVersion={LocalVersion}.",
                     job.Id,
                     job.DefinitionCode,
                     job.DefinitionVersion,
@@ -147,52 +150,142 @@ public sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient ru
     }
 
     /// <summary>
-    /// Собирает уникальные теги всех совместимых заданий.
+    /// Применяет новый snapshot к runtime-расписанию.
+    ///
+    /// Неизменённые Revision сохраняют существующее время следующего запуска.
+    /// Новые и изменённые задания запускаются немедленно.
     /// </summary>
-    private static IReadOnlyList<string> GetUniqueTagNames(IReadOnlyList<CalcExecutionJobDto> jobs)
+    private void ApplySnapshot(IReadOnlyList<CalcExecutionJobDto> jobs, DateTimeOffset nowUtc)
     {
-        return jobs
-            .SelectMany(job => job.Inputs)
-            .Where(input => input.SourceType == CalcInputSourceTypeDto.Tag)
-            .Select(input => input.TagName?.Trim())
-            .Where(tagName => !string.IsNullOrWhiteSpace(tagName))
-            .Select(tagName => tagName!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var acceptedIds = jobs.Select(job => job.Id).ToHashSet();
+        var added = 0;
+        var changed = 0;
+        var preserved = 0;
+
+        foreach (var job in jobs)
+        {
+            if (_scheduledJobs.TryGetValue(job.Id, out var existing) && existing.Matches(job))
+            {
+                existing.Refresh(job);
+                preserved++;
+                continue;
+            }
+
+            if (_scheduledJobs.ContainsKey(job.Id))
+                changed++;
+            else
+                added++;
+
+            _scheduledJobs[job.Id] = new CalcScheduledJobState(job, nowUtc);
+        }
+
+        var removedIds = _scheduledJobs.Keys
+            .Where(jobId => !acceptedIds.Contains(jobId))
             .ToList();
+
+        foreach (var jobId in removedIds)
+            _scheduledJobs.Remove(jobId);
+
+        logger.LogInformation(
+            "Calculation schedule updated. Added={Added}, Changed={Changed}, Preserved={Preserved}, Removed={Removed}, Active={Active}.",
+            added, changed, preserved, removedIds.Count, _scheduledJobs.Count);
     }
 
     /// <summary>
-    /// Выводит сводку и результаты первого контрольного чтения.
+    /// Запускает все задания, время которых наступило.
+    ///
+    /// Все их SCADA-входы читаются общим batch перед расчётами.
     /// </summary>
-    private void LogBatchResult(ScadaTagBatchReadResponse batch)
+    private async Task ExecuteDueJobsAsync(DateTimeOffset nowUtc, CancellationToken stoppingToken)
     {
-        logger.LogInformation(
-            "SCADA batch read completed. Requested={RequestedCount}, Unique={UniqueCount}, Success={SuccessCount}, Failed={FailureCount}, ReadAtUtc={ReadAtUtc}",
-            batch.RequestedCount,
-            batch.UniqueCount,
-            batch.SuccessCount,
-            batch.FailureCount,
-            batch.ReadAtUtc);
+        var dueStates = _scheduledJobs.Values
+            .Where(state => state.IsDue(nowUtc))
+            .OrderBy(state => state.Job.SortOrder)
+            .ThenBy(state => state.Job.Id)
+            .ToList();
 
-        foreach (var item in batch.Items)
+        if (dueStates.Count == 0)
+            return;
+
+        var requests = dueStates
+            .Select(state => new CalcJobExecutionRequest(
+                state.Job,
+                state.NextCycleNumber))
+            .ToList();
+
+        try
         {
-            if (item.Success)
+            var results = await executionEngine.ExecuteAsync(requests, stoppingToken);
+
+            foreach (var result in results)
+                LogExecutionResult(result);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Shadow calculation cycle failed before individual job results were produced.");
+        }
+        finally
+        {
+            if (!stoppingToken.IsCancellationRequested)
             {
-                logger.LogInformation(
-                    "SCADA tag read. Tag={TagName}, Value={Value}, Quality={Quality}, TimestampUtc={TimestampUtc}",
-                    item.TagName,
-                    item.Value,
-                    item.Quality,
-                    item.TimestampUtc);
-            }
-            else
-            {
-                logger.LogWarning(
-                    "SCADA tag read failed. Tag={TagName}, Quality={Quality}, Error={Error}",
-                    item.TagName,
-                    item.Quality,
-                    item.Error);
+                var completedAtUtc = DateTimeOffset.UtcNow;
+
+                foreach (var state in dueStates)
+                    state.MarkAttemptCompleted(completedAtUtc);
             }
         }
+    }
+
+    /// <summary>
+    /// Выводит результат одной попытки расчёта.
+    /// </summary>
+    private void LogExecutionResult(CalcJobExecutionResult result)
+    {
+        if (result.Status == CalcJobExecutionStatus.Success)
+        {
+            var outputs = string.Join(
+                ", ",
+                result.Outputs.Select(output =>
+                    $"{output.Key}={output.Value.ToString("G17", CultureInfo.InvariantCulture)}"));
+
+            logger.LogInformation(
+                "Shadow calculation succeeded. JobId={JobId}, Name={JobName}, Cycle={CycleNumber}, Revision={Revision}, Definition={DefinitionCode}, DurationMs={DurationMs}, Outputs={Outputs}.",
+                result.JobId,
+                result.JobName,
+                result.CycleNumber,
+                result.Revision,
+                result.DefinitionCode,
+                result.DurationMs,
+                outputs);
+
+            return;
+        }
+
+        if (result.Status == CalcJobExecutionStatus.Skipped)
+        {
+            logger.LogWarning(
+                "Shadow calculation skipped. JobId={JobId}, Name={JobName}, Cycle={CycleNumber}, Code={ReasonCode}, Reason={ReasonMessage}.",
+                result.JobId,
+                result.JobName,
+                result.CycleNumber,
+                result.ReasonCode,
+                result.ReasonMessage);
+
+            return;
+        }
+
+        logger.LogError(
+            "Shadow calculation failed. JobId={JobId}, Name={JobName}, Cycle={CycleNumber}, Code={ReasonCode}, Error={ReasonMessage}.",
+            result.JobId,
+            result.JobName,
+            result.CycleNumber,
+            result.ReasonCode,
+            result.ReasonMessage);
     }
 }
