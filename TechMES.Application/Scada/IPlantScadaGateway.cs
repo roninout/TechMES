@@ -4,45 +4,37 @@ namespace TechMES.Application.Scada;
 
 /// <summary>
 /// Порт приложения для работы с Plant SCADA.
-/// 
-/// Runtime.Service будет использовать только этот интерфейс.
-/// Конкретная реализация может быть:
-/// - MockPlantScadaGateway для разработки;
-/// - CtApiPlantScadaGateway для реального Plant SCADA;
-/// - другой adapter в будущем.
+///
+/// Runtime.Service зависит только от этого интерфейса.
+/// Реализацией может быть CtApi, Mock или Disabled adapter.
 /// </summary>
 public interface IPlantScadaGateway
 {
     /// <summary>
-    /// Инициализация adapter-а.
-    /// 
-    /// Для CtApi здесь будет:
-    /// - поиск CtApi.dll;
-    /// - настройка DLL directory;
-    /// - открытие соединения;
-    /// - запуск health monitor.
+    /// Инициализирует выбранный Plant SCADA adapter.
     /// </summary>
     Task InitializeAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Получить состояние подключения к Plant SCADA.
+    /// Возвращает текущее состояние подключения.
     /// </summary>
     Task<PlantScadaHealthResponse> GetHealthAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Прочитать tag по имени.
-    /// 
-    /// Пример tagName:
-    /// S01_H01_P01_RUN
-    /// или реальное имя tag-а после TagInfo.
+    /// Читает один тег. Используется для диагностики.
     /// </summary>
     Task<ScadaTagReadResponse> ReadTagAsync(string tagName, CancellationToken ct = default);
 
     /// <summary>
-    /// Записать значение в tag.
-    /// 
-    /// Все записи должны идти через Runtime.Service,
-    /// чтобы потом можно было централизованно проверять права и логировать действия.
+    /// Читает набор тегов за один логический вызов gateway.
+    ///
+    /// CtApi-реализация удерживает общий CtApi gate один раз
+    /// на весь batch, а не для каждого отдельного тега.
+    /// </summary>
+    Task<ScadaTagBatchReadResponse> ReadTagsAsync(IReadOnlyCollection<string> tagNames, CancellationToken ct = default);
+
+    /// <summary>
+    /// Записывает одно значение через выбранный adapter.
     /// </summary>
     Task<ScadaTagWriteResponse> WriteTagAsync(ScadaTagWriteRequest request, CancellationToken ct = default);
 }

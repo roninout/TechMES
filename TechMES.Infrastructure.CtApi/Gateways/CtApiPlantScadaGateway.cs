@@ -284,6 +284,108 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
     }
 
     /// <summary>
+    /// Пакетно читает набор SCADA-тегов.
+    ///
+    /// Общий CtApi gate захватывается один раз на весь запрос.
+    /// Теги читаются последовательно, потому что CtApi нельзя безопасно
+    /// вызывать параллельно из нескольких потоков.
+    /// </summary>
+    public async Task<ScadaTagBatchReadResponse> ReadTagsAsync(IReadOnlyCollection<string> tagNames, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(tagNames);
+
+        var normalizedNames = ScadaTagBatchHelper.NormalizeTagNames(tagNames);
+        var readAtUtc = DateTimeOffset.UtcNow;
+
+        if (_status != PlantScadaConnectionStatus.Connected)
+        {
+            var disconnectedItems = normalizedNames.Select(tagName => new ScadaTagBatchReadItem
+            {
+                TagName = tagName,
+                TimestampUtc = readAtUtc,
+                Quality = ScadaTagQuality.Bad,
+                Success = false,
+                Error = "CtApi is not connected. " + _lastMessage
+            }).ToList();
+
+            return BuildBatchResponse(tagNames.Count, normalizedNames.Count, readAtUtc, disconnectedItems);
+        }
+
+        var items = new List<ScadaTagBatchReadItem>(normalizedNames.Count);
+
+        await _apiGate.WaitAsync(ct);
+
+        try
+        {
+            foreach (var tagName in normalizedNames)
+            {
+                try
+                {
+                    var value = await _nativeClient.TagReadAsync(tagName, ct);
+
+                    items.Add(new ScadaTagBatchReadItem
+                    {
+                        TagName = tagName,
+                        Value = value,
+                        TimestampUtc = DateTimeOffset.UtcNow,
+
+                        // Текущее CtApi API возвращает значение, но не нативное quality.
+                        Quality = ScadaTagQuality.Unknown,
+                        Success = true
+                    });
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Ошибка batch TagRead. Tag={TagName}", tagName);
+
+                    items.Add(new ScadaTagBatchReadItem
+                    {
+                        TagName = tagName,
+                        TimestampUtc = DateTimeOffset.UtcNow,
+                        Quality = ScadaTagQuality.Bad,
+                        Success = false,
+                        Error = ex.Message
+                    });
+                }
+            }
+
+            /*
+             * Один неправильный тег не должен отключать весь CtApi adapter.
+             * Состояние меняем на Disconnected только когда не удалось
+             * прочитать ни одного тега из непустого batch.
+             */
+            if (items.Count > 0 && items.All(item => !item.Success))
+                SetState(PlantScadaConnectionStatus.Disconnected, "All tags in the batch read failed.");
+
+            return BuildBatchResponse(tagNames.Count, normalizedNames.Count, readAtUtc, items);
+        }
+        finally
+        {
+            _apiGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Формирует сводный ответ пакетного чтения.
+    /// </summary>
+    private static ScadaTagBatchReadResponse BuildBatchResponse(int requestedCount, int uniqueCount, DateTimeOffset readAtUtc, List<ScadaTagBatchReadItem> items)
+    {
+        return new ScadaTagBatchReadResponse
+        {
+            ReadAtUtc = readAtUtc,
+            RequestedCount = requestedCount,
+            UniqueCount = uniqueCount,
+            SuccessCount = items.Count(item => item.Success),
+            FailureCount = items.Count(item => !item.Success),
+            Items = items
+        };
+    }
+
+    /// <summary>
     /// Записывает один SCADA tag, если запись разрешена настройкой CtApi:AllowWrites.
     /// </summary>
     public async Task<ScadaTagWriteResponse> WriteTagAsync(ScadaTagWriteRequest request, CancellationToken ct = default)

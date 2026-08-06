@@ -78,6 +78,54 @@ public sealed class MockPlantScadaGateway : IPlantScadaGateway
     }
 
     /// <summary>
+    /// Читает набор тегов из in-memory Mock-хранилища.
+    /// </summary>
+    public Task<ScadaTagBatchReadResponse> ReadTagsAsync(IReadOnlyCollection<string> tagNames, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(tagNames);
+
+        var normalizedNames = ScadaTagBatchHelper.NormalizeTagNames(tagNames);
+        var readAtUtc = DateTimeOffset.UtcNow;
+        var items = new List<ScadaTagBatchReadItem>(normalizedNames.Count);
+
+        foreach (var tagName in normalizedNames)
+        {
+            if (_tags.TryGetValue(tagName, out var value))
+            {
+                items.Add(new ScadaTagBatchReadItem
+                {
+                    TagName = tagName,
+                    Value = value,
+                    TimestampUtc = DateTimeOffset.UtcNow,
+                    Quality = ScadaTagQuality.Good,
+                    Success = true
+                });
+            }
+            else
+            {
+                items.Add(new ScadaTagBatchReadItem
+                {
+                    TagName = tagName,
+                    TimestampUtc = DateTimeOffset.UtcNow,
+                    Quality = ScadaTagQuality.Bad,
+                    Success = false,
+                    Error = "Mock SCADA tag was not found."
+                });
+            }
+        }
+
+        return Task.FromResult(new ScadaTagBatchReadResponse
+        {
+            ReadAtUtc = readAtUtc,
+            RequestedCount = tagNames.Count,
+            UniqueCount = normalizedNames.Count,
+            SuccessCount = items.Count(item => item.Success),
+            FailureCount = items.Count(item => !item.Success),
+            Items = items
+        });
+    }
+
+    /// <summary>
     /// Записывает tag в in-memory словарь.
     /// </summary>
     public Task<ScadaTagWriteResponse> WriteTagAsync(ScadaTagWriteRequest request, CancellationToken ct = default)

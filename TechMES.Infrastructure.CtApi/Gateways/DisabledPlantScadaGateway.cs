@@ -48,6 +48,37 @@ public sealed class DisabledPlantScadaGateway : IPlantScadaGateway
     }
 
     /// <summary>
+    /// Возвращает контролируемую ошибку для каждого запрошенного тега,
+    /// потому что Plant SCADA integration отключена.
+    /// </summary>
+    public Task<ScadaTagBatchReadResponse> ReadTagsAsync(IReadOnlyCollection<string> tagNames, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(tagNames);
+
+        var normalizedNames = ScadaTagBatchHelper.NormalizeTagNames(tagNames);
+        var readAtUtc = DateTimeOffset.UtcNow;
+
+        var items = normalizedNames.Select(tagName => new ScadaTagBatchReadItem
+        {
+            TagName = tagName,
+            TimestampUtc = readAtUtc,
+            Quality = ScadaTagQuality.Bad,
+            Success = false,
+            Error = "Plant SCADA adapter is disabled."
+        }).ToList();
+
+        return Task.FromResult(new ScadaTagBatchReadResponse
+        {
+            ReadAtUtc = readAtUtc,
+            RequestedCount = tagNames.Count,
+            UniqueCount = normalizedNames.Count,
+            SuccessCount = 0,
+            FailureCount = items.Count,
+            Items = items
+        });
+    }
+
+    /// <summary>
     /// Запрещает запись tag-а, потому что CtApi provider выключен.
     /// </summary>
     public Task<ScadaTagWriteResponse> WriteTagAsync(ScadaTagWriteRequest request, CancellationToken ct = default)

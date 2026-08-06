@@ -4,66 +4,72 @@ using TechMES.Contracts.Scada;
 namespace TechMES.Runtime.Service.Endpoints;
 
 /// <summary>
-/// Низкоуровневое SCADA API для диагностики и будущего configurator-а.
-/// Основные модули WEB обычно используют более высокоуровневые endpoints,
-/// например ParamEndpoints, а не читают tags напрямую.
+/// Низкоуровневое SCADA API Runtime.Service.
 /// </summary>
 public static class ScadaEndpoints
 {
+    private const int MaximumBatchTagCount = 500;
+
     /// <summary>
-    /// Подключает health, read tag и write tag endpoints выбранного Plant SCADA adapter-а.
+    /// Подключает health, одиночное и пакетное чтение, а также запись тега.
     /// </summary>
     public static IEndpointRouteBuilder MapScadaEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/scada/health", GetScadaHealthAsync);
         app.MapGet("/api/scada/tags/{tagName}", ReadTagAsync);
+        app.MapPost("/api/scada/tags/read-batch", ReadTagsAsync);
         app.MapPost("/api/scada/tags/write", WriteTagAsync);
 
         return app;
     }
 
-    /// <summary>
-    /// Возвращает состояние Plant SCADA adapter-а: provider, connection и ошибку, если она есть.
-    /// </summary>
-    private static async Task<IResult> GetScadaHealthAsync(
-        IPlantScadaGateway plantScadaGateway,
-        CancellationToken ct)
+    private static async Task<IResult> GetScadaHealthAsync(IPlantScadaGateway gateway, CancellationToken ct)
     {
-        var health = await plantScadaGateway.GetHealthAsync(ct);
+        return Results.Ok(await gateway.GetHealthAsync(ct));
+    }
 
-        return Results.Ok(health);
+    private static async Task<IResult> ReadTagAsync(string tagName, IPlantScadaGateway gateway, CancellationToken ct)
+    {
+        var result = await gateway.ReadTagAsync(tagName, ct);
+        return result.Success ? Results.Ok(result) : Results.BadRequest(result);
     }
 
     /// <summary>
-    /// Читает один tag через выбранный adapter. Используется для диагностики,
-    /// потому что бизнес-модули обычно читают агрегированные DTO.
+    /// Читает до 500 тегов одним HTTP-запросом.
+    ///
+    /// Отдельные ошибки возвращаются внутри Items и не изменяют
+    /// HTTP status всего корректно сформированного batch-запроса.
     /// </summary>
-    private static async Task<IResult> ReadTagAsync(
-        string tagName,
-        IPlantScadaGateway plantScadaGateway,
-        CancellationToken ct)
+    private static async Task<IResult> ReadTagsAsync(ScadaTagBatchReadRequest? request, IPlantScadaGateway gateway, CancellationToken ct)
     {
-        var result = await plantScadaGateway.ReadTagAsync(tagName, ct);
+        if (request?.TagNames is null || request.TagNames.Count == 0)
+            return BatchError("scada.batch-empty", "At least one SCADA tag is required.");
 
-        return result.Success
-            ? Results.Ok(result)
-            : Results.BadRequest(result);
+        if (request.TagNames.Count > MaximumBatchTagCount)
+        {
+            return BatchError(
+                "scada.batch-too-large",
+                $"A maximum of {MaximumBatchTagCount} SCADA tags can be read in one request.");
+        }
+
+        if (request.TagNames.Any(string.IsNullOrWhiteSpace))
+            return BatchError("scada.batch-tag-empty", "SCADA tag names cannot be empty.");
+
+        return Results.Ok(await gateway.ReadTagsAsync(request.TagNames, ct));
     }
 
-    /// <summary>
-    /// Записывает один tag через выбранный adapter.
-    /// В рабочем Param write-flow используются дополнительные allow-list и audit,
-    /// поэтому этот endpoint стоит рассматривать как сервисный/диагностический.
-    /// </summary>
-    private static async Task<IResult> WriteTagAsync(
-        ScadaTagWriteRequest request,
-        IPlantScadaGateway plantScadaGateway,
-        CancellationToken ct)
+    private static async Task<IResult> WriteTagAsync(ScadaTagWriteRequest request, IPlantScadaGateway gateway, CancellationToken ct)
     {
-        var result = await plantScadaGateway.WriteTagAsync(request, ct);
+        var result = await gateway.WriteTagAsync(request, ct);
+        return result.Success ? Results.Ok(result) : Results.BadRequest(result);
+    }
 
-        return result.Success
-            ? Results.Ok(result)
-            : Results.BadRequest(result);
+    private static IResult BatchError(string code, string message)
+    {
+        return Results.BadRequest(new ScadaTagBatchReadErrorResponse
+        {
+            ErrorCode = code,
+            ErrorMessage = message
+        });
     }
 }

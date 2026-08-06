@@ -225,7 +225,7 @@ public static class CalcEndpoints
 
         return Results.Ok(new CalcConfigurationSnapshotDto
         {
-            Version = BuildSnapshotVersion(enabledJobs),
+            Version = BuildSnapshotVersion(enabledJobs, jobs, issues),
             GeneratedAtUtc = DateTimeOffset.UtcNow,
             EnabledJobCount = enabledJobs.Count,
             Jobs = jobs,
@@ -281,18 +281,26 @@ public static class CalcEndpoints
     }
 
     /// <summary>
-    /// Создаёт компактную версию snapshot по Id и Revision
-    /// всех enabled-заданий.
+    /// Формирует версию из Revision заданий и результата их проверки.
     ///
-    /// Revision увеличивается при каждом поддерживаемом изменении задания.
+    /// Благодаря этому Calc.Service увидит изменение snapshot не только
+    /// при редактировании job, но и когда Runtime начал принимать
+    /// или отклонять задание после обновления каталога/валидатора.
     /// </summary>
-    private static string BuildSnapshotVersion(IReadOnlyList<CalcJobDto> jobs)
+    private static string BuildSnapshotVersion(IReadOnlyList<CalcJobDto> enabledJobs, IReadOnlyList<CalcExecutionJobDto> acceptedJobs, IReadOnlyList<CalcConfigurationIssueDto> issues)
     {
-        var source = string.Join("|", jobs
-            .OrderBy(job => job.Id)
-            .Select(job => $"{job.Id}:{job.Revision}"));
+        var source = new StringBuilder();
 
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(source));
+        foreach (var job in enabledJobs.OrderBy(job => job.Id))
+            source.Append("job:").Append(job.Id).Append(':').Append(job.Revision).Append(';');
+
+        foreach (var job in acceptedJobs.OrderBy(job => job.Id))
+            source.Append("accepted:").Append(job.Id).Append(':').Append(job.DefinitionCode).Append(':').Append(job.DefinitionVersion).Append(';');
+
+        foreach (var issue in issues.OrderBy(issue => issue.JobId))
+            source.Append("issue:").Append(issue.JobId).Append(':').Append(issue.ErrorCode).Append(';');
+
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(source.ToString()));
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
