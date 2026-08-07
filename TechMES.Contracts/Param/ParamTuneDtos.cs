@@ -25,6 +25,21 @@ public sealed class ParamTuneSettingsResponse
 
     public bool SpTrendFound { get; set; }
 
+    /// <summary>
+    /// Online-тег фактического Kp, с которым выполняется ClosedLoop-тест.
+    /// Для него требуется только числовой TagRead; trend-reference не нужен.
+    /// </summary>
+    public string? TestKpTag { get; set; }
+
+    /// <summary>
+    /// true, если TestKpTag успешно прочитан как числовой online-тег.
+    /// </summary>
+    public bool TestKpFound { get; set; }
+
+    /// <summary>
+    /// Последний рассчитанный коэффициент Kp, сохранённый оператором.
+    /// Не путать с TestKpTag: TestKpTag нужен только для определения Ku.
+    /// </summary>
     public double? Kp { get; set; }
 
     public double? Ti { get; set; }
@@ -51,6 +66,11 @@ public sealed class ParamTuneSaveRequest
 
     public double? SpMax { get; set; }
 
+    /// <summary>
+    /// Online-тег фактического Kp для ClosedLoop-идентификации.
+    /// </summary>
+    public string? TestKpTag { get; set; }
+
     public double? Kp { get; set; }
 
     public double? Ti { get; set; }
@@ -59,21 +79,38 @@ public sealed class ParamTuneSaveRequest
 }
 
 /// <summary>
-/// Запрос проверки трендового тега PV/SP.
+/// Запрос проверки одного тега PID Tune.
+/// PV/SP требуют trend-reference.
+/// Test Kp проверяется только как online numeric tag.
 /// </summary>
 public sealed class ParamTuneCheckRequest
 {
     public string TagName { get; set; } = "";
+
+    /// <summary>
+    /// true для PV/SP, false для Test Kp.
+    /// </summary>
+    public bool RequireTrend { get; set; } = true;
 }
 
 /// <summary>
-/// Результат проверки трендового тега и текущего TagRead-значения.
+/// Результат проверки тега и текущего TagRead-значения.
 /// </summary>
 public sealed class ParamTuneCheckResponse
 {
     public string TagName { get; set; } = "";
 
+    /// <summary>
+    /// Итог проверки.
+    /// Для trend-тега: numeric TagRead + trend-reference.
+    /// Для online-тега: только numeric TagRead.
+    /// </summary>
     public bool Found { get; set; }
+
+    /// <summary>
+    /// Требовался ли trend-reference для этой проверки.
+    /// </summary>
+    public bool TrendRequired { get; set; } = true;
 
     public bool TrendFound { get; set; }
 
@@ -106,6 +143,12 @@ public sealed class ParamTuneRuntimeResponse
     public double? PvValue { get; set; }
 
     public double? SpValue { get; set; }
+
+    /// <summary>
+    /// Текущее online-значение Test Kp.
+    /// В тренд оно намеренно не добавляется.
+    /// </summary>
+    public double? TestKpValue { get; set; }
 
     public ParamTrendResponse Trend { get; set; } = new();
 

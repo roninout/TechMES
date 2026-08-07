@@ -30,14 +30,21 @@ public interface IEquipmentParamProvider
         CancellationToken ct = default);
 
     /// <summary>
-    /// Проверяет, что введенный тег PID Tune можно читать и использовать как trend.
+    /// Проверяет Tune-тег.
+    /// requireTrend=true используется для PV/SP:
+    /// тег должен читаться как число и иметь trend-reference.
+    ///
+    /// requireTrend=false используется для Test Kp:
+    /// достаточно текущего числового TagRead, trend-reference не запрашивается.
     /// </summary>
-    Task<ParamTuneCheckResponse> CheckTuneTrendTagAsync(
+    Task<ParamTuneCheckResponse> CheckTuneTagAsync(
         string tagName,
+        bool requireTrend,
         CancellationToken ct = default);
 
     /// <summary>
-    /// Читает Runtime-данные вкладки PID Tune для VGA: ManTune, PV/SP и тренды.
+    /// Читает Runtime-данные вкладки PID Tune для VGA:
+    /// ManTune, PV/SP, online Test Kp и тренды.
     /// </summary>
     Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(
         EquipmentDto equipment,

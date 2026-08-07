@@ -163,13 +163,15 @@ public sealed class PostgreSqlDatabaseBootstrapper
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
-
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         try
         {
             await ExecuteSchemaAsync(connection, transaction, MainSchemaSql, cancellationToken);
             await ExecuteSchemaAsync(connection, transaction, CalcSchemaSql, cancellationToken);
+
+             // equip_param_tune существовал до Test Kp. ADD COLUMN IF NOT EXISTS обновляет старую БД и безопасно выполняется повторно.
+            await EnsureParamTuneExtensionSchemaAsync(connection, transaction, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
         catch
@@ -179,6 +181,20 @@ public sealed class PostgreSqlDatabaseBootstrapper
         }
 
         _logger.LogInformation("PostgreSQL main TechMES and Calc schemas are ready.");
+    }
+
+    /// <summary>
+    /// Добавляет новые поля PID Tune без отдельной системы миграций.
+    /// DDL идемпотентен и подходит как для старой, так и для новой БД.
+    /// </summary>
+    private static async Task EnsureParamTuneExtensionSchemaAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        const string sql = """
+        ALTER TABLE public.equip_param_tune
+            ADD COLUMN IF NOT EXISTS test_kp_tag text NULL;
+        """;
+
+        await ExecuteSchemaAsync(connection, transaction, sql, cancellationToken);
     }
 
     /// <summary>

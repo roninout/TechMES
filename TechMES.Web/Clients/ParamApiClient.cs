@@ -102,38 +102,42 @@ public sealed class ParamApiClient
 
     /// <summary>
     /// Читает Runtime-данные вкладки PID Tune для VGA.
-    /// tuneSettings используется как временный черновик после Check: он не сохраняется в БД,
-    /// но позволяет сразу отобразить PV/SP в графике до нажатия Save.
+    ///
+    /// tuneSettings используется как временный черновик после Check:
+    /// PV/SP/Test Kp ещё не обязаны быть сохранены в БД,
+    /// но Runtime уже может показать тренды и online Test Kp.
     /// </summary>
-    public async Task<ParamTuneRuntimeResponse> GetTuneAsync(
-        string equipmentName,
-        int windowMinutes,
-        DateTime? fromUtc = null,
-        DateTime? toUtc = null,
-        CancellationToken ct = default,
-        ParamTuneSettingsResponse? tuneSettings = null)
+    public async Task<ParamTuneRuntimeResponse> GetTuneAsync(string equipmentName, int windowMinutes, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken ct = default, ParamTuneSettingsResponse? tuneSettings = null)
     {
         var client = CreateClient();
         var encodedName = Uri.EscapeDataString(equipmentName);
-        var queryParts = new List<string> { $"windowMinutes={windowMinutes}" };
+        var queryParts = new List<string>{$"windowMinutes={windowMinutes}"};
 
         void AddQuery(string name, string? value)
         {
             if (value is not null)
+            {
                 queryParts.Add($"{name}={Uri.EscapeDataString(value)}");
+            }
         }
 
         void AddQueryDouble(string name, double? value)
         {
             if (value.HasValue)
+            {
                 AddQuery(name, value.Value.ToString(CultureInfo.InvariantCulture));
+            }
         }
 
         if (fromUtc.HasValue)
+        {
             AddQuery("fromUtc", ToQueryUtc(fromUtc.Value));
+        }
 
         if (toUtc.HasValue)
+        {
             AddQuery("toUtc", ToQueryUtc(toUtc.Value));
+        }
 
         if (tuneSettings is not null)
         {
@@ -143,20 +147,21 @@ public sealed class ParamApiClient
             AddQuery("sp", tuneSettings.Sp);
             AddQueryDouble("spMin", tuneSettings.SpMin);
             AddQueryDouble("spMax", tuneSettings.SpMax);
+
+            // Test Kp передаётся как обычный online-тег. Никаких min/max и trend параметров для него нет.
+            AddQuery("testKpTag", tuneSettings.TestKpTag);
         }
 
         var query = string.Join("&", queryParts);
+        var result = await client.GetFromJsonAsync<ParamTuneRuntimeResponse>($"api/param/{encodedName}/tune?{query}", ct);
 
-        var result = await client.GetFromJsonAsync<ParamTuneRuntimeResponse>(
-            $"api/param/{encodedName}/tune?{query}",
-            ct);
-
-        return result ?? new ParamTuneRuntimeResponse
-        {
-            EquipmentName = equipmentName,
-            Supported = false,
-            Message = "Runtime Service returned empty PID Tune response."
-        };
+        return result
+            ?? new ParamTuneRuntimeResponse
+            {
+                EquipmentName = equipmentName,
+                Supported = false,
+                Message = "Runtime Service returned empty PID Tune response."
+            };
     }
 
     /// <summary>

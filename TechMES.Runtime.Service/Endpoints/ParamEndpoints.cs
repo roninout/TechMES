@@ -54,42 +54,63 @@ public static class ParamEndpoints
 
     /// <summary>
     /// Возвращает Runtime-данные вкладки PID Tune для VGA-оборудования.
+    /// PV/SP/Test Kp можно временно передать из WEB после Check,
+    /// не сохраняя черновик в PostgreSQL.
     /// </summary>
-    private static async Task<IResult> GetTuneAsync(
-        string equipmentName,
-        int? windowMinutes,
-        DateTime? fromUtc,
-        DateTime? toUtc,
-        string? pv,
-        double? pvMin,
-        double? pvMax,
-        string? sp,
-        double? spMin,
-        double? spMax,
-        IEquipmentCatalogProvider equipmentCatalog,
-        IEquipmentParamProvider paramProvider,
-        IParamTuneStore tuneStore,
-        CancellationToken ct)
+    private static async Task<IResult> GetTuneAsync(string equipmentName, int? windowMinutes, DateTime? fromUtc, DateTime? toUtc, string? pv, double? pvMin, double? pvMax, string? sp,double? spMin,
+        double? spMax, string? testKpTag, IEquipmentCatalogProvider equipmentCatalog, IEquipmentParamProvider paramProvider, IParamTuneStore tuneStore, CancellationToken ct)
     {
         var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
 
         if (equipment is null)
             return Results.NotFound();
 
-        var settings = await tuneStore.GetAsync(equipment.Name, ct)
-            ?? new ParamTuneSettingsResponse { EquipmentName = equipment.Name };
+        var settings = await tuneStore.GetAsync(equipment.Name, ct) ?? new ParamTuneSettingsResponse
+            {
+                EquipmentName = equipment.Name
+            };
 
-        ApplyTuneQueryOverrides(settings, pv, pvMin, pvMax, sp, spMin, spMax);
-
-        var result = await paramProvider.GetTuneRuntimeAsync(
-            equipment,
-            settings,
-            windowMinutes.GetValueOrDefault(30),
-            fromUtc,
-            toUtc,
-            ct);
+        ApplyTuneQueryOverrides(settings, pv, pvMin, pvMax, sp, spMin, spMax, testKpTag);
+        var result = await paramProvider.GetTuneRuntimeAsync(equipment, settings, windowMinutes.GetValueOrDefault(30), fromUtc, toUtc, ct);
 
         return Results.Ok(result);
+    }
+
+    /// <summary>
+    /// Подставляет проверенные в UI PV/SP/Test Kp теги в Runtime-расчет
+    /// без сохранения в PostgreSQL.
+    ///
+    /// PV/SP продолжают использоваться как trend-теги.
+    /// Test Kp используется только как online numeric tag.
+    /// </summary>
+    private static void ApplyTuneQueryOverrides(ParamTuneSettingsResponse settings, string? pv, double? pvMin, double? pvMax, string? sp, double? spMin, double? spMax, string? testKpTag)
+    {
+        if (pv is not null)
+        {
+            settings.Pv = string.IsNullOrWhiteSpace(pv) ? null : pv.Trim();
+        }
+
+        if (pvMin.HasValue)
+            settings.PvMin = pvMin;
+
+        if (pvMax.HasValue)
+            settings.PvMax = pvMax;
+
+        if (sp is not null)
+        {
+            settings.Sp = string.IsNullOrWhiteSpace(sp) ? null : sp.Trim();
+        }
+
+        if (spMin.HasValue)
+            settings.SpMin = spMin;
+
+        if (spMax.HasValue)
+            settings.SpMax = spMax;
+
+        if (testKpTag is not null)
+        {
+            settings.TestKpTag = string.IsNullOrWhiteSpace(testKpTag) ? null : testKpTag.Trim();
+        }
     }
 
     /// <summary>
@@ -125,14 +146,15 @@ public static class ParamEndpoints
     }
 
     /// <summary>
-    /// Проверяет, можно ли использовать введенный PV/SP тег во вкладке PID Tune.
+    /// Проверяет один Tune-тег.
+    ///
+    /// PV/SP приходят с RequireTrend=true:
+    /// требуется числовой TagRead и trend-reference.
+    ///
+    /// Test Kp приходит с RequireTrend=false:
+    /// требуется только числовой online TagRead.
     /// </summary>
-    private static async Task<IResult> CheckTuneAsync(
-        string equipmentName,
-        ParamTuneCheckRequest request,
-        IEquipmentCatalogProvider equipmentCatalog,
-        IEquipmentParamProvider paramProvider,
-        CancellationToken ct)
+    private static async Task<IResult> CheckTuneAsync(string equipmentName, ParamTuneCheckRequest request, IEquipmentCatalogProvider equipmentCatalog, IEquipmentParamProvider paramProvider, CancellationToken ct)
     {
         var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
 
@@ -145,14 +167,17 @@ public static class ParamEndpoints
             {
                 TagName = request.TagName,
                 Found = false,
+                TrendRequired = request.RequireTrend,
                 TrendFound = false,
                 Message = "PID Tune is supported only for VGA equipment."
             });
         }
 
-        var result = await paramProvider.CheckTuneTrendTagAsync(request.TagName, ct);
+        var result = await paramProvider.CheckTuneTagAsync(request.TagName, request.RequireTrend, ct);
+
         return Results.Ok(result);
     }
+
 
     /// <summary>
     /// Сохраняет PV/SP теги и их диапазоны для конкретного VGA.

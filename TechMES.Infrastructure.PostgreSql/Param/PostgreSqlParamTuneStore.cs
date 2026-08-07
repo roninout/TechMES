@@ -18,7 +18,8 @@ public sealed class PostgreSqlParamTuneStore : IParamTuneStore
         _connectionString =
             configuration.GetConnectionString("Default")
             ?? configuration["Database:ConnectionString"]
-            ?? throw new InvalidOperationException("PostgreSQL connection string is not configured.");
+            ?? throw new InvalidOperationException(
+                "PostgreSQL connection string is not configured.");
     }
 
     public async Task<ParamTuneSettingsResponse?> GetAsync(
@@ -31,20 +32,42 @@ public sealed class PostgreSqlParamTuneStore : IParamTuneStore
 
         await EnsureSchemaAsync(ct);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection =
+            new NpgsqlConnection(_connectionString);
+
         await connection.OpenAsync(ct);
 
         const string sql = """
-        SELECT equipment_name, pv, pv_min, pv_max, sp, sp_min, sp_max, kp, ti, td, updated_at
+        SELECT
+            equipment_name,
+            pv,
+            pv_min,
+            pv_max,
+            sp,
+            sp_min,
+            sp_max,
+            test_kp_tag,
+            kp,
+            ti,
+            td,
+            updated_at
         FROM public.equip_param_tune
         WHERE equipment_name = @equipment_name
         """;
 
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("equipment_name", name);
+        await using var command =
+            new NpgsqlCommand(sql, connection);
 
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        return await reader.ReadAsync(ct) ? Read(reader) : null;
+        command.Parameters.AddWithValue(
+            "equipment_name",
+            name);
+
+        await using var reader =
+            await command.ExecuteReaderAsync(ct);
+
+        return await reader.ReadAsync(ct)
+            ? Read(reader)
+            : null;
     }
 
     public async Task<ParamTuneSettingsResponse> SaveAsync(
@@ -53,19 +76,52 @@ public sealed class PostgreSqlParamTuneStore : IParamTuneStore
         CancellationToken ct = default)
     {
         var name = NormalizeEquipmentName(equipmentName);
+
         if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("Equipment name is required.", nameof(equipmentName));
+        {
+            throw new ArgumentException(
+                "Equipment name is required.",
+                nameof(equipmentName));
+        }
 
         await EnsureSchemaAsync(ct);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection =
+            new NpgsqlConnection(_connectionString);
+
         await connection.OpenAsync(ct);
 
         const string sql = """
         INSERT INTO public.equip_param_tune
-            (equipment_name, pv, pv_min, pv_max, sp, sp_min, sp_max, kp, ti, td, updated_at)
+        (
+            equipment_name,
+            pv,
+            pv_min,
+            pv_max,
+            sp,
+            sp_min,
+            sp_max,
+            test_kp_tag,
+            kp,
+            ti,
+            td,
+            updated_at
+        )
         VALUES
-            (@equipment_name, @pv, @pv_min, @pv_max, @sp, @sp_min, @sp_max, @kp, @ti, @td, now())
+        (
+            @equipment_name,
+            @pv,
+            @pv_min,
+            @pv_max,
+            @sp,
+            @sp_min,
+            @sp_max,
+            @test_kp_tag,
+            @kp,
+            @ti,
+            @td,
+            now()
+        )
         ON CONFLICT (equipment_name) DO UPDATE SET
             pv = EXCLUDED.pv,
             pv_min = EXCLUDED.pv_min,
@@ -73,100 +129,246 @@ public sealed class PostgreSqlParamTuneStore : IParamTuneStore
             sp = EXCLUDED.sp,
             sp_min = EXCLUDED.sp_min,
             sp_max = EXCLUDED.sp_max,
+            test_kp_tag = EXCLUDED.test_kp_tag,
             kp = EXCLUDED.kp,
             ti = EXCLUDED.ti,
             td = EXCLUDED.td,
             updated_at = now()
-        RETURNING equipment_name, pv, pv_min, pv_max, sp, sp_min, sp_max, kp, ti, td, updated_at
+        RETURNING
+            equipment_name,
+            pv,
+            pv_min,
+            pv_max,
+            sp,
+            sp_min,
+            sp_max,
+            test_kp_tag,
+            kp,
+            ti,
+            td,
+            updated_at
         """;
 
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("equipment_name", name);
-        command.Parameters.AddWithValue("pv", (object?)NormalizeText(request.Pv) ?? DBNull.Value);
-        command.Parameters.AddWithValue("pv_min", (object?)request.PvMin ?? DBNull.Value);
-        command.Parameters.AddWithValue("pv_max", (object?)request.PvMax ?? DBNull.Value);
-        command.Parameters.AddWithValue("sp", (object?)NormalizeText(request.Sp) ?? DBNull.Value);
-        command.Parameters.AddWithValue("sp_min", (object?)request.SpMin ?? DBNull.Value);
-        command.Parameters.AddWithValue("sp_max", (object?)request.SpMax ?? DBNull.Value);
-        command.Parameters.AddWithValue("kp", (object?)request.Kp ?? DBNull.Value);
-        command.Parameters.AddWithValue("ti", (object?)request.Ti ?? DBNull.Value);
-        command.Parameters.AddWithValue("td", (object?)request.Td ?? DBNull.Value);
+        await using var command =
+            new NpgsqlCommand(sql, connection);
 
-        await using var reader = await command.ExecuteReaderAsync(ct);
+        command.Parameters.AddWithValue(
+            "equipment_name",
+            name);
+
+        command.Parameters.AddWithValue(
+            "pv",
+            (object?)NormalizeText(request.Pv)
+            ?? DBNull.Value);
+
+        command.Parameters.AddWithValue(
+            "pv_min",
+            (object?)request.PvMin
+            ?? DBNull.Value);
+
+        command.Parameters.AddWithValue(
+            "pv_max",
+            (object?)request.PvMax
+            ?? DBNull.Value);
+
+        command.Parameters.AddWithValue(
+            "sp",
+            (object?)NormalizeText(request.Sp)
+            ?? DBNull.Value);
+
+        command.Parameters.AddWithValue(
+            "sp_min",
+            (object?)request.SpMin
+            ?? DBNull.Value);
+
+        command.Parameters.AddWithValue(
+            "sp_max",
+            (object?)request.SpMax
+            ?? DBNull.Value);
+
+        command.Parameters.AddWithValue(
+            "test_kp_tag",
+            (object?)NormalizeText(request.TestKpTag)
+            ?? DBNull.Value);
+
+        command.Parameters.AddWithValue(
+            "kp",
+            (object?)request.Kp
+            ?? DBNull.Value);
+
+        command.Parameters.AddWithValue(
+            "ti",
+            (object?)request.Ti
+            ?? DBNull.Value);
+
+        command.Parameters.AddWithValue(
+            "td",
+            (object?)request.Td
+            ?? DBNull.Value);
+
+        await using var reader =
+            await command.ExecuteReaderAsync(ct);
+
         if (await reader.ReadAsync(ct))
             return Read(reader);
 
-        return new ParamTuneSettingsResponse { EquipmentName = name };
+        return new ParamTuneSettingsResponse
+        {
+            EquipmentName = name
+        };
     }
 
-    private async Task EnsureSchemaAsync(CancellationToken ct)
+    /// <summary>
+    /// Создаёт таблицу для новой БД и отдельно добавляет test_kp_tag
+    /// в уже существующую таблицу.
+    ///
+    /// Это не миграция: DDL идемпотентен и выполняется один раз
+    /// при первом обращении к Tune-store после запуска Runtime.
+    /// </summary>
+    private async Task EnsureSchemaAsync(
+        CancellationToken ct)
     {
         if (_schemaEnsured)
             return;
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection =
+            new NpgsqlConnection(_connectionString);
+
         await connection.OpenAsync(ct);
 
         const string sql = """
-        CREATE TABLE IF NOT EXISTS public.equip_param_tune (
+        CREATE TABLE IF NOT EXISTS public.equip_param_tune
+        (
             equipment_name text PRIMARY KEY,
-            pv text NULL,
-            pv_min double precision NULL,
-            pv_max double precision NULL,
-            sp text NULL,
-            sp_min double precision NULL,
-            sp_max double precision NULL,
-            kp double precision NULL,
-            ti double precision NULL,
-            td double precision NULL,
-            updated_at timestamp without time zone NOT NULL DEFAULT now()
+            pv             text NULL,
+            pv_min         double precision NULL,
+            pv_max         double precision NULL,
+            sp             text NULL,
+            sp_min         double precision NULL,
+            sp_max         double precision NULL,
+            test_kp_tag    text NULL,
+            kp             double precision NULL,
+            ti             double precision NULL,
+            td             double precision NULL,
+            updated_at     timestamp without time zone NOT NULL DEFAULT now()
         );
+
+        ALTER TABLE public.equip_param_tune
+            ADD COLUMN IF NOT EXISTS test_kp_tag text NULL;
         """;
 
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command =
+            new NpgsqlCommand(sql, connection);
+
         await command.ExecuteNonQueryAsync(ct);
 
         _schemaEnsured = true;
     }
 
-    private static ParamTuneSettingsResponse Read(NpgsqlDataReader reader) => new()
+    private static ParamTuneSettingsResponse Read(
+        NpgsqlDataReader reader)
     {
-        EquipmentName = reader.GetString(reader.GetOrdinal("equipment_name")),
-        Pv = ReadString(reader, "pv"),
-        PvMin = ReadNullableDouble(reader, "pv_min"),
-        PvMax = ReadNullableDouble(reader, "pv_max"),
-        Sp = ReadString(reader, "sp"),
-        SpMin = ReadNullableDouble(reader, "sp_min"),
-        SpMax = ReadNullableDouble(reader, "sp_max"),
-        Kp = ReadNullableDouble(reader, "kp"),
-        Ti = ReadNullableDouble(reader, "ti"),
-        Td = ReadNullableDouble(reader, "td"),
-        UpdatedAt = ReadNullableDateTime(reader, "updated_at")
-    };
+        return new ParamTuneSettingsResponse
+        {
+            EquipmentName =
+                reader.GetString(
+                    reader.GetOrdinal("equipment_name")),
 
-    private static string NormalizeEquipmentName(string value) => (value ?? "").Trim();
+            Pv = ReadString(
+                reader,
+                "pv"),
 
-    private static string? NormalizeText(string? value)
+            PvMin = ReadNullableDouble(
+                reader,
+                "pv_min"),
+
+            PvMax = ReadNullableDouble(
+                reader,
+                "pv_max"),
+
+            Sp = ReadString(
+                reader,
+                "sp"),
+
+            SpMin = ReadNullableDouble(
+                reader,
+                "sp_min"),
+
+            SpMax = ReadNullableDouble(
+                reader,
+                "sp_max"),
+
+            TestKpTag = ReadString(
+                reader,
+                "test_kp_tag"),
+
+            Kp = ReadNullableDouble(
+                reader,
+                "kp"),
+
+            Ti = ReadNullableDouble(
+                reader,
+                "ti"),
+
+            Td = ReadNullableDouble(
+                reader,
+                "td"),
+
+            UpdatedAt = ReadNullableDateTime(
+                reader,
+                "updated_at")
+        };
+    }
+
+    private static string NormalizeEquipmentName(
+        string value)
+    {
+        return (value ?? "").Trim();
+    }
+
+    private static string? NormalizeText(
+        string? value)
     {
         var text = (value ?? "").Trim();
-        return text.Length == 0 ? null : text;
+
+        return text.Length == 0
+            ? null
+            : text;
     }
 
-    private static string? ReadString(NpgsqlDataReader reader, string name)
+    private static string? ReadString(
+        NpgsqlDataReader reader,
+        string name)
     {
-        var ordinal = reader.GetOrdinal(name);
-        return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        var ordinal =
+            reader.GetOrdinal(name);
+
+        return reader.IsDBNull(ordinal)
+            ? null
+            : reader.GetString(ordinal);
     }
 
-    private static double? ReadNullableDouble(NpgsqlDataReader reader, string name)
+    private static double? ReadNullableDouble(
+        NpgsqlDataReader reader,
+        string name)
     {
-        var ordinal = reader.GetOrdinal(name);
-        return reader.IsDBNull(ordinal) ? null : reader.GetDouble(ordinal);
+        var ordinal =
+            reader.GetOrdinal(name);
+
+        return reader.IsDBNull(ordinal)
+            ? null
+            : reader.GetDouble(ordinal);
     }
 
-    private static DateTime? ReadNullableDateTime(NpgsqlDataReader reader, string name)
+    private static DateTime? ReadNullableDateTime(
+        NpgsqlDataReader reader,
+        string name)
     {
-        var ordinal = reader.GetOrdinal(name);
-        return reader.IsDBNull(ordinal) ? null : reader.GetDateTime(ordinal);
+        var ordinal =
+            reader.GetOrdinal(name);
+
+        return reader.IsDBNull(ordinal)
+            ? null
+            : reader.GetDateTime(ordinal);
     }
 }
