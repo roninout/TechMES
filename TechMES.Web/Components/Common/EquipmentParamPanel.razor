@@ -3917,9 +3917,13 @@
     }
 
     /// <summary>
-    /// Сохраняет проверенные Tune-теги и диапазоны независимо от наличия нового Calculate.
-    /// Если текущий расчет валиден, сохраняются новые Kp/Ti/Td. Иначе сохраняются последние
-    /// коэффициенты из БД, чтобы обычное сохранение Settings не стирало предыдущий результат.
+    /// Сохраняет проверенные Tune-теги и диапазоны независимо от наличия Calculate.
+    ///
+    /// Новые Kp/Ti/Td сохраняются только тогда, когда существует успешная
+    /// автоматическая идентификация именно текущей модели.
+    ///
+    /// Для ClosedLoop дополнительно проверяется, что online Test Kp
+    /// не изменился после последнего Calculate.
     /// </summary>
     private async Task SaveTuneAsync()
     {
@@ -3927,13 +3931,41 @@
             return;
 
         var settings = EnsureTuneSettings();
-        var tuneResult = CalculateTune();
 
+        var hasCurrentIdentification =
+            _tuneIdentification?.IsSuccess == true &&
+            string.Equals(_tuneIdentification.ProcessModel, _tuneCalculationModel, StringComparison.Ordinal);
+
+        /*
+         * Для ClosedLoop Ku равен Test Kp в момент Calculate.
+         * Если online Kp после расчета изменился, старый Ku уже нельзя
+         * считать актуальным результатом текущего испытания.
+         */
+        if (hasCurrentIdentification && _tuneCalculationModel == TuneModelClosedLoop)
+        {
+            var identifiedKu = _tuneIdentification?.Ku;
+            var currentTestKp = _tune?.TestKpValue;
+
+            hasCurrentIdentification =
+                identifiedKu.HasValue &&
+                currentTestKp.HasValue &&
+                Math.Abs(identifiedKu.Value - currentTestKp.Value) <=
+                Math.Max(1e-9, Math.Abs(currentTestKp.Value) * 1e-9);
+        }
+
+        var tuneResult = hasCurrentIdentification
+            ? CalculateTune()
+            : PidTuneCalculationResult.Invalid("No current PID Tune calculation.");
+
+        /*
+         * Если Calculate после изменения исходных условий не выполнялся,
+         * сохраняем только Settings, а последние Kp/Ti/Td в БД не трогаем.
+         */
         var kp = tuneResult.IsValid ? tuneResult.Kp : settings.Kp;
         var ti = tuneResult.IsValid ? tuneResult.Ti : settings.Ti;
         var td = tuneResult.IsValid ? tuneResult.Td : settings.Td;
 
-        // Эти флаги являются только результатом текущего Runtime Check и в БД не хранятся.
+        // Check-флаги являются только Runtime/UI-состоянием и в БД не хранятся.
         var pvTrendFound = settings.PvTrendFound;
         var spTrendFound = settings.SpTrendFound;
         var testKpFound = settings.TestKpFound;
@@ -3956,6 +3988,10 @@
                 Td = td
             }, GetActiveLoadToken());
 
+            /*
+             * Store возвращает persistent-поля.
+             * Восстанавливаем результат текущего Check.
+             */
             saved.PvTrendFound = pvTrendFound;
             saved.SpTrendFound = spTrendFound;
             saved.TestKpFound = testKpFound;
@@ -3968,6 +4004,7 @@
             };
 
             _tune.Settings = saved;
+
             _tuneSettingsStatusText = tuneResult.IsValid
                 ? "PID Tune settings and calculated coefficients saved."
                 : "PID Tune settings saved. Calculated coefficients were not changed.";
@@ -3988,6 +4025,7 @@
         catch (Exception ex)
         {
             _tuneSettingsStatusText = "Cannot save Tune settings: " + ex.Message;
+
             NotificationService.Notify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
@@ -3999,6 +4037,7 @@
         finally
         {
             _isTuneSaving = false;
+
             if (!_isDisposed)
                 StateHasChanged();
         }
