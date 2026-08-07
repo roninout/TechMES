@@ -80,20 +80,28 @@ public static class PidTuneCalculator
 
     /// <summary>
     /// Методы для интегрирующего процесса: Ki, Theta и, кроме Ziegler-Nichols, TauC.
-    /// Averaging PI является пользовательским вариантом из исходного Excel,
-    /// а не отдельным стандартным методом настройки.
+    ///
+    /// Важно: для SIMC/Averaging допускается Theta=0.
+    /// Положительная Theta обязательна только для Ziegler-Nichols,
+    /// потому что его формула содержит деление на Theta.
     /// </summary>
     private static PidTuneCalculationResult CalculateIntegrating(PidTuneCalculationRequest request)
     {
         if (!TryNonZero(request.IntegratingKi, out var ki)
-            || !TryPositive(request.IntegratingTheta, out var theta))
+            || !TryNonNegative(request.IntegratingTheta, out var theta))
         {
             return PidTuneCalculationResult.Invalid(
-                "Enter non-zero ki and positive Theta.");
+                "Enter non-zero ki and non-negative Theta.");
         }
 
         if (request.TuneMethod == PidTuneMethod.IntegratingZieglerNicholsPi)
         {
+            if (theta <= 0)
+            {
+                return PidTuneCalculationResult.Invalid(
+                    "Ziegler-Nichols requires positive Theta.");
+            }
+
             return PidTuneCalculationResult.Valid(
                 0.9 / (ki * theta),
                 3.33 * theta,
