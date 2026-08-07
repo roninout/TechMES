@@ -634,7 +634,7 @@ internal static class PidTuneInfoCatalog
             case PidTuneMethod.ClosedLoopZieglerNicholsSoftPid:
                 Add(
                     "IET Control Theory & Applications — Data-driven direct automatic tuning scheme",
-                    "https://ietresearch.onlinelibrary.wiley.com/doi/10.1049/iet-cta.2018.5165",
+                    "https://mstarlabs.com/control/znrule.html",
                     "Полнотекстовая web-страница с блок-схемами, формулами, таблицами и графиками сравнительных " +
                     "closed-loop испытаний; используется как опубликованная ссылка на alternative/modified ZN rules.");
                 break;
