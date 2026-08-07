@@ -66,7 +66,6 @@
                     <RadzenDataList Data="@_jobs" TItem="CalcJobDto">
                         <Template Context="job">
                             <RadzenCard Style="@GetJobCardStyle(job)" @onclick="() => SelectJob(job)">
-
                                 <div class="calc-job-card-header">
                                     <b>@job.Name</b>
 
@@ -79,11 +78,19 @@
                                     </div>
                                 </div>
 
-                                <div class="calc-job-card-code">@job.DefinitionCode · v@job.DefinitionVersion</div>
+                                @*
+                                    Используем явную интерполяцию строки.
+                                    Иначе Razor воспринимает часть после символа v как обычный текст.
+                                *@
+                                <div class="calc-job-card-code">
+                                    @($"{job.DefinitionCode} · v{job.DefinitionVersion}")
+                                </div>
 
                                 @if (!string.IsNullOrWhiteSpace(job.EquipmentName))
                                 {
-                                    <div class="calc-job-card-meta">Equipment: @job.EquipmentName</div>
+                                    <div class="calc-job-card-meta">
+                                        Equipment: @job.EquipmentName
+                                    </div>
                                 }
 
                                 <div class="calc-job-card-meta">
@@ -115,7 +122,14 @@
                         <div>
                             <RadzenText Text="@(_editor.Id <= 0 ? "New calculation job" : _editor.Name)"
                                         TextStyle="TextStyle.H6" />
-                            <div class="calc-job-card-code">@_editor.DefinitionCode · v@_editor.DefinitionVersion</div>
+
+                            @*
+                                Явная интерполяция исключает отображение
+                                буквального текста v@_editor.DefinitionVersion.
+                            *@
+                            <div class="calc-job-card-code">
+                                @($"{_editor.DefinitionCode} · v{_editor.DefinitionVersion}")
+                            </div>
                         </div>
 
                         @if (_editor.Id > 0)
@@ -192,6 +206,19 @@
                     {
                         var runtimeState = GetState(_editor.Id);
 
+                        /*
+                         * Строки таблиц формируются один раз за render.
+                         * Единицы измерения берутся из сохранённого job,
+                         * а не из несохранённого значения редактора.
+                         */
+                        IReadOnlyList<CalcStateValueRow> inputRows = runtimeState is null
+                            ? Array.Empty<CalcStateValueRow>()
+                            : GetStateValues(_editor.Id, runtimeState.LastInputs, outputValues: false);
+
+                        IReadOnlyList<CalcStateValueRow> outputRows = runtimeState is null
+                            ? Array.Empty<CalcStateValueRow>()
+                            : GetStateValues(_editor.Id, runtimeState.LastOutputs, outputValues: true);
+
                         <section class="calc-job-section">
                             <div class="calc-job-section-header">
                                 <RadzenText Text="Runtime state" TextStyle="TextStyle.Subtitle1" />
@@ -203,10 +230,11 @@
                                                      BadgeStyle="@GetStateBadgeStyle(runtimeState.Status)" />
                                     }
 
-                                    <RadzenButton Icon="refresh"
+                                    <RadzenButton Text="Refresh"
+                                                  Icon="refresh"
                                                   Size="ButtonSize.Small"
-                                                  ButtonStyle="ButtonStyle.Light"
-                                                  Disabled="@_isStateRefreshBusy"
+                                                  ButtonStyle="ButtonStyle.Secondary"
+                                                  Disabled="@(_isBusy || _isStateRefreshBusy)"
                                                   Click="@RefreshStatesAsync" />
                                 </div>
                             </div>
@@ -275,11 +303,15 @@
 
                                 <div class="calc-job-state-values">
                                     <div>
-                                        <div class="calc-job-state-values-title">Last inputs</div>
+                                        <div class="calc-job-state-values-title">
+                                            Last inputs
+                                        </div>
 
-                                        @if (GetStateValues(runtimeState.LastInputs, outputValues: false).Count == 0)
+                                        @if (inputRows.Count == 0)
                                         {
-                                            <div class="calc-job-state-empty">No input values.</div>
+                                            <div class="calc-job-state-empty">
+                                                No input values.
+                                            </div>
                                         }
                                         else
                                         {
@@ -292,7 +324,7 @@
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    @foreach (var item in GetStateValues(runtimeState.LastInputs, outputValues: false))
+                                                    @foreach (var item in inputRows)
                                                     {
                                                         <tr>
                                                             <td>@item.Key</td>
@@ -306,11 +338,15 @@
                                     </div>
 
                                     <div>
-                                        <div class="calc-job-state-values-title">Last outputs</div>
+                                        <div class="calc-job-state-values-title">
+                                            Last outputs
+                                        </div>
 
-                                        @if (GetStateValues(runtimeState.LastOutputs, outputValues: true).Count == 0)
+                                        @if (outputRows.Count == 0)
                                         {
-                                            <div class="calc-job-state-empty">No output values.</div>
+                                            <div class="calc-job-state-empty">
+                                                No output values.
+                                            </div>
                                         }
                                         else
                                         {
@@ -323,7 +359,7 @@
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    @foreach (var item in GetStateValues(runtimeState.LastOutputs, outputValues: true))
+                                                    @foreach (var item in outputRows)
                                                     {
                                                         <tr>
                                                             <td>@item.Key</td>
@@ -1071,16 +1107,20 @@
 
     /// <summary>
     /// Ручное обновление runtime-состояний.
+    ///
+    /// Во время ручного запроса кнопка Refresh временно блокируется,
+    /// а после завершения обязательно перерисовывается обратно.
     /// </summary>
-    private async Task RefreshStatesAsync()
+    private Task RefreshStatesAsync()
     {
-        await RefreshStatesCoreAsync(showError: true, CancellationToken.None);
+        return RefreshStatesCoreAsync(showError: true,showBusyIndicator: true,CancellationToken.None);
     }
 
     /// <summary>
     /// Периодически обновляет только calc_job_state.
     ///
-    /// Конфигурация и содержимое редактора не перечитываются.
+    /// Автоматическое обновление не перечитывает конфигурацию jobs,
+    /// не затирает несохранённые изменения и не блокирует кнопку Refresh.
     /// </summary>
     private async Task RefreshStatesLoopAsync(CancellationToken ct)
     {
@@ -1089,7 +1129,9 @@
         try
         {
             while (await timer.WaitForNextTickAsync(ct))
-                await RefreshStatesCoreAsync(showError: false, ct);
+            {
+                await RefreshStatesCoreAsync(showError: false,showBusyIndicator: false,ct);
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -1099,13 +1141,22 @@
 
     /// <summary>
     /// Получает состояния через Runtime и применяет их в UI-контексте.
+    ///
+    /// Флаг также предотвращает одновременный ручной и автоматический запрос.
     /// </summary>
-    private async Task RefreshStatesCoreAsync(bool showError, CancellationToken ct)
+    private async Task RefreshStatesCoreAsync(bool showError,bool showBusyIndicator,CancellationToken ct)
     {
         if (_isStateRefreshBusy)
             return;
 
         _isStateRefreshBusy = true;
+
+        /*
+         * Показываем busy-состояние только для ручного нажатия.
+         * Фоновое обновление проходит незаметно для пользователя.
+         */
+        if (showBusyIndicator)
+            await InvokeAsync(StateHasChanged);
 
         try
         {
@@ -1114,6 +1165,12 @@
             await InvokeAsync(() =>
             {
                 ApplyStates(states);
+
+                /*
+                 * Сбрасываем флаг до render.
+                 * Благодаря этому кнопка сразу становится активной.
+                 */
+                _isStateRefreshBusy = false;
                 StateHasChanged();
             });
         }
@@ -1124,11 +1181,26 @@
         catch (Exception ex)
         {
             if (showError)
-                await InvokeAsync(() => ShowError("Cannot refresh calculation states: " + ex.Message));
+            {
+                await InvokeAsync(() =>
+                {
+                    ShowError("Cannot refresh calculation states: " + ex.Message);
+                });
+            }
         }
         finally
         {
-            _isStateRefreshBusy = false;
+            /*
+             * При ошибке или отмене успешный UI-блок выше не выполняется,
+             * поэтому гарантированно освобождаем кнопку здесь.
+             */
+            if (_isStateRefreshBusy)
+            {
+                _isStateRefreshBusy = false;
+
+                if (showBusyIndicator && !_disposeCts.IsCancellationRequested)
+                    await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -1170,22 +1242,33 @@
 
     /// <summary>
     /// Преобразует сохранённый JSON object в строки диагностической таблицы.
+    ///
+    /// Определение алгоритма ищется по сохранённому job.
+    /// Несохранённая смена Calculation в редакторе не должна менять
+    /// единицы измерения уже выполненного Runtime-результата.
     /// </summary>
-    private IReadOnlyList<CalcStateValueRow> GetStateValues(JsonElement? source, bool outputValues)
+    private IReadOnlyList<CalcStateValueRow> GetStateValues(long jobId, JsonElement? source, bool outputValues)
     {
         if (!source.HasValue || source.Value.ValueKind != JsonValueKind.Object)
-            return [];
+            return Array.Empty<CalcStateValueRow>();
 
-        var definition = FindDefinition(_editor?.DefinitionCode);
+        var storedJob = _jobs.FirstOrDefault(job => job.Id == jobId);
+        var definition = FindDefinition(storedJob?.DefinitionCode);
         var result = new List<CalcStateValueRow>();
 
         foreach (var property in source.Value.EnumerateObject())
         {
             var unit = outputValues
                 ? definition?.Outputs.FirstOrDefault(item =>
-                    string.Equals(item.Key, property.Name, StringComparison.OrdinalIgnoreCase))?.Unit
+                    string.Equals(
+                        item.Key,
+                        property.Name,
+                        StringComparison.OrdinalIgnoreCase))?.Unit
                 : definition?.Parameters.FirstOrDefault(item =>
-                    string.Equals(item.Key, property.Name, StringComparison.OrdinalIgnoreCase))?.Unit;
+                    string.Equals(
+                        item.Key,
+                        property.Name,
+                        StringComparison.OrdinalIgnoreCase))?.Unit;
 
             result.Add(new CalcStateValueRow
             {
