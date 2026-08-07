@@ -8,25 +8,16 @@ namespace TechMES.Contracts.Param.Tuning;
 public sealed class PidProcessIdentificationResult
 {
     public bool IsSuccess { get; init; }
-
     public string ProcessModel { get; init; } = "";
-
     public PidTuneIssueCode IssueCode { get; init; }
-
     public string ErrorMessage { get; init; } = "";
 
     public double? K { get; init; }
-
     public double? Tau { get; init; }
-
     public double? Theta { get; init; }
-
     public double? TauC { get; init; }
-
     public double? Ki { get; init; }
-
     public double? Ku { get; init; }
-
     public double? Tu { get; init; }
 
     /// <summary>
@@ -45,6 +36,18 @@ public sealed class PidProcessIdentificationResult
     public double? ResponseAmplitude { get; init; }
 
     /// <summary>
+    /// Измеренный линейный наклон PV непосредственно перед ступенью OUT.
+    /// Используется только как FOPDT validation.
+    /// </summary>
+    public double? BaselineSlope { get; init; }
+
+    /// <summary>
+    /// FOPDT validation:
+    /// |BaselineSlope| * (Theta + Tau) / |ResponseAmplitude|.
+    /// </summary>
+    public double? BaselineDriftRatio { get; init; }
+
+    /// <summary>
     /// Исходный наклон PV до реакции Integrating-модели.
     /// </summary>
     public double? BaseSlope { get; init; }
@@ -54,6 +57,23 @@ public sealed class PidProcessIdentificationResult
     /// Ki = SlopeChange / DeltaOUT.
     /// </summary>
     public double? SlopeChange { get; init; }
+
+    /// <summary>
+    /// Фактический наклон PV в первой половине участка после Theta.
+    /// Используется как дополнительная Integrating validation.
+    /// </summary>
+    public double? PostSlopeEarly { get; init; }
+
+    /// <summary>
+    /// Фактический наклон PV во второй половине участка после Theta.
+    /// </summary>
+    public double? PostSlopeLate { get; init; }
+
+    /// <summary>
+    /// Нормированное различие раннего и позднего post-Theta наклона.
+    /// Для идеального интегратора должно быть близко к нулю.
+    /// </summary>
+    public double? PostSlopeDifferenceRatio { get; init; }
 
     /// <summary>
     /// Среднеквадратичная ошибка аппроксимации в единицах PV.
@@ -69,8 +89,7 @@ public sealed class PidProcessIdentificationResult
 
     /// <summary>
     /// Для FOPDT: доля полного fitted-отклика, реально наблюдаемая
-    /// к правой границе выбранного окна:
-    /// 1 - exp(-(Tobs-Theta)/Tau).
+    /// к правой границе выбранного окна.
     /// </summary>
     public double? ObservedResponseFraction { get; init; }
 
@@ -80,54 +99,20 @@ public sealed class PidProcessIdentificationResult
     /// </summary>
     public double? OutputTailRangeRatio { get; init; }
 
-    /// <summary>
-    /// Средняя амплитуда устойчивых колебаний detrended ошибки PV-SP.
-    /// </summary>
     public double? OscillationAmplitude { get; init; }
-
-    /// <summary>
-    /// Коэффициент вариации периодов ClosedLoop.
-    /// </summary>
     public double? PeriodCv { get; init; }
-
-    /// <summary>
-    /// Коэффициент вариации амплитуд ClosedLoop.
-    /// </summary>
     public double? AmplitudeCv { get; init; }
-
-    /// <summary>
-    /// Отношение средней амплитуды последних циклов к первым.
-    /// Значение около 1 означает незатухающие колебания.
-    /// </summary>
     public double? AmplitudeTrendRatio { get; init; }
-
-    /// <summary>
-    /// Робастный разброс SP P95-P05 относительно peak-to-peak амплитуды ошибки PV-SP.
-    /// </summary>
     public double? SetpointVariationRatio { get; init; }
-
-    /// <summary>
-    /// Полный линейный дрейф SP за окно относительно peak-to-peak амплитуды ошибки PV-SP.
-    /// </summary>
     public double? SetpointDriftRatio { get; init; }
-
-    /// <summary>
-    /// Количество полных циклов, использованных в ClosedLoop-проверке амплитуды.
-    /// </summary>
     public int? CyclesUsed { get; init; }
 
     public double DtSeconds { get; init; }
-
     public int PointsUsed { get; init; }
-
     public DateTime? StepTimeUtc { get; init; }
 
-    public static PidProcessIdentificationResult Fail(
-        string processModel,
-        PidTuneIssueCode issueCode,
-        string message,
-        int pointsUsed = 0,
-        double dtSeconds = 0)
+    public static PidProcessIdentificationResult Fail(string processModel, PidTuneIssueCode issueCode, string message,
+        int pointsUsed = 0, double dtSeconds = 0)
     {
         return new PidProcessIdentificationResult
         {

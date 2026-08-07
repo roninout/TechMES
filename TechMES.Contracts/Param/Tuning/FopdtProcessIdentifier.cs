@@ -52,7 +52,8 @@ public static class FopdtProcessIdentifier
             return PidProcessIdentificationResult.Fail(PidTuneProcessModel.Fopdt, PidTuneIssueCode.NoOutStep,
                 "Амплитуда ступени OUT слишком мала.", pairs.Count, dt);
 
-        var prePv = pairs.Skip(Math.Max(0, foundStep.Index - 8)).Take(Math.Min(8, foundStep.Index)).Select(x => x.Pv).ToList();
+        var pre = pairs.Skip(Math.Max(0, foundStep.Index - 8)).Take(Math.Min(8, foundStep.Index)).ToList();
+        var prePv = pre.Select(x => x.Pv).ToList();
         var pvBaseline = PidTrendMath.Median(prePv);
         var pvNoise = PidTrendMath.StandardDeviation(prePv);
 
@@ -73,11 +74,47 @@ public static class FopdtProcessIdentifier
             return PidProcessIdentificationResult.Fail(PidTuneProcessModel.Fopdt, PidTuneIssueCode.ProcessGainTooSmall,
                 "Усиление процесса K слишком мало для устойчивого расчета.", pairs.Count, dt);
 
-        var minimumUsefulResponse = Math.Max(1e-9,
-            pvNoise * PidTuneIdentificationRules.MinimumFopdtSignalToNoiseSigma);
+        var minimumUsefulResponse = Math.Max(1e-9, pvNoise * PidTuneIdentificationRules.MinimumFopdtSignalToNoiseSigma);
         if (Math.Abs(fit.ResponseAmplitude) < minimumUsefulResponse)
             return PidProcessIdentificationResult.Fail(PidTuneProcessModel.Fopdt, PidTuneIssueCode.PvNoResponse,
                 "Реакция PV слишком мала относительно шума исходного участка.", pairs.Count, dt);
+
+        /*
+         * Дополнительная validation FOPDT без изменения самого fit.
+         *
+         * Для self-regulating FOPDT исходный PV перед ступенью должен быть практически
+         * стационарным. Если он уже имеет заметный slope, whole-curve fit способен
+         * ошибочно объяснить этот дрейф увеличением K/Tau и при этом сохранить высокий R².
+         *
+         * Сравниваем прогнозируемое смещение исходной линии за характерное время
+         * Theta+Tau с полной fitted-амплитудой A. Дополнительно требуем, чтобы это
+         * смещение было больше 2 sigma исходного шума, иначе не реагируем на случайный шум.
+         */
+        var baselineSlope = 0.0;
+        var baselineDriftRatio = 0.0;
+        if (pre.Count >= 3)
+        {
+            var t0 = pre[0].TimeUtc;
+            var preTimes = pre.Select(x => PidTrendMath.SecondsBetween(t0, x.TimeUtc)).ToList();
+
+            if (PidTrendMath.TryFitLine(preTimes, prePv, out _, out baselineSlope))
+            {
+                var baselineDrift = Math.Abs(baselineSlope) * (fit.Theta + fit.Tau);
+                baselineDriftRatio = baselineDrift / Math.Max(Math.Abs(fit.ResponseAmplitude), Epsilon);
+
+                var driftIsSignificant = baselineDrift >
+                    pvNoise * PidTuneIdentificationRules.MinimumFopdtBaselineDriftNoiseSigma;
+
+                if (driftIsSignificant &&
+                    baselineDriftRatio > PidTuneIdentificationRules.MaximumFopdtBaselineDriftRatio)
+                {
+                    return PidProcessIdentificationResult.Fail(PidTuneProcessModel.Fopdt, PidTuneIssueCode.PoorModelFit,
+                        $"Исходный PV до ступени заметно дрейфует: baseline drift ratio={baselineDriftRatio:0.###}, " +
+                        $"допустимо <= {PidTuneIdentificationRules.MaximumFopdtBaselineDriftRatio:0.###}. " +
+                        "Для FOPDT выберите участок со стабильным PV до изменения OUT.", pairs.Count, dt);
+                }
+            }
+        }
 
         var observed = new List<double>(post.Count);
         var predicted = new List<double>(post.Count);
@@ -121,6 +158,8 @@ public static class FopdtProcessIdentifier
             DeltaOut = PidTrendMath.Round(foundStep.Delta, 6),
             PvBaseline = PidTrendMath.Round(pvBaseline, 6),
             ResponseAmplitude = PidTrendMath.Round(fit.ResponseAmplitude, 6),
+            BaselineSlope = PidTrendMath.Round(baselineSlope, 8),
+            BaselineDriftRatio = PidTrendMath.Round(baselineDriftRatio, 6),
             Rmse = PidTrendMath.Round(metrics.Rmse, 6),
             R2 = PidTrendMath.Round(metrics.R2, 6),
             ObservedResponseFraction = PidTrendMath.Round(observedResponseFraction, 6),
@@ -134,12 +173,10 @@ public static class FopdtProcessIdentifier
     private static FitCandidate? FindBestFit(IReadOnlyList<PidAlignedSample> points, DateTime stepTimeUtc,
         double pvBaseline, double dt, double durationSeconds)
     {
-        // Tau меньше одного шага архивации надежно не разрешается по тренду.
         var minimumTau = Math.Max(dt, 0.001);
         var maximumTau = Math.Max(minimumTau * 10, durationSeconds * 4.0);
 
-        // Не ограничиваем Theta произвольными 60% окна. Оставляем минимум четыре шага после Theta,
-        // чтобы на тренде реально присутствовал участок реакции процесса.
+        // Оставляем минимум четыре шага после Theta, чтобы реакция реально присутствовала в тренде.
         var maximumTheta = Math.Max(0, durationSeconds - 4 * dt);
 
         FitCandidate? best = null;

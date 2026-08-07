@@ -34,18 +34,33 @@ public static class PidTuneIdentificationRules
 
     /// <summary>
     /// Минимальная наблюдаемая доля полного FOPDT-отклика.
-    ///
     /// 1-exp(-1)=0.632120... соответствует одной Tau после окончания Theta.
     /// Это критерий достаточной наблюдаемости Tau/K, а не способ расчета Tau.
     /// </summary>
-    public const double MinimumFopdtObservedResponseFraction =
-        0.6321205588285577;
+    public const double MinimumFopdtObservedResponseFraction = 0.6321205588285577;
 
     /// <summary>
     /// Полная fitted-амплитуда FOPDT должна превышать шум исходного PV
     /// минимум во столько стандартных отклонений.
     /// </summary>
     public const double MinimumFopdtSignalToNoiseSigma = 3.0;
+
+    /// <summary>
+    /// Максимальный допустимый исходный дрейф PV для FOPDT.
+    ///
+    /// BaselineDriftRatio = |SlopeBefore| * (Theta + Tau) / |A|.
+    ///
+    /// Проверка не меняет сам whole-curve fit. Она только запрещает считать
+    /// FOPDT надежным, когда исходный PV уже заметно двигался до ступени OUT.
+    /// </summary>
+    public const double MaximumFopdtBaselineDriftRatio = 0.15;
+
+    /// <summary>
+    /// Чтобы случайный шум нескольких pre-step точек не считался реальным дрейфом,
+    /// прогнозируемое смещение baseline дополнительно должно превышать
+    /// эту величину, умноженную на sigma исходного PV.
+    /// </summary>
+    public const double MinimumFopdtBaselineDriftNoiseSigma = 2.0;
 
     /// <summary>
     /// Минимальный R² кусочно-линейной Integrating-модели.
@@ -57,6 +72,24 @@ public static class PidTuneIdentificationRules
     /// должен превышать исходный PV-шум минимум во столько сигм.
     /// </summary>
     public const double MinimumIntegratingSlopeSignalToNoiseSigma = 3.0;
+
+    /// <summary>
+    /// Минимальное количество фактических PV-точек после найденной Theta,
+    /// необходимое для дополнительной проверки постоянства наклона.
+    /// </summary>
+    public const int MinimumIntegratingSlopeValidationPoints = 6;
+
+    /// <summary>
+    /// Максимальное допустимое различие раннего и позднего наклона PV
+    /// после Theta для Integrating-модели.
+    ///
+    /// Ratio = |SlopeEarly - SlopeLate| /
+    ///         max(|mean(SlopeEarly,SlopeLate)|, 0.2*|SlopeChange|).
+    ///
+    /// Большое значение характерно для самовыравнивающегося процесса,
+    /// у которого скорость PV постепенно уменьшается к нулю.
+    /// </summary>
+    public const double MaximumIntegratingPostSlopeDifferenceRatio = 0.30;
 
     /// <summary>
     /// Минимальное количество полных периодов для ClosedLoop.

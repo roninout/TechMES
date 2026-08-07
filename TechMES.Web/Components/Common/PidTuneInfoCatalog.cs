@@ -151,10 +151,11 @@ internal static class PidTuneInfoCatalog
     {
         return new PidTuneIdentificationInfo(
             "Как TechMES определяет K, Tau и Theta",
-            "После синхронизации PV и OUT алгоритм ищет один быстрый и удерживаемый скачок OUT. "
-            + "PV0 берется как медиана нескольких точек перед ступенью. Затем Theta и Tau перебираются, "
-            + "а для каждой пары оптимальная полная амплитуда A вычисляется аналитически по МНК. "
-            + "Побеждает модель с минимальной суммой квадратов ошибок по всей post-step кривой.",
+            "После синхронизации PV и OUT алгоритм ищет один быстрый и удерживаемый скачок OUT. " +
+            "PV0 берется как медиана нескольких точек перед ступенью. Затем Theta и Tau перебираются, " +
+            "а для каждой пары оптимальная полная амплитуда A вычисляется аналитически по МНК. " +
+            "Побеждает модель с минимальной суммой квадратов ошибок по всей post-step кривой. " +
+            "После fit отдельно проверяется, что исходный PV до ступени не имел заметного линейного дрейфа.",
             new[]
             {
             "DeltaOUT = OUT_after - OUT_before",
@@ -167,6 +168,7 @@ internal static class PidTuneInfoCatalog
             "RMSE = sqrt(SSE / N)",
             "R^2 = 1 - SSE / Sum[(PV_i - mean(PV))^2]",
             "ObservedFraction = 1 - exp(-(Tobs - Theta) / Tau)",
+            "BaselineDriftRatio = |SlopeBefore| * (Theta + Tau) / |A|",
             "TauC(auto) = max(Theta, dt)"
             },
             new[]
@@ -179,10 +181,11 @@ internal static class PidTuneInfoCatalog
             $"Хвост OUT должен иметь (P95-P05)/|DeltaOUT| <= {Percent(PidTuneIdentificationRules.MaximumOutputTailRangeRatio)}.",
             "PV0 = медиана до 8 исходных точек перед ступенью; шум PV оценивается стандартным отклонением этих точек.",
             "Post-step окно должно быть длиннее max(4*dt, 1 c). Для fit оно равномерно уменьшается максимум до 1200 точек.",
-            "Грубый поиск Theta выполняется от 0 до max(0, Tobs - 4*dt). Искусственного ограничения 60% окна нет.",
+            "Грубый поиск Theta выполняется от 0 до max(0, Tobs - 4*dt).",
             "Tau ищется по логарифмической сетке от max(dt, 0,001 c) до max(10*TauMin, 4*Tobs). Tau меньше шага архивации не считается надежно различимой.",
             "После грубого поиска выполняется локальный уточняющий перебор около лучшей пары Theta/Tau.",
             $"Fitted амплитуда A должна быть не меньше {PidTuneIdentificationRules.MinimumFopdtSignalToNoiseSigma:0.#} sigma исходного PV-шума.",
+            $"Исходный drift проверяется отдельно: |SlopeBefore|*(Theta+Tau)/|A| <= {Percent(PidTuneIdentificationRules.MaximumFopdtBaselineDriftRatio)}. Проверка срабатывает только если прогнозируемый drift больше {PidTuneIdentificationRules.MinimumFopdtBaselineDriftNoiseSigma:0.#} sigma исходного шума.",
             $"Принимается только fit с R^2 >= {PidTuneIdentificationRules.MinimumFopdtR2:0.##}.",
             $"Окно должно показать минимум {Percent(PidTuneIdentificationRules.MinimumFopdtObservedResponseFraction)} fitted-отклика, то есть примерно одну Tau после Theta.",
             "Условие 63,2% используется только как контроль достаточной длительности окна; Tau не вычисляется по одной точке 63,2%."
@@ -190,18 +193,19 @@ internal static class PidTuneInfoCatalog
             CreateFopdtDiagnostics(identification),
             identification?.IsSuccess == true
                 ? null
-                : "Высокий R^2 по короткой ранней части экспоненты недостаточен: K и Tau могут компенсировать друг друга. "
-                  + "Поэтому дополнительно контролируется реально наблюдаемая доля fitted-отклика.");
+                : "Для FOPDT важны одновременно качество whole-curve fit, достаточная длина отклика и стабильный исходный PV. " +
+                  "Высокий R² сам по себе не делает модель надежной, если PV уже дрейфовал до ступени OUT.");
     }
 
     private static PidTuneIdentificationInfo CreateIntegratingIdentification(PidProcessIdentificationResult? identification)
     {
         return new PidTuneIdentificationInfo(
             "Как TechMES определяет ki и Theta",
-            "Интегрирующий объект не обязан выходить на конечное плато PV. Поэтому TechMES аппроксимирует "
-            + "весь выбранный участок кусочно-линейной моделью: до реакции разрешен исходный дрейф b0, "
-            + "после Theta наклон изменяется на c. Для каждого кандидата Theta коэффициенты a, b0 и c "
-            + "находятся линейным методом наименьших квадратов.",
+            "Интегрирующий объект не обязан выходить на конечное плато PV. Поэтому TechMES аппроксимирует " +
+            "весь выбранный участок кусочно-линейной моделью: до реакции разрешен исходный дрейф b0, " +
+            "после Theta наклон изменяется на c. Для каждого кандидата Theta коэффициенты a, b0 и c " +
+            "находятся линейным методом наименьших квадратов. После fit отдельно проверяется, что " +
+            "фактический наклон PV после Theta остается приблизительно постоянным.",
             new[]
             {
             "PVhat(t) = a + b0*t + c*max(0, t-Theta)",
@@ -212,6 +216,7 @@ internal static class PidTuneInfoCatalog
             "ki = c / DeltaOUT",
             "ResponseDuration = Tpost - Theta",
             "SlopeEffect = |c| * ResponseDuration",
+            "SlopeDifferenceRatio = |SlopeEarly - SlopeLate| / max(|mean(SlopeEarly,SlopeLate)|, 0.2*|c|)",
             "RMSE = sqrt(SSE / N)",
             "R^2 = 1 - SSE / Sum[(PV_i - mean(PV))^2]",
             "TauC(auto) = max(Theta, dt)"
@@ -226,15 +231,18 @@ internal static class PidTuneInfoCatalog
             $"Робастный разброс хвоста OUT должен иметь (P95-P05)/|DeltaOUT| <= {Percent(PidTuneIdentificationRules.MaximumOutputTailRangeRatio)}.",
             "После ступени должно быть больше max(5*dt, 1 c) наблюдения. Для МНК набор уменьшается максимум до 1600 точек.",
             "Для каждого Theta решается линейная МНК-задача по базисам [1, t, max(0,t-Theta)].",
-            "Грубый поиск Theta выполняется от 0 до max(0, Tpost - 4*dt). Искусственного ограничения 40% post-window нет.",
-            "После грубого поиска выполняется локальное уточнение Theta.",
+            "Theta перебирается грубо, затем уточняется около лучшего значения; искусственного ограничения 40% post-window нет.",
             $"Эффект изменения наклона |c|*(Tpost-Theta) должен превышать {PidTuneIdentificationRules.MinimumIntegratingSlopeSignalToNoiseSigma:0.#} sigma исходного PV-шума.",
-            $"Принимается только кусочно-линейный fit с R^2 >= {PidTuneIdentificationRules.MinimumIntegratingR2:0.##}.",
-            "Знак ki сохраняется и определяется направлением реакции PV на изменение OUT.",
-            "Theta может быть равна 0. Для Ziegler-Nichols PI затем требуется Theta > 0, потому что формула содержит деление на Theta."
+            $"R^2 модели должен быть >= {PidTuneIdentificationRules.MinimumIntegratingR2:0.##}.",
+            $"После Theta требуется минимум {PidTuneIdentificationRules.MinimumIntegratingSlopeValidationPoints} фактических PV-точек для проверки постоянства скорости.",
+            $"Post-Theta участок делится пополам; нормированное различие раннего и позднего slope должно быть <= {Percent(PidTuneIdentificationRules.MaximumIntegratingPostSlopeDifferenceRatio)}.",
+            "Эта последняя проверка не меняет ki/Theta. Она только отбрасывает участки, где PV постепенно замедляется к плато и больше похож на self-regulating/FOPDT процесс."
             },
             CreateIntegratingDiagnostics(identification),
-            null);
+            identification?.IsSuccess == true
+                ? null
+                : "Для Integrating важен не конечный уровень PV, а устойчивое изменение его скорости. " +
+                  "Если post-Theta slope заметно уменьшается или растет, выбранный участок не считается чистым integrating-response.");
     }
 
     private static PidTuneIdentificationInfo CreateClosedLoopIdentification(PidProcessIdentificationResult? identification)
@@ -287,31 +295,36 @@ internal static class PidTuneInfoCatalog
     {
         return new[]
         {
-            Value("DeltaOUT", "Найденная величина ступени OUT.", identification?.DeltaOut),
-            Value("PV0", "Медианный исходный уровень PV перед ступенью.", identification?.PvBaseline),
-            Value("A", "Полная fitted-амплитуда PV = K*DeltaOUT.", identification?.ResponseAmplitude),
-            Value("R²", "Коэффициент детерминации whole-curve fit.", identification?.R2),
-            Value("RMSE", "Среднеквадратичная ошибка fit в единицах PV.", identification?.Rmse),
-            PercentValue("Observed", "Реально наблюдаемая доля полного fitted FOPDT-отклика.", identification?.ObservedResponseFraction),
-            PercentValue("OUT tail", "Робастный разброс хвоста OUT относительно |DeltaOUT|.", identification?.OutputTailRangeRatio),
-            Value("dt", "Оцененный медианный шаг тренда.", identification is null ? null : identification.DtSeconds, "с"),
-            IntegerValue("N", "Количество синхронизированных точек, использованных идентификатором.", identification?.PointsUsed)
-        };
+        Value("DeltaOUT", "Найденная величина ступени OUT.", identification?.DeltaOut),
+        Value("PV0", "Медианный исходный уровень PV перед ступенью.", identification?.PvBaseline),
+        Value("A", "Полная fitted-амплитуда PV = K*DeltaOUT.", identification?.ResponseAmplitude),
+        Value("PV slope before", "Линейный наклон PV непосредственно перед ступенью OUT.", identification?.BaselineSlope),
+        PercentValue("Baseline drift", "Прогнозируемый drift PV за Theta+Tau относительно |A|.", identification?.BaselineDriftRatio),
+        Value("R²", "Коэффициент детерминации whole-curve fit.", identification?.R2),
+        Value("RMSE", "Среднеквадратичная ошибка fit в единицах PV.", identification?.Rmse),
+        PercentValue("Observed", "Реально наблюдаемая доля полного fitted FOPDT-отклика.", identification?.ObservedResponseFraction),
+        PercentValue("OUT tail", "Робастный разброс хвоста OUT относительно |DeltaOUT|.", identification?.OutputTailRangeRatio),
+        Value("dt", "Оцененный медианный шаг тренда.", identification is null ? null : identification.DtSeconds, "с"),
+        IntegerValue("N", "Количество синхронизированных точек, использованных идентификатором.", identification?.PointsUsed)
+    };
     }
 
     private static IReadOnlyList<PidTuneValueInfo> CreateIntegratingDiagnostics(PidProcessIdentificationResult? identification)
     {
         return new[]
         {
-            Value("DeltaOUT", "Найденная величина ступени OUT.", identification?.DeltaOut),
-            Value("b0", "Оцененный исходный наклон PV до реакции.", identification?.BaseSlope),
-            Value("c", "Изменение наклона PV после Theta.", identification?.SlopeChange),
-            Value("R²", "Коэффициент детерминации кусочно-линейной модели.", identification?.R2),
-            Value("RMSE", "Среднеквадратичная ошибка модели в единицах PV.", identification?.Rmse),
-            PercentValue("OUT tail", "Робастный разброс хвоста OUT относительно |DeltaOUT|.", identification?.OutputTailRangeRatio),
-            Value("dt", "Оцененный медианный шаг тренда.", identification is null ? null : identification.DtSeconds, "с"),
-            IntegerValue("N", "Количество синхронизированных точек.", identification?.PointsUsed)
-        };
+        Value("DeltaOUT", "Найденная величина ступени OUT.", identification?.DeltaOut),
+        Value("b0", "Оцененный исходный наклон PV до реакции.", identification?.BaseSlope),
+        Value("c", "Изменение наклона PV после Theta.", identification?.SlopeChange),
+        Value("Slope early", "Фактический slope первой половины post-Theta участка.", identification?.PostSlopeEarly),
+        Value("Slope late", "Фактический slope второй половины post-Theta участка.", identification?.PostSlopeLate),
+        PercentValue("Slope difference", "Нормированное различие раннего и позднего post-Theta slope.", identification?.PostSlopeDifferenceRatio),
+        Value("R²", "Коэффициент детерминации кусочно-линейной модели.", identification?.R2),
+        Value("RMSE", "Среднеквадратичная ошибка модели в единицах PV.", identification?.Rmse),
+        PercentValue("OUT tail", "Робастный разброс хвоста OUT относительно |DeltaOUT|.", identification?.OutputTailRangeRatio),
+        Value("dt", "Оцененный медианный шаг тренда.", identification is null ? null : identification.DtSeconds, "с"),
+        IntegerValue("N", "Количество синхронизированных точек.", identification?.PointsUsed)
+    };
     }
 
     private static IReadOnlyList<PidTuneValueInfo> CreateClosedLoopDiagnostics(PidProcessIdentificationResult? identification)
@@ -456,24 +469,21 @@ internal static class PidTuneInfoCatalog
     }
 
     /// <summary>
-    /// Ссылки на первоисточники/публикации.
+    /// Ссылки не только на библиографические карточки, а на реально читаемые
+    /// материалы с графиками, step-test примерами, выводом формул и таблицами.
     ///
-    /// Сам robust-fit TechMES (grid search, R² thresholds, CV thresholds)
-    /// является реализационным решением проекта, поэтому честно помечается
-    /// отдельно и не приписывается публикациям.
+    /// Численные acceptance thresholds TechMES остаются внутренним решением проекта
+    /// и не приписываются внешним публикациям.
     /// </summary>
     private static IReadOnlyList<PidTuneSourceInfo> CreateSources(PidTuneCalculationRequest request)
     {
         var result = new List<PidTuneSourceInfo>();
 
-        void Add(
-            string title,
-            string? url,
-            string scope)
+        void Add(string title, string? url, string scope)
         {
             if (result.Any(item =>
-                    string.Equals(item.Url, url, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(item.Title, title, StringComparison.OrdinalIgnoreCase)))
+                    string.Equals(item.Url, url, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(item.Title, title, StringComparison.OrdinalIgnoreCase)))
             {
                 return;
             }
@@ -484,96 +494,156 @@ internal static class PidTuneInfoCatalog
         Add(
             "TechMES PID Tune identification implementation",
             null,
-            "Whole-curve FOPDT fit, кусочно-линейный Integrating fit, "
-            + "PV-SP oscillation detector и численные acceptance thresholds.");
+            "Whole-curve FOPDT fit, кусочно-линейный Integrating fit, PV-SP oscillation detector " +
+            "и внутренние acceptance thresholds. Это реализация проекта, а не опубликованный стандарт.");
 
-        if (request.ProcessModel is PidTuneProcessModel.Fopdt
-            or PidTuneProcessModel.Integrating)
+        if (request.ProcessModel == PidTuneProcessModel.Fopdt)
         {
             Add(
-                "S. Skogestad, Simple analytic rules for model reduction and PID controller tuning, Journal of Process Control 13 (2003) 291-309",
-                "https://doi.org/10.1016/S0959-1524(02)00062-8",
-                "FOPDT/integrating process models и SIMC tuning.");
+                "ISA InTech — Loop tuning basics: Self-regulating processes",
+                "https://www.isa.org/intech-home/2016/may-june/departments/loop-tuning-basics-self-regulating-processes",
+                "Практический материал с графиками. Figure 1 сравнивает self-regulating и integrating response; " +
+                "Figure 5 показывает реальный open-loop step test и определение process gain, dead time и time constant; " +
+                "Figure 6 показывает отклики замкнутого контура.");
+
+            Add(
+                "Skogestad — Simple analytic rules for model reduction and PID controller tuning — полный PDF",
+                "https://skoge.folk.ntnu.no/publications/2003/tuningPID/finalpaper.pdf",
+                "Полная статья с выводом SIMC, FOPDT/integrating моделями, таблицами параметров, " +
+                "графиками откликов, анализом robustness и разделом по integrating processes.");
+
+            Add(
+                "Skogestad — официальная страница SIMC с исправлениями и дополнительными материалами",
+                "https://skoge.folk.ntnu.no/publications/2003/tuningPID/",
+                "Страница автора: полный PDF, errata, дополнительные комментарии, smooth tuning, презентации и расширения SIMC.");
+        }
+
+        if (request.ProcessModel == PidTuneProcessModel.Integrating)
+        {
+            Add(
+                "ISA InTech — Loop tuning basics: Integrating processes",
+                "https://www.isa.org/intech-home/2016/march-april/departments/loop-tuning-basics-integrating-processes",
+                "Очень наглядный практический материал. Figure 1 сравнивает integrating и self-regulating response; " +
+                "Figure 3 показывает dead time и формулу integrating gain = (final slope - initial slope)/DeltaOUT; " +
+                "Figure 5 содержит разбор реального step test.");
+
+            Add(
+                "ISA — PID tuning rules, Appendices — PDF",
+                "https://www.isa.org/getmedia/e5c068e9-57ea-4ebf-b806-c25ee4e3e081/PID-Tuning-Appendices_WEB_PDF.pdf",
+                "Большой практический PDF: графики self-regulating/integrating/runaway response, " +
+                "описание open-loop теста, gain/time constant/dead time и ограничения реального испытания.");
+
+            Add(
+                "Skogestad — Simple analytic rules for model reduction and PID controller tuning — полный PDF",
+                "https://skoge.folk.ntnu.no/publications/2003/tuningPID/finalpaper.pdf",
+                "Полный вывод SIMC и отдельный раздел по integrating processes, включая причины медленных колебаний " +
+                "и правила выбора controller gain/integral time.");
         }
 
         if (request.ProcessModel == PidTuneProcessModel.ClosedLoop)
         {
             Add(
-                "J. G. Ziegler, N. B. Nichols, Optimum Settings for Automatic Controllers (1942)",
-                "https://doi.org/10.1115/1.4019264",
-                "Ultimate-gain experiment, Ku/Tu и классические Ziegler-Nichols rules.");
+                "Michigan Tech — Ziegler-Nichols Method",
+                "https://pages.mtu.edu/~tbco/cm416/zn.html",
+                "Пошаговый ultimate-gain эксперимент: как найти Ku и Pu/Tu, плюс таблицы Ziegler-Nichols " +
+                "и Tyreus-Luyben для P/PI/PID.");
+
+            Add(
+                "Michigan Tech — Bode Reshaping via PID Control, worked Ziegler-Nichols example",
+                "https://pages.mtu.edu/~tbco/cm416/bodereshape.html",
+                "Полностью разобранный пример: вычисление Ku и Pu, итоговые PID-параметры и несколько Bode-графиков " +
+                "с gain/phase margin после настройки.");
         }
 
         switch (request.TuneMethod)
         {
             case PidTuneMethod.FopdtZieglerNicholsPid:
             case PidTuneMethod.IntegratingZieglerNicholsPi:
-            case PidTuneMethod.ClosedLoopZieglerNicholsPid:
                 Add(
-                    "J. G. Ziegler, N. B. Nichols, Optimum Settings for Automatic Controllers (1942)",
-                    "https://doi.org/10.1115/1.4019264",
-                    "Классические Ziegler-Nichols tuning rules.");
+                    "Colorado School of Mines — Controller Tuning lecture — PDF",
+                    "https://people.mines.edu/jjechura/wp-content/uploads/sites/120/2019/02/CHEN403_14_ControllerTuning.pdf",
+                    "Учебный PDF с process reaction curve, блок-схемами, Ziegler-Nichols/Cohen-Coon таблицами " +
+                    "и графическим анализом open-loop step response.");
+
+                Add(
+                    "Wiley — Basics of PID Control — открытый фрагмент книги — PDF",
+                    "https://catalogimages.wiley.com/images/db/pdf/9781119469346.excerpt.pdf",
+                    "Раздел Classical Tuning Rules: reaction-curve графика, таблицы Ziegler-Nichols и Cohen-Coon, " +
+                    "а далее MATLAB/графический пример определения параметров.");
                 break;
 
             case PidTuneMethod.FopdtCohenCoonPid:
                 Add(
-                    "G. H. Cohen, G. A. Coon, Theoretical Consideration of Retarded Control, Trans. ASME 75 (1953) 827-834",
-                    "https://cir.nii.ac.jp/crid/1572543025662654976?lang=en",
-                    "Оригинальная работа Cohen-Coon.");
+                    "Colorado School of Mines — Controller Tuning / Cohen & Coon — PDF",
+                    "https://people.mines.edu/jjechura/wp-content/uploads/sites/120/2019/02/CHEN403_14_ControllerTuning.pdf",
+                    "Наглядный process reaction curve, FOPDT-модель, критерии Cohen-Coon и полная таблица P/PI/PID формул.");
+
+                Add(
+                    "Wiley — Basics of PID Control — открытый фрагмент книги — PDF",
+                    "https://catalogimages.wiley.com/images/db/pdf/9781119469346.excerpt.pdf",
+                    "Table 1.3 содержит Cohen-Coon формулы; рядом объясняется reaction-curve процедура " +
+                    "и показан графический MATLAB-подход к определению параметров.");
                 break;
 
             case PidTuneMethod.FopdtAmigoPid:
                 Add(
-                    "K. J. Åström, T. Hägglund, Revisiting the Ziegler-Nichols step response method for PID control, Journal of Process Control 14 (2004)",
-                    "https://doi.org/10.1016/j.jprocont.2004.01.002",
-                    "AMIGO/MIGO-derived FOPDT PID rule.");
+                    "Åström & Hägglund — Revisiting the Ziegler-Nichols Step Response Method for PID Control — полный текст",
+                    "https://www.researchgate.net/publication/222563262_Revisiting_the_Ziegler-Nichols_Step_Response_Method_for_PID_Control",
+                    "Авторский полный текст статьи. Section 4 вводит AMIGO; формула (11) содержит именно используемые " +
+                    "TechMES Kp/Ti/Td; Figure 2 показывает область оптимальных настроек, Figure 8 сравнивает AMIGO с MIGO.");
                 break;
 
             case PidTuneMethod.FopdtSimcPi:
             case PidTuneMethod.IntegratingSimcPi:
                 Add(
-                    "S. Skogestad, Simple analytic rules for model reduction and PID controller tuning, Journal of Process Control 13 (2003) 291-309",
-                    "https://doi.org/10.1016/S0959-1524(02)00062-8",
-                    "SIMC PI formulas.");
+                    "Skogestad — Simple analytic rules for model reduction and PID controller tuning — полный PDF",
+                    "https://skoge.folk.ntnu.no/publications/2003/tuningPID/finalpaper.pdf",
+                    "Основной полный материал по SIMC: вывод формул, FOPDT и integrating модели, таблицы, " +
+                    "графики closed-loop responses, robustness и tuning parameter Tau c.");
+
+                Add(
+                    "Skogestad — Tuning for Smooth PID Control with Acceptable Disturbance Rejection",
+                    "https://skoge.folk.ntnu.no/publications/2003/tuningPID/smooth_tunings/",
+                    "Короткая страница автора с явными SIMC PI формулами для first-order+delay и ссылкой на полный PDF " +
+                    "с анализом smooth/robust tuning.");
                 break;
 
             case PidTuneMethod.IntegratingAveragingPi:
                 Add(
-                    "Внутреннее правило исходного TechMES PID-калькулятора",
-                    null,
-                    "Averaging PI; опубликованный первоисточник для этой конкретной формулы не заявляется.");
+                    "ISA InTech — Loop tuning basics: Integrating processes",
+                    "https://www.isa.org/intech-home/2016/march-april/departments/loop-tuning-basics-integrating-processes",
+                    "Averaging PI в TechMES остается внутренней формулой, но этот материал подробно объясняет " +
+                    "сам integrating process, slope-based identification и смысл более медленной/averaging настройки.");
                 break;
 
-            case PidTuneMethod.ClosedLoopZieglerNicholsSoftPid:
+            case PidTuneMethod.ClosedLoopZieglerNicholsPid:
                 Add(
-                    "Zhang et al., Data-driven direct automatic tuning scheme for fixed-structure digital controllers of hybrid systems, IET Control Theory & Applications (2019)",
-                    "https://doi.org/10.1049/iet-cta.2018.5165",
-                    "Таблица alternative ZN rules: modified ZN II / some overshoot, "
-                    + "Kp=0.33Ku, Ti=Pu/2, Td=Pu/3.");
+                    "Michigan Tech — Ziegler-Nichols Method",
+                    "https://pages.mtu.edu/~tbco/cm416/zn.html",
+                    "Практическая процедура Ku/Pu и классическая таблица PID: Kp=Ku/1.7≈0.6Ku, Ti=Pu/2, Td=Pu/8.");
                 break;
 
             case PidTuneMethod.ClosedLoopTyreusLuybenPid:
                 Add(
-                    "W. L. Luyben, Tuning Proportional-Integral-Derivative Controllers for Integrator/Deadtime Processes, Ind. Eng. Chem. Res. 35 (1996) 3480-3483",
-                    "https://doi.org/10.1021/ie9600699",
-                    "Опубликованное развитие Tyreus-Luyben PID tuning.");
-
-                Add(
-                    "Michigan Technological University, Ziegler-Nichols / Tyreus-Luyben tuning chart",
+                    "Michigan Tech — Ziegler-Nichols / Tyreus-Luyben tuning charts",
                     "https://pages.mtu.edu/~tbco/cm416/zn.html",
-                    "Сводная closed-loop таблица Ku/Pu, включая Ku/2.2, 2.2Pu и Pu/6.3.");
+                    "На одной странице даны и ultimate-gain процедура, и таблица Tyreus-Luyben PID: " +
+                    "Kp=Ku/2.2, Ti=2.2Pu, Td=Pu/6.3.");
+                break;
+
+            case PidTuneMethod.ClosedLoopZieglerNicholsSoftPid:
+                Add(
+                    "IET Control Theory & Applications — Data-driven direct automatic tuning scheme",
+                    "https://ietresearch.onlinelibrary.wiley.com/doi/10.1049/iet-cta.2018.5165",
+                    "Полнотекстовая web-страница с блок-схемами, формулами, таблицами и графиками сравнительных " +
+                    "closed-loop испытаний; используется как опубликованная ссылка на alternative/modified ZN rules.");
                 break;
         }
 
         return result;
     }
 
-    private static PidTuneMethodInfo Method(
-        string title,
-        string description,
-        string kp,
-        string ti,
-        string td)
+    private static PidTuneMethodInfo Method(string title, string description, string kp, string ti, string td)
     {
         return new PidTuneMethodInfo(
             title,
@@ -581,11 +651,7 @@ internal static class PidTuneInfoCatalog
             new[] { kp, ti, td });
     }
 
-    private static PidTuneValueInfo Value(
-        string symbol,
-        string description,
-        double? value,
-        string? unit = null)
+    private static PidTuneValueInfo Value(string symbol, string description, double? value, string? unit = null)
     {
         var formatted = value.HasValue
             ? value.Value.ToString("0.######", CultureInfo.InvariantCulture)
@@ -603,10 +669,7 @@ internal static class PidTuneInfoCatalog
             formatted);
     }
 
-    private static PidTuneValueInfo PercentValue(
-        string symbol,
-        string description,
-        double? value)
+    private static PidTuneValueInfo PercentValue(string symbol, string description, double? value)
     {
         var formatted = value.HasValue
             ? (value.Value * 100).ToString("0.##", CultureInfo.InvariantCulture) + " %"
@@ -618,10 +681,7 @@ internal static class PidTuneInfoCatalog
             formatted);
     }
 
-    private static PidTuneValueInfo IntegerValue(
-        string symbol,
-        string description,
-        int? value)
+    private static PidTuneValueInfo IntegerValue(string symbol, string description, int? value)
     {
         return new PidTuneValueInfo(
             symbol,
@@ -630,8 +690,7 @@ internal static class PidTuneInfoCatalog
             ?? "не рассчитано");
     }
 
-    private static string Percent(
-        double value)
+    private static string Percent(double value)
     {
         return (value * 100)
             .ToString("0.##", CultureInfo.InvariantCulture)
@@ -642,39 +701,14 @@ internal static class PidTuneInfoCatalog
 /// <summary>
 /// Полное содержимое контекстной справки PID Tune.
 /// </summary>
-internal sealed record PidTuneInfoContent(
-    PidTuneModelInfo Model,
-    PidTuneIdentificationInfo Identification,
-    PidTuneMethodInfo Method,
-    IReadOnlyList<PidTuneValueInfo> ResultValues,
-    IReadOnlyList<PidTuneSourceInfo> Sources,
-    bool HasValidResult);
+internal sealed record PidTuneInfoContent(PidTuneModelInfo Model, PidTuneIdentificationInfo Identification, PidTuneMethodInfo Method, IReadOnlyList<PidTuneValueInfo> ResultValues, IReadOnlyList<PidTuneSourceInfo> Sources, bool HasValidResult);
 
-internal sealed record PidTuneModelInfo(
-    string Title,
-    string Equation,
-    string Description,
-    IReadOnlyList<PidTuneValueInfo> Values);
+internal sealed record PidTuneModelInfo(string Title, string Equation, string Description, IReadOnlyList<PidTuneValueInfo> Values);
 
-internal sealed record PidTuneIdentificationInfo(
-    string Title,
-    string Description,
-    IReadOnlyList<string> Formulas,
-    IReadOnlyList<string> Steps,
-    IReadOnlyList<PidTuneValueInfo> Diagnostics,
-    string? Warning);
+internal sealed record PidTuneIdentificationInfo(string Title, string Description, IReadOnlyList<string> Formulas, IReadOnlyList<string> Steps, IReadOnlyList<PidTuneValueInfo> Diagnostics, string? Warning);
 
-internal sealed record PidTuneMethodInfo(
-    string Title,
-    string Description,
-    IReadOnlyList<string> Formulas);
+internal sealed record PidTuneMethodInfo(string Title, string Description, IReadOnlyList<string> Formulas);
 
-internal sealed record PidTuneValueInfo(
-    string Symbol,
-    string Description,
-    string CurrentValue);
+internal sealed record PidTuneValueInfo(string Symbol, string Description, string CurrentValue);
 
-internal sealed record PidTuneSourceInfo(
-    string Title,
-    string? Url,
-    string Scope);
+internal sealed record PidTuneSourceInfo(string Title, string? Url, string Scope);

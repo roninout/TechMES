@@ -83,8 +83,6 @@ public static class IntegratingProcessIdentifier
         var prePv = pairs.Skip(Math.Max(0, foundStep.Index - 8)).Take(Math.Min(8, foundStep.Index)).Select(x => x.Pv).ToList();
         var pvNoise = PidTrendMath.StandardDeviation(prePv);
 
-        // Изменение наклона действует только после Theta, поэтому учитываем фактическое время реакции,
-        // а не весь post-window от момента ступени OUT.
         var responseDuration = Math.Max(0, postDuration - fit.Theta);
         var slopeContribution = Math.Abs(fit.SlopeChange) * responseDuration;
         var minimumSlopeContribution = Math.Max(1e-9,
@@ -98,6 +96,45 @@ public static class IntegratingProcessIdentifier
             return PidProcessIdentificationResult.Fail(PidTuneProcessModel.Integrating, PidTuneIssueCode.PoorModelFit,
                 $"Интегрирующая модель плохо описывает выбранный участок: R²={metrics.R2:0.###}, требуется >= " +
                 $"{PidTuneIdentificationRules.MinimumIntegratingR2:0.###}.", pairs.Count, dt);
+
+        /*
+         * Дополнительная validation Integrating без изменения основной МНК-модели.
+         *
+         * После Theta настоящий интегрирующий объект должен двигаться примерно
+         * с постоянной скоростью. Для самовыравнивающегося FOPDT скорость PV
+         * постепенно уменьшается по мере приближения к плато.
+         *
+         * Поэтому фактический post-Theta участок делится пополам и отдельно
+         * аппроксимируется двумя прямыми. Слишком большое различие их slopes
+         * означает, что выбранный участок плохо соответствует Integrating-модели.
+         */
+        var responsePairs = pairs
+            .Where(x => PidTrendMath.SecondsBetween(foundStep.TimeUtc, x.TimeUtc) >= fit.Theta)
+            .ToList();
+
+        if (responsePairs.Count < PidTuneIdentificationRules.MinimumIntegratingSlopeValidationPoints)
+            return PidProcessIdentificationResult.Fail(PidTuneProcessModel.Integrating, PidTuneIssueCode.PoorModelFit,
+                $"После Theta недостаточно точек для проверки постоянства наклона: {responsePairs.Count}, " +
+                $"нужно >= {PidTuneIdentificationRules.MinimumIntegratingSlopeValidationPoints}.", pairs.Count, dt);
+
+        var split = responsePairs.Count / 2;
+        var early = responsePairs.Take(split).ToList();
+        var late = responsePairs.Skip(split).ToList();
+
+        if (!TryFitActualSlope(early, out var postSlopeEarly) || !TryFitActualSlope(late, out var postSlopeLate))
+            return PidProcessIdentificationResult.Fail(PidTuneProcessModel.Integrating, PidTuneIssueCode.PoorModelFit,
+                "Не удалось проверить постоянство наклона PV после Theta.", pairs.Count, dt);
+
+        var averagePostSlope = Math.Abs((postSlopeEarly + postSlopeLate) / 2.0);
+        var slopeScale = Math.Max(averagePostSlope, Math.Abs(fit.SlopeChange) * 0.20);
+        slopeScale = Math.Max(slopeScale, Epsilon);
+
+        var postSlopeDifferenceRatio = Math.Abs(postSlopeEarly - postSlopeLate) / slopeScale;
+        if (postSlopeDifferenceRatio > PidTuneIdentificationRules.MaximumIntegratingPostSlopeDifferenceRatio)
+            return PidProcessIdentificationResult.Fail(PidTuneProcessModel.Integrating, PidTuneIssueCode.PoorModelFit,
+                $"Наклон PV после Theta заметно изменяется: slope difference ratio={postSlopeDifferenceRatio:0.###}, " +
+                $"допустимо <= {PidTuneIdentificationRules.MaximumIntegratingPostSlopeDifferenceRatio:0.###}. " +
+                "Такой участок больше похож на самовыравнивающийся или многорежимный процесс.", pairs.Count, dt);
 
         var theta = fit.Theta < dt * 0.25 ? 0 : fit.Theta;
         var tauC = Math.Max(theta, dt);
@@ -113,6 +150,9 @@ public static class IntegratingProcessIdentifier
             DeltaOut = PidTrendMath.Round(foundStep.Delta, 6),
             BaseSlope = PidTrendMath.Round(fit.BaseSlope, 8),
             SlopeChange = PidTrendMath.Round(fit.SlopeChange, 8),
+            PostSlopeEarly = PidTrendMath.Round(postSlopeEarly, 8),
+            PostSlopeLate = PidTrendMath.Round(postSlopeLate, 8),
+            PostSlopeDifferenceRatio = PidTrendMath.Round(postSlopeDifferenceRatio, 6),
             Rmse = PidTrendMath.Round(metrics.Rmse, 6),
             R2 = PidTrendMath.Round(metrics.R2, 6),
             OutputTailRangeRatio = PidTrendMath.Round(outputTailRangeRatio, 6),
@@ -125,8 +165,6 @@ public static class IntegratingProcessIdentifier
     private static FitCandidate? FindBestFit(IReadOnlyList<PidAlignedSample> points, DateTime stepTimeUtc,
         double dt, double postDuration)
     {
-        // Не ограничиваем Theta произвольными 40% post-window. Оставляем минимум четыре шага
-        // после найденной Theta, чтобы новый наклон был реально наблюдаемым.
         var maximumTheta = Math.Max(0, postDuration - 4 * dt);
         FitCandidate? best = null;
         const int coarseSteps = 100;
@@ -206,6 +244,23 @@ public static class IntegratingProcessIdentifier
             return null;
 
         return new FitCandidate(theta, intercept, baseSlope, slopeChange, sse);
+    }
+
+    /// <summary>
+    /// Фактический slope одного участка PV по обычной линейной регрессии.
+    /// Время отсчитывается от первой точки участка только для численной устойчивости.
+    /// </summary>
+    private static bool TryFitActualSlope(IReadOnlyList<PidAlignedSample> points, out double slope)
+    {
+        slope = 0;
+        if (points.Count < 2)
+            return false;
+
+        var t0 = points[0].TimeUtc;
+        var time = points.Select(x => PidTrendMath.SecondsBetween(t0, x.TimeUtc)).ToList();
+        var values = points.Select(x => x.Pv).ToList();
+
+        return PidTrendMath.TryFitLine(time, values, out _, out slope);
     }
 
     private readonly record struct FitCandidate(double Theta, double Intercept, double BaseSlope, double SlopeChange, double Sse);
