@@ -2,6 +2,8 @@ namespace TechMES.Contracts.Param.Tuning;
 
 /// <summary>
 /// Одна синхронизированная пара PV/OUT.
+/// Для ClosedLoop поле Output временно содержит SP:
+/// математически это тот же механизм временного выравнивания двух рядов.
 /// </summary>
 internal readonly record struct PidAlignedSample(
     DateTime TimeUtc,
@@ -55,8 +57,16 @@ internal static class PidTrendMath
     }
 
     /// <summary>
-    /// Сопоставляет PV и OUT по ближайшему времени.
-    /// Слишком удалённые точки отбрасываются.
+    /// Сопоставляет два трендовых ряда по ближайшему времени.
+    ///
+    /// Для FOPDT/Integrating:
+    ///     pv = PV, output = OUT.
+    ///
+    /// Для ClosedLoop:
+    ///     pv = PV, output = SP.
+    ///
+    /// Точки, удаленные сильнее чем 1.5 максимального типового шага
+    /// двух рядов, отбрасываются.
     /// </summary>
     public static List<PidAlignedSample> AlignByTime(
         IReadOnlyList<PidTuningSample>? pv,
@@ -71,6 +81,7 @@ internal static class PidTrendMath
 
         var pvStep = EstimateStepSeconds(orderedPv);
         var outputStep = EstimateStepSeconds(orderedOutput);
+
         var maxDistanceSeconds = Math.Max(
             1.0,
             Math.Max(pvStep, outputStep) * 1.5);
@@ -91,6 +102,7 @@ internal static class PidTrendMath
             }
 
             var outputPoint = orderedOutput[outputIndex];
+
             if (AbsoluteSecondsBetween(
                     pvPoint.TimeUtc,
                     outputPoint.TimeUtc) > maxDistanceSeconds)
@@ -109,8 +121,14 @@ internal static class PidTrendMath
 
     /// <summary>
     /// Ищет резкую и одновременно удерживаемую ступень OUT.
-    /// Одиночный выброс не проходит, потому что сравниваются также медианы
-    /// нескольких точек до и после кандидата.
+    ///
+    /// Для каждого кандидата сравниваются:
+    /// - медиана нескольких точек до скачка;
+    /// - медиана нескольких точек после скачка;
+    /// - мгновенное изменение соседних точек.
+    ///
+    /// Score = min(|AdjacentDelta|, |SustainedDelta|).
+    /// Берется кандидат с максимальным score.
     /// </summary>
     public static PidOutputStep? FindOutputStep(
         IReadOnlyList<PidAlignedSample> samples)
@@ -118,12 +136,17 @@ internal static class PidTrendMath
         if (samples.Count < 8)
             return null;
 
-        var window = Math.Clamp(samples.Count / 20, 3, 8);
+        var window = Math.Clamp(
+            samples.Count / 20,
+            3,
+            8);
 
         var bestScore = 0.0;
         PidOutputStep? best = null;
 
-        for (var i = window; i < samples.Count - window; i++)
+        for (var i = window;
+             i < samples.Count - window;
+             i++)
         {
             var before = Median(
                 samples
@@ -138,12 +161,12 @@ internal static class PidTrendMath
                     .Select(item => item.Output));
 
             var adjacentDelta =
-                samples[i].Output - samples[i - 1].Output;
+                samples[i].Output
+                - samples[i - 1].Output;
 
-            var sustainedDelta = after - before;
+            var sustainedDelta =
+                after - before;
 
-            // Для настоящей ступени большим должен быть и мгновенный скачок,
-            // и устойчивое различие уровней до/после.
             var score = Math.Min(
                 Math.Abs(adjacentDelta),
                 Math.Abs(sustainedDelta));
@@ -152,6 +175,7 @@ internal static class PidTrendMath
                 continue;
 
             bestScore = score;
+
             best = new PidOutputStep(
                 i,
                 samples[i].TimeUtc,
@@ -161,20 +185,30 @@ internal static class PidTrendMath
                 adjacentDelta);
         }
 
-        return bestScore > Epsilon ? best : null;
+        return bestScore > Epsilon
+            ? best
+            : null;
     }
 
     /// <summary>
     /// Проверяет, что OUT изменился именно ступенью, а не длинной рампой.
+    ///
+    /// |AdjacentDelta| >= MinimumStepInstantFraction * |DeltaOUT|.
     /// </summary>
-    public static bool IsStepFastEnough(PidOutputStep step)
+    public static bool IsStepFastEnough(
+        PidOutputStep step)
     {
         return Math.Abs(step.AdjacentDelta)
-               >= Math.Abs(step.Delta) * 0.5;
+               >= Math.Abs(step.Delta)
+               * PidTuneIdentificationRules.MinimumStepInstantFraction;
     }
 
     /// <summary>
-    /// Проверяет, что новый уровень OUT удерживается до конца выбранной области.
+    /// Проверяет, что новый средний уровень OUT удерживается до конца окна.
+    ///
+    /// Медиана хвоста должна находиться в пределах
+    /// MaximumStepTailLevelErrorRatio * |DeltaOUT|
+    /// от найденного уровня After.
     /// </summary>
     public static bool IsStepSustained(
         IReadOnlyList<PidAlignedSample> samples,
@@ -182,7 +216,9 @@ internal static class PidTrendMath
     {
         var tailCount = Math.Min(
             8,
-            Math.Max(0, samples.Count - step.Index));
+            Math.Max(
+                0,
+                samples.Count - step.Index));
 
         if (tailCount < 3)
             return false;
@@ -194,9 +230,75 @@ internal static class PidTrendMath
 
         var tolerance = Math.Max(
             1e-9,
-            Math.Abs(step.Delta) * 0.20);
+            Math.Abs(step.Delta)
+            * PidTuneIdentificationRules.MaximumStepTailLevelErrorRatio);
 
-        return Math.Abs(tail - step.After) <= tolerance;
+        return Math.Abs(
+                   tail - step.After)
+               <= tolerance;
+    }
+
+    /// <summary>
+    /// Дополнительно проверяет разброс хвоста OUT.
+    ///
+    /// IsStepSustained проверяет положение медианы, но этого недостаточно:
+    /// например, чередование 45/55 вокруг уровня 50 имеет правильную медиану,
+    /// хотя управляющее воздействие явно не установилось.
+    ///
+    /// Здесь используется робастный span P95-P05 последних точек:
+    ///
+    /// tailRangeRatio = (P95 - P05) / |DeltaOUT|.
+    ///
+    /// Для принятия результата:
+    /// tailRangeRatio <= MaximumOutputTailRangeRatio.
+    /// </summary>
+    public static bool IsOutputSettled(
+        IReadOnlyList<PidAlignedSample> samples,
+        PidOutputStep step,
+        out double tailRangeRatio)
+    {
+        tailRangeRatio =
+            double.PositiveInfinity;
+
+        var delta =
+            Math.Abs(step.Delta);
+
+        if (delta <= Epsilon)
+            return false;
+
+        var available =
+            Math.Max(
+                0,
+                samples.Count - step.Index);
+
+        if (available < 5)
+            return false;
+
+        var tailCount = Math.Min(
+            16,
+            Math.Max(
+                5,
+                available / 3));
+
+        var tail = samples
+            .Skip(samples.Count - tailCount)
+            .Select(item => item.Output)
+            .Where(double.IsFinite)
+            .ToList();
+
+        if (tail.Count < 5)
+            return false;
+
+        var span =
+            RobustRange(tail);
+
+        tailRangeRatio =
+            span / delta;
+
+        return double.IsFinite(tailRangeRatio)
+               && tailRangeRatio
+               <= PidTuneIdentificationRules
+                   .MaximumOutputTailRangeRatio;
     }
 
     public static double EstimateStepSeconds(
@@ -209,8 +311,12 @@ internal static class PidTrendMath
             .Zip(
                 samples.Skip(1),
                 (left, right) =>
-                    SecondsBetween(left.TimeUtc, right.TimeUtc))
-            .Where(value => value > 0 && double.IsFinite(value))
+                    SecondsBetween(
+                        left.TimeUtc,
+                        right.TimeUtc))
+            .Where(value =>
+                value > 0
+                && double.IsFinite(value))
             .OrderBy(value => value)
             .ToList();
 
@@ -229,8 +335,12 @@ internal static class PidTrendMath
             .Zip(
                 samples.Skip(1),
                 (left, right) =>
-                    SecondsBetween(left.TimeUtc, right.TimeUtc))
-            .Where(value => value > 0 && double.IsFinite(value))
+                    SecondsBetween(
+                        left.TimeUtc,
+                        right.TimeUtc))
+            .Where(value =>
+                value > 0
+                && double.IsFinite(value))
             .OrderBy(value => value)
             .ToList();
 
@@ -247,52 +357,89 @@ internal static class PidTrendMath
         IReadOnlyList<T> source,
         int maxPoints)
     {
-        if (source.Count <= maxPoints || maxPoints < 2)
+        if (source.Count <= maxPoints
+            || maxPoints < 2)
+        {
             return source.ToList();
+        }
 
-        var result = new List<T>(maxPoints);
+        var result =
+            new List<T>(maxPoints);
 
-        for (var i = 0; i < maxPoints; i++)
+        for (var i = 0;
+             i < maxPoints;
+             i++)
         {
             var position =
-                i * (source.Count - 1d) / (maxPoints - 1d);
+                i
+                * (source.Count - 1d)
+                / (maxPoints - 1d);
 
-            var index = (int)Math.Round(
-                position,
-                MidpointRounding.AwayFromZero);
+            var index =
+                (int)Math.Round(
+                    position,
+                    MidpointRounding.AwayFromZero);
 
-            result.Add(source[index]);
+            result.Add(
+                source[index]);
         }
 
         return result;
     }
 
+    /// <summary>
+    /// Возвращает RMSE и R²:
+    ///
+    /// RMSE = sqrt(SSE / N)
+    /// R²   = 1 - SSE / SST
+    /// </summary>
     public static PidFitMetrics CalculateFit(
         IReadOnlyList<double> observed,
         IReadOnlyList<double> predicted)
     {
-        if (observed.Count == 0 || observed.Count != predicted.Count)
-            return new PidFitMetrics(double.PositiveInfinity, 0);
+        if (observed.Count == 0
+            || observed.Count != predicted.Count)
+        {
+            return new PidFitMetrics(
+                double.PositiveInfinity,
+                0);
+        }
 
-        var mean = observed.Average();
+        var mean =
+            observed.Average();
+
         var sse = 0.0;
         var sst = 0.0;
 
-        for (var i = 0; i < observed.Count; i++)
+        for (var i = 0;
+             i < observed.Count;
+             i++)
         {
-            var error = observed[i] - predicted[i];
-            sse += error * error;
+            var error =
+                observed[i] - predicted[i];
 
-            var centered = observed[i] - mean;
-            sst += centered * centered;
+            sse +=
+                error * error;
+
+            var centered =
+                observed[i] - mean;
+
+            sst +=
+                centered * centered;
         }
 
-        var rmse = Math.Sqrt(sse / observed.Count);
-        var r2 = sst <= Epsilon
-            ? 0
-            : 1.0 - sse / sst;
+        var rmse =
+            Math.Sqrt(
+                sse / observed.Count);
 
-        return new PidFitMetrics(rmse, r2);
+        var r2 =
+            sst <= Epsilon
+                ? 0
+                : 1.0 - sse / sst;
+
+        return new PidFitMetrics(
+            rmse,
+            r2);
     }
 
     /// <summary>
@@ -304,29 +451,57 @@ internal static class PidTrendMath
         out double[] solution)
     {
         solution = new double[3];
-        var augmented = new double[3, 4];
 
-        for (var row = 0; row < 3; row++)
+        var augmented =
+            new double[3, 4];
+
+        for (var row = 0;
+             row < 3;
+             row++)
         {
-            for (var column = 0; column < 3; column++)
-                augmented[row, column] = matrix[row, column];
+            for (var column = 0;
+                 column < 3;
+                 column++)
+            {
+                augmented[row, column] =
+                    matrix[row, column];
+            }
 
-            augmented[row, 3] = vector[row];
+            augmented[row, 3] =
+                vector[row];
         }
 
-        for (var column = 0; column < 3; column++)
+        for (var column = 0;
+             column < 3;
+             column++)
         {
-            var pivotRow = column;
-            var pivotAbs = Math.Abs(augmented[pivotRow, column]);
+            var pivotRow =
+                column;
 
-            for (var row = column + 1; row < 3; row++)
+            var pivotAbs =
+                Math.Abs(
+                    augmented[
+                        pivotRow,
+                        column]);
+
+            for (var row = column + 1;
+                 row < 3;
+                 row++)
             {
-                var candidate = Math.Abs(augmented[row, column]);
+                var candidate =
+                    Math.Abs(
+                        augmented[
+                            row,
+                            column]);
+
                 if (candidate <= pivotAbs)
                     continue;
 
-                pivotAbs = candidate;
-                pivotRow = row;
+                pivotAbs =
+                    candidate;
+
+                pivotRow =
+                    row;
             }
 
             if (pivotAbs <= Epsilon)
@@ -338,44 +513,78 @@ internal static class PidTrendMath
                      currentColumn < 4;
                      currentColumn++)
                 {
-                    (augmented[column, currentColumn],
-                     augmented[pivotRow, currentColumn]) =
-                        (augmented[pivotRow, currentColumn],
-                         augmented[column, currentColumn]);
+                    (
+                        augmented[
+                            column,
+                            currentColumn],
+                        augmented[
+                            pivotRow,
+                            currentColumn]
+                    ) =
+                    (
+                        augmented[
+                            pivotRow,
+                            currentColumn],
+                        augmented[
+                            column,
+                            currentColumn]
+                    );
                 }
             }
 
-            var pivot = augmented[column, column];
+            var pivot =
+                augmented[
+                    column,
+                    column];
 
             for (var currentColumn = column;
                  currentColumn < 4;
                  currentColumn++)
             {
-                augmented[column, currentColumn] /= pivot;
+                augmented[
+                    column,
+                    currentColumn] /= pivot;
             }
 
-            for (var row = 0; row < 3; row++)
+            for (var row = 0;
+                 row < 3;
+                 row++)
             {
                 if (row == column)
                     continue;
 
-                var factor = augmented[row, column];
+                var factor =
+                    augmented[
+                        row,
+                        column];
 
                 for (var currentColumn = column;
                      currentColumn < 4;
                      currentColumn++)
                 {
-                    augmented[row, currentColumn] -=
-                        factor * augmented[column, currentColumn];
+                    augmented[
+                        row,
+                        currentColumn] -=
+                        factor
+                        * augmented[
+                            column,
+                            currentColumn];
                 }
             }
         }
 
-        for (var i = 0; i < 3; i++)
+        for (var i = 0;
+             i < 3;
+             i++)
         {
-            solution[i] = augmented[i, 3];
-            if (!double.IsFinite(solution[i]))
+            solution[i] =
+                augmented[i, 3];
+
+            if (!double.IsFinite(
+                    solution[i]))
+            {
                 return false;
+            }
         }
 
         return true;
@@ -393,32 +602,52 @@ internal static class PidTrendMath
         intercept = 0;
         slope = 0;
 
-        if (x.Count < 2 || x.Count != y.Count)
+        if (x.Count < 2
+            || x.Count != y.Count)
+        {
             return false;
+        }
 
-        var xMean = x.Average();
-        var yMean = y.Average();
+        var xMean =
+            x.Average();
+
+        var yMean =
+            y.Average();
 
         var numerator = 0.0;
         var denominator = 0.0;
 
-        for (var i = 0; i < x.Count; i++)
+        for (var i = 0;
+             i < x.Count;
+             i++)
         {
-            var dx = x[i] - xMean;
-            numerator += dx * (y[i] - yMean);
-            denominator += dx * dx;
+            var dx =
+                x[i] - xMean;
+
+            numerator +=
+                dx * (y[i] - yMean);
+
+            denominator +=
+                dx * dx;
         }
 
         if (denominator <= Epsilon)
             return false;
 
-        slope = numerator / denominator;
-        intercept = yMean - slope * xMean;
+        slope =
+            numerator / denominator;
+
+        intercept =
+            yMean - slope * xMean;
 
         return double.IsFinite(intercept)
                && double.IsFinite(slope);
     }
 
+    /// <summary>
+    /// Простое симметричное moving-average сглаживание.
+    /// radius=1 означает окно до трех точек.
+    /// </summary>
     public static List<double> Smooth(
         IReadOnlyList<double> values,
         int radius)
@@ -426,34 +655,52 @@ internal static class PidTrendMath
         if (values.Count == 0)
             return [];
 
-        radius = Math.Max(0, radius);
+        radius =
+            Math.Max(
+                0,
+                radius);
 
         if (radius == 0)
             return values.ToList();
 
-        var result = new List<double>(values.Count);
+        var result =
+            new List<double>(
+                values.Count);
 
-        for (var i = 0; i < values.Count; i++)
+        for (var i = 0;
+             i < values.Count;
+             i++)
         {
-            var from = Math.Max(0, i - radius);
-            var to = Math.Min(values.Count - 1, i + radius);
+            var from =
+                Math.Max(
+                    0,
+                    i - radius);
+
+            var to =
+                Math.Min(
+                    values.Count - 1,
+                    i + radius);
 
             var sum = 0.0;
             var count = 0;
 
-            for (var j = from; j <= to; j++)
+            for (var j = from;
+                 j <= to;
+                 j++)
             {
                 sum += values[j];
                 count++;
             }
 
-            result.Add(sum / count);
+            result.Add(
+                sum / count);
         }
 
         return result;
     }
 
-    public static double Median(IEnumerable<double> source)
+    public static double Median(
+        IEnumerable<double> source)
     {
         var values = source
             .Where(double.IsFinite)
@@ -463,10 +710,14 @@ internal static class PidTrendMath
         if (values.Count == 0)
             return 0;
 
-        var middle = values.Count / 2;
+        var middle =
+            values.Count / 2;
 
         return values.Count % 2 == 0
-            ? (values[middle - 1] + values[middle]) / 2.0
+            ? (
+                values[middle - 1]
+                + values[middle]
+              ) / 2.0
             : values[middle];
     }
 
@@ -482,15 +733,53 @@ internal static class PidTrendMath
         if (values.Count == 0)
             return 0;
 
-        percentile = Math.Clamp(percentile, 0, 1);
+        percentile =
+            Math.Clamp(
+                percentile,
+                0,
+                1);
 
-        var position = (values.Count - 1) * percentile;
-        var left = (int)Math.Floor(position);
-        var right = Math.Min(values.Count - 1, left + 1);
-        var fraction = position - left;
+        var position =
+            (values.Count - 1)
+            * percentile;
+
+        var left =
+            (int)Math.Floor(
+                position);
+
+        var right =
+            Math.Min(
+                values.Count - 1,
+                left + 1);
+
+        var fraction =
+            position - left;
 
         return values[left]
-               + (values[right] - values[left]) * fraction;
+               + (
+                   values[right]
+                   - values[left]
+                 )
+               * fraction;
+    }
+
+    /// <summary>
+    /// Робастный span P95-P05.
+    /// </summary>
+    public static double RobustRange(
+        IReadOnlyList<double> values)
+    {
+        if (values.Count == 0)
+            return 0;
+
+        return Math.Max(
+            0,
+            Percentile(
+                values,
+                0.95)
+            - Percentile(
+                values,
+                0.05));
     }
 
     public static double StandardDeviation(
@@ -499,14 +788,20 @@ internal static class PidTrendMath
         if (values.Count < 2)
             return 0;
 
-        var mean = values.Average();
-        var sum = values.Sum(value =>
-        {
-            var delta = value - mean;
-            return delta * delta;
-        });
+        var mean =
+            values.Average();
 
-        return Math.Sqrt(sum / values.Count);
+        var sum = values.Sum(
+            value =>
+            {
+                var delta =
+                    value - mean;
+
+                return delta * delta;
+            });
+
+        return Math.Sqrt(
+            sum / values.Count);
     }
 
     public static double CoefficientOfVariation(
@@ -515,14 +810,20 @@ internal static class PidTrendMath
         if (values.Count < 2)
             return double.PositiveInfinity;
 
-        var mean = Math.Abs(values.Average());
+        var mean =
+            Math.Abs(
+                values.Average());
+
         if (mean <= Epsilon)
             return double.PositiveInfinity;
 
-        return StandardDeviation(values) / mean;
+        return StandardDeviation(values)
+               / mean;
     }
 
-    public static double Round(double value, int digits)
+    public static double Round(
+        double value,
+        int digits)
     {
         return Math.Round(
             value,
@@ -530,16 +831,22 @@ internal static class PidTrendMath
             MidpointRounding.AwayFromZero);
     }
 
-    public static DateTime NormalizeUtc(DateTime value)
+    public static DateTime NormalizeUtc(
+        DateTime value)
     {
         return value.Kind switch
         {
-            DateTimeKind.Utc => value,
-            DateTimeKind.Local => value.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(
-                    value,
-                    DateTimeKind.Local)
-                .ToUniversalTime()
+            DateTimeKind.Utc =>
+                value,
+
+            DateTimeKind.Local =>
+                value.ToUniversalTime(),
+
+            _ =>
+                DateTime.SpecifyKind(
+                        value,
+                        DateTimeKind.Local)
+                    .ToUniversalTime()
         };
     }
 
@@ -547,7 +854,9 @@ internal static class PidTrendMath
         DateTime leftUtc,
         DateTime rightUtc)
     {
-        return (rightUtc - leftUtc).TotalSeconds;
+        return (
+            rightUtc - leftUtc
+        ).TotalSeconds;
     }
 
     private static double AbsoluteSecondsBetween(
@@ -555,6 +864,8 @@ internal static class PidTrendMath
         DateTime rightUtc)
     {
         return Math.Abs(
-            SecondsBetween(leftUtc, rightUtc));
+            SecondsBetween(
+                leftUtc,
+                rightUtc));
     }
 }

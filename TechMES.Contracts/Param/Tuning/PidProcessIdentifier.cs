@@ -6,11 +6,44 @@ namespace TechMES.Contracts.Param.Tuning;
 /// </summary>
 public static class PidProcessIdentifier
 {
+    /// <summary>
+    /// Совместимая перегрузка для прежних FOPDT/Integrating вызовов.
+    ///
+    /// Для ClosedLoop новая логика требует SP, поэтому старый вызов без SP
+    /// вернет MissingTrendData вместо анализа одного PV.
+    /// </summary>
     public static PidProcessIdentificationResult Identify(
         string processModel,
         IReadOnlyList<PidTuningSample> pv,
         IReadOnlyList<PidTuningSample>? output = null,
         double? testKp = null)
+    {
+        return Identify(
+            processModel,
+            pv,
+            output,
+            sp: null,
+            testKp: testKp);
+    }
+
+    /// <summary>
+    /// Полная точка входа.
+    ///
+    /// FOPDT:
+    ///     PV + OUT.
+    ///
+    /// Integrating:
+    ///     PV + OUT.
+    ///
+    /// ClosedLoop:
+    ///     PV + SP + current online Test Kp.
+    /// </summary>
+    public static PidProcessIdentificationResult Identify(
+        string processModel,
+        IReadOnlyList<PidTuningSample> pv,
+        IReadOnlyList<PidTuningSample>? output,
+        IReadOnlyList<PidTuningSample>? sp,
+        double? testKp)
     {
         return processModel switch
         {
@@ -27,12 +60,14 @@ public static class PidProcessIdentifier
             PidTuneProcessModel.ClosedLoop =>
                 ClosedLoopOscillationIdentifier.Identify(
                     pv,
+                    sp ?? [],
                     testKp),
 
-            _ => PidProcessIdentificationResult.Fail(
-                processModel ?? "",
-                PidTuneIssueCode.InvalidModelParameters,
-                $"Unsupported process model: {processModel}.")
+            _ =>
+                PidProcessIdentificationResult.Fail(
+                    processModel ?? "",
+                    PidTuneIssueCode.InvalidModelParameters,
+                    $"Unsupported process model: {processModel}.")
         };
     }
 }

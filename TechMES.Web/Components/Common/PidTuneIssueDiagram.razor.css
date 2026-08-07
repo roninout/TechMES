@@ -63,8 +63,13 @@
     stroke: var(--rz-success);
 }
 
+.diagram-sp {
+    stroke: var(--rz-info);
+    stroke-width: 2.4;
+}
+
 .diagram-problem-line {
-    opacity: 0.9;
+    opacity: 0.92;
 }
 
 .diagram-step-marker {
@@ -73,24 +78,16 @@
     stroke-dasharray: 6 5;
 }
 
-.diagram-point {
-    stroke: var(--rz-base-background-color);
-    stroke-width: 2;
-}
-
-.diagram-point-28,
-.diagram-point-63 {
-    fill: var(--rz-info);
+.diagram-theta-marker {
+    stroke: color-mix(in srgb, var(--rz-text-secondary-color) 72%, transparent);
+    stroke-width: 1.4;
+    stroke-dasharray: 4 5;
 }
 
 .diagram-small-label,
 .diagram-legend text {
     fill: var(--rz-text-secondary-color);
     font-size: 12px;
-}
-
-.diagram-sample-dots {
-    fill: var(--rz-warning);
 }
 
 @media (max-width: 640px) {

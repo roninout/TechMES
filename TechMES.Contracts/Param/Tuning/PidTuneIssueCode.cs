@@ -6,9 +6,6 @@ namespace TechMES.Contracts.Param.Tuning;
 /// </summary>
 public enum PidTuneIssueCode
 {
-    /// <summary>
-    /// Ошибка отсутствует.
-    /// </summary>
     None,
 
     /// <summary>
@@ -42,8 +39,8 @@ public enum PidTuneIssueCode
     OutRampInsteadOfStep,
 
     /// <summary>
-    /// OUT не установился на новом уровне.
-    /// Оставлено для обратной совместимости со старым SimcPidTuner.
+    /// OUT формально сохранил новый средний уровень, но хвост продолжает
+    /// заметно колебаться/дрейфовать относительно величины DeltaOUT.
     /// </summary>
     OutNotSettled,
 
@@ -53,8 +50,7 @@ public enum PidTuneIssueCode
     PvNoResponse,
 
     /// <summary>
-    /// PV не успел установиться к правой границе выбранной области.
-    /// Оставлено для обратной совместимости со старым SimcPidTuner.
+    /// Legacy-код старого SimcPidTuner: PV не успел установиться.
     /// </summary>
     PvNotSettled,
 
@@ -64,20 +60,17 @@ public enum PidTuneIssueCode
     ProcessGainTooSmall,
 
     /// <summary>
-    /// PV не достиг уровня 28,3 процента полного изменения.
-    /// Оставлено для обратной совместимости со старым SimcPidTuner.
+    /// Legacy-код старого двухточечного FOPDT-алгоритма.
     /// </summary>
     PvDidNotReach28Percent,
 
     /// <summary>
-    /// PV не достиг уровня 63,2 процента полного изменения.
-    /// Оставлено для обратной совместимости со старым SimcPidTuner.
+    /// Legacy-код старого двухточечного FOPDT-алгоритма.
     /// </summary>
     PvDidNotReach63Percent,
 
     /// <summary>
-    /// Точки 28,3 и 63,2 процента расположены в некорректном порядке.
-    /// Оставлено для обратной совместимости со старым SimcPidTuner.
+    /// Legacy-код старого двухточечного FOPDT-алгоритма.
     /// </summary>
     InvalidResponseCrossings,
 
@@ -102,6 +95,13 @@ public enum PidTuneIssueCode
     PoorModelFit,
 
     /// <summary>
+    /// FOPDT fit формально найден, но выбранное окно показывает меньше
+    /// приблизительно одной Tau фактического отклика после Theta.
+    /// K/Tau в таком случае плохо идентифицируемы.
+    /// </summary>
+    FopdtResponseWindowTooShort,
+
+    /// <summary>
     /// Для интегрирующего процесса не найдено устойчивое изменение наклона PV.
     /// </summary>
     IntegratingSlopeNotDetected,
@@ -112,7 +112,7 @@ public enum PidTuneIssueCode
     ClosedLoopTestKpInvalid,
 
     /// <summary>
-    /// В PV не найдены выраженные периодические колебания.
+    /// В ошибке PV-SP не найдены выраженные периодические колебания.
     /// </summary>
     ClosedLoopNoOscillation,
 
@@ -132,14 +132,21 @@ public enum PidTuneIssueCode
     ClosedLoopAmplitudeUnstable,
 
     /// <summary>
-    /// Колебания ClosedLoop затухают: Test Kp ещё ниже критического Ku.
+    /// Колебания ClosedLoop затухают: текущий Test Kp ниже критического Ku.
     /// </summary>
     ClosedLoopOscillationsDamped,
 
     /// <summary>
-    /// Колебания ClosedLoop растут: Test Kp выше критического Ku.
+    /// Колебания ClosedLoop растут: текущий Test Kp выше критического Ku.
     /// </summary>
     ClosedLoopOscillationsGrowing,
+
+    /// <summary>
+    /// SP в выбранном ClosedLoop-окне заметно изменяется или дрейфует.
+    /// Такой участок нельзя использовать как ultimate-gain test:
+    /// колебания PV могут быть вызваны самим заданием.
+    /// </summary>
+    ClosedLoopSetpointUnstable,
 
     /// <summary>
     /// Причина не была классифицирована.

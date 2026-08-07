@@ -1,94 +1,400 @@
 @using TechMES.Contracts.Param.Tuning
 
-<div class="pid-issue-diagram" role="img" aria-label="Сравнение проблемного и подходящего ступенчатого теста">
-    <svg viewBox="0 0 760 300" preserveAspectRatio="xMidYMid meet">
-        <text x="198" y="24" text-anchor="middle" class="diagram-title diagram-problem-title">Текущий участок</text>
-        <text x="562" y="24" text-anchor="middle" class="diagram-title diagram-ok-title">Подходящий участок</text>
+<div class="pid-issue-diagram"
+     role="img"
+     aria-label="@DiagramAriaLabel">
 
-        <g class="diagram-grid">
-            <path d="M30 50 H365 M30 100 H365 M30 150 H365 M30 200 H365 M30 250 H365" />
-            <path d="M395 50 H730 M395 100 H730 M395 150 H730 M395 200 H730 M395 250 H730" />
-            <path d="M30 50 V250 M114 50 V250 M198 50 V250 M282 50 V250 M365 50 V250" />
-            <path d="M395 50 V250 M479 50 V250 M563 50 V250 M647 50 V250 M730 50 V250" />
-        </g>
+    @if (ProcessModel == PidTuneProcessModel.ClosedLoop)
+    {
+        <svg viewBox="0 0 760 300"
+             preserveAspectRatio="xMidYMid meet">
 
-        <rect x="30" y="50" width="335" height="200" class="diagram-frame diagram-problem-frame" />
-        <rect x="395" y="50" width="335" height="200" class="diagram-frame diagram-ok-frame" />
+            <text x="198" y="24"
+                  text-anchor="middle"
+                  class="diagram-title diagram-problem-title">
+                Текущий участок
+            </text>
 
-        @if (!string.IsNullOrWhiteSpace(ProblemOutPath))
-        {
-            <path d="@ProblemOutPath" class="diagram-line diagram-out diagram-problem-line" />
-        }
-        @if (!string.IsNullOrWhiteSpace(ProblemPvPath))
-        {
-            <path d="@ProblemPvPath" class="diagram-line diagram-pv diagram-problem-line" />
-        }
-        @if (IssueCode == PidTuneIssueCode.InsufficientAlignedSamples)
-        {
-            <g class="diagram-sample-dots">
-                <circle cx="66" cy="176" r="4" />
-                <circle cx="126" cy="176" r="4" />
-                <circle cx="188" cy="112" r="4" />
-                <circle cx="258" cy="145" r="4" />
+            <text x="562" y="24"
+                  text-anchor="middle"
+                  class="diagram-title diagram-ok-title">
+                Подходящий ClosedLoop
+            </text>
+
+            <g class="diagram-grid">
+                <path d="M30 50 H365 M30 100 H365 M30 150 H365 M30 200 H365 M30 250 H365" />
+                <path d="M395 50 H730 M395 100 H730 M395 150 H730 M395 200 H730 M395 250 H730" />
+                <path d="M30 50 V250 M114 50 V250 M198 50 V250 M282 50 V250 M365 50 V250" />
+                <path d="M395 50 V250 M479 50 V250 M563 50 V250 M647 50 V250 M730 50 V250" />
             </g>
-        }
 
-        <path d="M405 176 H500 V88 H720" class="diagram-line diagram-out" />
-        <path d="M405 194 H525 C542 194 545 182 558 164 C580 133 617 112 720 108"
-              class="diagram-line diagram-pv" />
-        <path d="M500 48 V252" class="diagram-step-marker" />
-        <circle cx="568" cy="151" r="5" class="diagram-point diagram-point-28" />
-        <circle cx="604" cy="124" r="5" class="diagram-point diagram-point-63" />
+            <rect x="30" y="50" width="335" height="200"
+                  class="diagram-frame diagram-problem-frame" />
+            <rect x="395" y="50" width="335" height="200"
+                  class="diagram-frame diagram-ok-frame" />
 
-        <text x="505" y="68" class="diagram-small-label">ступень OUT</text>
-        <text x="574" y="146" class="diagram-small-label">28,3%</text>
-        <text x="610" y="119" class="diagram-small-label">63,2%</text>
+            <path d="@ClosedLoopProblemSpPath"
+                  class="diagram-line diagram-sp" />
 
-        <g class="diagram-legend">
-            <line x1="246" y1="276" x2="278" y2="276" class="diagram-line diagram-out" />
-            <text x="285" y="281">OUT</text>
-            <line x1="328" y1="276" x2="360" y2="276" class="diagram-line diagram-pv" />
-            <text x="367" y="281">PV</text>
-        </g>
-    </svg>
+            <path d="@ClosedLoopProblemPvPath"
+                  class="diagram-line diagram-pv diagram-problem-line" />
+
+            @* Хороший ultimate-gain участок:
+               SP почти постоянен, PV имеет несколько периодов с близкой амплитудой. *@
+            <path d="M405 150 H720"
+                  class="diagram-line diagram-sp" />
+
+            <path d="M405 151
+                     C420 98 440 98 455 151
+                     C470 204 490 204 505 151
+                     C520 98 540 98 555 151
+                     C570 204 590 204 605 151
+                     C620 98 640 98 655 151
+                     C670 204 690 204 705 151
+                     C710 133 715 122 720 116"
+                  class="diagram-line diagram-pv" />
+
+            <text x="405" y="69"
+                  class="diagram-small-label">
+                SP ≈ const
+            </text>
+
+            <text x="580" y="86"
+                  class="diagram-small-label">
+                устойчивые периоды Tu
+            </text>
+
+            <g class="diagram-legend">
+                <line x1="286" y1="276" x2="318" y2="276"
+                      class="diagram-line diagram-sp" />
+                <text x="325" y="281">SP</text>
+
+                <line x1="376" y1="276" x2="408" y2="276"
+                      class="diagram-line diagram-pv" />
+                <text x="415" y="281">PV</text>
+            </g>
+        </svg>
+    }
+    else if (ProcessModel == PidTuneProcessModel.Integrating)
+    {
+        <svg viewBox="0 0 760 300"
+             preserveAspectRatio="xMidYMid meet">
+
+            <text x="198" y="24"
+                  text-anchor="middle"
+                  class="diagram-title diagram-problem-title">
+                Текущий участок
+            </text>
+
+            <text x="562" y="24"
+                  text-anchor="middle"
+                  class="diagram-title diagram-ok-title">
+                Подходящий Integrating
+            </text>
+
+            <g class="diagram-grid">
+                <path d="M30 50 H365 M30 100 H365 M30 150 H365 M30 200 H365 M30 250 H365" />
+                <path d="M395 50 H730 M395 100 H730 M395 150 H730 M395 200 H730 M395 250 H730" />
+                <path d="M30 50 V250 M114 50 V250 M198 50 V250 M282 50 V250 M365 50 V250" />
+                <path d="M395 50 V250 M479 50 V250 M563 50 V250 M647 50 V250 M730 50 V250" />
+            </g>
+
+            <rect x="30" y="50" width="335" height="200"
+                  class="diagram-frame diagram-problem-frame" />
+            <rect x="395" y="50" width="335" height="200"
+                  class="diagram-frame diagram-ok-frame" />
+
+            <path d="@StepProblemOutPath"
+                  class="diagram-line diagram-out diagram-problem-line" />
+
+            <path d="@IntegratingProblemPvPath"
+                  class="diagram-line diagram-pv diagram-problem-line" />
+
+            @* Справа: быстрый OUT step; PV может иметь исходный drift b0,
+               а после Theta получает новый устойчивый наклон b0+c. *@
+            <path d="M405 190 H500 V92 H720"
+                  class="diagram-line diagram-out" />
+
+            <path d="M405 205 L520 196 L548 194 L720 92"
+                  class="diagram-line diagram-pv" />
+
+            <path d="M500 48 V252"
+                  class="diagram-step-marker" />
+
+            <path d="M548 48 V252"
+                  class="diagram-theta-marker" />
+
+            <text x="505" y="68"
+                  class="diagram-small-label">
+                OUT step
+            </text>
+
+            <text x="553" y="86"
+                  class="diagram-small-label">
+                Theta
+            </text>
+
+            <text x="418" y="218"
+                  class="diagram-small-label">
+                slope b0
+            </text>
+
+            <text x="628" y="116"
+                  class="diagram-small-label">
+                slope b0 + c
+            </text>
+
+            <g class="diagram-legend">
+                <line x1="246" y1="276" x2="278" y2="276"
+                      class="diagram-line diagram-out" />
+                <text x="285" y="281">OUT</text>
+
+                <line x1="328" y1="276" x2="360" y2="276"
+                      class="diagram-line diagram-pv" />
+                <text x="367" y="281">PV</text>
+            </g>
+        </svg>
+    }
+    else
+    {
+        <svg viewBox="0 0 760 300"
+             preserveAspectRatio="xMidYMid meet">
+
+            <text x="198" y="24"
+                  text-anchor="middle"
+                  class="diagram-title diagram-problem-title">
+                Текущий участок
+            </text>
+
+            <text x="562" y="24"
+                  text-anchor="middle"
+                  class="diagram-title diagram-ok-title">
+                Подходящий FOPDT
+            </text>
+
+            <g class="diagram-grid">
+                <path d="M30 50 H365 M30 100 H365 M30 150 H365 M30 200 H365 M30 250 H365" />
+                <path d="M395 50 H730 M395 100 H730 M395 150 H730 M395 200 H730 M395 250 H730" />
+                <path d="M30 50 V250 M114 50 V250 M198 50 V250 M282 50 V250 M365 50 V250" />
+                <path d="M395 50 V250 M479 50 V250 M563 50 V250 M647 50 V250 M730 50 V250" />
+            </g>
+
+            <rect x="30" y="50" width="335" height="200"
+                  class="diagram-frame diagram-problem-frame" />
+            <rect x="395" y="50" width="335" height="200"
+                  class="diagram-frame diagram-ok-frame" />
+
+            <path d="@StepProblemOutPath"
+                  class="diagram-line diagram-out diagram-problem-line" />
+
+            <path d="@FopdtProblemPvPath"
+                  class="diagram-line diagram-pv diagram-problem-line" />
+
+            @* Текущий FOPDT справа:
+               вся кривая участвует в fit; специальных 28,3/63,2 точек больше нет. *@
+            <path d="M405 190 H500 V92 H720"
+                  class="diagram-line diagram-out" />
+
+            <path d="M405 208 H530
+                     C545 208 548 197 558 181
+                     C579 146 615 116 720 108"
+                  class="diagram-line diagram-pv" />
+
+            <path d="M530 48 V252"
+                  class="diagram-theta-marker" />
+
+            <text x="505" y="68"
+                  class="diagram-small-label">
+                OUT step
+            </text>
+
+            <text x="535" y="88"
+                  class="diagram-small-label">
+                Theta
+            </text>
+
+            <text x="604" y="126"
+                  class="diagram-small-label">
+                whole-curve fit
+            </text>
+
+            <g class="diagram-legend">
+                <line x1="246" y1="276" x2="278" y2="276"
+                      class="diagram-line diagram-out" />
+                <text x="285" y="281">OUT</text>
+
+                <line x1="328" y1="276" x2="360" y2="276"
+                      class="diagram-line diagram-pv" />
+                <text x="367" y="281">PV</text>
+            </g>
+        </svg>
+    }
 </div>
 
 @code {
-    /// <summary>
-    /// Причина ошибки, определяющая форму проблемных кривых слева.
-    /// </summary>
     [Parameter]
     public PidTuneIssueCode IssueCode { get; set; }
 
-    private string ProblemOutPath => IssueCode switch
-    {
-        PidTuneIssueCode.MissingTrendData => "",
-        PidTuneIssueCode.InsufficientAlignedSamples => "",
-        PidTuneIssueCode.StepTooCloseToBoundary => "M40 176 H320 V88 H355",
-        PidTuneIssueCode.NoOutStep => "M40 150 H355",
-        PidTuneIssueCode.OutStepNotSustained => "M40 176 H132 V88 H238 V176 H355",
-        PidTuneIssueCode.OutRampInsteadOfStep => "M40 176 H110 L305 88 H355",
-        PidTuneIssueCode.OutNotSettled => "M40 176 H120 V88 L175 108 L225 80 L275 104 L325 84 L355 96",
-        _ => "M40 176 H130 V88 H355"
-    };
+    [Parameter]
+    public string ProcessModel { get; set; } =
+        PidTuneProcessModel.Fopdt;
 
-    private string ProblemPvPath => IssueCode switch
-    {
-        PidTuneIssueCode.MissingTrendData => "M40 194 H150",
-        PidTuneIssueCode.InsufficientAlignedSamples => "",
-        PidTuneIssueCode.StepTooCloseToBoundary => "M40 194 H330 C338 194 345 184 355 168",
-        PidTuneIssueCode.NoOutStep => "M40 194 H355",
-        PidTuneIssueCode.OutStepNotSustained => "M40 194 H155 C180 190 206 154 235 150 C260 154 282 188 320 194 H355",
-        PidTuneIssueCode.OutRampInsteadOfStep => "M40 194 H130 C180 192 245 165 355 122",
-        PidTuneIssueCode.OutNotSettled => "M40 194 H145 C170 192 188 150 210 160 C235 174 250 120 275 142 C300 164 320 112 355 132",
-        PidTuneIssueCode.PvNoResponse => "M40 194 H355",
-        PidTuneIssueCode.ProcessGainTooSmall => "M40 194 H145 C190 194 235 188 355 184",
-        PidTuneIssueCode.PvNotSettled => "M40 194 H145 C190 194 212 175 250 151 C292 125 320 105 355 92",
-        PidTuneIssueCode.PvDidNotReach28Percent => "M40 194 H145 C210 194 270 190 355 174",
-        PidTuneIssueCode.PvDidNotReach63Percent => "M40 194 H145 C185 194 230 176 280 148 C315 128 338 119 355 116",
-        PidTuneIssueCode.InvalidResponseCrossings => "M40 194 H145 C160 194 172 130 188 166 C204 205 220 112 240 154 C260 194 278 118 300 144 C320 166 338 116 355 130",
-        PidTuneIssueCode.InvalidModelParameters => "M40 194 H145 C165 194 178 124 200 168 C220 210 240 118 265 156 C290 194 315 128 355 142",
-        PidTuneIssueCode.InvalidControllerParameters => "M40 194 H145 C175 194 195 108 225 154 C255 202 282 104 315 150 C330 170 342 138 355 146",
-        _ => "M40 194 H155 C185 194 205 174 235 148 C270 118 310 108 355 106"
-    };
+    private string DiagramAriaLabel =>
+        ProcessModel switch
+        {
+            PidTuneProcessModel.ClosedLoop =>
+                "Сравнение проблемного и подходящего ClosedLoop ultimate-gain участка",
+
+            PidTuneProcessModel.Integrating =>
+                "Сравнение проблемного и подходящего ступенчатого теста интегрирующего процесса",
+
+            _ =>
+                "Сравнение проблемного и подходящего FOPDT ступенчатого теста"
+        };
+
+    /// <summary>
+    /// Проблемный OUT для FOPDT/Integrating.
+    /// </summary>
+    private string StepProblemOutPath =>
+        IssueCode switch
+        {
+            PidTuneIssueCode.MissingTrendData =>
+                "",
+
+            PidTuneIssueCode.InsufficientAlignedSamples =>
+                "",
+
+            PidTuneIssueCode.StepTooCloseToBoundary =>
+                "M40 190 H320 V92 H355",
+
+            PidTuneIssueCode.NoOutStep =>
+                "M40 150 H355",
+
+            PidTuneIssueCode.OutStepNotSustained =>
+                "M40 190 H130 V92 H235 V190 H355",
+
+            PidTuneIssueCode.OutRampInsteadOfStep =>
+                "M40 190 H105 L305 92 H355",
+
+            PidTuneIssueCode.OutNotSettled =>
+                "M40 190 H120 V92 L165 108 L210 80 L255 106 L300 82 L355 101",
+
+            _ =>
+                "M40 190 H130 V92 H355"
+        };
+
+    private string FopdtProblemPvPath =>
+        IssueCode switch
+        {
+            PidTuneIssueCode.MissingTrendData =>
+                "M40 208 H140",
+
+            PidTuneIssueCode.InsufficientAlignedSamples =>
+                "M48 208 L95 205 M150 187 L198 160 M270 130 L315 116",
+
+            PidTuneIssueCode.StepTooCloseToBoundary =>
+                "M40 208 H330 C340 208 348 198 355 181",
+
+            PidTuneIssueCode.NoOutStep =>
+                "M40 208 H355",
+
+            PidTuneIssueCode.OutStepNotSustained =>
+                "M40 208 H154 C185 203 210 150 238 152 C270 157 290 200 330 208 H355",
+
+            PidTuneIssueCode.OutRampInsteadOfStep =>
+                "M40 208 H120 C175 205 245 177 355 118",
+
+            PidTuneIssueCode.OutNotSettled =>
+                "M40 208 H145 C170 203 190 147 215 161 C240 177 255 119 280 143 C305 167 325 112 355 132",
+
+            PidTuneIssueCode.PvNoResponse
+                or PidTuneIssueCode.ProcessGainTooSmall =>
+                "M40 208 H355",
+
+            PidTuneIssueCode.FopdtResponseWindowTooShort =>
+                "M40 208 H145 C172 208 193 193 220 174 C250 151 285 135 355 125",
+
+            PidTuneIssueCode.PoorModelFit
+                or PidTuneIssueCode.InvalidModelParameters =>
+                "M40 208 H145 C165 208 178 128 200 170 C221 211 241 117 266 157 C292 196 316 127 355 142",
+
+            _ =>
+                "M40 208 H155 C185 208 205 183 235 154 C270 122 310 111 355 108"
+        };
+
+    private string IntegratingProblemPvPath =>
+        IssueCode switch
+        {
+            PidTuneIssueCode.MissingTrendData =>
+                "M40 210 H142",
+
+            PidTuneIssueCode.InsufficientAlignedSamples =>
+                "M45 210 L88 207 M150 192 L196 165 M268 129 L310 105",
+
+            PidTuneIssueCode.NoOutStep =>
+                "M40 210 L355 195",
+
+            PidTuneIssueCode.IntegratingSlopeNotDetected =>
+                "M40 210 L355 190",
+
+            PidTuneIssueCode.PoorModelFit
+                or PidTuneIssueCode.InvalidModelParameters =>
+                "M40 210 L145 202 L185 174 L220 191 L255 146 L292 165 L355 101",
+
+            PidTuneIssueCode.OutStepNotSustained =>
+                "M40 210 L145 204 L220 158 L300 202 L355 205",
+
+            _ =>
+                "M40 210 L150 203 L190 198 L355 107"
+        };
+
+    /// <summary>
+    /// Для ClosedLoop слева меняется и SP, и форма PV в зависимости от причины.
+    /// </summary>
+    private string ClosedLoopProblemSpPath =>
+        IssueCode switch
+        {
+            PidTuneIssueCode.MissingTrendData =>
+                "",
+
+            PidTuneIssueCode.ClosedLoopSetpointUnstable =>
+                "M40 205 L120 185 L200 150 L280 112 L355 92",
+
+            _ =>
+                "M40 150 H355"
+        };
+
+    private string ClosedLoopProblemPvPath =>
+        IssueCode switch
+        {
+            PidTuneIssueCode.MissingTrendData =>
+                "M40 151 H125",
+
+            PidTuneIssueCode.InsufficientAlignedSamples =>
+                "M45 150 C62 105 79 105 95 150 M162 150 C180 198 198 198 215 150",
+
+            PidTuneIssueCode.ClosedLoopSetpointUnstable =>
+                "M40 200 C72 160 98 172 125 146 C155 116 184 130 215 102 C250 72 300 96 355 72",
+
+            PidTuneIssueCode.ClosedLoopNoOscillation =>
+                "M40 151 H355",
+
+            PidTuneIssueCode.ClosedLoopInsufficientCycles =>
+                "M40 151 C60 95 85 95 105 151 C125 207 150 207 170 151 C190 95 215 95 235 151 C255 207 280 207 300 151 H355",
+
+            PidTuneIssueCode.ClosedLoopOscillationsDamped =>
+                "M40 151 C55 82 75 82 90 151 C105 220 125 220 140 151 C155 98 175 98 190 151 C205 197 225 197 240 151 C255 119 275 119 290 151 C305 177 325 177 340 151",
+
+            PidTuneIssueCode.ClosedLoopOscillationsGrowing =>
+                "M40 151 C55 132 75 132 90 151 C105 170 125 170 140 151 C155 118 175 118 190 151 C205 184 225 184 240 151 C255 99 280 99 300 151 C320 214 340 214 355 151",
+
+            PidTuneIssueCode.ClosedLoopPeriodUnstable =>
+                "M40 151 C55 98 75 98 90 151 C105 204 125 204 140 151 C160 98 188 98 208 151 C233 204 267 204 292 151 C305 98 325 98 338 151",
+
+            PidTuneIssueCode.ClosedLoopAmplitudeUnstable =>
+                "M40 151 C55 92 75 92 90 151 C105 210 125 210 140 151 C155 125 175 125 190 151 C205 177 225 177 240 151 C255 87 280 87 300 151 C320 215 340 215 355 151",
+
+            _ =>
+                "M40 151 C55 98 75 98 90 151 C105 204 125 204 140 151 C155 98 175 98 190 151 C205 204 225 204 240 151 C255 98 275 98 290 151 C305 204 325 204 340 151"
+        };
 }

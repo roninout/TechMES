@@ -4,11 +4,16 @@ namespace TechMES.Contracts.Param.Tuning;
 /// Идентифицирует интегрирующий процесс по изменению наклона PV после ступени OUT.
 ///
 /// Используется кусочно-линейная модель:
+///
 ///     PV(t) = a + b0*t + c*max(0, t - Theta)
 ///
-/// b0 - исходный дрейф PV,
-/// b0 + c - наклон после реакции,
-/// c / DeltaOUT = ki.
+/// где:
+///     a       - уровень при t=0;
+///     b0      - исходный дрейф PV до реакции;
+///     b0 + c  - наклон PV после реакции;
+///     c       - изменение наклона из-за ступени OUT;
+///
+///     ki = c / DeltaOUT.
 ///
 /// Такой подход не требует искусственного "установившегося" значения PV,
 /// которого у интегрирующего процесса по определению нет.
@@ -21,7 +26,10 @@ public static class IntegratingProcessIdentifier
         IReadOnlyList<PidTuningSample> pv,
         IReadOnlyList<PidTuningSample> output)
     {
-        if (pv is null || output is null || pv.Count == 0 || output.Count == 0)
+        if (pv is null
+            || output is null
+            || pv.Count == 0
+            || output.Count == 0)
         {
             return PidProcessIdentificationResult.Fail(
                 PidTuneProcessModel.Integrating,
@@ -29,7 +37,10 @@ public static class IntegratingProcessIdentifier
                 "Нет данных PV или OUT в выбранной области графика.");
         }
 
-        var pairs = PidTrendMath.AlignByTime(pv, output);
+        var pairs =
+            PidTrendMath.AlignByTime(
+                pv,
+                output);
 
         if (pairs.Count < 12)
         {
@@ -40,8 +51,13 @@ public static class IntegratingProcessIdentifier
                 pairs.Count);
         }
 
-        var dt = PidTrendMath.EstimateStepSeconds(pairs);
-        var step = PidTrendMath.FindOutputStep(pairs);
+        var dt =
+            PidTrendMath.EstimateStepSeconds(
+                pairs);
+
+        var step =
+            PidTrendMath.FindOutputStep(
+                pairs);
 
         if (step is null)
         {
@@ -53,10 +69,12 @@ public static class IntegratingProcessIdentifier
                 dt);
         }
 
-        var foundStep = step.Value;
+        var foundStep =
+            step.Value;
 
         if (foundStep.Index < 4
-            || foundStep.Index >= pairs.Count - 8)
+            || foundStep.Index
+            >= pairs.Count - 8)
         {
             return PidProcessIdentificationResult.Fail(
                 PidTuneProcessModel.Integrating,
@@ -66,7 +84,8 @@ public static class IntegratingProcessIdentifier
                 dt);
         }
 
-        if (!PidTrendMath.IsStepFastEnough(foundStep))
+        if (!PidTrendMath.IsStepFastEnough(
+                foundStep))
         {
             return PidProcessIdentificationResult.Fail(
                 PidTuneProcessModel.Integrating,
@@ -76,7 +95,9 @@ public static class IntegratingProcessIdentifier
                 dt);
         }
 
-        if (!PidTrendMath.IsStepSustained(pairs, foundStep))
+        if (!PidTrendMath.IsStepSustained(
+                pairs,
+                foundStep))
         {
             return PidProcessIdentificationResult.Fail(
                 PidTuneProcessModel.Integrating,
@@ -86,7 +107,25 @@ public static class IntegratingProcessIdentifier
                 dt);
         }
 
-        if (Math.Abs(foundStep.Delta) <= Epsilon)
+        if (!PidTrendMath.IsOutputSettled(
+                pairs,
+                foundStep,
+                out var outputTailRangeRatio))
+        {
+            return PidProcessIdentificationResult.Fail(
+                PidTuneProcessModel.Integrating,
+                PidTuneIssueCode.OutNotSettled,
+                $"OUT после ступени не установился: "
+                + $"robust tail range / |DeltaOUT| = {outputTailRangeRatio:0.###}, "
+                + $"допустимо <= "
+                + $"{PidTuneIdentificationRules.MaximumOutputTailRangeRatio:0.###}.",
+                pairs.Count,
+                dt);
+        }
+
+        if (Math.Abs(
+                foundStep.Delta)
+            <= Epsilon)
         {
             return PidProcessIdentificationResult.Fail(
                 PidTuneProcessModel.Integrating,
@@ -96,11 +135,15 @@ public static class IntegratingProcessIdentifier
                 dt);
         }
 
-        var postDuration = PidTrendMath.SecondsBetween(
-            foundStep.TimeUtc,
-            pairs[^1].TimeUtc);
+        var postDuration =
+            PidTrendMath.SecondsBetween(
+                foundStep.TimeUtc,
+                pairs[^1].TimeUtc);
 
-        if (postDuration <= Math.Max(5 * dt, 1))
+        if (postDuration
+            <= Math.Max(
+                5 * dt,
+                1))
         {
             return PidProcessIdentificationResult.Fail(
                 PidTuneProcessModel.Integrating,
@@ -110,15 +153,17 @@ public static class IntegratingProcessIdentifier
                 dt);
         }
 
-        var fitPairs = PidTrendMath.Downsample(
-            pairs,
-            1600);
+        var fitPairs =
+            PidTrendMath.Downsample(
+                pairs,
+                1600);
 
-        var best = FindBestFit(
-            fitPairs,
-            foundStep.TimeUtc,
-            dt,
-            postDuration);
+        var best =
+            FindBestFit(
+                fitPairs,
+                foundStep.TimeUtc,
+                dt,
+                postDuration);
 
         if (best is null)
         {
@@ -130,8 +175,12 @@ public static class IntegratingProcessIdentifier
                 dt);
         }
 
-        var fit = best.Value;
-        var ki = fit.SlopeChange / foundStep.Delta;
+        var fit =
+            best.Value;
+
+        var ki =
+            fit.SlopeChange
+            / foundStep.Delta;
 
         if (!double.IsFinite(ki)
             || Math.Abs(ki) <= 1e-12)
@@ -144,41 +193,76 @@ public static class IntegratingProcessIdentifier
                 dt);
         }
 
-        var observed = new List<double>(pairs.Count);
-        var predicted = new List<double>(pairs.Count);
+        var observed =
+            new List<double>(
+                pairs.Count);
+
+        var predicted =
+            new List<double>(
+                pairs.Count);
 
         foreach (var point in pairs)
         {
-            var timeSeconds = PidTrendMath.SecondsBetween(
-                foundStep.TimeUtc,
-                point.TimeUtc);
+            var timeSeconds =
+                PidTrendMath.SecondsBetween(
+                    foundStep.TimeUtc,
+                    point.TimeUtc);
 
             var value =
                 fit.Intercept
-                + fit.BaseSlope * timeSeconds
+                + fit.BaseSlope
+                * timeSeconds
                 + fit.SlopeChange
-                * Math.Max(0, timeSeconds - fit.Theta);
+                * Math.Max(
+                    0,
+                    timeSeconds - fit.Theta);
 
-            observed.Add(point.Pv);
-            predicted.Add(value);
+            observed.Add(
+                point.Pv);
+
+            predicted.Add(
+                value);
         }
 
-        var metrics = PidTrendMath.CalculateFit(
-            observed,
-            predicted);
+        var metrics =
+            PidTrendMath.CalculateFit(
+                observed,
+                predicted);
 
         var prePv = pairs
-            .Skip(Math.Max(0, foundStep.Index - 8))
-            .Take(Math.Min(8, foundStep.Index))
+            .Skip(
+                Math.Max(
+                    0,
+                    foundStep.Index - 8))
+            .Take(
+                Math.Min(
+                    8,
+                    foundStep.Index))
             .Select(item => item.Pv)
             .ToList();
 
-        var pvNoise = PidTrendMath.StandardDeviation(prePv);
+        var pvNoise =
+            PidTrendMath.StandardDeviation(
+                prePv);
 
+        /*
+         * Эффект изменения наклона за весь post-window:
+         *
+         *     slopeContribution = |c| * Tpost.
+         *
+         * Он должен быть заметно больше исходного шума PV.
+         */
         var slopeContribution =
-            Math.Abs(fit.SlopeChange) * postDuration;
+            Math.Abs(
+                fit.SlopeChange)
+            * postDuration;
 
-        if (slopeContribution < Math.Max(1e-9, pvNoise * 3))
+        if (slopeContribution
+            < Math.Max(
+                1e-9,
+                pvNoise
+                * PidTuneIdentificationRules
+                    .MinimumIntegratingSlopeSignalToNoiseSigma))
         {
             return PidProcessIdentificationResult.Fail(
                 PidTuneProcessModel.Integrating,
@@ -188,36 +272,102 @@ public static class IntegratingProcessIdentifier
                 dt);
         }
 
-        if (!double.IsFinite(metrics.R2)
-            || metrics.R2 < 0.70)
+        if (!double.IsFinite(
+                metrics.R2)
+            || metrics.R2
+            < PidTuneIdentificationRules
+                .MinimumIntegratingR2)
         {
             return PidProcessIdentificationResult.Fail(
                 PidTuneProcessModel.Integrating,
                 PidTuneIssueCode.PoorModelFit,
-                $"Интегрирующая модель плохо описывает выбранный участок: R²={metrics.R2:0.###}.",
+                $"Интегрирующая модель плохо описывает выбранный участок: "
+                + $"R²={metrics.R2:0.###}, требуется >= "
+                + $"{PidTuneIdentificationRules.MinimumIntegratingR2:0.###}.",
                 pairs.Count,
                 dt);
         }
 
-        var theta = fit.Theta < dt * 0.25
-            ? 0
-            : fit.Theta;
+        var theta =
+            fit.Theta
+            < dt * 0.25
+                ? 0
+                : fit.Theta;
 
-        var tauC = Math.Max(theta, dt);
+        /*
+         * TauC - tuning parameter, а не физический параметр объекта.
+         * Для автоматического стартового значения:
+         *
+         *     TauC = max(Theta, dt).
+         */
+        var tauC =
+            Math.Max(
+                theta,
+                dt);
 
         return new PidProcessIdentificationResult
         {
             IsSuccess = true,
-            ProcessModel = PidTuneProcessModel.Integrating,
-            IssueCode = PidTuneIssueCode.None,
-            Ki = PidTrendMath.Round(ki, 8),
-            Theta = PidTrendMath.Round(theta, 3),
-            TauC = PidTrendMath.Round(tauC, 3),
-            Rmse = PidTrendMath.Round(metrics.Rmse, 6),
-            R2 = PidTrendMath.Round(metrics.R2, 6),
-            DtSeconds = PidTrendMath.Round(dt, 3),
-            PointsUsed = pairs.Count,
-            StepTimeUtc = foundStep.TimeUtc
+            ProcessModel =
+                PidTuneProcessModel.Integrating,
+            IssueCode =
+                PidTuneIssueCode.None,
+
+            Ki =
+                PidTrendMath.Round(
+                    ki,
+                    8),
+
+            Theta =
+                PidTrendMath.Round(
+                    theta,
+                    3),
+
+            TauC =
+                PidTrendMath.Round(
+                    tauC,
+                    3),
+
+            DeltaOut =
+                PidTrendMath.Round(
+                    foundStep.Delta,
+                    6),
+
+            BaseSlope =
+                PidTrendMath.Round(
+                    fit.BaseSlope,
+                    8),
+
+            SlopeChange =
+                PidTrendMath.Round(
+                    fit.SlopeChange,
+                    8),
+
+            Rmse =
+                PidTrendMath.Round(
+                    metrics.Rmse,
+                    6),
+
+            R2 =
+                PidTrendMath.Round(
+                    metrics.R2,
+                    6),
+
+            OutputTailRangeRatio =
+                PidTrendMath.Round(
+                    outputTailRangeRatio,
+                    6),
+
+            DtSeconds =
+                PidTrendMath.Round(
+                    dt,
+                    3),
+
+            PointsUsed =
+                pairs.Count,
+
+            StepTimeUtc =
+                foundStep.TimeUtc
         };
     }
 
@@ -227,11 +377,12 @@ public static class IntegratingProcessIdentifier
         double dt,
         double postDuration)
     {
-        var maximumTheta = Math.Max(
-            0,
-            Math.Min(
-                postDuration * 0.40,
-                postDuration - 2 * dt));
+        var maximumTheta =
+            Math.Max(
+                0,
+                Math.Min(
+                    postDuration * 0.40,
+                    postDuration - 2 * dt));
 
         FitCandidate? best = null;
 
@@ -241,20 +392,25 @@ public static class IntegratingProcessIdentifier
              index <= coarseSteps;
              index++)
         {
-            var theta = maximumTheta <= 0
-                ? 0
-                : maximumTheta * index / coarseSteps;
+            var theta =
+                maximumTheta <= 0
+                    ? 0
+                    : maximumTheta
+                      * index
+                      / coarseSteps;
 
-            var candidate = EvaluateCandidate(
-                points,
-                stepTimeUtc,
-                theta);
+            var candidate =
+                EvaluateCandidate(
+                    points,
+                    stepTimeUtc,
+                    theta);
 
             if (candidate is null)
                 continue;
 
             if (best is null
-                || candidate.Value.Sse < best.Value.Sse)
+                || candidate.Value.Sse
+                < best.Value.Sse)
             {
                 best = candidate;
             }
@@ -263,17 +419,23 @@ public static class IntegratingProcessIdentifier
         if (best is null)
             return null;
 
-        var coarseThetaStep = maximumTheta <= 0
-            ? dt
-            : maximumTheta / coarseSteps;
+        var coarseThetaStep =
+            maximumTheta <= 0
+                ? dt
+                : maximumTheta
+                  / coarseSteps;
 
-        var thetaFrom = Math.Max(
-            0,
-            best.Value.Theta - 3 * coarseThetaStep);
+        var thetaFrom =
+            Math.Max(
+                0,
+                best.Value.Theta
+                - 3 * coarseThetaStep);
 
-        var thetaTo = Math.Min(
-            maximumTheta,
-            best.Value.Theta + 3 * coarseThetaStep);
+        var thetaTo =
+            Math.Min(
+                maximumTheta,
+                best.Value.Theta
+                + 3 * coarseThetaStep);
 
         const int refineSteps = 60;
 
@@ -281,23 +443,28 @@ public static class IntegratingProcessIdentifier
              index <= refineSteps;
              index++)
         {
-            var theta = thetaTo <= thetaFrom
-                ? thetaFrom
-                : thetaFrom
-                  + (thetaTo - thetaFrom)
-                  * index
-                  / refineSteps;
+            var theta =
+                thetaTo <= thetaFrom
+                    ? thetaFrom
+                    : thetaFrom
+                      + (thetaTo - thetaFrom)
+                      * index
+                      / refineSteps;
 
-            var candidate = EvaluateCandidate(
-                points,
-                stepTimeUtc,
-                theta);
+            var candidate =
+                EvaluateCandidate(
+                    points,
+                    stepTimeUtc,
+                    theta);
 
             if (candidate is null)
                 continue;
 
-            if (candidate.Value.Sse < best.Value.Sse)
+            if (candidate.Value.Sse
+                < best.Value.Sse)
+            {
                 best = candidate;
+            }
         }
 
         return best;
@@ -305,8 +472,12 @@ public static class IntegratingProcessIdentifier
 
     /// <summary>
     /// Для фиксированной Theta решает линейную МНК-задачу
+    ///
+    ///     PV = a + b0*t + c*max(0,t-Theta)
+    ///
     /// по базисам [1, t, max(0,t-Theta)].
-    /// Время предварительно нормализуется, чтобы матрица не теряла точность
+    ///
+    /// Время нормализуется, чтобы матрица не теряла численную точность
     /// на длинных исторических интервалах.
     /// </summary>
     private static FitCandidate? EvaluateCandidate(
@@ -321,25 +492,40 @@ public static class IntegratingProcessIdentifier
                     point.TimeUtc))
             .ToList();
 
-        var timeScale = Math.Max(
-            1.0,
-            rawTimes.Max(Math.Abs));
+        var timeScale =
+            Math.Max(
+                1.0,
+                rawTimes.Max(
+                    Math.Abs));
 
-        var matrix = new double[3, 3];
-        var vector = new double[3];
+        var matrix =
+            new double[3, 3];
 
-        foreach (var (point, index) in points.Select(
-                     (value, index) => (value, index)))
+        var vector =
+            new double[3];
+
+        foreach (var (point, index)
+                 in points.Select(
+                     (value, index) =>
+                         (value, index)))
         {
-            var timeSeconds = rawTimes[index];
+            var timeSeconds =
+                rawTimes[index];
 
             var x0 = 1.0;
-            var x1 = timeSeconds / timeScale;
-            var x2 = Math.Max(
-                0,
-                timeSeconds - theta) / timeScale;
 
-            var y = point.Pv;
+            var x1 =
+                timeSeconds
+                / timeScale;
+
+            var x2 =
+                Math.Max(
+                    0,
+                    timeSeconds - theta)
+                / timeScale;
+
+            var y =
+                point.Pv;
 
             matrix[0, 0] += x0 * x0;
             matrix[0, 1] += x0 * x1;
@@ -366,24 +552,41 @@ public static class IntegratingProcessIdentifier
             return null;
         }
 
-        var intercept = coefficients[0];
-        var baseSlope = coefficients[1] / timeScale;
-        var slopeChange = coefficients[2] / timeScale;
+        var intercept =
+            coefficients[0];
+
+        var baseSlope =
+            coefficients[1]
+            / timeScale;
+
+        var slopeChange =
+            coefficients[2]
+            / timeScale;
 
         var sse = 0.0;
 
-        for (var i = 0; i < points.Count; i++)
+        for (var i = 0;
+             i < points.Count;
+             i++)
         {
-            var timeSeconds = rawTimes[i];
+            var timeSeconds =
+                rawTimes[i];
 
             var predicted =
                 intercept
-                + baseSlope * timeSeconds
+                + baseSlope
+                * timeSeconds
                 + slopeChange
-                * Math.Max(0, timeSeconds - theta);
+                * Math.Max(
+                    0,
+                    timeSeconds - theta);
 
-            var error = points[i].Pv - predicted;
-            sse += error * error;
+            var error =
+                points[i].Pv
+                - predicted;
+
+            sse +=
+                error * error;
         }
 
         if (!double.IsFinite(sse)

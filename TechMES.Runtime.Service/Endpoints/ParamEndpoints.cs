@@ -114,38 +114,6 @@ public static class ParamEndpoints
     }
 
     /// <summary>
-    /// Подставляет проверенные в UI PV/SP теги в Runtime-расчет без сохранения в PostgreSQL.
-    /// Так график обновляется сразу после Check, а постоянное хранение остается за кнопкой Save.
-    /// </summary>
-    private static void ApplyTuneQueryOverrides(
-        ParamTuneSettingsResponse settings,
-        string? pv,
-        double? pvMin,
-        double? pvMax,
-        string? sp,
-        double? spMin,
-        double? spMax)
-    {
-        if (pv is not null)
-            settings.Pv = string.IsNullOrWhiteSpace(pv) ? null : pv.Trim();
-
-        if (pvMin.HasValue)
-            settings.PvMin = pvMin;
-
-        if (pvMax.HasValue)
-            settings.PvMax = pvMax;
-
-        if (sp is not null)
-            settings.Sp = string.IsNullOrWhiteSpace(sp) ? null : sp.Trim();
-
-        if (spMin.HasValue)
-            settings.SpMin = spMin;
-
-        if (spMax.HasValue)
-            settings.SpMax = spMax;
-    }
-
-    /// <summary>
     /// Проверяет один Tune-тег.
     ///
     /// PV/SP приходят с RequireTrend=true:

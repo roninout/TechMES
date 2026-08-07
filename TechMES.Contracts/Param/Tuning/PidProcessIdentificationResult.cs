@@ -30,6 +30,32 @@ public sealed class PidProcessIdentificationResult
     public double? Tu { get; init; }
 
     /// <summary>
+    /// Найденная величина ступени OUT = OUTafter - OUTbefore.
+    /// </summary>
+    public double? DeltaOut { get; init; }
+
+    /// <summary>
+    /// Исходный уровень PV перед ступенью FOPDT.
+    /// </summary>
+    public double? PvBaseline { get; init; }
+
+    /// <summary>
+    /// Полная fitted-амплитуда FOPDT A = K * DeltaOUT.
+    /// </summary>
+    public double? ResponseAmplitude { get; init; }
+
+    /// <summary>
+    /// Исходный наклон PV до реакции Integrating-модели.
+    /// </summary>
+    public double? BaseSlope { get; init; }
+
+    /// <summary>
+    /// Изменение наклона PV после Theta в Integrating-модели.
+    /// Ki = SlopeChange / DeltaOUT.
+    /// </summary>
+    public double? SlopeChange { get; init; }
+
+    /// <summary>
     /// Среднеквадратичная ошибка аппроксимации в единицах PV.
     /// Для ClosedLoop не используется.
     /// </summary>
@@ -42,7 +68,20 @@ public sealed class PidProcessIdentificationResult
     public double? R2 { get; init; }
 
     /// <summary>
-    /// Средняя амплитуда устойчивых колебаний ClosedLoop.
+    /// Для FOPDT: доля полного fitted-отклика, реально наблюдаемая
+    /// к правой границе выбранного окна:
+    /// 1 - exp(-(Tobs-Theta)/Tau).
+    /// </summary>
+    public double? ObservedResponseFraction { get; init; }
+
+    /// <summary>
+    /// Робастный разброс хвоста OUT (P95-P05), деленный на |DeltaOUT|.
+    /// Используется FOPDT/Integrating.
+    /// </summary>
+    public double? OutputTailRangeRatio { get; init; }
+
+    /// <summary>
+    /// Средняя амплитуда устойчивых колебаний detrended ошибки PV-SP.
     /// </summary>
     public double? OscillationAmplitude { get; init; }
 
@@ -61,6 +100,21 @@ public sealed class PidProcessIdentificationResult
     /// Значение около 1 означает незатухающие колебания.
     /// </summary>
     public double? AmplitudeTrendRatio { get; init; }
+
+    /// <summary>
+    /// Робастный разброс SP P95-P05 относительно peak-to-peak амплитуды ошибки PV-SP.
+    /// </summary>
+    public double? SetpointVariationRatio { get; init; }
+
+    /// <summary>
+    /// Полный линейный дрейф SP за окно относительно peak-to-peak амплитуды ошибки PV-SP.
+    /// </summary>
+    public double? SetpointDriftRatio { get; init; }
+
+    /// <summary>
+    /// Количество полных циклов, использованных в ClosedLoop-проверке амплитуды.
+    /// </summary>
+    public int? CyclesUsed { get; init; }
 
     public double DtSeconds { get; init; }
 

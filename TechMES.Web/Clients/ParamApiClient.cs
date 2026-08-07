@@ -165,40 +165,65 @@ public sealed class ParamApiClient
     }
 
     /// <summary>
-    /// Проверяет в Runtime/CtApi, что PV/SP тег найден, читается как число и имеет trend-reference.
+    /// Проверяет один PID Tune-тег.
+    ///
+    /// request.RequireTrend=true:
+    ///     PV/SP -> numeric TagRead + trend-reference.
+    ///
+    /// request.RequireTrend=false:
+    ///     Test Kp -> только numeric online TagRead.
     /// </summary>
-    public async Task<ParamTuneCheckResponse> CheckTuneTagAsync(
-        string equipmentName,
-        ParamTuneCheckRequest request,
-        CancellationToken ct = default)
+    public async Task<ParamTuneCheckResponse> CheckTuneTagAsync(string equipmentName, ParamTuneCheckRequest request, CancellationToken ct = default)
     {
-        var client = CreateClient();
-        var encodedName = Uri.EscapeDataString(equipmentName);
+        var client =
+            CreateClient();
 
-        using var response = await client.PostAsJsonAsync(
-            $"api/param/{encodedName}/tune/check",
-            request,
-            ct);
+        var encodedName =
+            Uri.EscapeDataString(
+                equipmentName);
 
-        var result = await response.Content.ReadFromJsonAsync<ParamTuneCheckResponse>(cancellationToken: ct);
-        return result ?? new ParamTuneCheckResponse
-        {
-            TagName = request.TagName,
-            Found = false,
-            TrendFound = false,
-            Message = response.IsSuccessStatusCode
-                ? "Runtime Service returned empty PID Tune check response."
-                : $"Runtime Service rejected PID Tune check: {(int)response.StatusCode} {response.ReasonPhrase}"
-        };
+        using var response =
+            await client.PostAsJsonAsync(
+                $"api/param/{encodedName}/tune/check",
+                request,
+                ct);
+
+        var result =
+            await response.Content
+                .ReadFromJsonAsync<ParamTuneCheckResponse>(
+                    cancellationToken: ct);
+
+        return result
+            ?? new ParamTuneCheckResponse
+            {
+                TagName =
+                    request.TagName,
+
+                Found =
+                    false,
+
+                /*
+                 * Важно для fallback:
+                 * Test Kp не должен внезапно превратиться
+                 * в "trend required" из-за default=true DTO.
+                 */
+                TrendRequired =
+                    request.RequireTrend,
+
+                TrendFound =
+                    false,
+
+                Message =
+                    response.IsSuccessStatusCode
+                        ? "Runtime Service returned empty PID Tune check response."
+                        : $"Runtime Service rejected PID Tune check: {(int)response.StatusCode} {response.ReasonPhrase}"
+            };
     }
 
     /// <summary>
     /// Сохраняет PV/SP теги и диапазоны в Runtime/PostgreSQL.
     /// </summary>
-    public async Task<ParamTuneSettingsResponse> SaveTuneAsync(
-        string equipmentName,
-        ParamTuneSaveRequest request,
-        CancellationToken ct = default)
+    public async Task<ParamTuneSettingsResponse> SaveTuneAsync(string equipmentName, ParamTuneSaveRequest request, CancellationToken ct = default)
     {
         var client = CreateClient();
         var encodedName = Uri.EscapeDataString(equipmentName);
@@ -217,9 +242,7 @@ public sealed class ParamApiClient
     /// <summary>
     /// Читает PLC reference page.
     /// </summary>
-    public async Task<ParamPlcRefsResponse> GetPlcRefsAsync(
-        string equipmentName,
-        CancellationToken ct = default)
+    public async Task<ParamPlcRefsResponse> GetPlcRefsAsync(string equipmentName, CancellationToken ct = default)
     {
         var client = CreateClient();
         var encodedName = Uri.EscapeDataString(equipmentName);

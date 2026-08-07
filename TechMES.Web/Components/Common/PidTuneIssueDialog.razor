@@ -16,16 +16,19 @@
 
     <section class="pid-tune-issue-section">
         <h3>Как должен выглядеть выбранный участок</h3>
-        <PidTuneIssueDiagram IssueCode="@IssueCode" />
+
+        <PidTuneIssueDiagram IssueCode="@IssueCode"
+                             ProcessModel="@ProcessModel" />
+
         <p class="pid-tune-diagram-caption">
-            Слева показан характер проблемы, справа - пригодный для идентификации
-            ступенчатый тест с устойчивыми уровнями OUT и полным откликом PV.
+            @Content.DiagramCaption
         </p>
     </section>
 
     <section class="pid-tune-issue-section">
         <h3>Что сделать</h3>
         <p>@Content.Recommendation</p>
+
         <ul>
             @foreach (var item in Content.Checklist)
             {
@@ -43,19 +46,25 @@
 </div>
 
 @code {
-    /// <summary>
-    /// Тип диагностической причины, определенный алгоритмом PID Tune.
-    /// </summary>
     [Parameter]
-    public PidTuneIssueCode IssueCode { get; set; } = PidTuneIssueCode.Unknown;
+    public PidTuneIssueCode IssueCode { get; set; } =
+        PidTuneIssueCode.Unknown;
 
-    /// <summary>
-    /// Краткий статус, который пользователь нажал в основной форме.
-    /// </summary>
     [Parameter]
     public string Message { get; set; } = "";
 
-    private PidTuneIssueContent Content => PidTuneIssueCatalog.Get(IssueCode);
+    /// <summary>
+    /// Нужен для выбора корректной справки и диаграммы:
+    /// FOPDT, Integrating или ClosedLoop.
+    /// </summary>
+    [Parameter]
+    public string ProcessModel { get; set; } =
+        PidTuneProcessModel.Fopdt;
+
+    private PidTuneIssueContent Content =>
+        PidTuneIssueCatalog.Get(
+            IssueCode,
+            ProcessModel);
 
     private void Close()
     {

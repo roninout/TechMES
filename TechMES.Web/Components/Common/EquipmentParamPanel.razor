@@ -661,13 +661,15 @@
                                         <ParamAiPanel Title="PID Tune" Icon="query_stats">
                                             <div class="param-tune-form">
                                                     <div class="param-tune-row param-tune-header-row">
-                                                        <RadzenFormField AllowFloatingLabel="false" Text="Process model" class="param-tune-tag-field">
+                                                        <RadzenFormField AllowFloatingLabel="false"
+                                                                         Text="Process model"
+                                                                         class="param-tune-tag-field">
                                                             <RadzenDropDown TValue="string"
                                                                             Data="@TuneModelOptions"
                                                                             TextProperty="Text"
                                                                             ValueProperty="Value"
                                                                             @bind-Value="_tuneCalculationModel"
-                                                                            Change="@(_ => NormalizeTuneCalculationMethod())"
+                                                                            Change="@OnTuneCalculationModelChanged"
                                                                             Style="width: 100%;" />
                                                         </RadzenFormField>
                                                         <RadzenFormField AllowFloatingLabel="false" Text="Tune method" class="param-tune-tag-field">
@@ -1140,15 +1142,30 @@
     /// </summary>
     private string _tuneCalculationMethod = TuneMethodFopdtSimcPid;
 
-    private double? _tuneFopdtK = 1.5;
-    private double? _tuneFopdtTau = 120;
-    private double? _tuneFopdtTheta = 15;
-    private double? _tuneFopdtTauC = 15;
-    private double? _tuneIntegratingKi = 0.0007;
-    private double? _tuneIntegratingTheta = 20;
-    private double? _tuneIntegratingTauC = 480;
-    private double? _tuneClosedKu = 4;
-    private double? _tuneClosedTu = 90;
+    /// <summary>
+    /// Последний результат автоматической идентификации по видимой области.
+    /// null означает, что после смены оборудования/тегов/модели новый Calculate
+    /// еще не выполнялся.
+    /// </summary>
+    private PidProcessIdentificationResult? _tuneIdentification;
+
+    /*
+     * Не задаем тестовые коэффициенты по умолчанию.
+     *
+     * Иначе при переключении Equipment существовал риск сохранить
+     * Kp/Ti/Td, рассчитанные из коэффициентов предыдущего оборудования.
+     */
+    private double? _tuneFopdtK;
+    private double? _tuneFopdtTau;
+    private double? _tuneFopdtTheta;
+    private double? _tuneFopdtTauC;
+
+    private double? _tuneIntegratingKi;
+    private double? _tuneIntegratingTheta;
+    private double? _tuneIntegratingTauC;
+
+    private double? _tuneClosedKu;
+    private double? _tuneClosedTu;
 
     /// <summary>
     /// Read-only reference page PLC.
@@ -1335,8 +1352,11 @@
     }
 
     /// <summary>
-    /// Реагирует на смену Equipment/route mode: отменяет старые запросы,
-    /// загружает новую панель и включает polling только когда Param видим.
+    /// Реагирует на смену Equipment/route mode.
+    ///
+    /// При смене оборудования обязательно очищает все коэффициенты
+    /// идентификации, чтобы результат одного VGA не мог быть сохранен
+    /// для другого VGA.
     /// </summary>
     protected override async Task OnParametersSetAsync()
     {
@@ -1347,9 +1367,13 @@
             return;
         }
 
-        var currentName = Equipment?.Name;
+        var currentName =
+            Equipment?.Name;
 
-        if (string.Equals(_loadedEquipmentName, currentName, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(
+                _loadedEquipmentName,
+                currentName,
+                StringComparison.OrdinalIgnoreCase))
         {
             StartRefreshLoop();
             return;
@@ -1358,33 +1382,97 @@
         StopRefreshLoop();
         CancelActiveLoads();
 
-        _loadedEquipmentName = currentName;
+        _loadedEquipmentName =
+            currentName;
+
         _snapshot = null;
         _trend = null;
         _tune = null;
         _tuneTrend = null;
+
         _hasTuneSettingsLoadedFromStore = false;
         _isTuneCalculating = false;
+
+        /*
+         * Критически важно:
+         * коэффициенты K/Tau/Theta/ki/Ku/Tu принадлежат конкретному
+         * оборудованию и конкретным исходным тегам.
+         */
+        ResetTuneCalculationState(
+            clearModelParameters: true);
+
         _tuneVisibleFromUtc = null;
         _tuneVisibleToUtc = null;
         _fixedTuneToUtc = null;
+
         _plcRefs = null;
         _diDoRefs = null;
         _dryRun = null;
         _atvRef = null;
+
         _fixedTrendToUtc = null;
+
         _chartViewVersion++;
         _tuneChartViewVersion++;
+
         _statusText = "";
-        _tuneStatusText = "";
-        _tuneIssueCode = PidTuneIssueCode.None;
         _tuneSettingsStatusText = "";
 
         if (Equipment is null)
             return;
 
-        await LoadAsync(showLoading: true, includeTrend: ShouldLoadVisibleTrend, ct: GetActiveLoadToken());
+        await LoadAsync(
+            showLoading: true,
+            includeTrend: ShouldLoadVisibleTrend,
+            ct: GetActiveLoadToken());
+
         StartRefreshLoop();
+    }
+
+    /// <summary>
+    /// Вызывается после смены математической модели.
+    ///
+    /// Значения других моделей не обязаны стираться, но результат
+    /// последней автоматической идентификации больше не относится
+    /// к текущей модели, поэтому status/diagnostics сбрасываются.
+    /// </summary>
+    private void OnTuneCalculationModelChanged(object? _)
+    {
+        NormalizeTuneCalculationMethod();
+        ResetTuneCalculationState(clearModelParameters: false);
+    }
+
+    /// <summary>
+    /// Сбрасывает результат автоматической идентификации.
+    ///
+    /// clearModelParameters=true используется при смене Equipment
+    /// или исходных тегов. В этом режиме старые K/Tau/Theta/ki/Ku/Tu
+    /// полностью удаляются.
+    /// </summary>
+    private void ResetTuneCalculationState(bool clearModelParameters)
+    {
+        _tuneIdentification = null;
+
+        _tuneStatusText = "";
+        _tuneIssueCode =
+            PidTuneIssueCode.None;
+        _tuneStatusStyle =
+            AlertStyle.Info;
+
+        if (!clearModelParameters)
+            return;
+
+        _tuneFopdtK = null;
+        _tuneFopdtTau = null;
+        _tuneFopdtTheta = null;
+        _tuneFopdtTauC = null;
+
+        _tuneIntegratingKi = null;
+        _tuneIntegratingTheta = null;
+        _tuneIntegratingTauC = null;
+
+        _tuneClosedKu = null;
+        _tuneClosedTu = null;
     }
 
     /// <summary>
@@ -2873,55 +2961,113 @@
     }
 
     /// <summary>
-    /// Имя трендового тега PV. При ручном изменении сбрасываем флаг успешной проверки,
-    /// чтобы Save снова стал доступен только после Check.
+    /// Имя трендового тега PV.
+    ///
+    /// Смена исходного сигнала инвалидирует не только Check,
+    /// но и все ранее определенные коэффициенты модели.
     /// </summary>
     private string TunePv
     {
         get => EnsureTuneSettings().Pv ?? "";
+
         set
         {
             var settings = EnsureTuneSettings();
-            settings.Pv = (value ?? "").Trim();
+            var normalized = (value ?? "").Trim();
+
+            if (string.Equals(settings.Pv ?? "", normalized, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            settings.Pv = normalized;
             settings.PvTrendFound = false;
+            ResetTuneCalculationState(clearModelParameters: true);
             _tuneSettingsStatusText = "";
         }
     }
 
     /// <summary>
-    /// Имя трендового тега SP. При ручном изменении сбрасываем флаг успешной проверки,
-    /// чтобы Save не сохранял непроверенный тег.
+    /// Имя трендового тега SP.
+    ///
+    /// SP теперь является расчетным входом ClosedLoop:
+    /// анализ выполняется по ошибке PV-SP.
+    /// Поэтому смена SP инвалидирует предыдущий ClosedLoop-результат.
     /// </summary>
     private string TuneSp
     {
-        get => EnsureTuneSettings().Sp ?? "";
+        get =>
+            EnsureTuneSettings().Sp
+            ?? "";
+
         set
         {
-            var settings = EnsureTuneSettings();
-            settings.Sp = (value ?? "").Trim();
-            settings.SpTrendFound = false;
+            var settings =
+                EnsureTuneSettings();
+
+            var normalized =
+                (value ?? "").Trim();
+
+            if (string.Equals(
+                    settings.Sp ?? "",
+                    normalized,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            settings.Sp =
+                normalized;
+
+            settings.SpTrendFound =
+                false;
+
+            ResetTuneCalculationState(
+                clearModelParameters: true);
+
             _tuneSettingsStatusText = "";
         }
     }
 
     /// <summary>
-    /// Имя online-тега фактического Kp, с которым выполняется ClosedLoop-тест.
+    /// Имя online-тега фактического Kp для ClosedLoop.
     ///
-    /// При ручном изменении старый результат Check и старое online-значение
-    /// сбрасываются, чтобы Ku нельзя было получить из устаревшего Test Kp.
+    /// Test Kp не является трендовым тегом, но его изменение полностью
+    /// инвалидирует прежний Ku/ClosedLoop результат.
     /// </summary>
     private string TuneTestKpTag
     {
-        get => EnsureTuneSettings().TestKpTag ?? "";
+        get =>
+            EnsureTuneSettings().TestKpTag
+            ?? "";
 
         set
         {
-            var settings = EnsureTuneSettings();
-            settings.TestKpTag = (value ?? "").Trim();
-            settings.TestKpFound = false;
+            var settings =
+                EnsureTuneSettings();
+
+            var normalized =
+                (value ?? "").Trim();
+
+            if (string.Equals(
+                    settings.TestKpTag ?? "",
+                    normalized,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            settings.TestKpTag =
+                normalized;
+
+            settings.TestKpFound =
+                false;
 
             if (_tune is not null)
                 _tune.TestKpValue = null;
+
+            ResetTuneCalculationState(
+                clearModelParameters: true);
 
             _tuneSettingsStatusText = "";
         }
@@ -2978,30 +3124,51 @@
     }
 
     /// <summary>
-    /// FOPDT и Integrating требуют одновременно PV и OUT/ManTune.
+    /// FOPDT / Integrating:
+    ///     требуют PV + OUT/ManTune.
     ///
-    /// ClosedLoop определяет Tu только по PV, поэтому тренд OUT ему не нужен.
-    /// Test Kp берётся из online-тега и проверяется уже идентификатором,
-    /// чтобы при отсутствии значения пользователь получил понятную диагностику.
+    /// ClosedLoop:
+    ///     требует PV + SP.
+    ///     OUT не нужен; Ku берется из текущего online Test Kp.
     /// </summary>
     private bool CanCalculateTune
     {
         get
         {
-            if (_isTuneCalculating || _tuneTrend is null)
+            if (_isTuneCalculating
+                || _tuneTrend is null)
+            {
                 return false;
+            }
 
-            var hasPv = _tuneTrend.Points.Any(point => point.Series.Equals("Pv", StringComparison.OrdinalIgnoreCase));
+            var hasPv =
+                _tuneTrend.Points.Any(
+                    point =>
+                        point.Series.Equals(
+                            "Pv",
+                            StringComparison.OrdinalIgnoreCase));
 
             if (!hasPv)
                 return false;
 
-            if (_tuneCalculationModel == TuneModelClosedLoop)
-                return true;
+            if (_tuneCalculationModel
+                == TuneModelClosedLoop)
+            {
+                return _tuneTrend.Points.Any(
+                    point =>
+                        point.Series.Equals(
+                            "Sp",
+                            StringComparison.OrdinalIgnoreCase));
+            }
 
-            return _tuneTrend.Points.Any(point => point.Series.Equals("ManTune", StringComparison.OrdinalIgnoreCase));
+            return _tuneTrend.Points.Any(
+                point =>
+                    point.Series.Equals(
+                        "ManTune",
+                        StringComparison.OrdinalIgnoreCase));
         }
     }
+
 
     /// <summary>
     /// Компактное отображение рассчитанных PID-значений.
@@ -3010,6 +3177,20 @@
     {
         return value.HasValue
             ? value.Value.ToString("0.###", CultureInfo.InvariantCulture)
+            : "";
+    }
+
+    /// <summary>
+    /// Форматирует отношение 0..1 как проценты для status-строки.
+    /// </summary>
+    private static string FormatTunePercent(double? value)
+    {
+        return value.HasValue
+            ? (value.Value * 100)
+                .ToString(
+                    "0.##",
+                    CultureInfo.InvariantCulture)
+              + "%"
             : "";
     }
 
@@ -3035,32 +3216,47 @@
     }
 
     /// <summary>
-    /// Открывает контекстную справку по выбранной модели и методу.
-    /// В диалог передается снимок текущей формы, поэтому значения и формулы
-    /// соответствуют состоянию вкладки в момент нажатия кнопки Info.
+    /// Открывает подробную справку:
+    /// - математическая модель;
+    /// - фактический алгоритм анализа trend-точек;
+    /// - все формулы идентификации;
+    /// - acceptance thresholds;
+    /// - diagnostics последнего Calculate;
+    /// - формулы Kp/Ti/Td;
+    /// - ссылки на первоисточники.
     /// </summary>
     private async Task OpenTuneInfoAsync()
     {
         NormalizeTuneCalculationMethod();
 
-        var request = BuildTuneCalculationRequest();
-        var result = PidTuneCalculator.Calculate(request);
+        var request =
+            BuildTuneCalculationRequest();
+
+        var result =
+            PidTuneCalculator.Calculate(
+                request);
 
         await DialogService.OpenAsync<PidTuneInfoDialog>(
             "Расчет PID-настроек",
             new Dictionary<string, object?>
             {
-                [nameof(PidTuneInfoDialog.Request)] = request,
-                [nameof(PidTuneInfoDialog.Result)] = result
+                [nameof(PidTuneInfoDialog.Request)] =
+                    request,
+
+                [nameof(PidTuneInfoDialog.Result)] =
+                    result,
+
+                [nameof(PidTuneInfoDialog.Identification)] =
+                    _tuneIdentification
             },
             new DialogOptions
             {
-                Width = "780px",
+                Width = "980px",
                 Resizable = true,
                 Draggable = true,
                 CloseDialogOnOverlayClick = true,
                 CloseDialogOnEsc = true
-        });
+            });
     }
 
     /// <summary>
@@ -3072,8 +3268,8 @@
         !string.IsNullOrWhiteSpace(_tuneStatusText);
 
     /// <summary>
-    /// Открывает объяснение текущей ошибки расчета и наглядное сравнение
-    /// проблемного участка с корректным ступенчатым тестом OUT/PV.
+    /// Открывает модель-зависимую диагностическую справку.
+    /// Диаграмма теперь различается для FOPDT, Integrating и ClosedLoop.
     /// </summary>
     private async Task OpenTuneIssueAsync()
     {
@@ -3084,12 +3280,18 @@
             "Почему расчет невозможен",
             new Dictionary<string, object?>
             {
-                [nameof(PidTuneIssueDialog.IssueCode)] = _tuneIssueCode,
-                [nameof(PidTuneIssueDialog.Message)] = _tuneStatusText
+                [nameof(PidTuneIssueDialog.IssueCode)] =
+                    _tuneIssueCode,
+
+                [nameof(PidTuneIssueDialog.Message)] =
+                    _tuneStatusText,
+
+                [nameof(PidTuneIssueDialog.ProcessModel)] =
+                    _tuneCalculationModel
             },
             new DialogOptions
             {
-                Width = "880px",
+                Width = "900px",
                 Resizable = true,
                 Draggable = true,
                 CloseDialogOnOverlayClick = true,
@@ -3119,50 +3321,105 @@
     }
 
     /// <summary>
-    /// Автоматически идентифицирует выбранную пользователем модель
+    /// Автоматически идентифицирует выбранную модель
     /// по фактически видимой области Tune-графика.
     ///
     /// FOPDT:
-    ///     PV + OUT -> K, Tau, Theta, TauC.
+    ///     PV + OUT
+    ///     -> whole-curve fit
+    ///     -> K / Tau / Theta / TauC.
     ///
     /// Integrating:
-    ///     PV + OUT -> ki, Theta, TauC.
+    ///     PV + OUT
+    ///     -> piecewise-linear fit
+    ///     -> ki / Theta / TauC.
     ///
     /// ClosedLoop:
-    ///     PV + online Test Kp -> Ku, Tu.
-    ///
-    /// После идентификации параметры передаются существующему
-    /// PidTuneCalculator, который рассчитывает Kp/Ti/Td
-    /// по выбранному методу настройки.
+    ///     PV + SP + current online Test Kp
+    ///     -> e(t)=PV-SP
+    ///     -> устойчивые critical oscillations
+    ///     -> Ku / Tu.
     /// </summary>
     private async Task CalculateTuneFromVisibleTrendAsync()
     {
         if (_tuneTrend is null)
             return;
 
-        var selectedModel = _tuneCalculationModel;
-        var selectedMethod = _tuneCalculationMethod;
+        var selectedModel =
+            _tuneCalculationModel;
+
+        var selectedMethod =
+            _tuneCalculationMethod;
 
         _isTuneCalculating = true;
-        _tuneIssueCode = PidTuneIssueCode.None;
+        _tuneIssueCode =
+            PidTuneIssueCode.None;
 
         try
         {
-            var fromUtc = GetTuneVisibleFromUtc() ?? _tuneTrend.FromUtc;
-            var toUtc = GetTuneVisibleToUtc() ?? _tuneTrend.ToUtc;
-            var pv = GetTuneSamples("Pv", fromUtc, toUtc);
+            var fromUtc =
+                GetTuneVisibleFromUtc()
+                ?? _tuneTrend.FromUtc;
 
-            IReadOnlyList<PidTuningSample> output = selectedModel == TuneModelClosedLoop
+            var toUtc =
+                GetTuneVisibleToUtc()
+                ?? _tuneTrend.ToUtc;
+
+            var pv =
+                GetTuneSamples(
+                    "Pv",
+                    fromUtc,
+                    toUtc);
+
+            IReadOnlyList<PidTuningSample> output =
+                selectedModel == TuneModelClosedLoop
                     ? []
-                    : GetTuneSamples("ManTune", fromUtc, toUtc);
+                    : GetTuneSamples(
+                        "ManTune",
+                        fromUtc,
+                        toUtc);
 
-            var identification = PidProcessIdentifier.Identify(selectedModel,pv,output,_tune?.TestKpValue);
+            /*
+             * SP нужен именно для ClosedLoop.
+             * Анализ одного PV может принять периодическое изменение SP
+             * за ultimate oscillation.
+             */
+            IReadOnlyList<PidTuningSample> sp =
+                selectedModel == TuneModelClosedLoop
+                    ? GetTuneSamples(
+                        "Sp",
+                        fromUtc,
+                        toUtc)
+                    : [];
+
+            var identification =
+                PidProcessIdentifier.Identify(
+                    selectedModel,
+                    pv,
+                    output,
+                    sp,
+                    _tune?.TestKpValue);
+
+            /*
+             * Храним и успешный, и неуспешный результат:
+             * Info-dialog сможет показать diagnostics последней попытки.
+             */
+            _tuneIdentification =
+                identification;
 
             if (!identification.IsSuccess)
             {
-                _tuneStatusStyle = AlertStyle.Warning;
-                _tuneStatusText = identification.ErrorMessage;
-                _tuneIssueCode = identification.IssueCode == PidTuneIssueCode.None ? PidTuneIssueCode.Unknown : identification.IssueCode;
+                _tuneStatusStyle =
+                    AlertStyle.Warning;
+
+                _tuneStatusText =
+                    identification.ErrorMessage;
+
+                _tuneIssueCode =
+                    identification.IssueCode
+                    == PidTuneIssueCode.None
+                        ? PidTuneIssueCode.Unknown
+                        : identification.IssueCode;
 
                 return;
             }
@@ -3170,52 +3427,92 @@
             switch (selectedModel)
             {
                 case TuneModelFopdt:
-                    _tuneFopdtK = identification.K;
-                    _tuneFopdtTau = identification.Tau;
-                    _tuneFopdtTheta = identification.Theta;
-                    _tuneFopdtTauC = identification.TauC;
+                    _tuneFopdtK =
+                        identification.K;
 
+                    _tuneFopdtTau =
+                        identification.Tau;
+
+                    _tuneFopdtTheta =
+                        identification.Theta;
+
+                    _tuneFopdtTauC =
+                        identification.TauC;
                     break;
 
                 case TuneModelIntegrating:
-                    _tuneIntegratingKi = identification.Ki;
-                    _tuneIntegratingTheta = identification.Theta;
-                    _tuneIntegratingTauC = identification.TauC;
+                    _tuneIntegratingKi =
+                        identification.Ki;
 
+                    _tuneIntegratingTheta =
+                        identification.Theta;
+
+                    _tuneIntegratingTauC =
+                        identification.TauC;
                     break;
 
                 case TuneModelClosedLoop:
-                    _tuneClosedKu = identification.Ku;
-                    _tuneClosedTu = identification.Tu;
+                    _tuneClosedKu =
+                        identification.Ku;
 
+                    _tuneClosedTu =
+                        identification.Tu;
                     break;
             }
 
-             // Асинхронная работа не должна менять выбранные модель и метод настройки.
-            _tuneCalculationModel = selectedModel;
-            _tuneCalculationMethod = selectedMethod;
+            /*
+             * Асинхронная операция не должна менять выбранные
+             * пользователем model/method.
+             */
+            _tuneCalculationModel =
+                selectedModel;
 
-            var selectedTune = CalculateTune();
+            _tuneCalculationMethod =
+                selectedMethod;
+
+            var selectedTune =
+                CalculateTune();
 
             if (!selectedTune.IsValid)
             {
-                _tuneStatusStyle = AlertStyle.Warning;
-                _tuneStatusText = selectedTune.Message;
-                _tuneIssueCode = PidTuneIssueCode.InvalidControllerParameters;
+                _tuneStatusStyle =
+                    AlertStyle.Warning;
+
+                _tuneStatusText =
+                    selectedTune.Message;
+
+                _tuneIssueCode =
+                    PidTuneIssueCode.InvalidControllerParameters;
 
                 return;
             }
 
-            _tuneStatusStyle = AlertStyle.Success;
-            _tuneIssueCode = PidTuneIssueCode.None;
-            _tuneStatusText = BuildTuneCalculationStatus(selectedModel, selectedTune, identification);
+            _tuneStatusStyle =
+                AlertStyle.Success;
 
-            NotificationService.Notify(new NotificationMessage
+            _tuneIssueCode =
+                PidTuneIssueCode.None;
+
+            _tuneStatusText =
+                BuildTuneCalculationStatus(
+                    selectedModel,
+                    selectedTune,
+                    identification);
+
+            NotificationService.Notify(
+                new NotificationMessage
                 {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "PID Tune",
-                    Detail = "Calculation completed.",
-                    Duration = 2500
+                    Severity =
+                        NotificationSeverity.Success,
+
+                    Summary =
+                        "PID Tune",
+
+                    Detail =
+                        "Calculation completed.",
+
+                    Duration =
+                        2500
                 });
         }
         finally
@@ -3228,10 +3525,10 @@
     }
 
     /// <summary>
-    /// Формирует итоговый статус расчета вместе с диагностикой
-    /// качества автоматической идентификации.
+    /// Формирует краткий status с реальными quality metrics.
+    /// Полный математический разбор остается в Info-dialog.
     /// </summary>
-    private string BuildTuneCalculationStatus(string processModel, PidTuneCalculationResult tuneResult, PidProcessIdentificationResult identification)
+    private string BuildTuneCalculationStatus(string processModel,PidTuneCalculationResult tuneResult,PidProcessIdentificationResult identification)
     {
         var modelParameters =
             processModel switch
@@ -3262,14 +3559,31 @@
             {
                 TuneModelClosedLoop =>
                     $"A={FormatTuneNumber(identification.OscillationAmplitude)}, "
-                    + $"period CV={FormatTuneNumber(identification.PeriodCv)}, "
-                    + $"amplitude CV={FormatTuneNumber(identification.AmplitudeCv)}, "
-                    + $"amplitude ratio={FormatTuneNumber(identification.AmplitudeTrendRatio)}",
+                    + $"period CV={FormatTunePercent(identification.PeriodCv)}, "
+                    + $"amplitude CV={FormatTunePercent(identification.AmplitudeCv)}, "
+                    + $"amplitude ratio={FormatTuneNumber(identification.AmplitudeTrendRatio)}, "
+                    + $"SP variation={FormatTunePercent(identification.SetpointVariationRatio)}, "
+                    + $"SP drift={FormatTunePercent(identification.SetpointDriftRatio)}, "
+                    + $"cycles={identification.CyclesUsed}",
+
+                TuneModelIntegrating =>
+                    $"R²={FormatTuneNumber(identification.R2)}, "
+                    + $"RMSE={FormatTuneNumber(identification.Rmse)}, "
+                    + $"OUT tail={FormatTunePercent(identification.OutputTailRangeRatio)}",
 
                 _ =>
                     $"R²={FormatTuneNumber(identification.R2)}, "
-                    + $"RMSE={FormatTuneNumber(identification.Rmse)}"
+                    + $"RMSE={FormatTuneNumber(identification.Rmse)}, "
+                    + $"observed={FormatTunePercent(identification.ObservedResponseFraction)}, "
+                    + $"OUT tail={FormatTunePercent(identification.OutputTailRangeRatio)}"
             };
+
+        var testKpNote =
+            processModel == TuneModelClosedLoop
+                ? IsTuneLive
+                    ? $" Ku uses current online Test Kp={FormatTuneNumber(_tune?.TestKpValue)}."
+                    : $" Historical window: Ku uses CURRENT online Test Kp={FormatTuneNumber(_tune?.TestKpValue)}; verify that this Kp was active during the selected interval."
+                : "";
 
         return
             $"Calculation completed. "
@@ -3277,7 +3591,8 @@
             + $"{controllerParameters}, "
             + $"{quality}, "
             + $"method={tuneResult.Message}, "
-            + $"points={identification.PointsUsed}.";
+            + $"points={identification.PointsUsed}."
+            + testKpNote;
     }
 
 
@@ -3612,29 +3927,54 @@
     }
 
     /// <summary>
-    /// Сохраняет проверенные PV/SP/Test Kp теги,
-    /// диапазоны и рассчитанные Kp/Ti/Td в PostgreSQL.
+    /// Сохраняет проверенные PV/SP/Test Kp теги и итоговые Kp/Ti/Td.
+    ///
+    /// Check-флаги являются Runtime/UI состоянием и в БД не хранятся.
+    /// Поэтому после Save переносим их из текущего settings в объект,
+    /// который вернул PostgreSql store.
     /// </summary>
     private async Task SaveTuneAsync()
     {
-        if (Equipment is null || !CanSaveTune)
+        if (Equipment is null
+            || !CanSaveTune)
+        {
             return;
+        }
 
-        var settings = EnsureTuneSettings();
-        var tuneResult = CalculateTune();
+        var settings =
+            EnsureTuneSettings();
+
+        var tuneResult =
+            CalculateTune();
 
         if (!tuneResult.IsValid)
         {
-            _tuneSettingsStatusText = tuneResult.Message;
+            _tuneSettingsStatusText =
+                tuneResult.Message;
+
             return;
         }
+
+        /*
+         * Эти флаги намеренно НЕ хранятся в PostgreSQL.
+         * Они подтверждают только текущую Runtime-проверку.
+         */
+        var pvTrendFound =
+            settings.PvTrendFound;
+
+        var spTrendFound =
+            settings.SpTrendFound;
+
+        var testKpFound =
+            settings.TestKpFound;
 
         _isTuneSaving = true;
 
         try
         {
             var saved =
-                await ParamApi.SaveTuneAsync(Equipment.Name,
+                await ParamApi.SaveTuneAsync(
+                    Equipment.Name,
                     new ParamTuneSaveRequest
                     {
                         Pv = settings.Pv,
@@ -3654,45 +3994,83 @@
                     },
                     GetActiveLoadToken());
 
-            _tune ??= new ParamTuneRuntimeResponse
-                    {
-                        EquipmentName =
-                            Equipment.Name,
+            /*
+             * Store возвращает только persistent data.
+             * Восстанавливаем результаты успешного Check,
+             * чтобы Save не выключил сам себя до следующего Check.
+             */
+            saved.PvTrendFound =
+                pvTrendFound;
 
-                        TypeGroup =
-                            Equipment.TypeGroup,
+            saved.SpTrendFound =
+                spTrendFound;
 
-                        Supported =
-                            true
-                    };
+            saved.TestKpFound =
+                testKpFound;
 
-            _tune.Settings = saved;
+            _tune ??=
+                new ParamTuneRuntimeResponse
+                {
+                    EquipmentName =
+                        Equipment.Name,
 
-            _tuneSettingsStatusText = "PID Tune settings saved.";
+                    TypeGroup =
+                        Equipment.TypeGroup,
 
-            await LoadTuneAsync(Equipment.Name, GetActiveLoadToken());
+                    Supported =
+                        true
+                };
 
-            NotificationService.Notify(new NotificationMessage
-                                        {
-                                            Severity = NotificationSeverity.Success,
-                                            Summary = "PID Tune",
-                                            Detail = "Settings saved.",
-                                            Duration = 2500
-                                        });
+            _tune.Settings =
+                saved;
+
+            _tuneSettingsStatusText =
+                "PID Tune settings saved.";
+
+            await LoadTuneAsync(
+                Equipment.Name,
+                GetActiveLoadToken());
+
+            NotificationService.Notify(
+                new NotificationMessage
+                {
+                    Severity =
+                        NotificationSeverity.Success,
+
+                    Summary =
+                        "PID Tune",
+
+                    Detail =
+                        "Settings saved.",
+
+                    Duration =
+                        2500
+                });
         }
-        catch (OperationCanceledException) when (_isDisposed || !IsActive)
+        catch (OperationCanceledException)
+            when (_isDisposed || !IsActive)
         {
         }
         catch (Exception ex)
         {
-            _tuneSettingsStatusText = "Cannot save Tune settings: " + ex.Message;
+            _tuneSettingsStatusText =
+                "Cannot save Tune settings: "
+                + ex.Message;
 
-            NotificationService.Notify(new NotificationMessage
+            NotificationService.Notify(
+                new NotificationMessage
                 {
-                    Severity = NotificationSeverity.Error,
-                    Summary = "PID Tune",
-                    Detail = "Cannot save Tune settings.",
-                    Duration = 3500
+                    Severity =
+                        NotificationSeverity.Error,
+
+                    Summary =
+                        "PID Tune",
+
+                    Detail =
+                        "Cannot save Tune settings.",
+
+                    Duration =
+                        3500
                 });
         }
         finally
