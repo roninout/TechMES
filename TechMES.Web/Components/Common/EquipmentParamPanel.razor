@@ -3098,28 +3098,18 @@
     }
 
     /// <summary>
-    /// Save разрешается после успешной проверки PV/SP.
-    ///
-    /// Test Kp обязателен для ClosedLoop.
-    /// Для других моделей он необязателен, но если пользователь его ввёл,
-    /// этот тег также должен пройти Check.
+    /// Save относится к панели Settings, поэтому не зависит от того, выполнялся ли Calculate.
+    /// PV/SP должны пройти Check. Test Kp необязателен, но если он введён, он тоже должен быть проверен.
     /// </summary>
     private bool CanSaveTune
     {
         get
         {
-            if (_isTuneSaving || _tune?.Settings is null || !_tune.Settings.PvTrendFound || !_tune.Settings.SpTrendFound)
+            var settings = _tune?.Settings;
+            if (_isTuneSaving || settings is null || !settings.PvTrendFound || !settings.SpTrendFound)
                 return false;
 
-            var testKpEntered = !string.IsNullOrWhiteSpace(_tune.Settings.TestKpTag);
-
-            if (_tuneCalculationModel == TuneModelClosedLoop && !testKpEntered)
-                return false;
-
-            if (testKpEntered && !_tune.Settings.TestKpFound)
-                return false;
-
-            return CalculateTune().IsValid;
+            return string.IsNullOrWhiteSpace(settings.TestKpTag) || settings.TestKpFound;
         }
     }
 
@@ -3927,156 +3917,88 @@
     }
 
     /// <summary>
-    /// Сохраняет проверенные PV/SP/Test Kp теги и итоговые Kp/Ti/Td.
-    ///
-    /// Check-флаги являются Runtime/UI состоянием и в БД не хранятся.
-    /// Поэтому после Save переносим их из текущего settings в объект,
-    /// который вернул PostgreSql store.
+    /// Сохраняет проверенные Tune-теги и диапазоны независимо от наличия нового Calculate.
+    /// Если текущий расчет валиден, сохраняются новые Kp/Ti/Td. Иначе сохраняются последние
+    /// коэффициенты из БД, чтобы обычное сохранение Settings не стирало предыдущий результат.
     /// </summary>
     private async Task SaveTuneAsync()
     {
-        if (Equipment is null
-            || !CanSaveTune)
-        {
+        if (Equipment is null || !CanSaveTune)
             return;
-        }
 
-        var settings =
-            EnsureTuneSettings();
+        var settings = EnsureTuneSettings();
+        var tuneResult = CalculateTune();
 
-        var tuneResult =
-            CalculateTune();
+        var kp = tuneResult.IsValid ? tuneResult.Kp : settings.Kp;
+        var ti = tuneResult.IsValid ? tuneResult.Ti : settings.Ti;
+        var td = tuneResult.IsValid ? tuneResult.Td : settings.Td;
 
-        if (!tuneResult.IsValid)
-        {
-            _tuneSettingsStatusText =
-                tuneResult.Message;
-
-            return;
-        }
-
-        /*
-         * Эти флаги намеренно НЕ хранятся в PostgreSQL.
-         * Они подтверждают только текущую Runtime-проверку.
-         */
-        var pvTrendFound =
-            settings.PvTrendFound;
-
-        var spTrendFound =
-            settings.SpTrendFound;
-
-        var testKpFound =
-            settings.TestKpFound;
+        // Эти флаги являются только результатом текущего Runtime Check и в БД не хранятся.
+        var pvTrendFound = settings.PvTrendFound;
+        var spTrendFound = settings.SpTrendFound;
+        var testKpFound = settings.TestKpFound;
 
         _isTuneSaving = true;
 
         try
         {
-            var saved =
-                await ParamApi.SaveTuneAsync(
-                    Equipment.Name,
-                    new ParamTuneSaveRequest
-                    {
-                        Pv = settings.Pv,
-                        PvMin = settings.PvMin,
-                        PvMax = settings.PvMax,
+            var saved = await ParamApi.SaveTuneAsync(Equipment.Name, new ParamTuneSaveRequest
+            {
+                Pv = settings.Pv,
+                PvMin = settings.PvMin,
+                PvMax = settings.PvMax,
+                Sp = settings.Sp,
+                SpMin = settings.SpMin,
+                SpMax = settings.SpMax,
+                TestKpTag = settings.TestKpTag,
+                Kp = kp,
+                Ti = ti,
+                Td = td
+            }, GetActiveLoadToken());
 
-                        Sp = settings.Sp,
-                        SpMin = settings.SpMin,
-                        SpMax = settings.SpMax,
+            saved.PvTrendFound = pvTrendFound;
+            saved.SpTrendFound = spTrendFound;
+            saved.TestKpFound = testKpFound;
 
-                        TestKpTag =
-                            settings.TestKpTag,
+            _tune ??= new ParamTuneRuntimeResponse
+            {
+                EquipmentName = Equipment.Name,
+                TypeGroup = Equipment.TypeGroup,
+                Supported = true
+            };
 
-                        Kp = tuneResult.Kp,
-                        Ti = tuneResult.Ti,
-                        Td = tuneResult.Td
-                    },
-                    GetActiveLoadToken());
+            _tune.Settings = saved;
+            _tuneSettingsStatusText = tuneResult.IsValid
+                ? "PID Tune settings and calculated coefficients saved."
+                : "PID Tune settings saved. Calculated coefficients were not changed.";
 
-            /*
-             * Store возвращает только persistent data.
-             * Восстанавливаем результаты успешного Check,
-             * чтобы Save не выключил сам себя до следующего Check.
-             */
-            saved.PvTrendFound =
-                pvTrendFound;
+            await LoadTuneAsync(Equipment.Name, GetActiveLoadToken());
 
-            saved.SpTrendFound =
-                spTrendFound;
-
-            saved.TestKpFound =
-                testKpFound;
-
-            _tune ??=
-                new ParamTuneRuntimeResponse
-                {
-                    EquipmentName =
-                        Equipment.Name,
-
-                    TypeGroup =
-                        Equipment.TypeGroup,
-
-                    Supported =
-                        true
-                };
-
-            _tune.Settings =
-                saved;
-
-            _tuneSettingsStatusText =
-                "PID Tune settings saved.";
-
-            await LoadTuneAsync(
-                Equipment.Name,
-                GetActiveLoadToken());
-
-            NotificationService.Notify(
-                new NotificationMessage
-                {
-                    Severity =
-                        NotificationSeverity.Success,
-
-                    Summary =
-                        "PID Tune",
-
-                    Detail =
-                        "Settings saved.",
-
-                    Duration =
-                        2500
-                });
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "PID Tune",
+                Detail = _tuneSettingsStatusText,
+                Duration = 2500
+            });
         }
-        catch (OperationCanceledException)
-            when (_isDisposed || !IsActive)
+        catch (OperationCanceledException) when (_isDisposed || !IsActive)
         {
         }
         catch (Exception ex)
         {
-            _tuneSettingsStatusText =
-                "Cannot save Tune settings: "
-                + ex.Message;
-
-            NotificationService.Notify(
-                new NotificationMessage
-                {
-                    Severity =
-                        NotificationSeverity.Error,
-
-                    Summary =
-                        "PID Tune",
-
-                    Detail =
-                        "Cannot save Tune settings.",
-
-                    Duration =
-                        3500
-                });
+            _tuneSettingsStatusText = "Cannot save Tune settings: " + ex.Message;
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "PID Tune",
+                Detail = "Cannot save Tune settings.",
+                Duration = 3500
+            });
         }
         finally
         {
             _isTuneSaving = false;
-
             if (!_isDisposed)
                 StateHasChanged();
         }

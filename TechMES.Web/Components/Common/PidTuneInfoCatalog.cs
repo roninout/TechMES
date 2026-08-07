@@ -14,10 +14,7 @@ namespace TechMES.Web.Components.Common;
 /// </summary>
 internal static class PidTuneInfoCatalog
 {
-    public static PidTuneInfoContent Create(
-        PidTuneCalculationRequest request,
-        PidTuneCalculationResult result,
-        PidProcessIdentificationResult? identification)
+    public static PidTuneInfoContent Create(PidTuneCalculationRequest request,PidTuneCalculationResult result,PidProcessIdentificationResult? identification)
     {
         return new PidTuneInfoContent(
             CreateModelInfo(request),
@@ -31,8 +28,7 @@ internal static class PidTuneInfoCatalog
     /// <summary>
     /// Описание физической/математической модели и текущих параметров формы.
     /// </summary>
-    private static PidTuneModelInfo CreateModelInfo(
-        PidTuneCalculationRequest request)
+    private static PidTuneModelInfo CreateModelInfo(PidTuneCalculationRequest request)
     {
         return request.ProcessModel switch
         {
@@ -136,9 +132,7 @@ internal static class PidTuneInfoCatalog
     /// Подробно описывает именно тот алгоритм идентификации,
     /// который выполняет PidProcessIdentifier.
     /// </summary>
-    private static PidTuneIdentificationInfo CreateIdentificationInfo(
-        PidTuneCalculationRequest request,
-        PidProcessIdentificationResult? identification)
+    private static PidTuneIdentificationInfo CreateIdentificationInfo(PidTuneCalculationRequest request, PidProcessIdentificationResult? identification)
     {
         return request.ProcessModel switch
         {
@@ -153,101 +147,97 @@ internal static class PidTuneInfoCatalog
         };
     }
 
-    private static PidTuneIdentificationInfo CreateFopdtIdentification(
-        PidProcessIdentificationResult? identification)
+    private static PidTuneIdentificationInfo CreateFopdtIdentification(PidProcessIdentificationResult? identification)
     {
         return new PidTuneIdentificationInfo(
             "Как TechMES определяет K, Tau и Theta",
-            "После синхронизации PV и OUT алгоритм ищет один быстрый и удерживаемый "
-            + "скачок OUT. Исходный PV0 берется как медиана нескольких точек перед "
-            + "ступенью. Затем Theta и Tau перебираются, а для каждой пары оптимальная "
-            + "полная амплитуда A вычисляется аналитически по МНК. Побеждает модель "
-            + "с минимальной суммой квадратов ошибок по всей post-step кривой.",
+            "После синхронизации PV и OUT алгоритм ищет один быстрый и удерживаемый скачок OUT. "
+            + "PV0 берется как медиана нескольких точек перед ступенью. Затем Theta и Tau перебираются, "
+            + "а для каждой пары оптимальная полная амплитуда A вычисляется аналитически по МНК. "
+            + "Побеждает модель с минимальной суммой квадратов ошибок по всей post-step кривой.",
             new[]
             {
-                "DeltaOUT = OUT_after - OUT_before",
-                "f_i(Theta,Tau) = 0, если t_i <= Theta",
-                "f_i(Theta,Tau) = 1 - exp(-(t_i - Theta) / Tau), если t_i > Theta",
-                "A(Theta,Tau) = Sum[f_i * (PV_i - PV0)] / Sum[f_i^2]",
-                "PVhat_i = PV0 + A * f_i",
-                "SSE = Sum[(PV_i - PVhat_i)^2]",
-                "K = A / DeltaOUT",
-                "RMSE = sqrt(SSE / N)",
-                "R^2 = 1 - SSE / Sum[(PV_i - mean(PV))^2]",
-                "ObservedFraction = 1 - exp(-(Tobs - Theta) / Tau)",
-                "TauC(auto) = max(Theta, dt)"
+            "DeltaOUT = OUT_after - OUT_before",
+            "f_i(Theta,Tau) = 0, если t_i <= Theta",
+            "f_i(Theta,Tau) = 1 - exp(-(t_i - Theta) / Tau), если t_i > Theta",
+            "A(Theta,Tau) = Sum[f_i * (PV_i - PV0)] / Sum[f_i^2]",
+            "PVhat_i = PV0 + A * f_i",
+            "SSE = Sum[(PV_i - PVhat_i)^2]",
+            "K = A / DeltaOUT",
+            "RMSE = sqrt(SSE / N)",
+            "R^2 = 1 - SSE / Sum[(PV_i - mean(PV))^2]",
+            "ObservedFraction = 1 - exp(-(Tobs - Theta) / Tau)",
+            "TauC(auto) = max(Theta, dt)"
             },
             new[]
             {
-                "PV и OUT нормализуются по времени; NaN/Infinity удаляются, одинаковые timestamps усредняются.",
-                "PV и OUT сопоставляются по ближайшему времени. Слишком удаленные пары отбрасываются; для FOPDT требуется минимум 12 синхронизированных пар.",
-                "Ступень OUT должна оставлять минимум 4 пары до скачка и минимум 8 пар после него.",
-                "Ступень OUT ищется по сочетанию мгновенного скачка и разницы медианных уровней до/после.",
-                $"Мгновенный скачок должен быть >= {Percent(PidTuneIdentificationRules.MinimumStepInstantFraction)} устойчивой DeltaOUT.",
-                $"Медиана хвоста OUT должна отличаться от нового уровня не более чем на {Percent(PidTuneIdentificationRules.MaximumStepTailLevelErrorRatio)} |DeltaOUT|.",
-                $"Хвост OUT должен иметь (P95-P05)/|DeltaOUT| <= {Percent(PidTuneIdentificationRules.MaximumOutputTailRangeRatio)}.",
-                "PV0 = медиана до 8 исходных точек перед ступенью; шум исходного PV оценивается стандартным отклонением этих точек.",
-                "Post-step окно должно быть длиннее max(4*dt, 1 c). Для перебора оно равномерно уменьшается максимум до 1200 точек, но quality metrics затем считаются по полному post-step набору.",
-                "Грубый поиск Theta: 0 ... min(0,60*Tobs, Tobs-dt), 40 интервалов.",
-                "Грубый поиск Tau: логарифмическая сетка от max(0,5*dt; 0,001 c) до max(10*TauMin; 4*Tobs), 48 интервалов.",
-                "После грубого поиска выполняется локальный уточняющий перебор 30 x 30 около лучшей пары Theta/Tau.",
-                $"Fitted амплитуда A должна быть не меньше {PidTuneIdentificationRules.MinimumFopdtSignalToNoiseSigma:0.#} sigma исходного PV-шума.",
-                $"Принимается только fit с R^2 >= {PidTuneIdentificationRules.MinimumFopdtR2:0.##}.",
-                $"Выбранное окно должно реально показать минимум {Percent(PidTuneIdentificationRules.MinimumFopdtObservedResponseFraction)} fitted-отклика, то есть примерно одну Tau после Theta.",
-                "Условие 63,2% используется только как проверка наблюдаемости найденной модели; Tau не вычисляется по одной точке 63,2%."
+            "PV и OUT нормализуются по времени; NaN/Infinity удаляются, одинаковые timestamps усредняются.",
+            "PV и OUT сопоставляются по ближайшему времени; для FOPDT требуется минимум 12 синхронизированных пар.",
+            "Ступень OUT должна оставлять минимум 4 пары до скачка и минимум 8 пар после него.",
+            $"Мгновенный скачок должен быть >= {Percent(PidTuneIdentificationRules.MinimumStepInstantFraction)} устойчивой DeltaOUT.",
+            $"Медиана хвоста OUT должна отличаться от нового уровня не более чем на {Percent(PidTuneIdentificationRules.MaximumStepTailLevelErrorRatio)} |DeltaOUT|.",
+            $"Хвост OUT должен иметь (P95-P05)/|DeltaOUT| <= {Percent(PidTuneIdentificationRules.MaximumOutputTailRangeRatio)}.",
+            "PV0 = медиана до 8 исходных точек перед ступенью; шум PV оценивается стандартным отклонением этих точек.",
+            "Post-step окно должно быть длиннее max(4*dt, 1 c). Для fit оно равномерно уменьшается максимум до 1200 точек.",
+            "Грубый поиск Theta выполняется от 0 до max(0, Tobs - 4*dt). Искусственного ограничения 60% окна нет.",
+            "Tau ищется по логарифмической сетке от max(dt, 0,001 c) до max(10*TauMin, 4*Tobs). Tau меньше шага архивации не считается надежно различимой.",
+            "После грубого поиска выполняется локальный уточняющий перебор около лучшей пары Theta/Tau.",
+            $"Fitted амплитуда A должна быть не меньше {PidTuneIdentificationRules.MinimumFopdtSignalToNoiseSigma:0.#} sigma исходного PV-шума.",
+            $"Принимается только fit с R^2 >= {PidTuneIdentificationRules.MinimumFopdtR2:0.##}.",
+            $"Окно должно показать минимум {Percent(PidTuneIdentificationRules.MinimumFopdtObservedResponseFraction)} fitted-отклика, то есть примерно одну Tau после Theta.",
+            "Условие 63,2% используется только как контроль достаточной длительности окна; Tau не вычисляется по одной точке 63,2%."
             },
             CreateFopdtDiagnostics(identification),
             identification?.IsSuccess == true
                 ? null
-                : "Если видна только ранняя часть экспоненты, высокий R^2 сам по себе недостаточен: "
-                  + "K и Tau могут быть взаимозаменяемыми. Поэтому TechMES отдельно требует "
-                  + "наблюдать минимум одну Tau fitted-модели.");
+                : "Высокий R^2 по короткой ранней части экспоненты недостаточен: K и Tau могут компенсировать друг друга. "
+                  + "Поэтому дополнительно контролируется реально наблюдаемая доля fitted-отклика.");
     }
 
-    private static PidTuneIdentificationInfo CreateIntegratingIdentification(
-        PidProcessIdentificationResult? identification)
+    private static PidTuneIdentificationInfo CreateIntegratingIdentification(PidProcessIdentificationResult? identification)
     {
         return new PidTuneIdentificationInfo(
             "Как TechMES определяет ki и Theta",
-            "Интегрирующий объект не имеет обязательного конечного плато PV. Поэтому TechMES "
-            + "аппроксимирует весь выбранный участок кусочно-линейной моделью: до реакции "
-            + "разрешен исходный дрейф b0, после Theta наклон изменяется на c. Для каждого "
-            + "кандидата Theta коэффициенты a, b0 и c находятся линейным МНК.",
+            "Интегрирующий объект не обязан выходить на конечное плато PV. Поэтому TechMES аппроксимирует "
+            + "весь выбранный участок кусочно-линейной моделью: до реакции разрешен исходный дрейф b0, "
+            + "после Theta наклон изменяется на c. Для каждого кандидата Theta коэффициенты a, b0 и c "
+            + "находятся линейным методом наименьших квадратов.",
             new[]
             {
-                "PVhat(t) = a + b0*t + c*max(0, t-Theta)",
-                "[a, b0, c] = arg min Sum[(PV_i - PVhat_i)^2]",
-                "Slope_before = b0",
-                "Slope_after = b0 + c",
-                "DeltaSlope = c",
-                "ki = c / DeltaOUT",
-                "RMSE = sqrt(SSE / N)",
-                "R^2 = 1 - SSE / Sum[(PV_i - mean(PV))^2]",
-                "TauC(auto) = max(Theta, dt)"
+            "PVhat(t) = a + b0*t + c*max(0, t-Theta)",
+            "[a, b0, c] = arg min Sum[(PV_i - PVhat_i)^2]",
+            "Slope_before = b0",
+            "Slope_after = b0 + c",
+            "DeltaSlope = c",
+            "ki = c / DeltaOUT",
+            "ResponseDuration = Tpost - Theta",
+            "SlopeEffect = |c| * ResponseDuration",
+            "RMSE = sqrt(SSE / N)",
+            "R^2 = 1 - SSE / Sum[(PV_i - mean(PV))^2]",
+            "TauC(auto) = max(Theta, dt)"
             },
             new[]
             {
-                "PV и OUT синхронизируются по времени тем же способом, что и для FOPDT; требуется минимум 12 общих пар.",
-                "Ступень должна оставлять минимум 4 пары до скачка и минимум 8 пар после него.",
-                "Должна присутствовать одна быстрая и удерживаемая ступень OUT.",
-                $"Мгновенный скачок должен быть >= {Percent(PidTuneIdentificationRules.MinimumStepInstantFraction)} устойчивой DeltaOUT.",
-                $"Медиана хвоста OUT должна отличаться от нового уровня не более чем на {Percent(PidTuneIdentificationRules.MaximumStepTailLevelErrorRatio)} |DeltaOUT|.",
-                $"Робастный разброс хвоста OUT должен иметь (P95-P05)/|DeltaOUT| <= {Percent(PidTuneIdentificationRules.MaximumOutputTailRangeRatio)}.",
-                "После ступени должно быть больше max(5*dt, 1 c) наблюдения. Для перебора МНК набор равномерно уменьшается максимум до 1600 точек.",
-                "Для каждого Theta решается нормальная система МНК по базисам [1, t, max(0,t-Theta)].",
-                "Грубый перебор Theta: 0 ... min(0,40*Tpost, Tpost-2*dt), 100 интервалов.",
-                "После него выполняется локальное уточнение Theta в 60 интервалах.",
-                $"Эффект изменения наклона |c|*Tpost должен превышать {PidTuneIdentificationRules.MinimumIntegratingSlopeSignalToNoiseSigma:0.#} sigma исходного PV-шума.",
-                $"Принимается только кусочно-линейный fit с R^2 >= {PidTuneIdentificationRules.MinimumIntegratingR2:0.##}.",
-                "Знак ki сохраняется: он зависит от направления реакции PV на изменение OUT.",
-                "Theta может быть равна 0. Для Ziegler-Nichols PI затем требуется Theta > 0, потому что формула содержит деление на Theta."
+            "PV и OUT синхронизируются по времени тем же способом, что и для FOPDT; требуется минимум 12 общих пар.",
+            "Ступень должна оставлять минимум 4 пары до скачка и минимум 8 пар после него.",
+            "Должна присутствовать одна быстрая и удерживаемая ступень OUT.",
+            $"Мгновенный скачок должен быть >= {Percent(PidTuneIdentificationRules.MinimumStepInstantFraction)} устойчивой DeltaOUT.",
+            $"Медиана хвоста OUT должна отличаться от нового уровня не более чем на {Percent(PidTuneIdentificationRules.MaximumStepTailLevelErrorRatio)} |DeltaOUT|.",
+            $"Робастный разброс хвоста OUT должен иметь (P95-P05)/|DeltaOUT| <= {Percent(PidTuneIdentificationRules.MaximumOutputTailRangeRatio)}.",
+            "После ступени должно быть больше max(5*dt, 1 c) наблюдения. Для МНК набор уменьшается максимум до 1600 точек.",
+            "Для каждого Theta решается линейная МНК-задача по базисам [1, t, max(0,t-Theta)].",
+            "Грубый поиск Theta выполняется от 0 до max(0, Tpost - 4*dt). Искусственного ограничения 40% post-window нет.",
+            "После грубого поиска выполняется локальное уточнение Theta.",
+            $"Эффект изменения наклона |c|*(Tpost-Theta) должен превышать {PidTuneIdentificationRules.MinimumIntegratingSlopeSignalToNoiseSigma:0.#} sigma исходного PV-шума.",
+            $"Принимается только кусочно-линейный fit с R^2 >= {PidTuneIdentificationRules.MinimumIntegratingR2:0.##}.",
+            "Знак ki сохраняется и определяется направлением реакции PV на изменение OUT.",
+            "Theta может быть равна 0. Для Ziegler-Nichols PI затем требуется Theta > 0, потому что формула содержит деление на Theta."
             },
             CreateIntegratingDiagnostics(identification),
             null);
     }
 
-    private static PidTuneIdentificationInfo CreateClosedLoopIdentification(
-        PidProcessIdentificationResult? identification)
+    private static PidTuneIdentificationInfo CreateClosedLoopIdentification(PidProcessIdentificationResult? identification)
     {
         return new PidTuneIdentificationInfo(
             "Как TechMES определяет Ku и Tu",
@@ -293,8 +283,7 @@ internal static class PidTuneInfoCatalog
             + "что именно это Kp было активно в выбранном историческом интервале.");
     }
 
-    private static IReadOnlyList<PidTuneValueInfo> CreateFopdtDiagnostics(
-        PidProcessIdentificationResult? identification)
+    private static IReadOnlyList<PidTuneValueInfo> CreateFopdtDiagnostics(PidProcessIdentificationResult? identification)
     {
         return new[]
         {
@@ -310,8 +299,7 @@ internal static class PidTuneInfoCatalog
         };
     }
 
-    private static IReadOnlyList<PidTuneValueInfo> CreateIntegratingDiagnostics(
-        PidProcessIdentificationResult? identification)
+    private static IReadOnlyList<PidTuneValueInfo> CreateIntegratingDiagnostics(PidProcessIdentificationResult? identification)
     {
         return new[]
         {
@@ -326,8 +314,7 @@ internal static class PidTuneInfoCatalog
         };
     }
 
-    private static IReadOnlyList<PidTuneValueInfo> CreateClosedLoopDiagnostics(
-        PidProcessIdentificationResult? identification)
+    private static IReadOnlyList<PidTuneValueInfo> CreateClosedLoopDiagnostics(PidProcessIdentificationResult? identification)
     {
         return new[]
         {
@@ -346,8 +333,7 @@ internal static class PidTuneInfoCatalog
     /// <summary>
     /// Точные формулы настройки. Они должны оставаться идентичными PidTuneCalculator.
     /// </summary>
-    private static PidTuneMethodInfo CreateMethodInfo(
-        string method)
+    private static PidTuneMethodInfo CreateMethodInfo(string method)
     {
         return method switch
         {
@@ -445,8 +431,7 @@ internal static class PidTuneInfoCatalog
         };
     }
 
-    private static IReadOnlyList<PidTuneValueInfo> CreateResultValues(
-        PidTuneCalculationResult result)
+    private static IReadOnlyList<PidTuneValueInfo> CreateResultValues(PidTuneCalculationResult result)
     {
         return new[]
         {
@@ -477,8 +462,7 @@ internal static class PidTuneInfoCatalog
     /// является реализационным решением проекта, поэтому честно помечается
     /// отдельно и не приписывается публикациям.
     /// </summary>
-    private static IReadOnlyList<PidTuneSourceInfo> CreateSources(
-        PidTuneCalculationRequest request)
+    private static IReadOnlyList<PidTuneSourceInfo> CreateSources(PidTuneCalculationRequest request)
     {
         var result = new List<PidTuneSourceInfo>();
 
