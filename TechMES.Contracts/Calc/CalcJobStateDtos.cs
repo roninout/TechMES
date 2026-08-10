@@ -23,19 +23,18 @@ public enum CalcJobStateStatusDto
 public sealed class CalcExecutionResultBatchRequest
 {
     /// <summary>
-    /// Идентификатор текущего запуска Calc.Service.
-    /// Пока используется для диагностики запроса; lease добавим позже.
+    /// Идентификатор конкретного запуска Calc.Service.
     /// </summary>
     public string ServiceInstanceId { get; set; } = "";
 
     /// <summary>
-    /// Время отправки пакета в UTC.
+    /// Fencing token lease, под которым выполнялся расчёт.
+    ///
+    /// Runtime не принимает результаты от старого или standby-экземпляра.
     /// </summary>
-    public DateTimeOffset SubmittedAtUtc { get; set; }
+    public long LeaseToken { get; set; }
 
-    /// <summary>
-    /// Результаты отдельных заданий.
-    /// </summary>
+    public DateTimeOffset SubmittedAtUtc { get; set; }
     public List<CalcExecutionResultItemDto> Items { get; set; } = [];
 }
 

@@ -34,6 +34,12 @@
                     Heartbeat: @FormatDateTime(heartbeatUtc)
                 </span>
             }
+
+            @if ((_serviceStatus?.ActiveInstanceCount ?? 0) > 1)
+            {
+                <RadzenBadge Text="@($"Instances: {_serviceStatus!.ActiveInstanceCount}")"
+                             BadgeStyle="BadgeStyle.Warning" />
+            }
         </div>
 
         <RadzenBadge Text="@($"Jobs: {_jobs.Count}")" BadgeStyle="BadgeStyle.Info" />

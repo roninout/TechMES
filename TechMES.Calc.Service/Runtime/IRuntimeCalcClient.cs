@@ -11,5 +11,5 @@ public interface IRuntimeCalcClient
     Task<CalcConfigurationSnapshotDto> GetConfigurationSnapshotAsync(CancellationToken ct = default);
     Task<ScadaTagBatchReadResponse> ReadTagsAsync(IReadOnlyCollection<string> tagNames, CancellationToken ct = default);
     Task<CalcExecutionResultBatchResponse> SaveExecutionResultsAsync(CalcExecutionResultBatchRequest request, CancellationToken ct = default);
-    Task SendHeartbeatAsync(CalcServiceHeartbeatRequest request, CancellationToken ct = default);
+    Task<CalcServiceHeartbeatResponseDto> SendHeartbeatAsync(CalcServiceHeartbeatRequest request, CancellationToken ct = default);
 }

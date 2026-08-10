@@ -41,6 +41,9 @@ builder.Services.AddOptions<CalcExecutionOptions>()
 // Один InstanceId используется heartbeat и результатами расчётов.
 builder.Services.AddSingleton<CalcServiceIdentity>();
 
+// Единое локальное состояние ownership используется heartbeat-worker и scheduler-ом.
+builder.Services.AddSingleton<CalcServiceLeaseState>();
+
 // Локальный каталог нужен для проверки совместимости Runtime и Calc.Service.
 builder.Services.AddSingleton(_ => BuiltInCalculationCatalog.Create());
 

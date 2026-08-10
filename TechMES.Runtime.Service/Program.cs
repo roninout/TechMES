@@ -46,9 +46,15 @@ builder.Services.Configure<EquipmentCatalogOptions>(builder.Configuration.GetSec
 builder.Services.Configure<CalcConfigurationOptions>(builder.Configuration.GetSection("CalcConfiguration"));
 
 // Calc.Service должен регулярно подтверждать Runtime, что процесс ещё работает.
+// Lease гарантирует, что одновременно выполнять Jobs имеет право только один экземпляр.
 builder.Services.AddOptions<CalcServiceMonitorOptions>()
     .Bind(builder.Configuration.GetSection("CalcServiceMonitor"))
-    .Validate(options => options.OfflineAfterSeconds is >= 3 and <= 300, "CalcServiceMonitor:OfflineAfterSeconds must be between 3 and 300.")
+    .Validate(options => options.OfflineAfterSeconds is >= 3 and <= 300,
+        "CalcServiceMonitor:OfflineAfterSeconds must be between 3 and 300.")
+    .Validate(options => options.LeaseDurationSeconds is >= 3 and <= 120,
+        "CalcServiceMonitor:LeaseDurationSeconds must be between 3 and 120.")
+    .Validate(options => options.OfflineAfterSeconds >= options.LeaseDurationSeconds,
+        "CalcServiceMonitor:OfflineAfterSeconds must be greater than or equal to LeaseDurationSeconds.")
     .ValidateOnStart();
 
 // Runtime-контекст регистрируем как Singleton, потому что имя устройства/версия не меняются во время работы процесса.

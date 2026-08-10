@@ -17,16 +17,22 @@ namespace TechMES.Calc.Service;
 /// Служба периодически обновляет configuration snapshot,
 /// запускает задания по их PeriodMs и не записывает результаты в SCADA.
 /// </summary>
-internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient runtimeClient, CalculationCatalog localCatalog, CalcExecutionEngine executionEngine, CalcServiceIdentity identity, IOptions<CalcRuntimeClientOptions> runtimeOptions, IOptions<CalcExecutionOptions> executionOptions) : BackgroundService
+internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient runtimeClient, CalculationCatalog localCatalog, CalcExecutionEngine executionEngine, CalcServiceIdentity identity,
+    CalcServiceLeaseState leaseState, IOptions<CalcRuntimeClientOptions> runtimeOptions, IOptions<CalcExecutionOptions> executionOptions) : BackgroundService
 {
     private readonly Dictionary<long, CalcScheduledJobState> _scheduledJobs = [];
+
     private string? _lastSnapshotVersion;
     private DateTimeOffset _nextConfigurationRefreshUtc = DateTimeOffset.MinValue;
+    private long _activeLeaseToken;
 
+    /// <summary>
+    /// Выполняет scheduler только пока данный процесс является
+    /// текущим владельцем execution lease.
+    /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var schedulerTick = TimeSpan.FromMilliseconds(
-            executionOptions.Value.SchedulerTickMilliseconds);
+        var schedulerTick = TimeSpan.FromMilliseconds(executionOptions.Value.SchedulerTickMilliseconds);
 
         logger.LogInformation(
             "TechMES Calc Service started. Runtime={RuntimeAddress}, ConfigurationRefresh={RefreshSeconds} sec, SchedulerTick={SchedulerTick} ms.",
@@ -41,9 +47,27 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
             while (!stoppingToken.IsCancellationRequested)
             {
                 var nowUtc = DateTimeOffset.UtcNow;
+                var lease = leaseState.GetSnapshot(nowUtc);
+
+                if (!lease.IsOwner)
+                {
+                    DeactivateExecutionLease();
+
+                    if (!await timer.WaitForNextTickAsync(stoppingToken))
+                        break;
+
+                    continue;
+                }
+
+                ActivateExecutionLease(lease.LeaseToken);
 
                 await RefreshConfigurationIfDueAsync(nowUtc, stoppingToken);
-                await ExecuteDueJobsAsync(nowUtc, stoppingToken);
+
+                // Snapshot мог загружаться достаточно долго. Перед самим execution ещё раз убеждаемся, что lease всё ещё действителен.
+                if (leaseState.IsCurrentOwner(_activeLeaseToken, DateTimeOffset.UtcNow))
+                    await ExecuteDueJobsAsync(DateTimeOffset.UtcNow, _activeLeaseToken, stoppingToken);
+                else
+                    DeactivateExecutionLease();
 
                 if (!await timer.WaitForNextTickAsync(stoppingToken))
                     break;
@@ -55,6 +79,44 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
         }
 
         logger.LogInformation("TechMES Calc Service stopped.");
+    }
+
+    /// <summary>
+    /// Активирует scheduler для нового lease token.
+    ///
+    /// Новый token всегда начинает работу со свежего configuration snapshot.
+    /// </summary>
+    private void ActivateExecutionLease(long leaseToken)
+    {
+        if (_activeLeaseToken == leaseToken)
+            return;
+
+        _activeLeaseToken = leaseToken;
+        _scheduledJobs.Clear();
+        _lastSnapshotVersion = null;
+        _nextConfigurationRefreshUtc = DateTimeOffset.MinValue;
+
+        logger.LogInformation(
+            "Calculation scheduler activated. LeaseToken={LeaseToken}.",
+            leaseToken);
+    }
+
+    /// <summary>
+    /// Немедленно прекращает выполнение Jobs после потери lease.
+    /// </summary>
+    private void DeactivateExecutionLease()
+    {
+        if (_activeLeaseToken == 0)
+            return;
+
+        logger.LogWarning(
+            "Calculation scheduler deactivated because execution lease is no longer owned. PreviousLeaseToken={LeaseToken}.",
+            _activeLeaseToken);
+
+        _activeLeaseToken = 0;
+        _scheduledJobs.Clear();
+        _lastSnapshotVersion = null;
+        _nextConfigurationRefreshUtc = DateTimeOffset.MinValue;
     }
 
     /// <summary>
@@ -193,12 +255,9 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
     }
 
     /// <summary>
-    /// Запускает все задания, время которых наступило.
-    ///
-    /// Все SCADA-входы читаются общим batch, после чего результаты
-    /// отправляются Runtime для сохранения в calc_job_state.
+    /// Выполняет due Jobs только под конкретным lease token.
     /// </summary>
-    private async Task ExecuteDueJobsAsync(DateTimeOffset nowUtc, CancellationToken stoppingToken)
+    private async Task ExecuteDueJobsAsync(DateTimeOffset nowUtc, long leaseToken, CancellationToken stoppingToken)
     {
         var dueStates = _scheduledJobs.Values
             .Where(state => state.IsDue(nowUtc))
@@ -220,7 +279,20 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
             foreach (var result in results)
                 LogExecutionResult(result);
 
-            await SaveExecutionResultsAsync(results, stoppingToken);
+            /*
+             * Lease мог закончиться во время расчётов.
+             * Не отправляем результат как действительный, если ownership уже потерян.
+             */
+            if (!leaseState.IsCurrentOwner(leaseToken, DateTimeOffset.UtcNow))
+            {
+                logger.LogWarning(
+                    "Calculation results discarded because execution lease expired during the cycle. LeaseToken={LeaseToken}.",
+                    leaseToken);
+
+                return;
+            }
+
+            await SaveExecutionResultsAsync(results, leaseToken, stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -228,9 +300,7 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
         }
         catch (Exception ex)
         {
-            logger.LogError(
-                ex,
-                "Shadow calculation cycle failed before individual job results were produced.");
+            logger.LogError(ex, "Shadow calculation cycle failed before individual job results were produced.");
         }
         finally
         {
@@ -245,12 +315,12 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
     }
 
     /// <summary>
-    /// Отправляет результаты Runtime.Service.
+    /// Передаёт Runtime результаты вместе с fencing token.
     ///
-    /// Ошибка диагностического сохранения не останавливает scheduler
-    /// и не приводит к немедленному повторному выполнению расчётов.
+    /// Runtime повторно проверяет ownership, поэтому локальной
+    /// проверки Calc.Service недостаточно для принятия результата.
     /// </summary>
-    private async Task SaveExecutionResultsAsync(IReadOnlyList<CalcJobExecutionResult> results, CancellationToken stoppingToken)
+    private async Task SaveExecutionResultsAsync(IReadOnlyList<CalcJobExecutionResult> results, long leaseToken, CancellationToken stoppingToken)
     {
         if (results.Count == 0)
             return;
@@ -260,6 +330,7 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
             var request = new CalcExecutionResultBatchRequest
             {
                 ServiceInstanceId = identity.InstanceId,
+                LeaseToken = leaseToken,
                 SubmittedAtUtc = DateTimeOffset.UtcNow,
 
                 Items = results.Select(result => new CalcExecutionResultItemDto
@@ -283,19 +354,14 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
             var response = await runtimeClient.SaveExecutionResultsAsync(request, stoppingToken);
 
             logger.LogInformation(
-                "Calculation states submitted. Requested={Requested}, Accepted={Accepted}, Rejected={Rejected}.",
-                response.RequestedCount,
-                response.AcceptedCount,
-                response.RejectedCount);
+                "Calculation states submitted. LeaseToken={LeaseToken}, Requested={Requested}, Accepted={Accepted}, Rejected={Rejected}.",
+                leaseToken, response.RequestedCount, response.AcceptedCount, response.RejectedCount);
 
             foreach (var item in response.Items.Where(item => !item.Accepted))
             {
                 logger.LogWarning(
                     "Calculation state rejected. JobId={JobId}, ServiceCycle={ServiceCycle}, Code={ErrorCode}, Error={ErrorMessage}.",
-                    item.JobId,
-                    item.ServiceCycleNumber,
-                    item.ErrorCode,
-                    item.ErrorMessage);
+                    item.JobId, item.ServiceCycleNumber, item.ErrorCode, item.ErrorMessage);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

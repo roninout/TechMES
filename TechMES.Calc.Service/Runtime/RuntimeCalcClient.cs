@@ -152,23 +152,30 @@ public sealed class RuntimeCalcClient(HttpClient httpClient) : IRuntimeCalcClien
     }
 
     /// <summary>
-    /// Отправляет heartbeat текущего экземпляра Calc.Service.
+    /// Отправляет heartbeat и получает ownership/lease от Runtime.
     /// </summary>
-    public async Task SendHeartbeatAsync(CalcServiceHeartbeatRequest request, CancellationToken ct = default)
+    public async Task<CalcServiceHeartbeatResponseDto> SendHeartbeatAsync(CalcServiceHeartbeatRequest request, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        using var response = await httpClient.PostAsJsonAsync("api/calc/service/heartbeat", request, JsonOptions, ct);
+        using var response = await httpClient.PostAsJsonAsync(
+            "api/calc/service/heartbeat",
+            request,
+            JsonOptions,
+            ct);
 
-        if (response.IsSuccessStatusCode)
-            return;
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseText = await response.Content.ReadAsStringAsync(ct);
+            var message = $"Runtime Calc heartbeat request failed with HTTP {(int)response.StatusCode}.";
 
-        var responseText = await response.Content.ReadAsStringAsync(ct);
-        var message = $"Runtime Calc heartbeat request failed with HTTP {(int)response.StatusCode}.";
+            if (!string.IsNullOrWhiteSpace(responseText))
+                message += $" Response: {LimitText(responseText, 500)}";
 
-        if (!string.IsNullOrWhiteSpace(responseText))
-            message += $" Response: {LimitText(responseText, 500)}";
+            throw new HttpRequestException(message, null, response.StatusCode);
+        }
 
-        throw new HttpRequestException(message, null, response.StatusCode);
+        return await response.Content.ReadFromJsonAsync<CalcServiceHeartbeatResponseDto>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Runtime returned an empty Calc Service heartbeat response.");
     }
 }

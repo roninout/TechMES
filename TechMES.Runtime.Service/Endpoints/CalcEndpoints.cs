@@ -45,7 +45,9 @@ public static class CalcEndpoints
     }
 
     /// <summary>
-    /// Принимает heartbeat от работающего экземпляра Calc.Service.
+    /// Принимает heartbeat и возвращает текущее состояние ownership.
+    ///
+    /// Только один InstanceId одновременно получает IsLeaseOwner=true.
     /// </summary>
     private static IResult ReceiveServiceHeartbeat(CalcServiceHeartbeatRequest? request, CalcServiceHeartbeatRegistry registry)
     {
@@ -54,8 +56,7 @@ public static class CalcEndpoints
         if (error is not null)
             return Results.BadRequest(error);
 
-        registry.Record(request!);
-        return Results.NoContent();
+        return Results.Ok(registry.RecordAndAcquire(request!));
     }
 
     /// <summary>
@@ -414,19 +415,24 @@ public static class CalcEndpoints
     }
 
     /// <summary>
-    /// Принимает пакет результатов shadow-расчётов от Calc.Service.
+    /// Принимает пакет результатов только от текущего владельца lease.
     ///
-    /// Endpoint обновляет только диагностическое состояние PostgreSQL.
-    /// Запись результатов в SCADA здесь отсутствует.
+    /// Это первый fencing barrier. Позже такая же проверка будет
+    /// обязательна перед контролируемой записью в SCADA.
     /// </summary>
-    private static async Task<IResult> SaveExecutionResultsAsync(CalcExecutionResultBatchRequest? request, ICalcJobStateStore store, CancellationToken ct)
+    private static async Task<IResult> SaveExecutionResultsAsync(CalcExecutionResultBatchRequest? request, ICalcJobStateStore store, CalcServiceHeartbeatRegistry heartbeatRegistry, CancellationToken ct)
     {
         var error = ValidateExecutionResults(request);
 
         if (error is not null)
             return Results.BadRequest(error);
 
-        return Results.Ok(await store.SaveResultsAsync(request!, ct));
+        if (!heartbeatRegistry.IsLeaseOwner(request!.ServiceInstanceId, request.LeaseToken))
+        {
+            return Results.Conflict(ApiError("service.lease-not-owned", "The calculation result was rejected because this Calc Service instance does not own the current execution lease."));
+        }
+
+        return Results.Ok(await store.SaveResultsAsync(request, ct));
     }
 
     /// <summary>
@@ -439,6 +445,9 @@ public static class CalcEndpoints
 
         if (string.IsNullOrWhiteSpace(request.ServiceInstanceId))
             return ApiError("service.instance-empty", "Calc Service instance id is required.");
+
+        if (request.LeaseToken <= 0)
+            return ApiError("service.lease-token-invalid", "Calc Service lease token must be greater than zero.");
 
         if (request.ServiceInstanceId.Trim().Length > 200)
             return ApiError("service.instance-too-long", "Calc Service instance id cannot exceed 200 characters.");
