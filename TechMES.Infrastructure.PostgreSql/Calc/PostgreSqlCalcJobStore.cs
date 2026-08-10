@@ -448,32 +448,47 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
     }
 
     /// <summary>
-    /// Создаёт либо сбрасывает текущее диагностическое состояние задания.
+    /// Создаёт либо полностью сбрасывает диагностическое состояние задания.
+    ///
+    /// Смена Revision означает новую конфигурацию, поэтому статистика
+    /// предыдущей конфигурации больше не относится к текущему Job.
     /// </summary>
     private static async Task ResetStateAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long jobId, string definitionVersion, long revision, string? reasonCode, string? reasonMessage, CancellationToken ct)
     {
         const string sql = """
-        INSERT INTO public.calc_job_state
-            (job_id, status, reason_code, reason_message, definition_version,
-             configuration_revision, cycle_number, updated_at)
-        VALUES
-            (@job_id, 'NeverRun', @reason_code, @reason_message, @definition_version,
-             @revision, 0, now())
-        ON CONFLICT (job_id) DO UPDATE SET
-            status = 'NeverRun',
-            reason_code = EXCLUDED.reason_code,
-            reason_message = EXCLUDED.reason_message,
-            definition_version = EXCLUDED.definition_version,
-            configuration_revision = EXCLUDED.configuration_revision,
-            cycle_number = 0,
-            last_started_at = NULL,
-            last_completed_at = NULL,
-            last_success_at = NULL,
-            last_duration_ms = NULL,
-            last_inputs = NULL,
-            last_outputs = NULL,
-            updated_at = now();
-        """;
+            INSERT INTO public.calc_job_state
+                (job_id, status, reason_code, reason_message, definition_version,
+                 configuration_revision, cycle_number,
+                 success_count, skipped_count, error_count,
+                 consecutive_skipped_count, consecutive_error_count, updated_at)
+            VALUES
+                (@job_id, 'NeverRun', @reason_code, @reason_message, @definition_version,
+                 @revision, 0,
+                 0, 0, 0,
+                 0, 0, now())
+
+            ON CONFLICT (job_id) DO UPDATE SET
+                status = 'NeverRun',
+                reason_code = EXCLUDED.reason_code,
+                reason_message = EXCLUDED.reason_message,
+                definition_version = EXCLUDED.definition_version,
+                configuration_revision = EXCLUDED.configuration_revision,
+
+                cycle_number = 0,
+                success_count = 0,
+                skipped_count = 0,
+                error_count = 0,
+                consecutive_skipped_count = 0,
+                consecutive_error_count = 0,
+
+                last_started_at = NULL,
+                last_completed_at = NULL,
+                last_success_at = NULL,
+                last_duration_ms = NULL,
+                last_inputs = NULL,
+                last_outputs = NULL,
+                updated_at = now();
+            """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("job_id", jobId);

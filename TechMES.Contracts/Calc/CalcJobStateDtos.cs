@@ -108,10 +108,25 @@ public sealed class CalcJobStateDto
     public long? ConfigurationRevision { get; set; }
 
     /// <summary>
-    /// Количество результатов, принятых PostgreSQL после последнего
-    /// изменения конфигурации. Не сбрасывается при перезапуске службы.
+    /// Общее количество результатов, принятых PostgreSQL после
+    /// последнего изменения конфигурации.
     /// </summary>
     public long CycleNumber { get; set; }
+
+    /// <summary>
+    /// Счётчики результатов текущей Revision.
+    /// Сбрасываются при изменении конфигурации Job.
+    /// </summary>
+    public long SuccessCount { get; set; }
+    public long SkippedCount { get; set; }
+    public long ErrorCount { get; set; }
+
+    /// <summary>
+    /// Количество последовательных Skipped или Error.
+    /// Другой результат сбрасывает соответствующий счётчик.
+    /// </summary>
+    public long ConsecutiveSkippedCount { get; set; }
+    public long ConsecutiveErrorCount { get; set; }
 
     public DateTimeOffset? LastStartedAtUtc { get; set; }
     public DateTimeOffset? LastCompletedAtUtc { get; set; }

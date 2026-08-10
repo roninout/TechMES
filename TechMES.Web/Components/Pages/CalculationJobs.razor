@@ -286,6 +286,26 @@
                                     </div>
 
                                     <div class="calc-job-state-item">
+                                        <span>Success</span>
+                                        <strong>@runtimeState.SuccessCount</strong>
+                                    </div>
+
+                                    <div class="calc-job-state-item">
+                                        <span>Skipped</span>
+                                        <strong>@runtimeState.SkippedCount</strong>
+                                    </div>
+
+                                    <div class="calc-job-state-item">
+                                        <span>Errors</span>
+                                        <strong>@runtimeState.ErrorCount</strong>
+                                    </div>
+
+                                    <div class="calc-job-state-item">
+                                        <span>Current streak</span>
+                                        <strong>@FormatStateStreak(runtimeState)</strong>
+                                    </div>
+
+                                    <div class="calc-job-state-item">
                                         <span>Configuration revision</span>
                                         <strong>@(runtimeState.ConfigurationRevision?.ToString() ?? "—")</strong>
                                     </div>
@@ -1477,5 +1497,18 @@
         return _serviceStatus?.Availability == CalcServiceAvailabilityDto.Online
             ? BadgeStyle.Success
             : BadgeStyle.Danger;
+    }
+
+    /// <summary>
+    /// Показывает только текущую непрерывную серию проблемных циклов.
+    /// </summary>
+    private static string FormatStateStreak(CalcJobStateDto state)
+    {
+        return state.Status switch
+        {
+            CalcJobStateStatusDto.Skipped when state.ConsecutiveSkippedCount > 0 => $"Skipped × {state.ConsecutiveSkippedCount}",
+            CalcJobStateStatusDto.Error when state.ConsecutiveErrorCount > 0 => $"Error × {state.ConsecutiveErrorCount}",
+            _ => "—"
+        };
     }
 }

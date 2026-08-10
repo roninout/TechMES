@@ -90,42 +90,67 @@ public sealed class PostgreSqlCalcJobStateStore : ICalcJobStateStore
     /// <summary>
     /// Обновляет одно состояние при совпадении текущей конфигурации.
     ///
-    /// Persisted CycleNumber увеличивается в БД и поэтому не зависит
-    /// от перезапуска Calc.Service.
+    /// Persisted CycleNumber и диагностические счётчики увеличиваются
+    /// непосредственно в PostgreSQL и не зависят от перезапуска Calc.Service.
     /// </summary>
     private static async Task<CalcExecutionResultSaveResponse> SaveResultAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CalcExecutionResultItemDto item, CancellationToken ct)
     {
         const string sql = """
-        UPDATE public.calc_job_state AS state
-        SET status = @status,
-            reason_code = @reason_code,
-            reason_message = @reason_message,
-            definition_version = @definition_version,
-            configuration_revision = @configuration_revision,
-            cycle_number = state.cycle_number + 1,
-            last_started_at = @started_at,
-            last_completed_at = @completed_at,
-            last_success_at = CASE
-                WHEN @status = 'Success' THEN @completed_at
-                ELSE state.last_success_at
-            END,
-            last_duration_ms = @duration_ms,
-            last_inputs = @last_inputs,
-            last_outputs = @last_outputs,
-            updated_at = now()
-        FROM public.calc_job AS job
-        WHERE state.job_id = @job_id
-          AND job.id = state.job_id
-          AND job.enabled = true
-          AND job.revision = @configuration_revision
-          AND job.definition_code = @definition_code
-          AND job.definition_version = @definition_version
-          AND (
-              state.last_completed_at IS NULL
-              OR state.last_completed_at < @completed_at
-          )
-        RETURNING state.cycle_number;
-        """;
+            UPDATE public.calc_job_state AS state
+            SET status = @status,
+                reason_code = @reason_code,
+                reason_message = @reason_message,
+                definition_version = @definition_version,
+                configuration_revision = @configuration_revision,
+
+                cycle_number = state.cycle_number + 1,
+
+                success_count = state.success_count
+                    + CASE WHEN @status = 'Success' THEN 1 ELSE 0 END,
+
+                skipped_count = state.skipped_count
+                    + CASE WHEN @status = 'Skipped' THEN 1 ELSE 0 END,
+
+                error_count = state.error_count
+                    + CASE WHEN @status = 'Error' THEN 1 ELSE 0 END,
+
+                consecutive_skipped_count = CASE
+                    WHEN @status = 'Skipped' THEN state.consecutive_skipped_count + 1
+                    ELSE 0
+                END,
+
+                consecutive_error_count = CASE
+                    WHEN @status = 'Error' THEN state.consecutive_error_count + 1
+                    ELSE 0
+                END,
+
+                last_started_at = @started_at,
+                last_completed_at = @completed_at,
+
+                last_success_at = CASE
+                    WHEN @status = 'Success' THEN @completed_at
+                    ELSE state.last_success_at
+                END,
+
+                last_duration_ms = @duration_ms,
+                last_inputs = @last_inputs,
+                last_outputs = @last_outputs,
+                updated_at = now()
+
+            FROM public.calc_job AS job
+            WHERE state.job_id = @job_id
+              AND job.id = state.job_id
+              AND job.enabled = true
+              AND job.revision = @configuration_revision
+              AND job.definition_code = @definition_code
+              AND job.definition_version = @definition_version
+              AND (
+                  state.last_completed_at IS NULL
+                  OR state.last_completed_at < @completed_at
+              )
+
+            RETURNING state.cycle_number;
+            """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("job_id", item.JobId);
@@ -136,6 +161,7 @@ public sealed class PostgreSqlCalcJobStateStore : ICalcJobStateStore
         command.Parameters.AddWithValue("started_at", item.StartedAtUtc);
         command.Parameters.AddWithValue("completed_at", item.CompletedAtUtc);
         command.Parameters.AddWithValue("duration_ms", item.DurationMs);
+
         AddNullable(command, "reason_code", NpgsqlDbType.Text, NormalizeOptionalText(item.ReasonCode));
         AddNullable(command, "reason_message", NpgsqlDbType.Text, NormalizeOptionalText(item.ReasonMessage));
         AddJson(command, "last_inputs", item.Inputs);
@@ -234,27 +260,32 @@ public sealed class PostgreSqlCalcJobStateStore : ICalcJobStateStore
     private static async Task<IReadOnlyList<CalcJobStateDto>> ReadStatesAsync(NpgsqlConnection connection, long? jobId, CancellationToken ct)
     {
         const string sql = """
-        SELECT state.job_id,
-               job.name AS job_name,
-               job.equipment_name,
-               state.status,
-               state.reason_code,
-               state.reason_message,
-               state.definition_version,
-               state.configuration_revision,
-               state.cycle_number,
-               state.last_started_at,
-               state.last_completed_at,
-               state.last_success_at,
-               state.last_duration_ms,
-               state.last_inputs::text AS last_inputs,
-               state.last_outputs::text AS last_outputs,
-               state.updated_at
-        FROM public.calc_job_state AS state
-        INNER JOIN public.calc_job AS job ON job.id = state.job_id
-        WHERE @job_id IS NULL OR state.job_id = @job_id
-        ORDER BY job.sort_order, job.name, state.job_id;
-        """;
+            SELECT state.job_id,
+                   job.name AS job_name,
+                   job.equipment_name,
+                   state.status,
+                   state.reason_code,
+                   state.reason_message,
+                   state.definition_version,
+                   state.configuration_revision,
+                   state.cycle_number,
+                   state.success_count,
+                   state.skipped_count,
+                   state.error_count,
+                   state.consecutive_skipped_count,
+                   state.consecutive_error_count,
+                   state.last_started_at,
+                   state.last_completed_at,
+                   state.last_success_at,
+                   state.last_duration_ms,
+                   state.last_inputs::text AS last_inputs,
+                   state.last_outputs::text AS last_outputs,
+                   state.updated_at
+            FROM public.calc_job_state AS state
+            INNER JOIN public.calc_job AS job ON job.id = state.job_id
+            WHERE @job_id IS NULL OR state.job_id = @job_id
+            ORDER BY job.sort_order, job.name, state.job_id;
+            """;
 
         var result = new List<CalcJobStateDto>();
 
@@ -276,6 +307,11 @@ public sealed class PostgreSqlCalcJobStateStore : ICalcJobStateStore
                 DefinitionVersion = ReadNullableString(reader, "definition_version"),
                 ConfigurationRevision = ReadNullableInt64(reader, "configuration_revision"),
                 CycleNumber = reader.GetInt64(reader.GetOrdinal("cycle_number")),
+                SuccessCount = reader.GetInt64(reader.GetOrdinal("success_count")),
+                SkippedCount = reader.GetInt64(reader.GetOrdinal("skipped_count")),
+                ErrorCount = reader.GetInt64(reader.GetOrdinal("error_count")),
+                ConsecutiveSkippedCount = reader.GetInt64(reader.GetOrdinal("consecutive_skipped_count")),
+                ConsecutiveErrorCount = reader.GetInt64(reader.GetOrdinal("consecutive_error_count")),
                 LastStartedAtUtc = ReadNullableDateTimeOffset(reader, "last_started_at"),
                 LastCompletedAtUtc = ReadNullableDateTimeOffset(reader, "last_completed_at"),
                 LastSuccessAtUtc = ReadNullableDateTimeOffset(reader, "last_success_at"),

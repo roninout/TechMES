@@ -170,8 +170,12 @@ public sealed class PostgreSqlDatabaseBootstrapper
             await ExecuteSchemaAsync(connection, transaction, MainSchemaSql, cancellationToken);
             await ExecuteSchemaAsync(connection, transaction, CalcSchemaSql, cancellationToken);
 
-             // equip_param_tune существовал до Test Kp. ADD COLUMN IF NOT EXISTS обновляет старую БД и безопасно выполняется повторно.
+            // Идемпотентно обновляем существующие Calc БД новыми диагностическими полями.
+            await EnsureCalcStateDiagnosticsSchemaAsync(connection, transaction, cancellationToken);
+
+            // equip_param_tune существовал до Test Kp. ADD COLUMN IF NOT EXISTS безопасно обновляет старую БД.
             await EnsureParamTuneExtensionSchemaAsync(connection, transaction, cancellationToken);
+
             await transaction.CommitAsync(cancellationToken);
         }
         catch
@@ -181,6 +185,25 @@ public sealed class PostgreSqlDatabaseBootstrapper
         }
 
         _logger.LogInformation("PostgreSQL main TechMES and Calc schemas are ready.");
+    }
+
+    /// <summary>
+    /// Добавляет постоянные диагностические счётчики Calc Job.
+    ///
+    /// DDL идемпотентен: подходит как для новой, так и для уже работающей БД.
+    /// </summary>
+    private static async Task EnsureCalcStateDiagnosticsSchemaAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            ALTER TABLE public.calc_job_state
+                ADD COLUMN IF NOT EXISTS success_count bigint NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS skipped_count bigint NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS error_count bigint NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS consecutive_skipped_count bigint NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS consecutive_error_count bigint NOT NULL DEFAULT 0;
+            """;
+
+        await ExecuteSchemaAsync(connection, transaction, sql, cancellationToken);
     }
 
     /// <summary>
