@@ -9,12 +9,13 @@ namespace TechMES.Calc.Service;
 
 /// <summary>
 /// Отправляет heartbeat независимо от calculation scheduler
-/// и поддерживает локальное состояние lease.
+/// и поддерживает локальное состояние execution lease.
 /// </summary>
-internal sealed class CalcHeartbeatWorker(ILogger<CalcHeartbeatWorker> logger, IRuntimeCalcClient runtimeClient, CalcServiceIdentity identity, CalcServiceLeaseState leaseState, IOptions<CalcRuntimeClientOptions> options) : BackgroundService
+internal sealed class CalcHeartbeatWorker(ILogger<CalcHeartbeatWorker> logger, IRuntimeCalcClient runtimeClient,CalcServiceIdentity identity, CalcServiceLeaseState leaseState,IOptions<CalcRuntimeClientOptions> options) : BackgroundService
 {
     private bool? _lastSendSucceeded;
     private bool? _lastLeaseOwned;
+    private string _lastLeaseEpoch = "";
     private long _lastLeaseToken;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -38,6 +39,7 @@ internal sealed class CalcHeartbeatWorker(ILogger<CalcHeartbeatWorker> logger, I
 
     /// <summary>
     /// Обновляет heartbeat и локальное ownership-state.
+    /// Новый Runtime epoch считается новым lease даже при совпадении token.
     /// </summary>
     private async Task SendHeartbeatAsync(CancellationToken ct)
     {
@@ -60,22 +62,27 @@ internal sealed class CalcHeartbeatWorker(ILogger<CalcHeartbeatWorker> logger, I
 
             if (response.IsLeaseOwner)
             {
-                if (_lastLeaseOwned != true || _lastLeaseToken != response.LeaseToken)
+                var leaseChanged = _lastLeaseOwned != true
+                    || _lastLeaseToken != response.LeaseToken
+                    || !string.Equals(_lastLeaseEpoch, response.LeaseEpoch, StringComparison.Ordinal);
+
+                if (leaseChanged)
                 {
                     logger.LogInformation(
-                        "Calc Service execution lease acquired. InstanceId={InstanceId}, LeaseToken={LeaseToken}, ExpiresAtUtc={ExpiresAtUtc}.",
-                        identity.InstanceId, response.LeaseToken, response.LeaseExpiresAtUtc);
+                        "Calc Service execution lease acquired. InstanceId={InstanceId}, LeaseEpoch={LeaseEpoch}, LeaseToken={LeaseToken}, ExpiresAtUtc={ExpiresAtUtc}.",
+                        identity.InstanceId, response.LeaseEpoch, response.LeaseToken, response.LeaseExpiresAtUtc);
                 }
             }
             else if (_lastLeaseOwned != false)
             {
                 logger.LogWarning(
-                    "Calc Service is running as standby. InstanceId={InstanceId}, LeaseOwner={LeaseOwner}, LeaseToken={LeaseToken}.",
-                    identity.InstanceId, response.LeaseOwnerInstanceId, response.LeaseToken);
+                    "Calc Service is running as standby. InstanceId={InstanceId}, LeaseOwner={LeaseOwner}, LeaseEpoch={LeaseEpoch}, LeaseToken={LeaseToken}.",
+                    identity.InstanceId, response.LeaseOwnerInstanceId, response.LeaseEpoch, response.LeaseToken);
             }
 
             _lastSendSucceeded = true;
             _lastLeaseOwned = response.IsLeaseOwner;
+            _lastLeaseEpoch = response.LeaseEpoch;
             _lastLeaseToken = response.LeaseToken;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -86,8 +93,8 @@ internal sealed class CalcHeartbeatWorker(ILogger<CalcHeartbeatWorker> logger, I
         {
             /*
              * LeaseState не очищаем сразу.
-             * Последний успешно подтверждённый lease естественно
-             * закончится по собственному local timeout.
+             * Последний подтверждённый lease естественно закончится
+             * по собственному локальному timeout.
              */
             if (_lastSendSucceeded != false)
                 logger.LogWarning(ex, "Cannot send Calc Service heartbeat to Runtime.Service.");
