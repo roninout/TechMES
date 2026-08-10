@@ -17,8 +17,12 @@ namespace TechMES.Calc.Service;
 /// Служба периодически обновляет configuration snapshot,
 /// запускает задания по их PeriodMs и не записывает результаты в SCADA.
 /// </summary>
-internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient runtimeClient, CalculationCatalog localCatalog, CalcExecutionEngine executionEngine, CalcServiceIdentity identity,
-    CalcServiceLeaseState leaseState, IOptions<CalcRuntimeClientOptions> runtimeOptions, IOptions<CalcExecutionOptions> executionOptions) : BackgroundService
+internal sealed class CalcWorker(
+    ILogger<CalcWorker> logger, IRuntimeCalcClient runtimeClient,
+    CalculationCatalog localCatalog, CalcExecutionEngine executionEngine,
+    CalcDependencyOutputCache dependencyCache, CalcServiceIdentity identity,
+    CalcServiceLeaseState leaseState, IOptions<CalcRuntimeClientOptions> runtimeOptions,
+    IOptions<CalcExecutionOptions> executionOptions) : BackgroundService
 {
     private readonly Dictionary<long, CalcScheduledJobState> _scheduledJobs = [];
 
@@ -127,14 +131,17 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
     ///
     /// При временной ошибке Runtime последняя принятая конфигурация
     /// продолжает выполняться.
+    ///
+    /// Каждый действительно новый snapshot инвалидирует dependency-cache.
+    /// Это не позволяет транзитивным цепочкам A -> B -> C использовать
+    /// результаты, рассчитанные по предыдущей конфигурации graph.
     /// </summary>
     private async Task RefreshConfigurationIfDueAsync(DateTimeOffset nowUtc, CancellationToken stoppingToken)
     {
         if (nowUtc < _nextConfigurationRefreshUtc)
             return;
 
-        _nextConfigurationRefreshUtc = nowUtc.AddSeconds(
-            runtimeOptions.Value.ConfigurationRefreshSeconds);
+        _nextConfigurationRefreshUtc = nowUtc.AddSeconds(runtimeOptions.Value.ConfigurationRefreshSeconds);
 
         try
         {
@@ -144,17 +151,23 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
                 return;
 
             var compatibleJobs = ValidateLocalCompatibility(snapshot);
-            ApplySnapshot(compatibleJobs, nowUtc);
 
+            /*
+             * Snapshot Version изменяется при изменении Revision, состава Jobs
+             * или результата Runtime-валидации.
+             *
+             * Полностью очищаем cached outputs, потому что зависимость может
+             * быть транзитивной и Revision downstream Job при изменении его
+             * upstream-зависимости сама по себе не меняется.
+             */
+            dependencyCache.Clear();
+
+            ApplySnapshot(compatibleJobs, nowUtc);
             _lastSnapshotVersion = snapshot.Version;
 
             logger.LogInformation(
                 "Calculation configuration accepted. Version={Version}, Enabled={EnabledCount}, RuntimeAccepted={AcceptedCount}, LocalCompatible={CompatibleCount}, Issues={IssueCount}.",
-                snapshot.Version,
-                snapshot.EnabledJobCount,
-                snapshot.Jobs.Count,
-                compatibleJobs.Count,
-                snapshot.Issues.Count);
+                snapshot.Version, snapshot.EnabledJobCount, snapshot.Jobs.Count, compatibleJobs.Count, snapshot.Issues.Count);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -162,9 +175,7 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
         }
         catch (Exception ex)
         {
-            logger.LogWarning(
-                ex,
-                "Cannot refresh calculation configuration. The last accepted snapshot remains active.");
+            logger.LogWarning(ex, "Cannot refresh calculation configuration. The last accepted snapshot remains active.");
         }
     }
 
