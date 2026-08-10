@@ -406,7 +406,7 @@
                     <section class="calc-job-section">
                         <div class="calc-job-section-header">
                             <RadzenText Text="Inputs" TextStyle="TextStyle.Subtitle1" />
-                            <span>Tag and Constant sources are supported.</span>
+                            <span>Tag, Constant and Calculation output sources are supported.</span>
                         </div>
 
                         <div class="calc-job-table-wrap">
@@ -429,23 +429,28 @@
                                                                 @bind-Value="input.UseBinding"
                                                                 Disabled="@(_isBusy || input.IsRequired)" />
                                             </td>
+
                                             <td>
                                                 <b>@input.Parameter.Name</b>
+
                                                 <div class="calc-job-binding-key">
                                                     @input.Parameter.Key
+
                                                     @if (!string.IsNullOrWhiteSpace(input.Parameter.Unit))
                                                     {
                                                         <span> · @input.Parameter.Unit</span>
                                                     }
                                                 </div>
                                             </td>
+
                                             <td>
                                                 <RadzenDropDown TValue="CalcInputSourceTypeDto"
-                                                                Data="@_sourceTypes"
+                                                                Data="@GetSourceTypes(input)"
                                                                 @bind-Value="input.SourceType"
                                                                 Disabled="@(_isBusy || !input.UseBinding)"
-                                                                Style="width:145px;" />
+                                                                Style="width:170px;" />
                                             </td>
+
                                             <td>
                                                 @if (input.SourceType == CalcInputSourceTypeDto.Tag)
                                                 {
@@ -453,6 +458,29 @@
                                                                    Placeholder="SCADA tag"
                                                                    Disabled="@(_isBusy || !input.UseBinding)"
                                                                    Style="width:100%;" />
+                                                }
+                                                else if (input.SourceType == CalcInputSourceTypeDto.CalculationOutput)
+                                                {
+                                                    <div class="calc-job-dependency-source">
+                                                        <RadzenDropDown TValue="long?"
+                                                                        Data="@GetDependencyJobs()"
+                                                                        TextProperty="@nameof(CalcJobDto.Name)"
+                                                                        ValueProperty="@nameof(CalcJobDto.Id)"
+                                                                        Value="@input.SourceJobId"
+                                                                        Change="@((object? value) => OnDependencyJobChanged(input, value))"
+                                                                        Placeholder="Source job"
+                                                                        Disabled="@(_isBusy || !input.UseBinding)"
+                                                                        Style="width:100%;" />
+
+                                                        <RadzenDropDown TValue="string"
+                                                                        Data="@GetDependencyOutputs(input.SourceJobId)"
+                                                                        TextProperty="@nameof(CalcOutputDefinitionDto.Name)"
+                                                                        ValueProperty="@nameof(CalcOutputDefinitionDto.Key)"
+                                                                        @bind-Value="input.SourceOutputKey"
+                                                                        Placeholder="Output"
+                                                                        Disabled="@(_isBusy || !input.UseBinding || !input.SourceJobId.HasValue)"
+                                                                        Style="width:100%;" />
+                                                    </div>
                                                 }
                                                 else
                                                 {
@@ -499,8 +527,9 @@
                                                     }
                                                 }
                                             </td>
+
                                             <td>
-                                                @if (input.SourceType == CalcInputSourceTypeDto.Tag)
+                                                @if (input.SourceType is CalcInputSourceTypeDto.Tag or CalcInputSourceTypeDto.CalculationOutput)
                                                 {
                                                     <RadzenNumeric TValue="int?"
                                                                    @bind-Value="input.MaxAgeSeconds"
@@ -606,11 +635,6 @@
 </div>
 
 @code {
-    private readonly CalcInputSourceTypeDto[] _sourceTypes =
-    [
-        CalcInputSourceTypeDto.Tag,
-        CalcInputSourceTypeDto.Constant
-    ];
 
     private readonly CancellationTokenSource _disposeCts = new();
     private Dictionary<long, CalcJobStateDto> _statesByJobId = [];
@@ -799,6 +823,80 @@
             .ToList();
     }
 
+    /// <summary>
+    /// Возвращает допустимые типы источника для конкретного типа параметра.
+    /// </summary>
+    private static IReadOnlyList<CalcInputSourceTypeDto> GetSourceTypes(CalcJobInputEditor input)
+    {
+        return input.Parameter.Type switch
+        {
+            CalcParameterTypeDto.Number or CalcParameterTypeDto.Integer =>
+            [
+                CalcInputSourceTypeDto.Tag,
+            CalcInputSourceTypeDto.Constant,
+            CalcInputSourceTypeDto.CalculationOutput
+            ],
+
+            CalcParameterTypeDto.Boolean =>
+            [
+                CalcInputSourceTypeDto.Tag,
+            CalcInputSourceTypeDto.Constant
+            ],
+
+            _ =>
+            [
+                CalcInputSourceTypeDto.Constant
+            ]
+        };
+    }
+
+    /// <summary>
+    /// Source Job не может быть текущим редактируемым Job.
+    /// </summary>
+    private IReadOnlyList<CalcJobDto> GetDependencyJobs()
+    {
+        return _jobs
+            .Where(job => _editor is null || job.Id != _editor.Id)
+            .OrderBy(job => job.SortOrder)
+            .ThenBy(job => job.Name)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Возвращает outputs алгоритма выбранного source Job.
+    /// </summary>
+    private IReadOnlyList<CalcOutputDefinitionDto> GetDependencyOutputs(long? sourceJobId)
+    {
+        if (!sourceJobId.HasValue)
+            return [];
+
+        var sourceJob = _jobs.FirstOrDefault(job => job.Id == sourceJobId.Value);
+
+        if (sourceJob is null)
+            return [];
+
+        return FindDefinition(sourceJob.DefinitionCode)?.Outputs
+            .OrderBy(output => output.Order)
+            .ToList()
+            ?? [];
+    }
+
+    /// <summary>
+    /// При смене source Job автоматически выбирает первый доступный output.
+    /// </summary>
+    private void OnDependencyJobChanged(CalcJobInputEditor input, object? value)
+    {
+        input.SourceJobId = value is null ? null : Convert.ToInt64(value);
+
+        var outputs = GetDependencyOutputs(input.SourceJobId);
+
+        if (!outputs.Any(output =>
+                string.Equals(output.Key, input.SourceOutputKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            input.SourceOutputKey = outputs.FirstOrDefault()?.Key ?? "";
+        }
+    }
+
     private static CalcJobInputEditor CreateInputEditor(CalcParameterDefinitionDto parameter, CalcJobInputDto? stored)
     {
         var editor = new CalcJobInputEditor
@@ -808,6 +906,8 @@
             UseBinding = stored is not null || (parameter.IsRequired && !parameter.DefaultValue.HasValue),
             SourceType = stored?.SourceType ?? CalcInputSourceTypeDto.Constant,
             TagName = stored?.TagName ?? "",
+            SourceJobId = stored?.SourceJobId,
+            SourceOutputKey = stored?.SourceOutputKey ?? "",
             MaxAgeSeconds = stored?.MaxAgeSeconds
         };
 
@@ -985,14 +1085,22 @@
             SortOrder = input.Parameter.Order
         };
 
-        if (input.SourceType == CalcInputSourceTypeDto.Tag)
+        switch (input.SourceType)
         {
-            result.TagName = NullIfEmpty(input.TagName);
-            result.MaxAgeSeconds = input.MaxAgeSeconds;
-        }
-        else
-        {
-            result.ConstantValue = CreateConstantValue(input);
+            case CalcInputSourceTypeDto.Tag:
+                result.TagName = NullIfEmpty(input.TagName);
+                result.MaxAgeSeconds = input.MaxAgeSeconds;
+                break;
+
+            case CalcInputSourceTypeDto.Constant:
+                result.ConstantValue = CreateConstantValue(input);
+                break;
+
+            case CalcInputSourceTypeDto.CalculationOutput:
+                result.SourceJobId = input.SourceJobId;
+                result.SourceOutputKey = NullIfEmpty(input.SourceOutputKey);
+                result.MaxAgeSeconds = input.MaxAgeSeconds;
+                break;
         }
 
         return result;
@@ -1111,8 +1219,12 @@
         public bool IsRequired { get; set; }
         public bool UseBinding { get; set; }
         public CalcInputSourceTypeDto SourceType { get; set; } = CalcInputSourceTypeDto.Constant;
+
         public string TagName { get; set; } = "";
+        public long? SourceJobId { get; set; }
+        public string SourceOutputKey { get; set; } = "";
         public int? MaxAgeSeconds { get; set; }
+
         public double? NumberValue { get; set; }
         public int? IntegerValue { get; set; }
         public bool BooleanValue { get; set; }

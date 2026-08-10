@@ -169,7 +169,7 @@ public static class CalcEndpoints
     /// <summary>
     /// Создаёт новое задание в shadow/read-only режиме.
     /// </summary>
-    private static async Task<IResult> CreateJobAsync(CalcJobSaveRequest? request, ICalcJobStore store, CalcJobValidator validator, HttpContext httpContext, IAppRuntimeContext runtime, IOptions<CalcConfigurationOptions> options, CancellationToken ct)
+    private static async Task<IResult> CreateJobAsync(CalcJobSaveRequest? request, ICalcJobStore store, CalcJobValidator validator, CalcDependencyGraphValidator dependencyValidator, HttpContext httpContext, IAppRuntimeContext runtime, IOptions<CalcConfigurationOptions> options, CancellationToken ct)
     {
         if (!options.Value.EditingEnabled)
             return EditingDisabled();
@@ -178,6 +178,12 @@ public static class CalcEndpoints
 
         if (!validation.IsValid)
             return BadRequest(validation.ErrorCode!, validation.ErrorMessage!);
+
+        var storedJobs = await store.GetAllAsync(ct);
+        var dependencyValidation = dependencyValidator.ValidateSave(null, request!, storedJobs);
+
+        if (!dependencyValidation.IsValid)
+            return BadRequest(dependencyValidation.ErrorCode!, dependencyValidation.ErrorMessage!);
 
         try
         {
@@ -193,7 +199,7 @@ public static class CalcEndpoints
     /// <summary>
     /// Обновляет задание при совпадении ExpectedRevision.
     /// </summary>
-    private static async Task<IResult> UpdateJobAsync(long id, CalcJobSaveRequest? request, ICalcJobStore store, CalcJobValidator validator, HttpContext httpContext, IAppRuntimeContext runtime, IOptions<CalcConfigurationOptions> options, CancellationToken ct)
+    private static async Task<IResult> UpdateJobAsync(long id, CalcJobSaveRequest? request, ICalcJobStore store, CalcJobValidator validator, CalcDependencyGraphValidator dependencyValidator, HttpContext httpContext, IAppRuntimeContext runtime, IOptions<CalcConfigurationOptions> options, CancellationToken ct)
     {
         if (!options.Value.EditingEnabled)
             return EditingDisabled();
@@ -203,10 +209,19 @@ public static class CalcEndpoints
         if (!validation.IsValid)
             return BadRequest(validation.ErrorCode!, validation.ErrorMessage!);
 
+        var storedJobs = await store.GetAllAsync(ct);
+        var dependencyValidation = dependencyValidator.ValidateSave(id, request!, storedJobs);
+
+        if (!dependencyValidation.IsValid)
+            return BadRequest(dependencyValidation.ErrorCode!, dependencyValidation.ErrorMessage!);
+
         try
         {
             var job = await store.UpdateAsync(id, request!, ResolveActor(httpContext, runtime), ct);
-            return job is null ? NotFound("job.not-found", $"Calculation job {id} was not found.") : Results.Ok(job);
+
+            return job is null
+                ? NotFound("job.not-found", $"Calculation job {id} was not found.")
+                : Results.Ok(job);
         }
         catch (CalcJobRevisionConflictException ex)
         {
@@ -249,34 +264,53 @@ public static class CalcEndpoints
     }
 
     /// <summary>
-    /// Возвращает read-only снимок enabled-заданий для Calc.Service.
-    ///
-    /// В snapshot попадают только задания, которые прошли повторную
-    /// проверку по текущему CalculationCatalog Runtime.Service.
+    /// Возвращает проверенный DAG enabled-заданий для Calc.Service.
     /// </summary>
-    private static async Task<IResult> GetConfigurationSnapshotAsync(ICalcJobStore store, CalcJobValidator validator, CancellationToken ct)
+    private static async Task<IResult> GetConfigurationSnapshotAsync(ICalcJobStore store, CalcJobValidator validator, CalcDependencyGraphValidator dependencyValidator, CancellationToken ct)
     {
-        var enabledJobs = (await store.GetAllAsync(ct))
+        var allJobs = (await store.GetAllAsync(ct)).ToList();
+
+        var enabledJobs = allJobs
             .Where(job => job.Enabled)
             .OrderBy(job => job.SortOrder)
             .ThenBy(job => job.Id)
             .ToList();
 
-        var jobs = new List<CalcExecutionJobDto>();
+        var individuallyValid = new List<CalcJobDto>();
         var issues = new List<CalcConfigurationIssueDto>();
 
         foreach (var job in enabledJobs)
         {
             var validation = validator.ValidateStored(job);
 
-            if (!validation.IsValid)
+            if (validation.IsValid)
+            {
+                individuallyValid.Add(job);
+                continue;
+            }
+
+            issues.Add(new CalcConfigurationIssueDto
+            {
+                JobId = job.Id,
+                JobName = job.Name,
+                ErrorCode = validation.ErrorCode ?? "job.invalid",
+                ErrorMessage = validation.ErrorMessage ?? "Calculation job configuration is invalid."
+            });
+        }
+
+        var graphIssues = dependencyValidator.ValidateSnapshot(allJobs, individuallyValid);
+        var jobs = new List<CalcExecutionJobDto>();
+
+        foreach (var job in individuallyValid)
+        {
+            if (graphIssues.TryGetValue(job.Id, out var graphIssue))
             {
                 issues.Add(new CalcConfigurationIssueDto
                 {
                     JobId = job.Id,
                     JobName = job.Name,
-                    ErrorCode = validation.ErrorCode ?? "job.invalid",
-                    ErrorMessage = validation.ErrorMessage ?? "Calculation job configuration is invalid."
+                    ErrorCode = graphIssue.ErrorCode ?? "dependency.invalid",
+                    ErrorMessage = graphIssue.ErrorMessage ?? "Calculation dependency is invalid."
                 });
 
                 continue;
@@ -291,7 +325,7 @@ public static class CalcEndpoints
             GeneratedAtUtc = DateTimeOffset.UtcNow,
             EnabledJobCount = enabledJobs.Count,
             Jobs = jobs,
-            Issues = issues
+            Issues = issues.OrderBy(issue => issue.JobId).ToList()
         });
     }
 
@@ -321,6 +355,8 @@ public static class CalcEndpoints
                     SourceType = input.SourceType,
                     TagName = input.TagName,
                     ConstantValue = input.ConstantValue?.Clone(),
+                    SourceJobId = input.SourceJobId,
+                    SourceOutputKey = input.SourceOutputKey,
                     MaxAgeSeconds = input.MaxAgeSeconds,
                     SortOrder = input.SortOrder
                 })

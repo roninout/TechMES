@@ -66,6 +66,9 @@ builder.Services.AddSingleton(_ => BuiltInCalculationCatalog.Create());
 // Валидатор проверяет задания по реальному каталогу алгоритмов.
 builder.Services.AddSingleton<CalcJobValidator>();
 
+// Проверяет Job -> Job связи и отсутствие циклических зависимостей.
+builder.Services.AddSingleton<CalcDependencyGraphValidator>();
+
 // Последний heartbeat Calc.Service хранится только в памяти Runtime.
 builder.Services.AddSingleton<CalcServiceHeartbeatRegistry>();
 

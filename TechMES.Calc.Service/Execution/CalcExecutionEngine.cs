@@ -19,19 +19,26 @@ namespace TechMES.Calc.Service.Execution;
 /// Результаты только возвращаются и журналируются — запись в SCADA
 /// и сохранение calc_job_state пока отсутствуют.
 /// </summary>
-internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, IRuntimeCalcClient runtimeClient, CalculationCatalog catalog, IOptions<CalcExecutionOptions> options)
+internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, IRuntimeCalcClient runtimeClient, CalculationCatalog catalog, CalcDependencyOutputCache dependencyCache, IOptions<CalcExecutionOptions> options)
 {
     private static readonly IReadOnlyDictionary<string, double> EmptyOutputs = new Dictionary<string, double>();
 
     /// <summary>
-    /// Выполняет набор заданий, срок запуска которых наступил.
+    /// Выполняет due Jobs в топологическом порядке.
+    ///
+    /// SCADA-теги читаются одним batch, а CalculationOutput получает
+    /// последний результат source Job из dependency cache.
     /// </summary>
-    public async Task<IReadOnlyList<CalcJobExecutionResult>> ExecuteAsync(IReadOnlyList<CalcJobExecutionRequest> requests, CancellationToken ct)
+    public async Task<IReadOnlyList<CalcJobExecutionResult>> ExecuteAsync(IReadOnlyList<CalcJobExecutionRequest> requests, IReadOnlyList<CalcExecutionJobDto> activeJobs, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(requests);
+        ArgumentNullException.ThrowIfNull(activeJobs);
 
         if (requests.Count == 0)
             return [];
+
+        var activeJobsById = activeJobs.ToDictionary(job => job.Id);
+        dependencyCache.Prune(activeJobsById.Keys);
 
         var tagNames = requests
             .SelectMany(request => request.Job.Inputs)
@@ -56,18 +63,29 @@ internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, I
                 requests.Count, batch.UniqueCount, batch.SuccessCount, batch.FailureCount);
         }
 
+        var executionOrder = BuildExecutionOrder(requests);
         var results = new List<CalcJobExecutionResult>(requests.Count);
 
-        foreach (var request in requests)
-            results.Add(ExecuteJob(request, tagValues, ct));
+        foreach (var request in executionOrder)
+        {
+            var result = ExecuteJob(request, tagValues, activeJobsById, ct);
+            results.Add(result);
+
+            /*
+             * Сохраняем также Skipped/Error.
+             * Тогда dependent Job не сможет случайно продолжить использовать
+             * старый Success после неуспешного нового запуска source Job.
+             */
+            dependencyCache.Store(result);
+        }
 
         return results;
     }
 
     /// <summary>
-    /// Выполняет одно задание на уже прочитанном snapshot тегов.
+    /// Выполняет один Job на уже прочитанных Tag и CalculationOutput значениях.
     /// </summary>
-    private CalcJobExecutionResult ExecuteJob(CalcJobExecutionRequest request,IReadOnlyDictionary<string, ScadaTagBatchReadItem> tagValues,CancellationToken ct)
+    private CalcJobExecutionResult ExecuteJob(CalcJobExecutionRequest request, IReadOnlyDictionary<string, ScadaTagBatchReadItem> tagValues, IReadOnlyDictionary<long, CalcExecutionJobDto> activeJobs, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -79,72 +97,36 @@ internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, I
         {
             if (!catalog.TryGet(request.Job.DefinitionCode, out var definition) || definition is null)
             {
-                return Complete(
-                    request,
-                    CalcJobExecutionStatus.Error,
-                    "definition.not-found",
+                return Complete(request, CalcJobExecutionStatus.Error, "definition.not-found",
                     $"Calculation definition '{request.Job.DefinitionCode}' is not installed.",
-                    startedAtUtc,
-                    stopwatch,
-                    inputValues,
-                    EmptyOutputs);
+                    startedAtUtc, stopwatch, inputValues, EmptyOutputs);
             }
 
             if (!string.Equals(definition.Version, request.Job.DefinitionVersion, StringComparison.Ordinal))
             {
-                return Complete(
-                    request,
-                    CalcJobExecutionStatus.Error,
-                    "definition.version-mismatch",
+                return Complete(request, CalcJobExecutionStatus.Error, "definition.version-mismatch",
                     $"Expected definition version '{request.Job.DefinitionVersion}', but local version is '{definition.Version}'.",
-                    startedAtUtc,
-                    stopwatch,
-                    inputValues,
-                    EmptyOutputs);
+                    startedAtUtc, stopwatch, inputValues, EmptyOutputs);
             }
 
-            if (!TryBuildInputValues(
-                    request.Job,
-                    definition,
-                    tagValues,
-                    inputValues,
-                    out var reasonCode,
-                    out var reasonMessage))
+            if (!TryBuildInputValues(request.Job, definition, tagValues, activeJobs, inputValues, out var reasonCode, out var reasonMessage))
             {
-                return Complete(
-                    request,
-                    CalcJobExecutionStatus.Skipped,
-                    reasonCode,
-                    reasonMessage,
-                    startedAtUtc,
-                    stopwatch,
-                    inputValues,
-                    EmptyOutputs);
+                return Complete(request, CalcJobExecutionStatus.Skipped, reasonCode, reasonMessage,
+                    startedAtUtc, stopwatch, inputValues, EmptyOutputs);
             }
 
-            var calculation = definition.Calculate(
-                new CalculationParameterSet(inputValues),
-                includeTrace: false);
+            var calculation = definition.Calculate(new CalculationParameterSet(inputValues), includeTrace: false);
 
             if (!calculation.IsSuccess)
             {
-                return Complete(
-                    request,
-                    CalcJobExecutionStatus.Error,
+                return Complete(request, CalcJobExecutionStatus.Error,
                     calculation.ErrorCode ?? "calculation.failed",
                     calculation.ErrorMessage ?? "Calculation failed.",
-                    startedAtUtc,
-                    stopwatch,
-                    inputValues,
-                    EmptyOutputs);
+                    startedAtUtc, stopwatch, inputValues, EmptyOutputs);
             }
 
-            var outputBindings = request.Job.Outputs.ToDictionary(
-                output => output.OutputKey,
-                StringComparer.OrdinalIgnoreCase);
-
-            var outputValues = new Dictionary<string, double>(
-                StringComparer.OrdinalIgnoreCase);
+            var outputBindings = request.Job.Outputs.ToDictionary(output => output.OutputKey, StringComparer.OrdinalIgnoreCase);
+            var outputValues = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var output in calculation.Outputs)
             {
@@ -155,29 +137,16 @@ internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, I
 
                 if (!double.IsFinite(value))
                 {
-                    return Complete(
-                        request,
-                        CalcJobExecutionStatus.Error,
-                        "output.not-finite",
+                    return Complete(request, CalcJobExecutionStatus.Error, "output.not-finite",
                         $"Calculation output '{output.Key}' is not a finite number.",
-                        startedAtUtc,
-                        stopwatch,
-                        inputValues,
-                        outputValues);
+                        startedAtUtc, stopwatch, inputValues, outputValues);
                 }
 
                 outputValues[output.Key] = value;
             }
 
-            return Complete(
-                request,
-                CalcJobExecutionStatus.Success,
-                null,
-                null,
-                startedAtUtc,
-                stopwatch,
-                inputValues,
-                outputValues);
+            return Complete(request, CalcJobExecutionStatus.Success, null, null,
+                startedAtUtc, stopwatch, inputValues, outputValues);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -185,26 +154,17 @@ internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, I
         }
         catch (Exception ex)
         {
-            return Complete(
-                request,
-                CalcJobExecutionStatus.Error,
-                "calculation.unhandled",
-                ex.Message,
-                startedAtUtc,
-                stopwatch,
-                inputValues,
-                EmptyOutputs);
+            return Complete(request, CalcJobExecutionStatus.Error, "calculation.unhandled",
+                ex.Message, startedAtUtc, stopwatch, inputValues, EmptyOutputs);
         }
     }
 
     /// <summary>
-    /// Собирает значения Tag и Constant для одного задания.
+    /// Собирает Tag, Constant и CalculationOutput входы одного Job.
     /// </summary>
-    private bool TryBuildInputValues(CalcExecutionJobDto job, ICalculationDefinition definition, IReadOnlyDictionary<string, ScadaTagBatchReadItem> tagValues, Dictionary<string, object?> values, out string? reasonCode, out string? reasonMessage)
+    private bool TryBuildInputValues(CalcExecutionJobDto job, ICalculationDefinition definition, IReadOnlyDictionary<string, ScadaTagBatchReadItem> tagValues, IReadOnlyDictionary<long, CalcExecutionJobDto> activeJobs, Dictionary<string, object?> values, out string? reasonCode, out string? reasonMessage)
     {
-        var parameterDefinitions = definition.Parameters.ToDictionary(
-            parameter => parameter.Key,
-            StringComparer.OrdinalIgnoreCase);
+        var parameterDefinitions = definition.Parameters.ToDictionary(parameter => parameter.Key, StringComparer.OrdinalIgnoreCase);
 
         foreach (var input in job.Inputs.OrderBy(item => item.SortOrder))
         {
@@ -218,8 +178,7 @@ internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, I
             switch (input.SourceType)
             {
                 case CalcInputSourceTypeDto.Constant:
-                    if (!input.ConstantValue.HasValue
-                        || !TryConvertConstant(parameter.Type, input.ConstantValue.Value, out var constantValue))
+                    if (!input.ConstantValue.HasValue || !TryConvertConstant(parameter.Type, input.ConstantValue.Value, out var constantValue))
                     {
                         reasonCode = "input.constant-invalid";
                         reasonMessage = $"Constant input '{input.ParameterKey}' has an invalid value.";
@@ -230,19 +189,18 @@ internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, I
                     break;
 
                 case CalcInputSourceTypeDto.Tag:
-                    if (!TryReadTagInput(input, parameter.Type, tagValues,
-                            out var tagValue, out reasonCode, out reasonMessage))
-                    {
+                    if (!TryReadTagInput(input, parameter.Type, tagValues, out var tagValue, out reasonCode, out reasonMessage))
                         return false;
-                    }
 
                     values[input.ParameterKey] = tagValue;
                     break;
 
                 case CalcInputSourceTypeDto.CalculationOutput:
-                    reasonCode = "input.dependency-not-supported";
-                    reasonMessage = $"CalculationOutput input '{input.ParameterKey}' is not supported yet.";
-                    return false;
+                    if (!TryReadCalculationOutput(input, parameter.Type, activeJobs, out var dependencyValue, out reasonCode, out reasonMessage))
+                        return false;
+
+                    values[input.ParameterKey] = dependencyValue;
+                    break;
 
                 default:
                     reasonCode = "input.source-type-invalid";
@@ -325,6 +283,104 @@ internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, I
         reasonCode = null;
         reasonMessage = null;
         return true;
+    }
+
+    /// <summary>
+    /// Читает последний результат другого активного Job.
+    /// </summary>
+    private bool TryReadCalculationOutput(CalcExecutionInputDto input, CalculationParameterType parameterType, IReadOnlyDictionary<long, CalcExecutionJobDto> activeJobs, out object? value, out string? reasonCode, out string? reasonMessage)
+    {
+        value = null;
+
+        if (!input.SourceJobId.HasValue || string.IsNullOrWhiteSpace(input.SourceOutputKey))
+        {
+            reasonCode = "input.dependency-invalid";
+            reasonMessage = $"CalculationOutput input '{input.ParameterKey}' is not configured.";
+            return false;
+        }
+
+        if (!activeJobs.TryGetValue(input.SourceJobId.Value, out var sourceJob))
+        {
+            reasonCode = "input.dependency-source-missing";
+            reasonMessage = $"Source calculation job {input.SourceJobId.Value} is not active.";
+            return false;
+        }
+
+        if (!dependencyCache.TryGet(sourceJob.Id, sourceJob.Revision, out var snapshot) || snapshot is null)
+        {
+            reasonCode = "input.dependency-not-ready";
+            reasonMessage = $"Source calculation job '{sourceJob.Name}' has no result for its current revision.";
+            return false;
+        }
+
+        if (snapshot.Status != CalcJobExecutionStatus.Success)
+        {
+            reasonCode = "input.dependency-source-not-success";
+            reasonMessage = $"Latest execution of source calculation job '{sourceJob.Name}' has status '{snapshot.Status}'.";
+            return false;
+        }
+
+        /*
+         * По умолчанию разрешаем примерно два периода source Job.
+         * Явный MaxAgeSeconds у dependency имеет более высокий приоритет.
+         */
+        var defaultMaxAgeSeconds = Math.Max(
+            options.Value.DefaultMaxAgeSeconds,
+            (int)Math.Ceiling(sourceJob.PeriodMs / 1000d * 2d));
+
+        var maxAgeSeconds = input.MaxAgeSeconds ?? defaultMaxAgeSeconds;
+        var age = DateTimeOffset.UtcNow - snapshot.CompletedAtUtc;
+
+        if (age > TimeSpan.FromSeconds(maxAgeSeconds))
+        {
+            reasonCode = "input.dependency-stale";
+            reasonMessage = $"Output of source calculation job '{sourceJob.Name}' is stale. Age: {age.TotalSeconds:F1} sec.";
+            return false;
+        }
+
+        if (!snapshot.Outputs.TryGetValue(input.SourceOutputKey.Trim(), out var outputValue))
+        {
+            reasonCode = "input.dependency-output-missing";
+            reasonMessage = $"Output '{input.SourceOutputKey}' is missing from source calculation job '{sourceJob.Name}'.";
+            return false;
+        }
+
+        if (!TryConvertCalculationOutput(parameterType, outputValue, out value))
+        {
+            reasonCode = "input.dependency-value-invalid";
+            reasonMessage = $"Output '{input.SourceOutputKey}' of source calculation job '{sourceJob.Name}' cannot be converted to {parameterType}.";
+            return false;
+        }
+
+        reasonCode = null;
+        reasonMessage = null;
+        return true;
+    }
+
+    private static bool TryConvertCalculationOutput(CalculationParameterType parameterType, double source, out object? value)
+    {
+        if (!double.IsFinite(source))
+        {
+            value = null;
+            return false;
+        }
+
+        if (parameterType == CalculationParameterType.Number)
+        {
+            value = source;
+            return true;
+        }
+
+        if (parameterType == CalculationParameterType.Integer
+            && source is >= int.MinValue and <= int.MaxValue
+            && Math.Truncate(source) == source)
+        {
+            value = (int)source;
+            return true;
+        }
+
+        value = null;
+        return false;
     }
 
     /// <summary>
@@ -497,5 +553,70 @@ internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, I
             Inputs = inputs,
             Outputs = outputs
         };
+    }
+
+    /// <summary>
+    /// Сортирует только Jobs текущего due-cycle.
+    ///
+    /// Dependency, которая сейчас не due, берётся из cache.
+    /// Если оба Job due, source всегда выполняется раньше consumer.
+    /// </summary>
+    private static IReadOnlyList<CalcJobExecutionRequest> BuildExecutionOrder(IReadOnlyList<CalcJobExecutionRequest> requests)
+    {
+        var byId = requests.ToDictionary(request => request.Job.Id);
+        var indegree = requests.ToDictionary(request => request.Job.Id, _ => 0);
+        var consumers = requests.ToDictionary(request => request.Job.Id, _ => new HashSet<long>());
+
+        foreach (var request in requests)
+        {
+            var dependencyIds = request.Job.Inputs
+                .Where(input => input.SourceType == CalcInputSourceTypeDto.CalculationOutput && input.SourceJobId.HasValue)
+                .Select(input => input.SourceJobId!.Value)
+                .Where(byId.ContainsKey)
+                .Distinct();
+
+            foreach (var sourceJobId in dependencyIds)
+            {
+                if (consumers[sourceJobId].Add(request.Job.Id))
+                    indegree[request.Job.Id]++;
+            }
+        }
+
+        var ready = new SortedSet<(int SortOrder, long JobId)>(
+            Comparer<(int SortOrder, long JobId)>.Create((left, right) =>
+            {
+                var order = left.SortOrder.CompareTo(right.SortOrder);
+                return order != 0 ? order : left.JobId.CompareTo(right.JobId);
+            }));
+
+        foreach (var request in requests.Where(request => indegree[request.Job.Id] == 0))
+            ready.Add((request.Job.SortOrder, request.Job.Id));
+
+        var result = new List<CalcJobExecutionRequest>(requests.Count);
+
+        while (ready.Count > 0)
+        {
+            var next = ready.Min;
+            ready.Remove(next);
+
+            var request = byId[next.JobId];
+            result.Add(request);
+
+            foreach (var consumerId in consumers[next.JobId])
+            {
+                indegree[consumerId]--;
+
+                if (indegree[consumerId] == 0)
+                {
+                    var consumer = byId[consumerId];
+                    ready.Add((consumer.Job.SortOrder, consumerId));
+                }
+            }
+        }
+
+        if (result.Count != requests.Count)
+            throw new InvalidOperationException("Calculation execution graph contains a circular dependency.");
+
+        return result;
     }
 }

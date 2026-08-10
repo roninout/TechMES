@@ -72,7 +72,23 @@ public sealed class CalcExecutionInputDto
     public CalcInputSourceTypeDto SourceType { get; set; }
     public string? TagName { get; set; }
     public JsonElement? ConstantValue { get; set; }
+
+    /// <summary>
+    /// Исходное задание для CalculationOutput.
+    /// </summary>
+    public long? SourceJobId { get; set; }
+
+    /// <summary>
+    /// Ключ результата исходного задания.
+    /// </summary>
+    public string? SourceOutputKey { get; set; }
+
+    /// <summary>
+    /// Максимальный возраст Tag или CalculationOutput.
+    /// Null использует значение по умолчанию.
+    /// </summary>
     public int? MaxAgeSeconds { get; set; }
+
     public int SortOrder { get; set; }
 }
 

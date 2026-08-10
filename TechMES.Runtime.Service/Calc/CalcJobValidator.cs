@@ -151,6 +151,9 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
 
     /// <summary>
     /// Проверяет одну входную привязку в зависимости от SourceType.
+    ///
+    /// Существование source Job, source output и циклы проверяет
+    /// отдельный CalcDependencyGraphValidator.
     /// </summary>
     private static CalcJobValidationResult ValidateInputBinding(CalculationParameterDefinition parameter, CalcJobInputSaveDto input)
     {
@@ -167,11 +170,7 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
                     return Invalid("input.tag-fields-invalid", $"Tag input '{parameter.Key}' can contain only TagName and MaxAgeSeconds.");
 
                 if (parameter.Type is CalculationParameterType.Text or CalculationParameterType.Selection)
-                {
-                    return Invalid(
-                        "input.tag-type-unsupported",
-                        $"Parameter '{parameter.Key}' of type '{parameter.Type}' cannot currently be read from a SCADA tag.");
-                }
+                    return Invalid("input.tag-type-unsupported", $"Parameter '{parameter.Key}' of type '{parameter.Type}' cannot currently be read from a SCADA tag.");
 
                 return CalcJobValidationResult.Success();
 
@@ -188,9 +187,27 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
                 return ValidateConstant(parameter, input.ConstantValue.Value);
 
             case CalcInputSourceTypeDto.CalculationOutput:
-                return Invalid(
-                    "input.dependency-not-supported",
-                    $"CalculationOutput input '{parameter.Key}' is reserved for the future dependency graph and is not supported yet.");
+                if (!input.SourceJobId.HasValue || input.SourceJobId.Value <= 0)
+                    return Invalid("input.dependency-job-missing", $"CalculationOutput input '{parameter.Key}' requires SourceJobId.");
+
+                if (string.IsNullOrWhiteSpace(input.SourceOutputKey))
+                    return Invalid("input.dependency-output-empty", $"CalculationOutput input '{parameter.Key}' requires SourceOutputKey.");
+
+                if (!string.IsNullOrWhiteSpace(input.TagName) || input.ConstantValue.HasValue)
+                    return Invalid("input.dependency-fields-invalid", $"CalculationOutput input '{parameter.Key}' can contain only SourceJobId, SourceOutputKey and MaxAgeSeconds.");
+
+                /*
+                 * Все текущие calculation outputs являются double.
+                 * Integer разрешаем только если фактический output окажется целым.
+                 */
+                if (parameter.Type is not CalculationParameterType.Number and not CalculationParameterType.Integer)
+                {
+                    return Invalid(
+                        "input.dependency-type-unsupported",
+                        $"CalculationOutput cannot be connected to parameter '{parameter.Key}' of type '{parameter.Type}'.");
+                }
+
+                return CalcJobValidationResult.Success();
 
             default:
                 return Invalid("input.source-type-invalid", $"Input '{parameter.Key}' contains an unsupported SourceType.");

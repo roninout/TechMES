@@ -54,6 +54,9 @@ builder.Services.AddHttpClient<IRuntimeCalcClient, RuntimeCalcClient>((services,
     client.Timeout = TimeSpan.FromSeconds(options.RequestTimeoutSeconds);
 });
 
+// Последние результаты активных Jobs используются CalculationOutput dependencies.
+builder.Services.AddSingleton<CalcDependencyOutputCache>();
+
 // Движок выполняет только shadow-расчёты и не имеет прямого доступа к CtApi/PostgreSQL.
 builder.Services.AddSingleton<CalcExecutionEngine>();
 

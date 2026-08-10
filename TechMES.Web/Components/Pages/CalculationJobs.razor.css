@@ -214,6 +214,10 @@
     .calc-job-state-values {
         grid-template-columns: 1fr;
     }
+
+    .calc-job-dependency-source {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 700px) {
@@ -229,6 +233,10 @@
     .calc-job-state-summary {
         grid-template-columns: 1fr;
     }
+
+    .calc-job-dependency-source {
+        grid-template-columns: 1fr;
+    }
 }
 
 .calc-service-status {
@@ -240,4 +248,10 @@
 .calc-service-heartbeat {
     color: var(--rz-text-secondary-color);
     font-size: 0.82rem;
+}
+
+.calc-job-dependency-source {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) minmax(140px, 1fr);
+    gap: 6px;
 }

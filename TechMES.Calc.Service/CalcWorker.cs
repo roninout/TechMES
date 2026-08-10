@@ -277,7 +277,13 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
 
         try
         {
-            var results = await executionEngine.ExecuteAsync(requests, stoppingToken);
+            var activeJobs = _scheduledJobs.Values
+                .Select(state => state.Job)
+                .OrderBy(job => job.SortOrder)
+                .ThenBy(job => job.Id)
+                .ToList();
+
+            var results = await executionEngine.ExecuteAsync(requests, activeJobs, stoppingToken);
 
             foreach (var result in results)
                 LogExecutionResult(result);
