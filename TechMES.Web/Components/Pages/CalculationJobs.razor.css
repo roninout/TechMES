@@ -230,3 +230,14 @@
         grid-template-columns: 1fr;
     }
 }
+
+.calc-service-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.calc-service-heartbeat {
+    color: var(--rz-text-secondary-color);
+    font-size: 0.82rem;
+}

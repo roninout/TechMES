@@ -28,6 +28,9 @@ public static class CalcEndpoints
 
         app.MapGet("/api/calc/configuration/snapshot", GetConfigurationSnapshotAsync);
 
+        app.MapPost("/api/calc/service/heartbeat", ReceiveServiceHeartbeat);
+        app.MapGet("/api/calc/service/status", GetServiceStatus);
+
         app.MapGet("/api/calc/states", GetStatesAsync);
         app.MapGet("/api/calc/jobs/{id:long}/state", GetJobStateAsync);
         app.MapPost("/api/calc/execution/results", SaveExecutionResultsAsync);
@@ -39,6 +42,60 @@ public static class CalcEndpoints
         app.MapDelete("/api/calc/jobs/{id:long}", DeleteJobAsync);
 
         return app;
+    }
+
+    /// <summary>
+    /// Принимает heartbeat от работающего экземпляра Calc.Service.
+    /// </summary>
+    private static IResult ReceiveServiceHeartbeat(CalcServiceHeartbeatRequest? request, CalcServiceHeartbeatRegistry registry)
+    {
+        var error = ValidateServiceHeartbeat(request);
+
+        if (error is not null)
+            return Results.BadRequest(error);
+
+        registry.Record(request!);
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Возвращает текущее состояние Calc.Service.
+    /// </summary>
+    private static IResult GetServiceStatus(CalcServiceHeartbeatRegistry registry)
+    {
+        return Results.Ok(registry.GetStatus());
+    }
+
+    /// <summary>
+    /// Проверяет структуру heartbeat до сохранения в memory-state.
+    /// </summary>
+    private static CalcApiErrorResponse? ValidateServiceHeartbeat(CalcServiceHeartbeatRequest? request)
+    {
+        if (request is null)
+            return ApiError("service.heartbeat-missing", "Calc Service heartbeat is required.");
+
+        if (string.IsNullOrWhiteSpace(request.InstanceId))
+            return ApiError("service.instance-empty", "Calc Service instance id is required.");
+
+        if (request.InstanceId.Trim().Length > 200)
+            return ApiError("service.instance-too-long", "Calc Service instance id cannot exceed 200 characters.");
+
+        if (string.IsNullOrWhiteSpace(request.MachineName))
+            return ApiError("service.machine-empty", "Calc Service machine name is required.");
+
+        if (request.MachineName.Trim().Length > 200)
+            return ApiError("service.machine-too-long", "Calc Service machine name cannot exceed 200 characters.");
+
+        if (request.ProcessId <= 0)
+            return ApiError("service.process-invalid", "Calc Service process id must be greater than zero.");
+
+        if ((request.ServiceVersion?.Length ?? 0) > 100)
+            return ApiError("service.version-too-long", "Calc Service version cannot exceed 100 characters.");
+
+        if (request.StartedAtUtc == default)
+            return ApiError("service.started-at-invalid", "Calc Service start time is required.");
+
+        return null;
     }
 
     /// <summary>

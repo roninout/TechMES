@@ -150,4 +150,25 @@ public sealed class RuntimeCalcClient(HttpClient httpClient) : IRuntimeCalcClien
         var normalized = value.Trim();
         return normalized.Length <= maximumLength ? normalized : normalized[..maximumLength] + "...";
     }
+
+    /// <summary>
+    /// Отправляет heartbeat текущего экземпляра Calc.Service.
+    /// </summary>
+    public async Task SendHeartbeatAsync(CalcServiceHeartbeatRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var response = await httpClient.PostAsJsonAsync("api/calc/service/heartbeat", request, JsonOptions, ct);
+
+        if (response.IsSuccessStatusCode)
+            return;
+
+        var responseText = await response.Content.ReadAsStringAsync(ct);
+        var message = $"Runtime Calc heartbeat request failed with HTTP {(int)response.StatusCode}.";
+
+        if (!string.IsNullOrWhiteSpace(responseText))
+            message += $" Response: {LimitText(responseText, 500)}";
+
+        throw new HttpRequestException(message, null, response.StatusCode);
+    }
 }

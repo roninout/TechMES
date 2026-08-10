@@ -17,10 +17,9 @@ namespace TechMES.Calc.Service;
 /// Служба периодически обновляет configuration snapshot,
 /// запускает задания по их PeriodMs и не записывает результаты в SCADA.
 /// </summary>
-internal sealed class CalcWorker(ILogger<CalcWorker> logger,IRuntimeCalcClient runtimeClient,CalculationCatalog localCatalog,CalcExecutionEngine executionEngine,IOptions<CalcRuntimeClientOptions> runtimeOptions,IOptions<CalcExecutionOptions> executionOptions) : BackgroundService
+internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient runtimeClient, CalculationCatalog localCatalog, CalcExecutionEngine executionEngine, CalcServiceIdentity identity, IOptions<CalcRuntimeClientOptions> runtimeOptions, IOptions<CalcExecutionOptions> executionOptions) : BackgroundService
 {
     private readonly Dictionary<long, CalcScheduledJobState> _scheduledJobs = [];
-    private readonly string _serviceInstanceId = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
     private string? _lastSnapshotVersion;
     private DateTimeOffset _nextConfigurationRefreshUtc = DateTimeOffset.MinValue;
 
@@ -260,7 +259,7 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger,IRuntimeCalcClient r
         {
             var request = new CalcExecutionResultBatchRequest
             {
-                ServiceInstanceId = _serviceInstanceId,
+                ServiceInstanceId = identity.InstanceId,
                 SubmittedAtUtc = DateTimeOffset.UtcNow,
 
                 Items = results.Select(result => new CalcExecutionResultItemDto

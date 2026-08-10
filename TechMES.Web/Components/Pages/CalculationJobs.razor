@@ -11,25 +11,30 @@
 
 <div class="calc-jobs-page">
     <div class="calc-jobs-toolbar">
-        <RadzenButton Text="New"
-                      Icon="add"
-                      ButtonStyle="ButtonStyle.Secondary"
-                      Disabled="@_isBusy"
-                      Click="@BeginNew" />
+        <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Secondary"
+                      Disabled="@_isBusy" Click="@BeginNew" />
 
-        <RadzenButton Text="Refresh"
-                      Icon="refresh"
-                      ButtonStyle="ButtonStyle.Light"
-                      Disabled="@_isBusy"
-                      Click="@RefreshAsync" />
+        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                      Disabled="@_isBusy" Click="@RefreshAsync" />
 
-        <RadzenButton Text="Test calculations"
-                      Icon="calculate"
-                      ButtonStyle="ButtonStyle.Light"
-                      Disabled="@_isBusy"
-                      Click="@OpenTester" />
+        <RadzenButton Text="Test calculations" Icon="calculate" ButtonStyle="ButtonStyle.Light"
+                      Disabled="@_isBusy" Click="@OpenTester" />
 
         <div class="calc-jobs-toolbar-spacer"></div>
+
+        <div class="calc-service-status">
+            <span>Calc Service</span>
+
+            <RadzenBadge Text="@GetCalcServiceStatusText()"
+                         BadgeStyle="@GetCalcServiceBadgeStyle()" />
+
+            @if (_serviceStatus?.LastHeartbeatReceivedAtUtc is { } heartbeatUtc)
+            {
+                <span class="calc-service-heartbeat">
+                    Heartbeat: @FormatDateTime(heartbeatUtc)
+                </span>
+            }
+        </div>
 
         <RadzenBadge Text="@($"Jobs: {_jobs.Count}")" BadgeStyle="BadgeStyle.Info" />
     </div>
@@ -221,6 +226,13 @@
 
                         <section class="calc-job-section">
                             <div class="calc-job-section-header">
+                                @if (_serviceStatus?.Availability != CalcServiceAvailabilityDto.Online)
+                                {
+                                    <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" AllowClose="false">
+                                        Calc Service is offline. The state below is the last persisted result and may be stale.
+                                    </RadzenAlert>
+                                }
+
                                 <RadzenText Text="Runtime state" TextStyle="TextStyle.Subtitle1" />
 
                                 <div class="calc-job-state-header-actions">
@@ -596,6 +608,7 @@
     private bool _isBusy;
     private string _statusText = "";
     private AlertStyle _statusStyle = AlertStyle.Info;
+    private CalcServiceStatusDto? _serviceStatus;
 
     /// <summary>
     /// Загружает каталог, задания и состояния, после чего запускает
@@ -619,7 +632,7 @@
     }
 
     /// <summary>
-    /// Загружает определения, задания и их текущие состояния.
+    /// Загружает определения, задания, состояния и доступность Calc.Service.
     /// </summary>
     private async Task LoadAsync(long? preferredJobId = null)
     {
@@ -630,12 +643,14 @@
             var definitionsTask = CalcApi.GetDefinitionsAsync();
             var jobsTask = CalcApi.GetJobsAsync();
             var statesTask = CalcApi.GetStatesAsync();
+            var serviceStatusTask = CalcApi.GetServiceStatusAsync();
 
-            await Task.WhenAll(definitionsTask, jobsTask, statesTask);
+            await Task.WhenAll(definitionsTask, jobsTask, statesTask, serviceStatusTask);
 
             _definitions = (await definitionsTask).ToList();
             _jobs = (await jobsTask).ToList();
             ApplyStates(await statesTask);
+            _serviceStatus = await serviceStatusTask;
 
             var selected = preferredJobId.HasValue
                 ? _jobs.FirstOrDefault(job => job.Id == preferredJobId.Value)
@@ -1140,36 +1155,34 @@
     }
 
     /// <summary>
-    /// Получает состояния через Runtime и применяет их в UI-контексте.
+    /// Обновляет сохранённые job-state и heartbeat Calc.Service.
     ///
-    /// Флаг также предотвращает одновременный ручной и автоматический запрос.
+    /// Конфигурация редактора при этом не перечитывается.
     /// </summary>
-    private async Task RefreshStatesCoreAsync(bool showError,bool showBusyIndicator,CancellationToken ct)
+    private async Task RefreshStatesCoreAsync(bool showError, bool showBusyIndicator, CancellationToken ct)
     {
         if (_isStateRefreshBusy)
             return;
 
         _isStateRefreshBusy = true;
 
-        /*
-         * Показываем busy-состояние только для ручного нажатия.
-         * Фоновое обновление проходит незаметно для пользователя.
-         */
         if (showBusyIndicator)
             await InvokeAsync(StateHasChanged);
 
         try
         {
-            var states = await CalcApi.GetStatesAsync(ct);
+            var statesTask = CalcApi.GetStatesAsync(ct);
+            var serviceStatusTask = CalcApi.GetServiceStatusAsync(ct);
+
+            await Task.WhenAll(statesTask, serviceStatusTask);
+
+            var states = await statesTask;
+            var serviceStatus = await serviceStatusTask;
 
             await InvokeAsync(() =>
             {
                 ApplyStates(states);
-
-                /*
-                 * Сбрасываем флаг до render.
-                 * Благодаря этому кнопка сразу становится активной.
-                 */
+                _serviceStatus = serviceStatus;
                 _isStateRefreshBusy = false;
                 StateHasChanged();
             });
@@ -1181,19 +1194,10 @@
         catch (Exception ex)
         {
             if (showError)
-            {
-                await InvokeAsync(() =>
-                {
-                    ShowError("Cannot refresh calculation states: " + ex.Message);
-                });
-            }
+                await InvokeAsync(() => ShowError("Cannot refresh calculation diagnostics: " + ex.Message));
         }
         finally
         {
-            /*
-             * При ошибке или отмене успешный UI-блок выше не выполняется,
-             * поэтому гарантированно освобождаем кнопку здесь.
-             */
             if (_isStateRefreshBusy)
             {
                 _isStateRefreshBusy = false;
@@ -1334,5 +1338,17 @@
         }
 
         _disposeCts.Dispose();
+    }
+
+    private string GetCalcServiceStatusText()
+    {
+        return _serviceStatus?.Availability == CalcServiceAvailabilityDto.Online ? "ONLINE" : "OFFLINE";
+    }
+
+    private BadgeStyle GetCalcServiceBadgeStyle()
+    {
+        return _serviceStatus?.Availability == CalcServiceAvailabilityDto.Online
+            ? BadgeStyle.Success
+            : BadgeStyle.Danger;
     }
 }

@@ -157,6 +157,14 @@ public sealed class CalcApiClient(IHttpClientFactory httpClientFactory)
     }
 
     /// <summary>
+    /// Возвращает текущее состояние отдельной службы расчётов.
+    /// </summary>
+    public Task<CalcServiceStatusDto> GetServiceStatusAsync(CancellationToken ct = default)
+    {
+        return SendAsync<CalcServiceStatusDto>(HttpMethod.Get, "api/calc/service/status", null, ct);
+    }
+
+    /// <summary>
     /// Безопасно разбирает error body, поскольку proxy или сервер
     /// могут вернуть ответ, не соответствующий Calc DTO.
     /// </summary>

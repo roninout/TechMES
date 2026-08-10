@@ -45,22 +45,23 @@ builder.Services.Configure<EquipmentCatalogOptions>(builder.Configuration.GetSec
 // Настройки API редактирования расчётных заданий.
 builder.Services.Configure<CalcConfigurationOptions>(builder.Configuration.GetSection("CalcConfiguration"));
 
+// Calc.Service должен регулярно подтверждать Runtime, что процесс ещё работает.
+builder.Services.AddOptions<CalcServiceMonitorOptions>()
+    .Bind(builder.Configuration.GetSection("CalcServiceMonitor"))
+    .Validate(options => options.OfflineAfterSeconds is >= 3 and <= 300, "CalcServiceMonitor:OfflineAfterSeconds must be between 3 and 300.")
+    .ValidateOnStart();
+
 // Runtime-контекст регистрируем как Singleton, потому что имя устройства/версия не меняются во время работы процесса.
 builder.Services.AddSingleton<IAppRuntimeContext, AppRuntimeContext>();
 
-/*
- * Каталог содержит только встроенные расчётные алгоритмы.
- *
- * Он не открывает соединения, не запускает фоновые циклы
- * и не обращается к PostgreSQL или CtApi.
- *
- * Singleton подходит, потому что определения алгоритмов
- * неизменяемы в течение всего времени работы Runtime.
- */
+// Каталог содержит только встроенные расчётные алгоритмы и не обращается к PostgreSQL/CtApi.
 builder.Services.AddSingleton(_ => BuiltInCalculationCatalog.Create());
 
 // Валидатор проверяет задания по реальному каталогу алгоритмов.
 builder.Services.AddSingleton<CalcJobValidator>();
+
+// Последний heartbeat Calc.Service хранится только в памяти Runtime.
+builder.Services.AddSingleton<CalcServiceHeartbeatRegistry>();
 
 // SignalR нужен для live-обновлений.
 // Например: один клиент создал сообщение, остальные клиенты сразу получили событие.

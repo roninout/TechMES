@@ -6,7 +6,7 @@
 public sealed class CalcRuntimeClientOptions
 {
     /// <summary>
-    /// Базовый HTTP-адрес единой точки доступа TechMES.Runtime.Service.
+    /// Базовый HTTP-адрес единой точки доступа Runtime.Service.
     /// </summary>
     public string BaseAddress { get; set; } = "http://127.0.0.1:5101/";
 
@@ -19,4 +19,9 @@ public sealed class CalcRuntimeClientOptions
     /// Период обновления configuration snapshot.
     /// </summary>
     public int ConfigurationRefreshSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Период отправки heartbeat Runtime.Service.
+    /// </summary>
+    public int HeartbeatSeconds { get; set; } = 5;
 }

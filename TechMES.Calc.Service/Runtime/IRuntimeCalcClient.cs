@@ -9,14 +9,7 @@ namespace TechMES.Calc.Service.Runtime;
 public interface IRuntimeCalcClient
 {
     Task<CalcConfigurationSnapshotDto> GetConfigurationSnapshotAsync(CancellationToken ct = default);
-
-    /// <summary>
-    /// Пакетно читает уникальные SCADA-теги.
-    /// </summary>
     Task<ScadaTagBatchReadResponse> ReadTagsAsync(IReadOnlyCollection<string> tagNames, CancellationToken ct = default);
-
-    /// <summary>
-    /// Передаёт диагностические результаты shadow-расчётов.
-    /// </summary>
     Task<CalcExecutionResultBatchResponse> SaveExecutionResultsAsync(CalcExecutionResultBatchRequest request, CancellationToken ct = default);
+    Task SendHeartbeatAsync(CalcServiceHeartbeatRequest request, CancellationToken ct = default);
 }
