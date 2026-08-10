@@ -226,13 +226,6 @@
 
                         <section class="calc-job-section">
                             <div class="calc-job-section-header">
-                                @if (_serviceStatus?.Availability != CalcServiceAvailabilityDto.Online)
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" AllowClose="false">
-                                        Calc Service is offline. The state below is the last persisted result and may be stale.
-                                    </RadzenAlert>
-                                }
-
                                 <RadzenText Text="Runtime state" TextStyle="TextStyle.Subtitle1" />
 
                                 <div class="calc-job-state-header-actions">
@@ -250,6 +243,22 @@
                                                   Click="@RefreshStatesAsync" />
                                 </div>
                             </div>
+
+                            @*
+                                Состояние самого Calc.Service отделено от последнего
+                                сохранённого результата конкретного Job.
+                                Поэтому старый Success может отображаться одновременно
+                                с Offline — это разные диагностические состояния.
+                            *@
+                            @if (_serviceStatus?.Availability != CalcServiceAvailabilityDto.Online)
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                             ShowIcon="true"
+                                             AllowClose="false"
+                                             Style="margin-bottom: 14px;">
+                                    Calc Service is offline. The state below is the last persisted result and may be stale.
+                                </RadzenAlert>
+                            }
 
                             @if (runtimeState is null)
                             {
