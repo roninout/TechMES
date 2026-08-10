@@ -26,41 +26,27 @@ public sealed class CalcServiceHeartbeatRequest
 
 /// <summary>
 /// Ответ Runtime на heartbeat.
-///
-/// Одновременно используется для передачи Calc.Service
-/// текущего состояния lease.
+/// Одновременно передаёт текущее состояние execution lease.
 /// </summary>
 public sealed class CalcServiceHeartbeatResponseDto
 {
-    /// <summary>
-    /// InstanceId отправителя heartbeat.
-    /// </summary>
     public string InstanceId { get; set; } = "";
-
-    /// <summary>
-    /// true только для экземпляра, которому сейчас разрешено выполнять Jobs.
-    /// </summary>
     public bool IsLeaseOwner { get; set; }
-
-    /// <summary>
-    /// InstanceId текущего владельца lease.
-    /// </summary>
     public string? LeaseOwnerInstanceId { get; set; }
 
     /// <summary>
-    /// Fencing token текущего lease.
-    ///
-    /// При каждом новом захвате lease значение увеличивается.
+    /// Уникальный идентификатор поколения lease.
+    /// Меняется при каждом запуске Runtime.Service.
+    /// </summary>
+    public string LeaseEpoch { get; set; } = "";
+
+    /// <summary>
+    /// Последовательный fencing token внутри одного Runtime epoch.
     /// </summary>
     public long LeaseToken { get; set; }
 
     public DateTimeOffset? LeaseExpiresAtUtc { get; set; }
-
-    /// <summary>
-    /// Оставшееся время lease по часам Runtime.
-    /// </summary>
     public long LeaseRemainingMilliseconds { get; set; }
-
     public int LeaseDurationSeconds { get; set; }
 }
 
@@ -70,10 +56,6 @@ public sealed class CalcServiceHeartbeatResponseDto
 public sealed class CalcServiceStatusDto
 {
     public CalcServiceAvailabilityDto Availability { get; set; } = CalcServiceAvailabilityDto.Offline;
-
-    /// <summary>
-    /// Данные текущего владельца lease.
-    /// </summary>
     public string? InstanceId { get; set; }
     public string? MachineName { get; set; }
     public int? ProcessId { get; set; }
@@ -82,14 +64,11 @@ public sealed class CalcServiceStatusDto
     public DateTimeOffset? LastHeartbeatReceivedAtUtc { get; set; }
     public long? HeartbeatAgeSeconds { get; set; }
 
+    public string? LeaseEpoch { get; set; }
     public long? LeaseToken { get; set; }
     public DateTimeOffset? LeaseExpiresAtUtc { get; set; }
 
-    /// <summary>
-    /// Количество недавно видимых экземпляров Calc.Service.
-    /// </summary>
     public int ActiveInstanceCount { get; set; }
-
     public int OfflineAfterSeconds { get; set; }
     public int LeaseDurationSeconds { get; set; }
 }

@@ -24,6 +24,7 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
 
     private string? _lastSnapshotVersion;
     private DateTimeOffset _nextConfigurationRefreshUtc = DateTimeOffset.MinValue;
+    private string _activeLeaseEpoch = "";
     private long _activeLeaseToken;
 
     /// <summary>
@@ -59,13 +60,11 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
                     continue;
                 }
 
-                ActivateExecutionLease(lease.LeaseToken);
-
+                ActivateExecutionLease(lease.LeaseEpoch, lease.LeaseToken);
                 await RefreshConfigurationIfDueAsync(nowUtc, stoppingToken);
 
-                // Snapshot мог загружаться достаточно долго. Перед самим execution ещё раз убеждаемся, что lease всё ещё действителен.
-                if (leaseState.IsCurrentOwner(_activeLeaseToken, DateTimeOffset.UtcNow))
-                    await ExecuteDueJobsAsync(DateTimeOffset.UtcNow, _activeLeaseToken, stoppingToken);
+                if (leaseState.IsCurrentOwner(_activeLeaseEpoch, _activeLeaseToken, DateTimeOffset.UtcNow))
+                    await ExecuteDueJobsAsync(DateTimeOffset.UtcNow, _activeLeaseEpoch, _activeLeaseToken, stoppingToken);
                 else
                     DeactivateExecutionLease();
 
@@ -82,23 +81,26 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
     }
 
     /// <summary>
-    /// Активирует scheduler для нового lease token.
-    ///
-    /// Новый token всегда начинает работу со свежего configuration snapshot.
+    /// Новый Runtime epoch или token всегда начинает scheduler
+    /// со свежего configuration snapshot.
     /// </summary>
-    private void ActivateExecutionLease(long leaseToken)
+    private void ActivateExecutionLease(string leaseEpoch, long leaseToken)
     {
-        if (_activeLeaseToken == leaseToken)
+        if (_activeLeaseToken == leaseToken
+            && string.Equals(_activeLeaseEpoch, leaseEpoch, StringComparison.Ordinal))
+        {
             return;
+        }
 
+        _activeLeaseEpoch = leaseEpoch;
         _activeLeaseToken = leaseToken;
         _scheduledJobs.Clear();
         _lastSnapshotVersion = null;
         _nextConfigurationRefreshUtc = DateTimeOffset.MinValue;
 
         logger.LogInformation(
-            "Calculation scheduler activated. LeaseToken={LeaseToken}.",
-            leaseToken);
+            "Calculation scheduler activated. LeaseEpoch={LeaseEpoch}, LeaseToken={LeaseToken}.",
+            leaseEpoch, leaseToken);
     }
 
     /// <summary>
@@ -110,9 +112,10 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
             return;
 
         logger.LogWarning(
-            "Calculation scheduler deactivated because execution lease is no longer owned. PreviousLeaseToken={LeaseToken}.",
-            _activeLeaseToken);
+            "Calculation scheduler deactivated because execution lease is no longer owned. LeaseEpoch={LeaseEpoch}, LeaseToken={LeaseToken}.",
+            _activeLeaseEpoch, _activeLeaseToken);
 
+        _activeLeaseEpoch = "";
         _activeLeaseToken = 0;
         _scheduledJobs.Clear();
         _lastSnapshotVersion = null;
@@ -257,7 +260,7 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
     /// <summary>
     /// Выполняет due Jobs только под конкретным lease token.
     /// </summary>
-    private async Task ExecuteDueJobsAsync(DateTimeOffset nowUtc, long leaseToken, CancellationToken stoppingToken)
+    private async Task ExecuteDueJobsAsync(DateTimeOffset nowUtc, string leaseEpoch, long leaseToken, CancellationToken stoppingToken)
     {
         var dueStates = _scheduledJobs.Values
             .Where(state => state.IsDue(nowUtc))
@@ -279,20 +282,18 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
             foreach (var result in results)
                 LogExecutionResult(result);
 
-            /*
-             * Lease мог закончиться во время расчётов.
-             * Не отправляем результат как действительный, если ownership уже потерян.
-             */
-            if (!leaseState.IsCurrentOwner(leaseToken, DateTimeOffset.UtcNow))
+            
+             // Lease мог закончиться во время расчётов. Не отправляем результат как действительный, если ownership уже потерян.             
+            if (!leaseState.IsCurrentOwner(leaseEpoch, leaseToken, DateTimeOffset.UtcNow))
             {
                 logger.LogWarning(
-                    "Calculation results discarded because execution lease expired during the cycle. LeaseToken={LeaseToken}.",
-                    leaseToken);
+                    "Calculation results discarded because execution lease expired during the cycle. LeaseEpoch={LeaseEpoch}, LeaseToken={LeaseToken}.",
+                    leaseEpoch, leaseToken);
 
                 return;
             }
 
-            await SaveExecutionResultsAsync(results, leaseToken, stoppingToken);
+            await SaveExecutionResultsAsync(results, leaseEpoch, leaseToken, stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -320,7 +321,7 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
     /// Runtime повторно проверяет ownership, поэтому локальной
     /// проверки Calc.Service недостаточно для принятия результата.
     /// </summary>
-    private async Task SaveExecutionResultsAsync(IReadOnlyList<CalcJobExecutionResult> results, long leaseToken, CancellationToken stoppingToken)
+    private async Task SaveExecutionResultsAsync(IReadOnlyList<CalcJobExecutionResult> results, string leaseEpoch, long leaseToken, CancellationToken stoppingToken)
     {
         if (results.Count == 0)
             return;
@@ -330,6 +331,7 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
             var request = new CalcExecutionResultBatchRequest
             {
                 ServiceInstanceId = identity.InstanceId,
+                LeaseEpoch = leaseEpoch,
                 LeaseToken = leaseToken,
                 SubmittedAtUtc = DateTimeOffset.UtcNow,
 
@@ -354,8 +356,8 @@ internal sealed class CalcWorker(ILogger<CalcWorker> logger, IRuntimeCalcClient 
             var response = await runtimeClient.SaveExecutionResultsAsync(request, stoppingToken);
 
             logger.LogInformation(
-                "Calculation states submitted. LeaseToken={LeaseToken}, Requested={Requested}, Accepted={Accepted}, Rejected={Rejected}.",
-                leaseToken, response.RequestedCount, response.AcceptedCount, response.RejectedCount);
+                "Calculation states submitted. LeaseEpoch={LeaseEpoch}, LeaseToken={LeaseToken}, Requested={Requested}, Accepted={Accepted}, Rejected={Rejected}.",
+                leaseEpoch, leaseToken, response.RequestedCount, response.AcceptedCount, response.RejectedCount);
 
             foreach (var item in response.Items.Where(item => !item.Accepted))
             {

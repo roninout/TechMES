@@ -22,15 +22,15 @@ public enum CalcJobStateStatusDto
 /// </summary>
 public sealed class CalcExecutionResultBatchRequest
 {
-    /// <summary>
-    /// Идентификатор конкретного запуска Calc.Service.
-    /// </summary>
     public string ServiceInstanceId { get; set; } = "";
 
     /// <summary>
-    /// Fencing token lease, под которым выполнялся расчёт.
-    ///
-    /// Runtime не принимает результаты от старого или standby-экземпляра.
+    /// Runtime epoch, в котором был получен LeaseToken.
+    /// </summary>
+    public string LeaseEpoch { get; set; } = "";
+
+    /// <summary>
+    /// Fencing token внутри LeaseEpoch.
     /// </summary>
     public long LeaseToken { get; set; }
 

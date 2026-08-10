@@ -6,23 +6,23 @@ namespace TechMES.Runtime.Service.Calc;
 
 /// <summary>
 /// Централизованно отслеживает экземпляры Calc.Service и выдаёт
-/// lease только одному экземпляру одновременно.
+/// execution lease только одному экземпляру одновременно.
 ///
-/// Состояние намеренно хранится в памяти Runtime.
-/// После перезапуска Runtime новый владелец выбирается заново.
+/// LeaseEpoch уникален для текущего запуска Runtime.Service.
 /// </summary>
 internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOptions> options)
 {
     private readonly object _sync = new();
     private readonly Dictionary<string, HeartbeatSnapshot> _instances = new(StringComparer.Ordinal);
+    private readonly string _leaseEpoch = Guid.NewGuid().ToString("N");
 
     private string? _leaseOwnerInstanceId;
     private long _leaseToken;
     private DateTimeOffset _leaseExpiresAtUtc;
 
     /// <summary>
-    /// Регистрирует heartbeat, продлевает существующий lease
-    /// либо выдаёт новый lease, если предыдущий закончился.
+    /// Регистрирует heartbeat, продлевает текущий lease
+    /// либо выдаёт новый lease после завершения предыдущего.
     /// </summary>
     public CalcServiceHeartbeatResponseDto RecordAndAcquire(CalcServiceHeartbeatRequest heartbeat)
     {
@@ -34,12 +34,8 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
         lock (_sync)
         {
             _instances[instanceId] = new HeartbeatSnapshot(
-                instanceId,
-                heartbeat.MachineName.Trim(),
-                heartbeat.ProcessId,
-                NormalizeOptional(heartbeat.ServiceVersion),
-                heartbeat.StartedAtUtc,
-                nowUtc);
+                instanceId, heartbeat.MachineName.Trim(), heartbeat.ProcessId,
+                NormalizeOptional(heartbeat.ServiceVersion), heartbeat.StartedAtUtc, nowUtc);
 
             RemoveOfflineInstances(nowUtc);
 
@@ -47,12 +43,12 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
 
             if (string.Equals(_leaseOwnerInstanceId, instanceId, StringComparison.Ordinal) && !leaseExpired)
             {
-                // Текущий владелец просто продлевает своё владение.
+                // Текущий владелец продлевает существующий lease.
                 _leaseExpiresAtUtc = nowUtc.AddSeconds(options.Value.LeaseDurationSeconds);
             }
             else if (leaseExpired)
             {
-                // Старый lease закончился. Новый владелец получает новый fencing token.
+                // Новый ownership получает следующий token текущего Runtime epoch.
                 _leaseOwnerInstanceId = instanceId;
                 _leaseToken = NextLeaseToken(_leaseToken);
                 _leaseExpiresAtUtc = nowUtc.AddSeconds(options.Value.LeaseDurationSeconds);
@@ -63,12 +59,11 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
     }
 
     /// <summary>
-    /// Проверяет, имеет ли конкретный экземпляр право выполнять
-    /// защищённое действие именно с указанным fencing token.
+    /// Проверяет полный fencing identity защищённого действия.
     /// </summary>
-    public bool IsLeaseOwner(string? instanceId, long leaseToken)
+    public bool IsLeaseOwner(string? instanceId, string? leaseEpoch, long leaseToken)
     {
-        if (string.IsNullOrWhiteSpace(instanceId) || leaseToken <= 0)
+        if (string.IsNullOrWhiteSpace(instanceId) || string.IsNullOrWhiteSpace(leaseEpoch) || leaseToken <= 0)
             return false;
 
         lock (_sync)
@@ -77,6 +72,7 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
 
             return nowUtc < _leaseExpiresAtUtc
                 && _leaseToken == leaseToken
+                && string.Equals(_leaseEpoch, leaseEpoch.Trim(), StringComparison.Ordinal)
                 && string.Equals(_leaseOwnerInstanceId, instanceId.Trim(), StringComparison.Ordinal);
         }
     }
@@ -91,14 +87,6 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
             var nowUtc = DateTimeOffset.UtcNow;
             RemoveOfflineInstances(nowUtc);
 
-            /*
-             * Если владельца нет, lease истёк или запись владельца
-             * уже отсутствует среди активных экземпляров, Calc.Service
-             * считаем Offline.
-             *
-             * Такая форма проверки также гарантирует компилятору,
-             * что после этого блока переменная owner уже инициализирована.
-             */
             if (_leaseOwnerInstanceId is null
                 || nowUtc >= _leaseExpiresAtUtc
                 || !_instances.TryGetValue(_leaseOwnerInstanceId, out var owner))
@@ -106,6 +94,7 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
                 return new CalcServiceStatusDto
                 {
                     Availability = CalcServiceAvailabilityDto.Offline,
+                    LeaseEpoch = _leaseEpoch,
                     ActiveInstanceCount = _instances.Count,
                     OfflineAfterSeconds = options.Value.OfflineAfterSeconds,
                     LeaseDurationSeconds = options.Value.LeaseDurationSeconds
@@ -124,6 +113,7 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
                 StartedAtUtc = owner.StartedAtUtc,
                 LastHeartbeatReceivedAtUtc = owner.ReceivedAtUtc,
                 HeartbeatAgeSeconds = ageSeconds,
+                LeaseEpoch = _leaseEpoch,
                 LeaseToken = _leaseToken,
                 LeaseExpiresAtUtc = _leaseExpiresAtUtc,
                 ActiveInstanceCount = _instances.Count,
@@ -133,9 +123,6 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
         }
     }
 
-    /// <summary>
-    /// Формирует ответ конкретному экземпляру Calc.Service.
-    /// </summary>
     private CalcServiceHeartbeatResponseDto BuildHeartbeatResponse(string instanceId, DateTimeOffset nowUtc)
     {
         var remaining = Math.Max(0L, (long)(_leaseExpiresAtUtc - nowUtc).TotalMilliseconds);
@@ -146,6 +133,7 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
             IsLeaseOwner = string.Equals(_leaseOwnerInstanceId, instanceId, StringComparison.Ordinal)
                 && nowUtc < _leaseExpiresAtUtc,
             LeaseOwnerInstanceId = _leaseOwnerInstanceId,
+            LeaseEpoch = _leaseEpoch,
             LeaseToken = _leaseToken,
             LeaseExpiresAtUtc = _leaseOwnerInstanceId is null ? null : _leaseExpiresAtUtc,
             LeaseRemainingMilliseconds = remaining,
@@ -153,12 +141,6 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
         };
     }
 
-    /// <summary>
-    /// Удаляет давно не видимые экземпляры из диагностического списка.
-    ///
-    /// Сам lease отдельно ограничен LeaseDurationSeconds и поэтому
-    /// может закончиться раньше OfflineAfterSeconds.
-    /// </summary>
     private void RemoveOfflineInstances(DateTimeOffset nowUtc)
     {
         var maximumAge = TimeSpan.FromSeconds(options.Value.OfflineAfterSeconds);
@@ -181,7 +163,6 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
 
     private static long NextLeaseToken(long current)
     {
-        // practically unreachable, но не допускаем переход long в отрицательное значение.
         return current == long.MaxValue ? 1 : current + 1;
     }
 
@@ -192,10 +173,6 @@ internal sealed class CalcServiceHeartbeatRegistry(IOptions<CalcServiceMonitorOp
     }
 
     private sealed record HeartbeatSnapshot(
-        string InstanceId,
-        string MachineName,
-        int ProcessId,
-        string? ServiceVersion,
-        DateTimeOffset StartedAtUtc,
-        DateTimeOffset ReceivedAtUtc);
+        string InstanceId, string MachineName, int ProcessId, string? ServiceVersion,
+        DateTimeOffset StartedAtUtc, DateTimeOffset ReceivedAtUtc);
 }

@@ -427,9 +427,11 @@ public static class CalcEndpoints
         if (error is not null)
             return Results.BadRequest(error);
 
-        if (!heartbeatRegistry.IsLeaseOwner(request!.ServiceInstanceId, request.LeaseToken))
+        if (!heartbeatRegistry.IsLeaseOwner(request!.ServiceInstanceId, request.LeaseEpoch, request.LeaseToken))
         {
-            return Results.Conflict(ApiError("service.lease-not-owned", "The calculation result was rejected because this Calc Service instance does not own the current execution lease."));
+            return Results.Conflict(ApiError(
+                "service.lease-not-owned",
+                "The calculation result was rejected because this Calc Service instance does not own the current execution lease."));
         }
 
         return Results.Ok(await store.SaveResultsAsync(request, ct));
@@ -446,11 +448,17 @@ public static class CalcEndpoints
         if (string.IsNullOrWhiteSpace(request.ServiceInstanceId))
             return ApiError("service.instance-empty", "Calc Service instance id is required.");
 
-        if (request.LeaseToken <= 0)
-            return ApiError("service.lease-token-invalid", "Calc Service lease token must be greater than zero.");
-
         if (request.ServiceInstanceId.Trim().Length > 200)
             return ApiError("service.instance-too-long", "Calc Service instance id cannot exceed 200 characters.");
+
+        if (string.IsNullOrWhiteSpace(request.LeaseEpoch))
+            return ApiError("service.lease-epoch-empty", "Calc Service lease epoch is required.");
+
+        if (request.LeaseEpoch.Trim().Length > 100)
+            return ApiError("service.lease-epoch-too-long", "Calc Service lease epoch cannot exceed 100 characters.");
+
+        if (request.LeaseToken <= 0)
+            return ApiError("service.lease-token-invalid", "Calc Service lease token must be greater than zero.");
 
         if (request.Items is null || request.Items.Count == 0)
             return ApiError("result.items-empty", "At least one calculation result is required.");
