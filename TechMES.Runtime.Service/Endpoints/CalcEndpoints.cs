@@ -30,6 +30,7 @@ public static class CalcEndpoints
 
         app.MapPost("/api/calc/service/heartbeat", ReceiveServiceHeartbeat);
         app.MapGet("/api/calc/service/status", GetServiceStatus);
+        app.MapGet("/api/calc/service/health", GetServiceHealth);
 
         app.MapGet("/api/calc/states", GetStatesAsync);
         app.MapGet("/api/calc/jobs/{id:long}/state", GetJobStateAsync);
@@ -65,6 +66,24 @@ public static class CalcEndpoints
     private static IResult GetServiceStatus(CalcServiceHeartbeatRegistry registry)
     {
         return Results.Ok(registry.GetStatus());
+    }
+
+    /// <summary>
+    /// Возвращает HTTP health-state Calc.Service.
+    ///
+    /// Maintenance использует именно этот endpoint:
+    /// 200 означает, что активный Calc.Service владеет действующим lease;
+    /// 503 означает, что Calc.Service сейчас недоступен.
+    ///
+    /// Сам Calc.Service отдельный HTTP listener не открывает.
+    /// </summary>
+    private static IResult GetServiceHealth(CalcServiceHeartbeatRegistry registry)
+    {
+        var status = registry.GetStatus();
+
+        return status.Availability == CalcServiceAvailabilityDto.Online
+            ? Results.Ok(status)
+            : Results.Json(status, statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
     /// <summary>

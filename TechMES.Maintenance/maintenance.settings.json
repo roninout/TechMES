@@ -11,6 +11,16 @@
       "HealthUrl": "http://localhost:5101/api/health"
     },
     {
+      "Key": "calc",
+      "DisplayName": "TechMes Calc Service",
+      "ServiceName": "TechMES.Calc.Service",
+      "ProjectPath": "TechMES.Calc.Service\\TechMES.Calc.Service.csproj",
+      "PublishFolderName": "Calc.Service",
+      "ExecutableName": "TechMES.Calc.Service.exe",
+      "WindowsServiceDescription": "TechMES calculation service for scheduled engineering calculations.",
+      "HealthUrl": "http://localhost:5101/api/calc/service/health"
+    },
+    {
       "Key": "web",
       "DisplayName": "TechMes WEB",
       "ServiceName": "TechMES.Web",
@@ -21,21 +31,29 @@
       "HealthUrl": "https://localhost:7163/api/health"
     }
   ],
+
   "SettingsFiles": [
     {
       "DisplayName": "Runtime appsettings",
       "RelativePath": "TechMES.Runtime.Service\\appsettings.json"
     },
     {
+      "DisplayName": "Calc Service appsettings",
+      "RelativePath": "TechMES.Calc.Service\\appsettings.json"
+    },
+    {
       "DisplayName": "WEB appsettings",
       "RelativePath": "TechMES.Web\\appsettings.json"
     }
   ],
+
   "LogSearchRoots": [
     "_runlogs",
     "TechMES.Runtime.Service",
+    "TechMES.Calc.Service",
     "TechMES.Web"
   ],
+
   "Deployment": {
     "PublishRoot": "C:\\TechMES",
     "Configuration": "Release",

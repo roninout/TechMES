@@ -65,41 +65,67 @@ public sealed class MaintenanceConfiguration
         Services =
         [
             new ServiceDefinition
-            {
-                Key = "runtime",
-                DisplayName = "TechMes Runtime Service",
-                ServiceName = "TechMES.Runtime.Service",
-                ProjectPath = @"TechMES.Runtime.Service\TechMES.Runtime.Service.csproj",
-                HealthUrl = "http://localhost:5101/api/health"
-            },
-            new ServiceDefinition
-            {
-                Key = "web",
-                DisplayName = "TechMes WEB",
-                ServiceName = "TechMES.Web",
-                ProjectPath = @"TechMES.Web\TechMES.Web.csproj",
-                HealthUrl = "http://localhost:5163/api/health"
-            }
+        {
+            Key = "runtime",
+            DisplayName = "TechMes Runtime Service",
+            ServiceName = "TechMES.Runtime.Service",
+            ProjectPath = @"TechMES.Runtime.Service\TechMES.Runtime.Service.csproj",
+            PublishFolderName = "Runtime.Service",
+            ExecutableName = "TechMES.Runtime.Service.exe",
+            WindowsServiceDescription = "TechMES backend service for PostgreSQL, CtApi and WEB API.",
+            HealthUrl = "http://localhost:5101/api/health"
+        },
+        new ServiceDefinition
+        {
+            Key = "calc",
+            DisplayName = "TechMes Calc Service",
+            ServiceName = "TechMES.Calc.Service",
+            ProjectPath = @"TechMES.Calc.Service\TechMES.Calc.Service.csproj",
+            PublishFolderName = "Calc.Service",
+            ExecutableName = "TechMES.Calc.Service.exe",
+            WindowsServiceDescription = "TechMES calculation service for scheduled engineering calculations.",
+            HealthUrl = "http://localhost:5101/api/calc/service/health"
+        },
+        new ServiceDefinition
+        {
+            Key = "web",
+            DisplayName = "TechMes WEB",
+            ServiceName = "TechMES.Web",
+            ProjectPath = @"TechMES.Web\TechMES.Web.csproj",
+            PublishFolderName = "Web",
+            ExecutableName = "TechMES.Web.exe",
+            WindowsServiceDescription = "TechMES Blazor WEB interface.",
+            HealthUrl = "http://localhost:5163/api/health"
+        }
         ],
+
         SettingsFiles =
         [
             new SettingsFileDefinition
-            {
-                DisplayName = "Runtime appsettings",
-                RelativePath = @"TechMES.Runtime.Service\appsettings.json"
-            },
-            new SettingsFileDefinition
-            {
-                DisplayName = "WEB appsettings",
-                RelativePath = @"TechMES.Web\appsettings.json"
-            }
+        {
+            DisplayName = "Runtime appsettings",
+            RelativePath = @"TechMES.Runtime.Service\appsettings.json"
+        },
+        new SettingsFileDefinition
+        {
+            DisplayName = "Calc Service appsettings",
+            RelativePath = @"TechMES.Calc.Service\appsettings.json"
+        },
+        new SettingsFileDefinition
+        {
+            DisplayName = "WEB appsettings",
+            RelativePath = @"TechMES.Web\appsettings.json"
+        }
         ],
+
         LogSearchRoots =
         [
             "_runlogs",
-            "TechMES.Runtime.Service",
-            "TechMES.Web"
+        "TechMES.Runtime.Service",
+        "TechMES.Calc.Service",
+        "TechMES.Web"
         ],
+
         Deployment = new DeploymentOptions(),
         Server = new ServerOptions(),
         Cleanup = new CleanupOptions(),
