@@ -57,6 +57,19 @@ builder.Services.AddOptions<CalcServiceMonitorOptions>()
         "CalcServiceMonitor:OfflineAfterSeconds must be greater than or equal to LeaseDurationSeconds.")
     .ValidateOnStart();
 
+
+// Единственный глобальный разрешающий переключатель автоматической Calc-записи.
+builder.Services.AddOptions<CalcWriteOptions>()
+    .Bind(builder.Configuration.GetSection(CalcWriteOptions.SectionName));
+
+// In-memory диагностика последних Calc -> SCADA write.
+builder.Services.AddSingleton<CalcWriteDiagnosticsRegistry>();
+
+// Runtime является единственной точкой фактической Calc-записи в SCADA.
+builder.Services.AddSingleton<CalcOutputWriteCoordinator>();
+
+
+
 // Runtime-контекст регистрируем как Singleton, потому что имя устройства/версия не меняются во время работы процесса.
 builder.Services.AddSingleton<IAppRuntimeContext, AppRuntimeContext>();
 

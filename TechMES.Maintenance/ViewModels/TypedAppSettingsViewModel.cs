@@ -56,6 +56,23 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     private string _webFileLoggingDirectory = "";
     private string _webFileLoggingPrefix = "";
 
+    private bool _calcWritesEnabled;
+    private bool _calcConfigurationEditingEnabled;
+    private int _calcServiceOfflineAfterSeconds;
+    private int _calcServiceLeaseDurationSeconds;
+
+    private string _calcRuntimeBaseAddress = "";
+    private int _calcRuntimeRequestTimeoutSeconds;
+    private int _calcConfigurationRefreshSeconds;
+    private int _calcHeartbeatSeconds;
+
+    private int _calcSchedulerTickMilliseconds;
+    private int _calcDefaultMaxAgeSeconds;
+    private bool _calcAcceptUnknownQuality;
+
+    private string _calcLogLevel = "";
+    private string _calcLifetimeLogLevel = "";
+
     /// <summary>
     /// Статус последней загрузки или сохранения typed appsettings.
     /// </summary>
@@ -297,6 +314,91 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     {
         get => _paramWritesAllowedGroups;
         set => SetProperty(ref _paramWritesAllowedGroups, value);
+    }
+
+    /// <summary>
+    /// Главный Runtime switch автоматической Calc-записи.
+    /// Показывается только во вкладке Param Writes.
+    /// </summary>
+    public bool CalcWritesEnabled
+    {
+        get => _calcWritesEnabled;
+        set => SetProperty(ref _calcWritesEnabled, value);
+    }
+
+    /// <summary>
+    /// Разрешает WEB редактировать Calc Jobs.
+    /// </summary>
+    public bool CalcConfigurationEditingEnabled
+    {
+        get => _calcConfigurationEditingEnabled;
+        set => SetProperty(ref _calcConfigurationEditingEnabled, value);
+    }
+
+    public int CalcServiceOfflineAfterSeconds
+    {
+        get => _calcServiceOfflineAfterSeconds;
+        set => SetProperty(ref _calcServiceOfflineAfterSeconds, value);
+    }
+
+    public int CalcServiceLeaseDurationSeconds
+    {
+        get => _calcServiceLeaseDurationSeconds;
+        set => SetProperty(ref _calcServiceLeaseDurationSeconds, value);
+    }
+
+    public string CalcRuntimeBaseAddress
+    {
+        get => _calcRuntimeBaseAddress;
+        set => SetProperty(ref _calcRuntimeBaseAddress, value);
+    }
+
+    public int CalcRuntimeRequestTimeoutSeconds
+    {
+        get => _calcRuntimeRequestTimeoutSeconds;
+        set => SetProperty(ref _calcRuntimeRequestTimeoutSeconds, value);
+    }
+
+    public int CalcConfigurationRefreshSeconds
+    {
+        get => _calcConfigurationRefreshSeconds;
+        set => SetProperty(ref _calcConfigurationRefreshSeconds, value);
+    }
+
+    public int CalcHeartbeatSeconds
+    {
+        get => _calcHeartbeatSeconds;
+        set => SetProperty(ref _calcHeartbeatSeconds, value);
+    }
+
+    public int CalcSchedulerTickMilliseconds
+    {
+        get => _calcSchedulerTickMilliseconds;
+        set => SetProperty(ref _calcSchedulerTickMilliseconds, value);
+    }
+
+    public int CalcDefaultMaxAgeSeconds
+    {
+        get => _calcDefaultMaxAgeSeconds;
+        set => SetProperty(ref _calcDefaultMaxAgeSeconds, value);
+    }
+
+    public bool CalcAcceptUnknownQuality
+    {
+        get => _calcAcceptUnknownQuality;
+        set => SetProperty(ref _calcAcceptUnknownQuality, value);
+    }
+
+    public string CalcLogLevel
+    {
+        get => _calcLogLevel;
+        set => SetProperty(ref _calcLogLevel, value);
+    }
+
+    public string CalcLifetimeLogLevel
+    {
+        get => _calcLifetimeLogLevel;
+        set => SetProperty(ref _calcLifetimeLogLevel, value);
     }
 
     /// <summary>

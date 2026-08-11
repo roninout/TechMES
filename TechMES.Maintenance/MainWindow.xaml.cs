@@ -1,8 +1,11 @@
-using System.Collections.ObjectModel;
+using Microsoft.Win32;
 using System.Collections;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Security.Principal;
 using System.Text.Json;
@@ -13,7 +16,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
-using Microsoft.Win32;
+using TechMES.Contracts.Calc;
 using TechMES.Maintenance.Models;
 using TechMES.Maintenance.Services;
 using TechMES.Maintenance.ViewModels;
@@ -53,6 +56,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     private readonly ExcelInfoImportReader _excelInfoImportReader = new();
     private readonly RuntimeCatalogClient _runtimeCatalogClient = new();
 
+    private string _calcDiagnosticsStatusText = "Not checked.";
     private string _diagnosticsText = "";
     private string _deploymentLogText = "";
     private SettingsFileViewModel? _selectedSettingsFile;
@@ -250,6 +254,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     public ObservableCollection<DiskStatusViewModel> DiskStatuses { get; } = [];
 
     /// <summary>
+    /// Диагностика calculation subsystem.
+    /// </summary>
+    public ObservableCollection<DependencyCheckViewModel> CalcDiagnostics { get; } = [];
+
+    /// <summary>
     /// Typed-поля для appsettings WEB и Runtime.
     /// Эти значения пишутся в appsettings.json и начинают работать после рестарта соответствующей службы.
     /// </summary>
@@ -284,6 +293,22 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
             _windowsAuthDiagnosticsStatusText = value;
             OnPropertyChanged(nameof(WindowsAuthDiagnosticsStatusText));
+        }
+    }
+
+    /// <summary>
+    /// Короткое состояние вкладки Calculations Diagnostics.
+    /// </summary>
+    public string CalcDiagnosticsStatusText
+    {
+        get => _calcDiagnosticsStatusText;
+        set
+        {
+            if (_calcDiagnosticsStatusText == value)
+                return;
+
+            _calcDiagnosticsStatusText = value;
+            OnPropertyChanged(nameof(CalcDiagnosticsStatusText));
         }
     }
 
@@ -1368,6 +1393,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         RefreshServerProfile();
         RefreshWindowsAuthDiagnostics();
         RefreshOperatorActionDiagnostics();
+        _ = RefreshCalcDiagnosticsAsync();
         RefreshLogRows();
         RefreshBackupRows();
         RefreshDiskStatuses();
@@ -1495,6 +1521,210 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     }
 
     /// <summary>
+    /// Обновляет Calc diagnostics по Runtime API.
+    /// </summary>
+    private async void OnRefreshCalcDiagnosticsClick(object sender, RoutedEventArgs e)
+    {
+        await RefreshCalcDiagnosticsAsync();
+    }
+
+    /// <summary>
+    /// Загружает состояние Calc.Service, Jobs, execution states
+    /// и последние попытки SCADA write через Runtime API.
+    /// </summary>
+    private async Task RefreshCalcDiagnosticsAsync()
+    {
+        CalcDiagnostics.Clear();
+
+        AddDiagnosticsRow(
+            CalcDiagnostics,
+            "Write safety",
+            "Global Calc writes",
+            TypedAppSettings.CalcWritesEnabled ? "Warning" : "OK",
+            TypedAppSettings.CalcWritesEnabled
+                ? "Enabled. Successful armed Calc outputs may write to SCADA."
+                : "Disabled. Runtime will not perform Calc SCADA writes.");
+
+        AddDiagnosticsRow(
+            CalcDiagnostics,
+            "Write safety",
+            "CtApi writes",
+            TypedAppSettings.CtApiAllowWrites ? "OK" : "Warning",
+            $"CtApi AllowWrites: {TypedAppSettings.CtApiAllowWrites}.");
+
+        try
+        {
+            var baseUrl = GetRuntimeDiagnosticsBaseUrl();
+
+            using var client = new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/"),
+                Timeout = TimeSpan.FromSeconds(5)
+            };
+
+            var service = await client.GetFromJsonAsync<CalcServiceStatusDto>(
+                "api/calc/service/status");
+
+            var jobs = await client.GetFromJsonAsync<CalcJobsResponse>(
+                "api/calc/jobs");
+
+            var states = await client.GetFromJsonAsync<CalcJobStatesResponse>(
+                "api/calc/states");
+
+            var writes = await client.GetFromJsonAsync<CalcWriteDiagnosticsDto>(
+                "api/calc/writes/status");
+
+            /*
+             * Calc.Service / lease.
+             */
+            if (service is not null)
+            {
+                AddDiagnosticsRow(
+                    CalcDiagnostics,
+                    "Calc Service",
+                    "Availability",
+                    service.Availability == CalcServiceAvailabilityDto.Online ? "OK" : "Error",
+                    $"Availability: {service.Availability}; Machine: {service.MachineName ?? "—"}; Process: {service.ProcessId?.ToString() ?? "—"}.");
+
+                AddDiagnosticsRow(
+                    CalcDiagnostics,
+                    "Calc Service",
+                    "Execution lease",
+                    service.Availability == CalcServiceAvailabilityDto.Online ? "OK" : "Warning",
+                    $"Epoch: {service.LeaseEpoch ?? "—"}; Token: {service.LeaseToken?.ToString() ?? "—"}; Expires: {service.LeaseExpiresAtUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") ?? "—"}.");
+
+                AddDiagnosticsRow(
+                    CalcDiagnostics,
+                    "Calc Service",
+                    "Active instances",
+                    service.ActiveInstanceCount <= 1 ? "OK" : "Warning",
+                    $"Active instances: {service.ActiveInstanceCount}; last heartbeat age: {service.HeartbeatAgeSeconds?.ToString() ?? "—"} s.");
+            }
+
+            /*
+             * Runtime Calc write gate.
+             */
+            if (writes is not null)
+            {
+                AddDiagnosticsRow(
+                    CalcDiagnostics,
+                    "SCADA write",
+                    "Runtime write gate",
+                    writes.Enabled ? "Warning" : "OK",
+                    $"Enabled: {writes.Enabled}; attempts: {writes.AttemptCount}; success: {writes.SuccessCount}; errors: {writes.ErrorCount}.");
+
+                AddDiagnosticsRow(
+                    CalcDiagnostics,
+                    "SCADA write",
+                    "Last attempt",
+                    writes.ErrorCount > 0 ? "Warning" : "OK",
+                    writes.LastAttemptAtUtc.HasValue
+                        ? writes.LastAttemptAtUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")
+                        : "No Calc SCADA writes since Runtime.Service started.");
+            }
+
+            /*
+             * Состояния Jobs.
+             */
+            var statesByJob = states?.Items.ToDictionary(state => state.JobId)
+                ?? new Dictionary<long, CalcJobStateDto>();
+
+            /*
+             * Не используем:
+             *
+             * jobs?.Items.OrderBy(...) ?? []
+             *
+             * потому что левая часть имеет тип IOrderedEnumerable<CalcJobDto>,
+             * а collection expression [] не имеет подходящего target type.
+             */
+            var orderedJobs = jobs?.Items
+                .OrderBy(job => job.SortOrder)
+                .ThenBy(job => job.Id)
+                .ToList()
+                ?? new List<CalcJobDto>();
+
+            foreach (var job in orderedJobs)
+            {
+                statesByJob.TryGetValue(job.Id, out var state);
+
+                var armedOutputs = job.Outputs.Count(output =>
+                    output.WriteEnabled
+                    && !string.IsNullOrWhiteSpace(output.TagName));
+
+                var status = state?.Status switch
+                {
+                    CalcJobStateStatusDto.Success => "OK",
+                    CalcJobStateStatusDto.Error => "Error",
+                    CalcJobStateStatusDto.Skipped => "Warning",
+                    _ => "Warning"
+                };
+
+                AddDiagnosticsRow(
+                    CalcDiagnostics,
+                    "Job",
+                    job.Name,
+                    status,
+                    $"Enabled: {job.Enabled}; Write: {job.WriteEnabled}; Armed outputs: {armedOutputs}; Revision: {job.Revision}; State: {state?.Status.ToString() ?? "Unknown"}; Reason: {state?.ReasonCode ?? "—"}.");
+            }
+
+            /*
+             * Последние Calc -> SCADA attempts.
+             */
+            if (writes is not null)
+            {
+                foreach (var attempt in writes.RecentAttempts.Take(20))
+                {
+                    AddDiagnosticsRow(
+                        CalcDiagnostics,
+                        "Write",
+                        $"{attempt.JobName} / {attempt.OutputKey}",
+                        attempt.Status == CalcWriteAttemptStatusDto.Success ? "OK" : "Error",
+                        $"Tag: {attempt.TagName}; Raw: {FormatNullableDouble(attempt.RawValue)}; Scale: {attempt.Scale}; Offset: {attempt.Offset}; Written: {FormatNullableDouble(attempt.WrittenValue)}; {attempt.ErrorMessage ?? "Success"}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AddDiagnosticsRow(
+                CalcDiagnostics,
+                "Runtime API",
+                "Calc diagnostics",
+                "Error",
+                ex.Message);
+        }
+
+        UpdateDiagnosticsStatus(
+            CalcDiagnostics,
+            value => CalcDiagnosticsStatusText = value);
+    }
+
+    private string GetRuntimeDiagnosticsBaseUrl()
+    {
+        var configuredUrls = (TypedAppSettings.RuntimeUrls ?? "")
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var configuredUrl in configuredUrls)
+        {
+            if (!Uri.TryCreate(configuredUrl, UriKind.Absolute, out var uri))
+                continue;
+
+            var builder = new UriBuilder(uri);
+
+            if (builder.Host is "0.0.0.0" or "*" or "+")
+                builder.Host = "127.0.0.1";
+
+            return builder.Uri.GetLeftPart(UriPartial.Authority);
+        }
+
+        return $"http://127.0.0.1:{_configuration.Server.RuntimePort}";
+    }
+
+    private static string FormatNullableDouble(double? value)
+    {
+        return value.HasValue ? value.Value.ToString("G17") : "—";
+    }
+
+    /// <summary>
     /// Возвращает путь backup по умолчанию, если оператор еще не сохранил свой каталог.
     /// </summary>
     private string GetDefaultBackupRoot()
@@ -1594,19 +1824,21 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     }
 
     /// <summary>
-    /// Обновляет весь Dashboard: Windows Service status и HTTP health.
-    /// </summary>
-    /// <summary>
-    /// Загружает typed-представление appsettings из исходных файлов Runtime.Service и WEB.
-    /// Published appsettings не читаем как источник правды: они являются результатом publish/deploy,
-    /// но при сохранении обновляем и их, если службы уже опубликованы.
+    /// Загружает typed-представление Runtime, Calc.Service и WEB appsettings.
+    /// Если сервис уже опубликован, читается рабочий published appsettings.
     /// </summary>
     private void LoadTypedAppSettings()
     {
         try
         {
-            var runtime = ReadJsonObject(GetPreferredAppsettingsPath("runtime", @"TechMES.Runtime.Service\appsettings.json", "Runtime.Service"));
-            var web = ReadJsonObject(GetPreferredAppsettingsPath("web", @"TechMES.Web\appsettings.json", "Web"));
+            var runtime = ReadJsonObject(GetPreferredAppsettingsPath(
+                "runtime", @"TechMES.Runtime.Service\appsettings.json", "Runtime.Service"));
+
+            var calc = ReadJsonObject(GetPreferredAppsettingsPath(
+                "calc", @"TechMES.Calc.Service\appsettings.json", "Calc.Service"));
+
+            var web = ReadJsonObject(GetPreferredAppsettingsPath(
+                "web", @"TechMES.Web\appsettings.json", "Web"));
 
             TypedAppSettings.RuntimeUrls = GetString(runtime, "Urls");
             TypedAppSettings.RuntimeDeviceName = GetString(runtime, "Runtime", "DeviceName");
@@ -1628,18 +1860,39 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
             TypedAppSettings.RuntimeDatabaseConnectionString = GetString(runtime, "Database", "ConnectionString");
             TypedAppSettings.RuntimeEventDatabaseConnectionString = GetString(runtime, "EventDatabase", "ConnectionString");
+
             TypedAppSettings.ParamWritesEnabled = GetBool(runtime, false, "ParamWrites", "Enabled");
-            TypedAppSettings.ParamWritesDryRun = GetBool(runtime, true, "ParamWrites", "DryRun");
+            TypedAppSettings.ParamWritesDryRun = GetBool(runtime, false, "ParamWrites", "DryRun");
             TypedAppSettings.ParamWritesRequireComment = GetBool(runtime, false, "ParamWrites", "RequireComment");
             TypedAppSettings.ParamWritesAuditEnabled = GetBool(runtime, true, "ParamWrites", "AuditEnabled");
             TypedAppSettings.ParamWritesAuthorizationEnabled = GetBool(runtime, false, "ParamWrites", "Authorization", "Enabled");
             TypedAppSettings.ParamWritesRequireWindowsUser = GetBool(runtime, true, "ParamWrites", "Authorization", "RequireWindowsUser");
             TypedAppSettings.ParamWritesAllowedUsers = GetString(runtime, "ParamWrites", "Authorization", "AllowedUsers");
             TypedAppSettings.ParamWritesAllowedGroups = GetString(runtime, "ParamWrites", "Authorization", "AllowedGroups");
+
+            // Runtime-side Calc settings.
+            TypedAppSettings.CalcWritesEnabled = GetBool(runtime, false, "CalcWrites", "Enabled");
+            TypedAppSettings.CalcConfigurationEditingEnabled = GetBool(runtime, false, "CalcConfiguration", "EditingEnabled");
+            TypedAppSettings.CalcServiceOfflineAfterSeconds = GetInt(runtime, 20, "CalcServiceMonitor", "OfflineAfterSeconds");
+            TypedAppSettings.CalcServiceLeaseDurationSeconds = GetInt(runtime, 15, "CalcServiceMonitor", "LeaseDurationSeconds");
+
             TypedAppSettings.RuntimeFileLoggingEnabled = GetBool(runtime, true, "FileLogging", "Enabled");
             TypedAppSettings.RuntimeFileLoggingMinimumLevel = GetString(runtime, "FileLogging", "MinimumLevel");
             TypedAppSettings.RuntimeFileLoggingDirectory = GetString(runtime, "FileLogging", "Directory");
             TypedAppSettings.RuntimeFileLoggingPrefix = GetString(runtime, "FileLogging", "FileNamePrefix");
+
+            // Calc.Service own settings.
+            TypedAppSettings.CalcRuntimeBaseAddress = GetString(calc, "Runtime", "BaseAddress");
+            TypedAppSettings.CalcRuntimeRequestTimeoutSeconds = GetInt(calc, 15, "Runtime", "RequestTimeoutSeconds");
+            TypedAppSettings.CalcConfigurationRefreshSeconds = GetInt(calc, 30, "Runtime", "ConfigurationRefreshSeconds");
+            TypedAppSettings.CalcHeartbeatSeconds = GetInt(calc, 5, "Runtime", "HeartbeatSeconds");
+
+            TypedAppSettings.CalcSchedulerTickMilliseconds = GetInt(calc, 250, "Execution", "SchedulerTickMilliseconds");
+            TypedAppSettings.CalcDefaultMaxAgeSeconds = GetInt(calc, 30, "Execution", "DefaultMaxAgeSeconds");
+            TypedAppSettings.CalcAcceptUnknownQuality = GetBool(calc, true, "Execution", "AcceptUnknownQuality");
+
+            TypedAppSettings.CalcLogLevel = GetString(calc, "Logging", "LogLevel", "Default");
+            TypedAppSettings.CalcLifetimeLogLevel = GetString(calc, "Logging", "LogLevel", "Microsoft.Hosting.Lifetime");
 
             TypedAppSettings.WebUrls = GetString(web, "Urls");
             TypedAppSettings.WebRuntimeBaseUrl = GetString(web, "RuntimeService", "BaseUrl");
@@ -1653,34 +1906,39 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             TypedAppSettings.WebShowDeleteButton = GetBool(web, true, "Messages", "ShowDeleteButton");
             TypedAppSettings.WebHttpsRedirectionEnabled = GetBool(web, false, "HttpsRedirection", "Enabled");
             TypedAppSettings.WebWindowsAuthenticationEnabled = GetBool(web, false, "WindowsAuthentication", "Enabled");
+
             TypedAppSettings.WebFileLoggingEnabled = GetBool(web, true, "FileLogging", "Enabled");
             TypedAppSettings.WebFileLoggingMinimumLevel = GetString(web, "FileLogging", "MinimumLevel");
             TypedAppSettings.WebFileLoggingDirectory = GetString(web, "FileLogging", "Directory");
             TypedAppSettings.WebFileLoggingPrefix = GetString(web, "FileLogging", "FileNamePrefix");
 
-            TypedAppSettings.Status = $"Runtime/Web appsettings loaded: {DateTime.Now:HH:mm:ss}";
+            TypedAppSettings.Status = $"Runtime/Calc/WEB appsettings loaded: {DateTime.Now:HH:mm:ss}";
         }
         catch (Exception ex)
         {
-            TypedAppSettings.Status = $"Runtime/Web appsettings load failed: {ex.Message}";
+            TypedAppSettings.Status = $"Runtime/Calc/WEB appsettings load failed: {ex.Message}";
             AppendDiagnostics(TypedAppSettings.Status);
         }
     }
 
     /// <summary>
-    /// Сохраняет typed-поля appsettings в один рабочий файл: published appsettings, если служба уже опубликована,
-    /// иначе исходный appsettings проекта. Это не создает .bak рядом с файлом.
-    /// После сохранения службам нужен restart, потому что appsettings читаются на старте процесса.
+    /// Сохраняет typed settings Runtime, Calc.Service и WEB.
+    ///
+    /// Для опубликованных служб изменяется их рабочий appsettings.
+    /// Если publish ещё не выполнялся — изменяется appsettings проекта.
     /// </summary>
     private void SaveTypedRuntimeWebAppSettings()
     {
         NormalizeAuthenticationSettingsForSave();
+
+        // Старый Param DryRun больше не управляется UI.
         TypedAppSettings.ParamWritesDryRun = false;
 
         var updatedPaths = new List<string>();
         var skippedPaths = new List<string>();
 
-        foreach (var path in GetWritableAppsettingsPaths("runtime", @"TechMES.Runtime.Service\appsettings.json", "Runtime.Service"))
+        foreach (var path in GetWritableAppsettingsPaths(
+            "runtime", @"TechMES.Runtime.Service\appsettings.json", "Runtime.Service"))
         {
             if (!File.Exists(path))
             {
@@ -1694,7 +1952,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             updatedPaths.Add(path);
         }
 
-        foreach (var path in GetWritableAppsettingsPaths("web", @"TechMES.Web\appsettings.json", "Web"))
+        foreach (var path in GetWritableAppsettingsPaths(
+            "calc", @"TechMES.Calc.Service\appsettings.json", "Calc.Service"))
+        {
+            if (!File.Exists(path))
+            {
+                skippedPaths.Add(path);
+                continue;
+            }
+
+            var root = ReadJsonObject(path);
+            ApplyCalcServiceTypedSettings(root);
+            SaveJson(path, root);
+            updatedPaths.Add(path);
+        }
+
+        foreach (var path in GetWritableAppsettingsPaths(
+            "web", @"TechMES.Web\appsettings.json", "Web"))
         {
             if (!File.Exists(path))
             {
@@ -1709,7 +1983,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         }
 
         TypedAppSettings.Status =
-            $"Runtime/Web appsettings saved without backup: {updatedPaths.Count} file(s), skipped missing: {skippedPaths.Count}. Restart services to apply.";
+            $"Runtime/Calc/WEB appsettings saved without backup: {updatedPaths.Count} file(s), skipped missing: {skippedPaths.Count}.";
 
         AppendDiagnostics(TypedAppSettings.Status);
         AppendServerLog(TypedAppSettings.Status);
@@ -1770,10 +2044,34 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         SetValue(root, TypedAppSettings.ParamWritesRequireWindowsUser, "ParamWrites", "Authorization", "RequireWindowsUser");
         SetValue(root, TypedAppSettings.ParamWritesAllowedUsers, "ParamWrites", "Authorization", "AllowedUsers");
         SetValue(root, TypedAppSettings.ParamWritesAllowedGroups, "ParamWrites", "Authorization", "AllowedGroups");
+
+        SetValue(root, TypedAppSettings.CalcWritesEnabled, "CalcWrites", "Enabled");
+        SetValue(root, TypedAppSettings.CalcConfigurationEditingEnabled, "CalcConfiguration", "EditingEnabled");
+        SetValue(root, TypedAppSettings.CalcServiceOfflineAfterSeconds, "CalcServiceMonitor", "OfflineAfterSeconds");
+        SetValue(root, TypedAppSettings.CalcServiceLeaseDurationSeconds, "CalcServiceMonitor", "LeaseDurationSeconds");
+
         SetValue(root, TypedAppSettings.RuntimeFileLoggingEnabled, "FileLogging", "Enabled");
         SetValue(root, TypedAppSettings.RuntimeFileLoggingMinimumLevel, "FileLogging", "MinimumLevel");
         SetValue(root, TypedAppSettings.RuntimeFileLoggingDirectory, "FileLogging", "Directory");
         SetValue(root, TypedAppSettings.RuntimeFileLoggingPrefix, "FileLogging", "FileNamePrefix");
+    }
+
+    /// <summary>
+    /// Переносит typed Calc.Service settings в его appsettings.json.
+    /// </summary>
+    private void ApplyCalcServiceTypedSettings(JsonObject root)
+    {
+        SetValue(root, TypedAppSettings.CalcRuntimeBaseAddress, "Runtime", "BaseAddress");
+        SetValue(root, TypedAppSettings.CalcRuntimeRequestTimeoutSeconds, "Runtime", "RequestTimeoutSeconds");
+        SetValue(root, TypedAppSettings.CalcConfigurationRefreshSeconds, "Runtime", "ConfigurationRefreshSeconds");
+        SetValue(root, TypedAppSettings.CalcHeartbeatSeconds, "Runtime", "HeartbeatSeconds");
+
+        SetValue(root, TypedAppSettings.CalcSchedulerTickMilliseconds, "Execution", "SchedulerTickMilliseconds");
+        SetValue(root, TypedAppSettings.CalcDefaultMaxAgeSeconds, "Execution", "DefaultMaxAgeSeconds");
+        SetValue(root, TypedAppSettings.CalcAcceptUnknownQuality, "Execution", "AcceptUnknownQuality");
+
+        SetValue(root, TypedAppSettings.CalcLogLevel, "Logging", "LogLevel", "Default");
+        SetValue(root, TypedAppSettings.CalcLifetimeLogLevel, "Logging", "LogLevel", "Microsoft.Hosting.Lifetime");
     }
 
     /// <summary>
@@ -1822,10 +2120,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// Возвращает рабочий appsettings: published-файл, если сервис уже опубликован, иначе исходный файл проекта.
     /// Так Settings меняет один понятный файл и не расходится между source и publish root.
     /// </summary>
-    private string GetPreferredAppsettingsPath(
-        string serviceKey,
-        string sourceRelativePath,
-        string fallbackPublishFolderName)
+    private string GetPreferredAppsettingsPath(string serviceKey, string sourceRelativePath, string fallbackPublishFolderName)
     {
         var service = GetServiceDefinition(serviceKey);
         var publishFolderName = string.IsNullOrWhiteSpace(service?.PublishFolderName)

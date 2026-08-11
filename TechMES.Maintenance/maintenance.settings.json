@@ -31,7 +31,6 @@
       "HealthUrl": "https://localhost:7163/api/health"
     }
   ],
-
   "SettingsFiles": [
     {
       "DisplayName": "Runtime appsettings",
@@ -46,14 +45,12 @@
       "RelativePath": "TechMES.Web\\appsettings.json"
     }
   ],
-
   "LogSearchRoots": [
     "_runlogs",
     "TechMES.Runtime.Service",
     "TechMES.Calc.Service",
     "TechMES.Web"
   ],
-
   "Deployment": {
     "PublishRoot": "C:\\TechMES",
     "Configuration": "Release",

@@ -199,16 +199,13 @@
                             </div>
 
                             <div class="calc-job-field calc-job-enabled">
-                                <RadzenCheckBox TValue="bool" @bind-Value="_editor.Enabled" Disabled="@_isBusy" />
-                                <span>Enabled</span>
+                                <RadzenCheckBox TValue="bool" @bind-Value="_editor.WriteEnabled" Disabled="@_isBusy" />
+                                <span>Allow output writes</span>
                             </div>
 
                             <div class="calc-job-field calc-job-field-full">
                                 <RadzenLabel Text="Description" />
-                                <RadzenTextArea @bind-Value="_editor.Description"
-                                                Rows="3"
-                                                Disabled="@_isBusy"
-                                                Style="width:100%;" />
+                                <RadzenTextArea @bind-Value="_editor.Description" Rows="3" Disabled="@_isBusy" Style="width:100%;" />
                             </div>
                         </div>
                     </section>
@@ -568,7 +565,7 @@
                     <section class="calc-job-section">
                         <div class="calc-job-section-header">
                             <RadzenText Text="Outputs" TextStyle="TextStyle.Subtitle1" />
-                            <span>Writing is disabled. Target tags are stored only for future activation.</span>
+                            <span>Actual SCADA writing also requires the global Calc write switch in Maintenance.</span>
                         </div>
 
                         <div class="calc-job-table-wrap">
@@ -576,12 +573,14 @@
                                 <thead>
                                     <tr>
                                         <th class="calc-job-use-column">Use</th>
+                                        <th class="calc-job-use-column">Write</th>
                                         <th>Output</th>
                                         <th>Target tag</th>
                                         <th class="calc-job-number-column">Scale</th>
                                         <th class="calc-job-number-column">Offset</th>
                                     </tr>
                                 </thead>
+
                                 <tbody>
                                     @foreach (var output in _editor.Outputs)
                                     {
@@ -591,28 +590,40 @@
                                                                 @bind-Value="output.UseBinding"
                                                                 Disabled="@_isBusy" />
                                             </td>
+
+                                            <td>
+                                                <RadzenCheckBox TValue="bool"
+                                                                @bind-Value="output.WriteEnabled"
+                                                                Disabled="@(_isBusy || !output.UseBinding)" />
+                                            </td>
+
                                             <td>
                                                 <b>@output.Definition.Name</b>
+
                                                 <div class="calc-job-binding-key">
                                                     @output.Definition.Key
+
                                                     @if (!string.IsNullOrWhiteSpace(output.Definition.Unit))
                                                     {
                                                         <span> · @output.Definition.Unit</span>
                                                     }
                                                 </div>
                                             </td>
+
                                             <td>
                                                 <RadzenTextBox @bind-Value="output.TagName"
                                                                Placeholder="Optional"
                                                                Disabled="@(_isBusy || !output.UseBinding)"
                                                                Style="width:100%;" />
                                             </td>
+
                                             <td>
                                                 <RadzenNumeric TValue="double"
                                                                @bind-Value="output.Scale"
                                                                Disabled="@(_isBusy || !output.UseBinding)"
                                                                Style="width:100px;" />
                                             </td>
+
                                             <td>
                                                 <RadzenNumeric TValue="double"
                                                                @bind-Value="output.Offset"
@@ -791,6 +802,7 @@
             DefinitionCode = job.DefinitionCode,
             DefinitionVersion = job.DefinitionVersion,
             Enabled = job.Enabled,
+            WriteEnabled = job.WriteEnabled,
             PeriodMs = job.PeriodMs,
             SortOrder = job.SortOrder
         };
@@ -944,6 +956,7 @@
         {
             Definition = definition,
             UseBinding = stored is not null || useByDefault,
+            WriteEnabled = stored?.WriteEnabled ?? false,
             TagName = stored?.TagName ?? "",
             Scale = stored?.Scale ?? 1.0,
             Offset = stored?.Offset ?? 0.0
@@ -1088,7 +1101,7 @@
             DefinitionVersion = definition.Version,
             Enabled = editor.Enabled,
             PeriodMs = editor.PeriodMs,
-            WriteEnabled = false,
+            WriteEnabled = editor.WriteEnabled,
             SortOrder = editor.SortOrder,
             ExpectedRevision = editor.Id > 0 ? editor.Revision : null,
             Inputs = editor.Inputs.Where(input => input.UseBinding).Select(BuildInputBinding).ToList(),
@@ -1132,7 +1145,7 @@
         {
             OutputKey = output.Definition.Key,
             TagName = NullIfEmpty(output.TagName),
-            WriteEnabled = false,
+            WriteEnabled = output.WriteEnabled,
             Scale = output.Scale,
             Offset = output.Offset,
             SortOrder = output.Definition.Order
@@ -1226,6 +1239,7 @@
         public string Description { get; set; } = "";
         public string DefinitionCode { get; set; } = "";
         public string DefinitionVersion { get; set; } = "";
+        public bool WriteEnabled { get; set; }
         public bool Enabled { get; set; }
         public int PeriodMs { get; set; } = 5000;
         public int SortOrder { get; set; }
@@ -1255,6 +1269,7 @@
     {
         public CalcOutputDefinitionDto Definition { get; set; } = new();
         public bool UseBinding { get; set; }
+        public bool WriteEnabled { get; set; }
         public string TagName { get; set; } = "";
         public double Scale { get; set; } = 1.0;
         public double Offset { get; set; }

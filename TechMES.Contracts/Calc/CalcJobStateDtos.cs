@@ -62,8 +62,11 @@ public sealed class CalcExecutionResultItemDto
     public JsonElement Inputs { get; set; }
 
     /// <summary>
-    /// Рассчитанные значения после Scale и Offset.
-    /// Должен содержать JSON object.
+    /// Исходные инженерные результаты алгоритма.
+    ///
+    /// Scale и Offset здесь ещё НЕ применены.
+    /// Преобразование для целевого SCADA-тега выполняет Runtime.Service
+    /// непосредственно перед контролируемым TagWrite.
     /// </summary>
     public JsonElement Outputs { get; set; }
 }

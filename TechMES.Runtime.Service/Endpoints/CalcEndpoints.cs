@@ -31,6 +31,7 @@ public static class CalcEndpoints
         app.MapPost("/api/calc/service/heartbeat", ReceiveServiceHeartbeat);
         app.MapGet("/api/calc/service/status", GetServiceStatus);
         app.MapGet("/api/calc/service/health", GetServiceHealth);
+        app.MapGet("/api/calc/writes/status", GetWriteDiagnostics);
 
         app.MapGet("/api/calc/states", GetStatesAsync);
         app.MapGet("/api/calc/jobs/{id:long}/state", GetJobStateAsync);
@@ -43,6 +44,15 @@ public static class CalcEndpoints
         app.MapDelete("/api/calc/jobs/{id:long}", DeleteJobAsync);
 
         return app;
+    }
+
+    /// <summary>
+    /// Возвращает состояние глобального Calc write gate
+    /// и последние попытки записи для Maintenance Diagnostics.
+    /// </summary>
+    private static IResult GetWriteDiagnostics(CalcWriteDiagnosticsRegistry registry)
+    {
+        return Results.Ok(registry.GetSnapshot());
     }
 
     /// <summary>
@@ -470,12 +480,12 @@ public static class CalcEndpoints
     }
 
     /// <summary>
-    /// Принимает пакет результатов только от текущего владельца lease.
+    /// Принимает результаты только от текущего владельца lease.
     ///
-    /// Это первый fencing barrier. Позже такая же проверка будет
-    /// обязательна перед контролируемой записью в SCADA.
+    /// После успешного сохранения state Runtime отдельно проверяет,
+    /// разрешено ли записывать соответствующие outputs в SCADA.
     /// </summary>
-    private static async Task<IResult> SaveExecutionResultsAsync(CalcExecutionResultBatchRequest? request, ICalcJobStateStore store, CalcServiceHeartbeatRegistry heartbeatRegistry, CancellationToken ct)
+    private static async Task<IResult> SaveExecutionResultsAsync(CalcExecutionResultBatchRequest? request, ICalcJobStateStore store, CalcServiceHeartbeatRegistry heartbeatRegistry, CalcOutputWriteCoordinator outputWriter, CancellationToken ct)
     {
         var error = ValidateExecutionResults(request);
 
@@ -489,7 +499,17 @@ public static class CalcEndpoints
                 "The calculation result was rejected because this Calc Service instance does not own the current execution lease."));
         }
 
-        return Results.Ok(await store.SaveResultsAsync(request, ct));
+        var saveResponse = await store.SaveResultsAsync(request, ct);
+
+        /*
+         * Write выполняется только для результатов, которые PostgreSQL
+         * действительно принял для текущей Revision.
+         *
+         * Ошибка write не изменяет calculation state.
+         */
+        await outputWriter.ProcessAcceptedResultsAsync(request, saveResponse, ct);
+
+        return Results.Ok(saveResponse);
     }
 
     /// <summary>

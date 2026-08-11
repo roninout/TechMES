@@ -109,6 +109,7 @@
                 </views:MaintenanceSection>
             </Grid>
         </TabItem>
+        
         <TabItem>
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -204,6 +205,102 @@
                 </views:MaintenanceSection>
             </Grid>
         </TabItem>
+
+        <TabItem>
+            <TabItem.Header>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <ui:SymbolIcon Symbol="Pulse24"
+                           Width="20"
+                           Height="20"
+                           Margin="0,0,8,0" />
+                    <TextBlock Text="Calculations" />
+                </StackPanel>
+            </TabItem.Header>
+
+            <Grid Margin="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <views:MaintenanceCard Grid.Row="0"
+                               Background="{DynamicResource TechMesPanelBrush}"
+                               BorderBrush="{DynamicResource TechMesBorderBrush}"
+                               BorderThickness="1"
+                               Padding="12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Text="Calculation diagnostics"
+                               Style="{StaticResource SectionTitleText}" />
+
+                            <TextBlock Text="Показывает Calc.Service, execution lease, Jobs, calculation states и последние SCADA write attempts."
+                               Style="{StaticResource MutedText}"
+                               TextWrapping="Wrap" />
+
+                            <TextBlock Text="{Binding CalcDiagnosticsStatusText}"
+                               Margin="0,8,0,0"
+                               FontWeight="SemiBold" />
+                        </StackPanel>
+
+                        <ui:Button Grid.Column="1"
+                           Content="Refresh Calc"
+                           VerticalAlignment="Center"
+                           Click="OnRefreshCalcDiagnosticsClick" />
+                    </Grid>
+                </views:MaintenanceCard>
+
+                <views:MaintenanceSection Grid.Row="1" Margin="0,12,0,0">
+                    <control:FilterDataGrid ItemsSource="{Binding CalcDiagnostics}"
+                                    RowStyle="{StaticResource DiagnosticsStatusRowStyle}"
+                                    Loaded="OnAutoScrollDataGridLoaded"
+                                    Unloaded="OnAutoScrollDataGridUnloaded"
+                                    AutoGenerateColumns="False"
+                                    IsReadOnly="True"
+                                    CanUserAddRows="False"
+                                    HeadersVisibility="Column"
+                                    GridLinesVisibility="Horizontal"
+                                    Background="{DynamicResource TechMesPanelBrush}"
+                                    ShowStatusBar="False"
+                                    ShowElapsedTime="False"
+                                    DateFormatString="dd.MM.yyyy"
+                                    FilterLanguage="Russian">
+
+                        <control:FilterDataGrid.Columns>
+                            <control:DataGridTextColumn Header="Category"
+                                                Binding="{Binding Category}"
+                                                IsColumnFiltered="True"
+                                                Width="130" />
+
+                            <control:DataGridTextColumn Header="Name"
+                                                Binding="{Binding Name}"
+                                                IsColumnFiltered="True"
+                                                Width="240" />
+
+                            <control:DataGridTextColumn Header="Status"
+                                                Binding="{Binding Status}"
+                                                IsColumnFiltered="True"
+                                                Width="110" />
+
+                            <control:DataGridTextColumn Header="Details"
+                                                Binding="{Binding Details}"
+                                                IsColumnFiltered="True"
+                                                Width="*" />
+
+                            <control:DataGridTextColumn Header="Checked"
+                                                Binding="{Binding CheckedAt, StringFormat={}{0:HH:mm:ss}}"
+                                                IsColumnFiltered="True"
+                                                Width="100" />
+                        </control:FilterDataGrid.Columns>
+                    </control:FilterDataGrid>
+                </views:MaintenanceSection>
+            </Grid>
+        </TabItem>
+
         <TabItem>
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -289,6 +386,7 @@
                 </views:MaintenanceSection>
             </Grid>
         </TabItem>
+        
         <TabItem>
             <TabItem.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">

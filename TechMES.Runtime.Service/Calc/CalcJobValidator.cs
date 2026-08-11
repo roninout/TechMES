@@ -47,10 +47,6 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
                 $"Calculation definition '{definition.Code}' requires version '{definition.Version}', but version '{request.DefinitionVersion}' was supplied.");
         }
 
-        // Управляемую запись в SCADA добавим отдельным этапом. Пока конфигурация сохраняется только в shadow/read-only режиме.
-        if (request.WriteEnabled || (request.Outputs?.Any(output => output is not null && output.WriteEnabled) ?? false))
-            return Invalid("calc.write-not-supported", "Calculation result writing is not supported yet.");
-
         var inputValidation = ValidateInputs(definition, request.Inputs ?? []);
         if (!inputValidation.IsValid)
             return inputValidation;
@@ -276,6 +272,10 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
 
     /// <summary>
     /// Проверяет выходные привязки по описанию алгоритма.
+    ///
+    /// Write-enabled output обязан иметь целевой SCADA tag.
+    /// Само глобальное разрешение CalcWrites здесь не проверяется:
+    /// конфигурацию Job можно подготовить заранее, пока master switch выключен.
     /// </summary>
     private static CalcJobValidationResult ValidateOutputs(ICalculationDefinition definition, IReadOnlyList<CalcJobOutputSaveDto> outputs)
     {
@@ -293,13 +293,20 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
                 return Invalid("output.key-empty", "Calculation output key is required.");
 
             if (!definitions.ContainsKey(key))
-                return Invalid("output.unknown", $"Calculation output '{key}' is not supported by definition '{definition.Code}'.");
+                return Invalid("output.unknown",
+                    $"Calculation output '{key}' is not supported by definition '{definition.Code}'.");
 
             if (!keys.Add(key))
-                return Invalid("output.duplicate", $"Calculation output '{key}' is specified more than once.");
+                return Invalid("output.duplicate",
+                    $"Calculation output '{key}' is specified more than once.");
 
             if (!double.IsFinite(output.Scale) || !double.IsFinite(output.Offset))
-                return Invalid("output.transform-invalid", $"Calculation output '{key}' Scale and Offset must be finite numbers.");
+                return Invalid("output.transform-invalid",
+                    $"Calculation output '{key}' Scale and Offset must be finite numbers.");
+
+            if (output.WriteEnabled && string.IsNullOrWhiteSpace(output.TagName))
+                return Invalid("output.write-tag-empty",
+                    $"Calculation output '{key}' is enabled for writing but Target Tag is empty.");
         }
 
         return CalcJobValidationResult.Success();

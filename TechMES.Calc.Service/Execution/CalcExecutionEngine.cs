@@ -125,28 +125,26 @@ internal sealed class CalcExecutionEngine(ILogger<CalcExecutionEngine> logger, I
                     startedAtUtc, stopwatch, inputValues, EmptyOutputs);
             }
 
-            var outputBindings = request.Job.Outputs.ToDictionary(output => output.OutputKey, StringComparer.OrdinalIgnoreCase);
+             // Execution result всегда содержит исходные инженерные значения
+             // алгоритма.
+             //
+             // Scale/Offset принадлежат SCADA output binding и не должны влиять:
+             // - на CalculationOutput dependencies;
+             // - на LastOutputs;
+             // - на математический результат алгоритма.
+             //
+             // Преобразование выполняет Runtime непосредственно перед TagWrite.
             var outputValues = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var output in calculation.Outputs)
             {
-                var value = output.Value;
+                if (!double.IsFinite(output.Value))
+                    return Complete(request, CalcJobExecutionStatus.Error, "output.not-finite", $"Calculation output '{output.Key}' is not a finite number.", startedAtUtc, stopwatch, inputValues, outputValues);
 
-                if (outputBindings.TryGetValue(output.Key, out var binding))
-                    value = value * binding.Scale + binding.Offset;
-
-                if (!double.IsFinite(value))
-                {
-                    return Complete(request, CalcJobExecutionStatus.Error, "output.not-finite",
-                        $"Calculation output '{output.Key}' is not a finite number.",
-                        startedAtUtc, stopwatch, inputValues, outputValues);
-                }
-
-                outputValues[output.Key] = value;
+                outputValues[output.Key] = output.Value;
             }
 
-            return Complete(request, CalcJobExecutionStatus.Success, null, null,
-                startedAtUtc, stopwatch, inputValues, outputValues);
+            return Complete(request, CalcJobExecutionStatus.Success, null, null, startedAtUtc, stopwatch, inputValues, outputValues);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
