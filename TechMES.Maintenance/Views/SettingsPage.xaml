@@ -616,16 +616,21 @@
             <TabItem>
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <ui:SymbolIcon Symbol="Settings24" Width="20" Height="20" Margin="0,0,8,0" />
+                        <ui:SymbolIcon Symbol="Settings24"
+                           Width="20"
+                           Height="20"
+                           Margin="0,0,8,0" />
                         <TextBlock Text="Calculations" />
                     </StackPanel>
                 </TabItem.Header>
 
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
+
                     <StackPanel Margin="12">
 
-                        <views:MaintenanceSection Header="Runtime calculation module" Margin="0,0,0,12">
+                        <views:MaintenanceSection Header="Runtime calculation module"
+                                      Margin="0,0,0,12">
                             <StackPanel Margin="12">
 
                                 <Grid Margin="0,0,0,10">
@@ -641,7 +646,8 @@
                                         <ui:ToggleSwitch IsChecked="{Binding TypedAppSettings.CalcConfigurationEditingEnabled}"
                                              OnContent="Enabled"
                                              OffContent="Disabled" />
-                                        <TextBlock Text="Разрешает WEB создавать и изменять calculation Jobs."
+
+                                        <TextBlock Text="Разрешает WEB создавать, изменять и удалять calculation Jobs. Не влияет на выполнение уже сохранённых Jobs."
                                        Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
@@ -660,7 +666,8 @@
                                         Width="200"
                                         HorizontalAlignment="Left"
                                         Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="Через сколько секунд без heartbeat Calc.Service считается Offline."
+
+                                        <TextBlock Text="Если Runtime не получает heartbeat дольше указанного времени, Calc.Service считается Offline."
                                        Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
@@ -679,7 +686,8 @@
                                         Width="200"
                                         HorizontalAlignment="Left"
                                         Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="Продолжительность execution lease одного Calc.Service."
+
+                                        <TextBlock Text="Сколько времени Calc.Service сохраняет право выполнять Jobs после последнего подтверждённого heartbeat. Heartbeat должен быть короче этого интервала."
                                        Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
@@ -687,23 +695,25 @@
                             </StackPanel>
                         </views:MaintenanceSection>
 
-                        <views:MaintenanceSection Header="Calc Service → Runtime" Margin="0,0,0,12">
+
+                        <views:MaintenanceSection Header="Calc Service → Runtime"
+                                      Margin="0,0,0,12">
                             <StackPanel Margin="12">
 
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
-                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBlock Text="Runtime base address"
+                                    <TextBlock Text="Runtime endpoint"
                                    Style="{StaticResource SettingsFieldLabel}" />
 
                                     <StackPanel Grid.Column="1">
-                                        <ui:TextBox Text="{Binding TypedAppSettings.CalcRuntimeBaseAddress, UpdateSourceTrigger=PropertyChanged}"
-                                        Width="420"
-                                        Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="HTTP endpoint Runtime.Service, используемый Calc.Service."
+                                        <TextBlock Text="Automatic"
+                                       FontWeight="SemiBold" />
+
+                                        <TextBlock Text="Адрес берётся автоматически из Runtime Service configuration. Отдельно для Calc.Service его задавать не нужно."
                                        Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
@@ -717,11 +727,15 @@
                                     <TextBlock Text="Request timeout, s"
                                    Style="{StaticResource SettingsFieldLabel}" />
 
-                                    <ui:TextBox Grid.Column="1"
-                                    Text="{Binding TypedAppSettings.CalcRuntimeRequestTimeoutSeconds, UpdateSourceTrigger=LostFocus}"
-                                    Width="200"
-                                    HorizontalAlignment="Left"
-                                    Style="{StaticResource SettingsTextBox}" />
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.CalcRuntimeRequestTimeoutSeconds, UpdateSourceTrigger=LostFocus}"
+                                        Width="200"
+                                        HorizontalAlignment="Left"
+                                        Style="{StaticResource SettingsTextBox}" />
+
+                                        <TextBlock Text="Максимальное время ожидания одного HTTP-запроса Calc.Service к Runtime.Service."
+                                       Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
                                 </Grid>
 
                                 <Grid Margin="0,0,0,10">
@@ -733,11 +747,15 @@
                                     <TextBlock Text="Configuration refresh, s"
                                    Style="{StaticResource SettingsFieldLabel}" />
 
-                                    <ui:TextBox Grid.Column="1"
-                                    Text="{Binding TypedAppSettings.CalcConfigurationRefreshSeconds, UpdateSourceTrigger=LostFocus}"
-                                    Width="200"
-                                    HorizontalAlignment="Left"
-                                    Style="{StaticResource SettingsTextBox}" />
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.CalcConfigurationRefreshSeconds, UpdateSourceTrigger=LostFocus}"
+                                        Width="200"
+                                        HorizontalAlignment="Left"
+                                        Style="{StaticResource SettingsTextBox}" />
+
+                                        <TextBlock Text="Как часто Calc.Service перечитывает из Runtime актуальную конфигурацию Jobs и dependency graph."
+                                       Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
                                 </Grid>
 
                                 <Grid Margin="0,0,0,10">
@@ -749,17 +767,23 @@
                                     <TextBlock Text="Heartbeat, s"
                                    Style="{StaticResource SettingsFieldLabel}" />
 
-                                    <ui:TextBox Grid.Column="1"
-                                    Text="{Binding TypedAppSettings.CalcHeartbeatSeconds, UpdateSourceTrigger=LostFocus}"
-                                    Width="200"
-                                    HorizontalAlignment="Left"
-                                    Style="{StaticResource SettingsTextBox}" />
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.CalcHeartbeatSeconds, UpdateSourceTrigger=LostFocus}"
+                                        Width="200"
+                                        HorizontalAlignment="Left"
+                                        Style="{StaticResource SettingsTextBox}" />
+
+                                        <TextBlock Text="Интервал подтверждения активности Calc.Service и продления execution lease. Должен быть меньше Lease duration."
+                                       Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
                                 </Grid>
 
                             </StackPanel>
                         </views:MaintenanceSection>
 
-                        <views:MaintenanceSection Header="Execution" Margin="0,0,0,12">
+
+                        <views:MaintenanceSection Header="Execution"
+                                      Margin="0,0,0,12">
                             <StackPanel Margin="12">
 
                                 <Grid Margin="0,0,0,10">
@@ -771,11 +795,15 @@
                                     <TextBlock Text="Scheduler tick, ms"
                                    Style="{StaticResource SettingsFieldLabel}" />
 
-                                    <ui:TextBox Grid.Column="1"
-                                    Text="{Binding TypedAppSettings.CalcSchedulerTickMilliseconds, UpdateSourceTrigger=LostFocus}"
-                                    Width="200"
-                                    HorizontalAlignment="Left"
-                                    Style="{StaticResource SettingsTextBox}" />
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.CalcSchedulerTickMilliseconds, UpdateSourceTrigger=LostFocus}"
+                                        Width="200"
+                                        HorizontalAlignment="Left"
+                                        Style="{StaticResource SettingsTextBox}" />
+
+                                        <TextBlock Text="Шаг внутреннего scheduler-а. Определяет, как часто Calc.Service проверяет, какие Jobs уже пора выполнить."
+                                       Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
                                 </Grid>
 
                                 <Grid Margin="0,0,0,10">
@@ -787,11 +815,15 @@
                                     <TextBlock Text="Default max age, s"
                                    Style="{StaticResource SettingsFieldLabel}" />
 
-                                    <ui:TextBox Grid.Column="1"
-                                    Text="{Binding TypedAppSettings.CalcDefaultMaxAgeSeconds, UpdateSourceTrigger=LostFocus}"
-                                    Width="200"
-                                    HorizontalAlignment="Left"
-                                    Style="{StaticResource SettingsTextBox}" />
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.CalcDefaultMaxAgeSeconds, UpdateSourceTrigger=LostFocus}"
+                                        Width="200"
+                                        HorizontalAlignment="Left"
+                                        Style="{StaticResource SettingsTextBox}" />
+
+                                        <TextBlock Text="Максимальный допустимый возраст входного Tag/CalculationOutput, если для конкретного Input не задан собственный Max age."
+                                       Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
                                 </Grid>
 
                                 <Grid Margin="0,0,0,10">
@@ -807,7 +839,8 @@
                                         <ui:ToggleSwitch IsChecked="{Binding TypedAppSettings.CalcAcceptUnknownQuality}"
                                              OnContent="Enabled"
                                              OffContent="Disabled" />
-                                        <TextBlock Text="Разрешает входы Unknown, пока текущий CtApi wrapper не предоставляет реальный Quality."
+
+                                        <TextBlock Text="Разрешает входы с Quality=Unknown. Сейчас необходимо, потому что текущий CtApi wrapper не предоставляет фактический quality тега."
                                        Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
@@ -815,7 +848,9 @@
                             </StackPanel>
                         </views:MaintenanceSection>
 
-                        <views:MaintenanceSection Header="Logging" Margin="0,0,0,12">
+
+                        <views:MaintenanceSection Header="Logging"
+                                      Margin="0,0,0,12">
                             <StackPanel Margin="12">
 
                                 <Grid Margin="0,0,0,10">
@@ -827,10 +862,14 @@
                                     <TextBlock Text="Default level"
                                    Style="{StaticResource SettingsFieldLabel}" />
 
-                                    <ui:TextBox Grid.Column="1"
-                                    Text="{Binding TypedAppSettings.CalcLogLevel, UpdateSourceTrigger=PropertyChanged}"
-                                    Width="250"
-                                    Style="{StaticResource SettingsTextBox}" />
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.CalcLogLevel, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="250"
+                                        Style="{StaticResource SettingsTextBox}" />
+
+                                        <TextBlock Text="Основной минимальный уровень журналирования Calc.Service, например Information, Warning или Error."
+                                       Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
                                 </Grid>
 
                                 <Grid>
@@ -842,10 +881,14 @@
                                     <TextBlock Text="Hosting lifetime level"
                                    Style="{StaticResource SettingsFieldLabel}" />
 
-                                    <ui:TextBox Grid.Column="1"
-                                    Text="{Binding TypedAppSettings.CalcLifetimeLogLevel, UpdateSourceTrigger=PropertyChanged}"
-                                    Width="250"
-                                    Style="{StaticResource SettingsTextBox}" />
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.CalcLifetimeLogLevel, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="250"
+                                        Style="{StaticResource SettingsTextBox}" />
+
+                                        <TextBlock Text="Уровень системных сообщений Microsoft.Hosting.Lifetime: запуск, остановка и lifetime Windows Service."
+                                       Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
                                 </Grid>
 
                             </StackPanel>

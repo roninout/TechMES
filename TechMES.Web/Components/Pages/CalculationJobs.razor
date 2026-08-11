@@ -156,21 +156,29 @@
                     </div>
 
                     <section class="calc-job-section">
-                        <RadzenText Text="General" TextStyle="TextStyle.Subtitle1" />
+                        <div class="calc-job-section-header">
+                            <RadzenText Text="General" TextStyle="TextStyle.Subtitle1" />
+                            <span>Enabled controls calculation execution. Output writes are controlled separately.</span>
+                        </div>
 
                         <div class="calc-job-general-grid">
                             <div class="calc-job-field calc-job-field-wide">
                                 <RadzenLabel Text="Name *" />
-                                <RadzenTextBox @bind-Value="_editor.Name" Disabled="@_isBusy" Style="width:100%;" />
+                                <RadzenTextBox @bind-Value="_editor.Name"
+                                               Disabled="@_isBusy"
+                                               Style="width:100%;" />
                             </div>
 
                             <div class="calc-job-field">
                                 <RadzenLabel Text="Equipment" />
-                                <RadzenTextBox @bind-Value="_editor.EquipmentName" Disabled="@_isBusy" Style="width:100%;" />
+                                <RadzenTextBox @bind-Value="_editor.EquipmentName"
+                                               Disabled="@_isBusy"
+                                               Style="width:100%;" />
                             </div>
 
                             <div class="calc-job-field">
                                 <RadzenLabel Text="Calculation *" />
+
                                 <RadzenDropDown TValue="string"
                                                 Data="@_definitions"
                                                 TextProperty="@nameof(CalcDefinitionDto.Name)"
@@ -183,6 +191,7 @@
 
                             <div class="calc-job-field">
                                 <RadzenLabel Text="Period, ms" />
+
                                 <RadzenNumeric TValue="int"
                                                @bind-Value="_editor.PeriodMs"
                                                Min="1"
@@ -192,6 +201,7 @@
 
                             <div class="calc-job-field">
                                 <RadzenLabel Text="Sort order" />
+
                                 <RadzenNumeric TValue="int"
                                                @bind-Value="_editor.SortOrder"
                                                Disabled="@_isBusy"
@@ -199,13 +209,26 @@
                             </div>
 
                             <div class="calc-job-field calc-job-enabled">
-                                <RadzenCheckBox TValue="bool" @bind-Value="_editor.WriteEnabled" Disabled="@_isBusy" />
+                                <RadzenCheckBox TValue="bool"
+                                                @bind-Value="_editor.Enabled"
+                                                Disabled="@_isBusy" />
+                                <span>Enabled</span>
+                            </div>
+
+                            <div class="calc-job-field calc-job-enabled">
+                                <RadzenCheckBox TValue="bool"
+                                                @bind-Value="_editor.WriteEnabled"
+                                                Disabled="@_isBusy" />
                                 <span>Allow output writes</span>
                             </div>
 
                             <div class="calc-job-field calc-job-field-full">
                                 <RadzenLabel Text="Description" />
-                                <RadzenTextArea @bind-Value="_editor.Description" Rows="3" Disabled="@_isBusy" Style="width:100%;" />
+
+                                <RadzenTextArea @bind-Value="_editor.Description"
+                                                Rows="3"
+                                                Disabled="@_isBusy"
+                                                Style="width:100%;" />
                             </div>
                         </div>
                     </section>

@@ -2058,10 +2058,24 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
     /// <summary>
     /// Переносит typed Calc.Service settings в его appsettings.json.
+    ///
+    /// Runtime BaseAddress формируется автоматически из конфигурации
+    /// Runtime.Service и отдельно пользователем не настраивается.
     /// </summary>
     private void ApplyCalcServiceTypedSettings(JsonObject root)
     {
-        SetValue(root, TypedAppSettings.CalcRuntimeBaseAddress, "Runtime", "BaseAddress");
+        /*
+         * Calc.Service и Runtime.Service работают на одном TechMES-сервере.
+         *
+         * Источником адреса является конфигурация самого Runtime.Service.
+         * Для wildcard-listener GetRuntimeDiagnosticsBaseUrl()
+         * автоматически использует loopback 127.0.0.1.
+         */
+        var runtimeBaseAddress = GetRuntimeDiagnosticsBaseUrl().TrimEnd('/') + "/";
+
+        TypedAppSettings.CalcRuntimeBaseAddress = runtimeBaseAddress;
+
+        SetValue(root, runtimeBaseAddress, "Runtime", "BaseAddress");
         SetValue(root, TypedAppSettings.CalcRuntimeRequestTimeoutSeconds, "Runtime", "RequestTimeoutSeconds");
         SetValue(root, TypedAppSettings.CalcConfigurationRefreshSeconds, "Runtime", "ConfigurationRefreshSeconds");
         SetValue(root, TypedAppSettings.CalcHeartbeatSeconds, "Runtime", "HeartbeatSeconds");
