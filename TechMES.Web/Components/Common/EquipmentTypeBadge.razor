@@ -19,7 +19,19 @@
     /// Единый размер badge 33x20, согласованный с tree/list UI.
     /// </summary>
     private const string BaseStyle =
-        "display: inline-flex; align-items: center; justify-content: center; width: 33px; min-width: 33px; height: 20px; padding: 0; font-size: 11px; line-height: 20px;";
+        "display: inline-flex; " +
+        "align-items: center; " +
+        "justify-content: center; " +
+        "flex: 0 0 33px; " +
+        "width: 33px; " +
+        "min-width: 33px; " +
+        "max-width: 33px; " +
+        "height: 20px; " +
+        "min-height: 20px; " +
+        "padding: 0; " +
+        "box-sizing: border-box; " +
+        "font-size: 11px; " +
+        "line-height: 20px;";
 
     /// <summary>
     /// Итоговый style: базовый размер плюс необязательные внешние отступы.

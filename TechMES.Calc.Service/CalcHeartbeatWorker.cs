@@ -8,10 +8,11 @@ using TechMES.Contracts.Calc;
 namespace TechMES.Calc.Service;
 
 /// <summary>
-/// Отправляет heartbeat независимо от calculation scheduler
-/// и поддерживает локальное состояние execution lease.
+/// Отправляет heartbeat независимо от calculation scheduler,
+/// поддерживает локальный execution lease и инициирует Calc Catalog refresh
+/// при получении нового lease.
 /// </summary>
-internal sealed class CalcHeartbeatWorker(ILogger<CalcHeartbeatWorker> logger, IRuntimeCalcClient runtimeClient,CalcServiceIdentity identity, CalcServiceLeaseState leaseState,IOptions<CalcRuntimeClientOptions> options) : BackgroundService
+internal sealed class CalcHeartbeatWorker(ILogger<CalcHeartbeatWorker> logger, IRuntimeCalcClient runtimeClient, CalcServiceIdentity identity, CalcServiceLeaseState leaseState, IOptions<CalcRuntimeClientOptions> options) : BackgroundService
 {
     private bool? _lastSendSucceeded;
     private bool? _lastLeaseOwned;
@@ -39,7 +40,9 @@ internal sealed class CalcHeartbeatWorker(ILogger<CalcHeartbeatWorker> logger, I
 
     /// <summary>
     /// Обновляет heartbeat и локальное ownership-state.
-    /// Новый Runtime epoch считается новым lease даже при совпадении token.
+    ///
+    /// При новом lease текущий owner один раз инициирует загрузку
+    /// SCADA Calc Catalog в Runtime.
     /// </summary>
     private async Task SendHeartbeatAsync(CancellationToken ct)
     {
@@ -58,26 +61,42 @@ internal sealed class CalcHeartbeatWorker(ILogger<CalcHeartbeatWorker> logger, I
             leaseState.Apply(response);
 
             if (_lastSendSucceeded != true)
-                logger.LogInformation("Calc Service heartbeat connected to Runtime.Service. InstanceId={InstanceId}.", identity.InstanceId);
+            {
+                logger.LogInformation(
+                    "Calc Service heartbeat connected to Runtime.Service. InstanceId={InstanceId}.",
+                    identity.InstanceId);
+            }
 
             if (response.IsLeaseOwner)
             {
-                var leaseChanged = _lastLeaseOwned != true
+                var leaseChanged =
+                    _lastLeaseOwned != true
                     || _lastLeaseToken != response.LeaseToken
-                    || !string.Equals(_lastLeaseEpoch, response.LeaseEpoch, StringComparison.Ordinal);
+                    || !string.Equals(
+                        _lastLeaseEpoch,
+                        response.LeaseEpoch,
+                        StringComparison.Ordinal);
 
                 if (leaseChanged)
                 {
                     logger.LogInformation(
                         "Calc Service execution lease acquired. InstanceId={InstanceId}, LeaseEpoch={LeaseEpoch}, LeaseToken={LeaseToken}, ExpiresAtUtc={ExpiresAtUtc}.",
-                        identity.InstanceId, response.LeaseEpoch, response.LeaseToken, response.LeaseExpiresAtUtc);
+                        identity.InstanceId,
+                        response.LeaseEpoch,
+                        response.LeaseToken,
+                        response.LeaseExpiresAtUtc);
+
+                    await TryRefreshModelCatalogAsync(ct);
                 }
             }
             else if (_lastLeaseOwned != false)
             {
                 logger.LogWarning(
                     "Calc Service is running as standby. InstanceId={InstanceId}, LeaseOwner={LeaseOwner}, LeaseEpoch={LeaseEpoch}, LeaseToken={LeaseToken}.",
-                    identity.InstanceId, response.LeaseOwnerInstanceId, response.LeaseEpoch, response.LeaseToken);
+                    identity.InstanceId,
+                    response.LeaseOwnerInstanceId,
+                    response.LeaseEpoch,
+                    response.LeaseToken);
             }
 
             _lastSendSucceeded = true;
@@ -100,6 +119,46 @@ internal sealed class CalcHeartbeatWorker(ILogger<CalcHeartbeatWorker> logger, I
                 logger.LogWarning(ex, "Cannot send Calc Service heartbeat to Runtime.Service.");
 
             _lastSendSucceeded = false;
+        }
+    }
+
+    /// <summary>
+    /// Ошибка Calc Catalog не должна ломать heartbeat и lease.
+    ///
+    /// Расчёты существующих Jobs могут продолжаться,
+    /// даже если discovery новых SCADA models временно не работает.
+    /// </summary>
+    private async Task TryRefreshModelCatalogAsync(CancellationToken ct)
+    {
+        try
+        {
+            var catalog = await runtimeClient.RefreshModelCatalogAsync(ct);
+
+            if (!catalog.IsAvailable)
+            {
+                logger.LogWarning(
+                    "Calc SCADA catalog provider is unavailable. Error={Error}.",
+                    catalog.ErrorMessage);
+
+                return;
+            }
+
+            logger.LogInformation(
+                "Calc SCADA catalog loaded after lease acquisition. Total={Total}, Stations={StationCount}, Types={TypeCount}, LoadedAtUtc={LoadedAtUtc}.",
+                catalog.TotalCount,
+                catalog.Stations.Count,
+                catalog.Types.Count,
+                catalog.LoadedAtUtc);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Cannot refresh Calc SCADA catalog. Calculation scheduler will continue with existing Jobs.");
         }
     }
 }

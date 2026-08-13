@@ -18,6 +18,33 @@ public sealed class RuntimeCalcClient(HttpClient httpClient) : IRuntimeCalcClien
     };
 
     /// <summary>
+    /// Просит Runtime выполнить явный CtApi scan Calc models.
+    ///
+    /// Этот метод вызывается только после получения execution lease.
+    /// Standby Calc.Service scan не запускает.
+    /// </summary>
+    public async Task<CalcModelCatalogResponse> RefreshModelCatalogAsync(CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/calc/models/refresh");
+        using var response = await httpClient.SendAsync(request, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseText = await response.Content.ReadAsStringAsync(ct);
+
+            var message = $"Runtime Calc model catalog refresh failed with HTTP {(int)response.StatusCode}.";
+
+            if (!string.IsNullOrWhiteSpace(responseText))
+                message += $" Response: {LimitText(responseText, 500)}";
+
+            throw new HttpRequestException(message, null, response.StatusCode);
+        }
+
+        return await response.Content.ReadFromJsonAsync<CalcModelCatalogResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Runtime returned an empty Calc model catalog response.");
+    }
+
+    /// <summary>
     /// Загружает текущий read-only snapshot enabled-заданий.
     /// </summary>
     public async Task<CalcConfigurationSnapshotDto> GetConfigurationSnapshotAsync(CancellationToken ct = default)

@@ -8,6 +8,10 @@ namespace TechMES.Calc.Service.Runtime;
 /// </summary>
 public interface IRuntimeCalcClient
 {
+    /// <summary>
+    /// Явно просит Runtime перечитать Calc models через CtApi.
+    /// </summary>
+    Task<CalcModelCatalogResponse> RefreshModelCatalogAsync(CancellationToken ct = default);
     Task<CalcConfigurationSnapshotDto> GetConfigurationSnapshotAsync(CancellationToken ct = default);
     Task<ScadaTagBatchReadResponse> ReadTagsAsync(IReadOnlyCollection<string> tagNames, CancellationToken ct = default);
     Task<CalcExecutionResultBatchResponse> SaveExecutionResultsAsync(CalcExecutionResultBatchRequest request, CancellationToken ct = default);

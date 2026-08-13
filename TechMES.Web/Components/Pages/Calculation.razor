@@ -1,0 +1,696 @@
+﻿@page "/calculations"
+@using TechMES.Contracts.Calc
+@inject CalcApiClient CalcApi
+@inject NotificationService NotificationService
+
+<PageTitle>Calculations</PageTitle>
+
+<div class="calc-model-page">
+
+    <div class="@GetFilterLayoutCssClass()">
+
+        <div class="calc-model-filters">
+            <RadzenDropDown TValue="string"
+                            Data="@_stationItems"
+                            @bind-Value="_selectedStation"
+                            Change="@(_ => ApplyFilters())"
+                            Disabled="@_isLoading"
+                            Style="width:100%;" />
+
+            <RadzenDropDown TValue="string"
+                            Data="@_typeItems"
+                            @bind-Value="_selectedType"
+                            Change="@(_ => ApplyFilters())"
+                            Disabled="@_isLoading"
+                            Style="width:100%;">
+
+                <Template Context="typeItem">
+                    <div style="display:flex; align-items:center; min-width:0;">
+
+                        @if (TryGetCalcModelType(typeItem?.ToString(), out CalcModelTypeDto calcType))
+                        {
+                            <RadzenBadge Text="@GetTypeBadge(calcType)"
+                                         BadgeStyle="@GetTypeBadgeStyle(calcType)"
+                                         Style="margin-right:8px; min-width:32px; text-align:center;" />
+                        }
+
+                        <span>@typeItem</span>
+
+                    </div>
+                </Template>
+
+                <ValueTemplate Context="typeItem">
+                    <div style="display:flex; align-items:center; min-width:0;">
+
+                        @if (TryGetCalcModelType(typeItem?.ToString(), out CalcModelTypeDto calcType))
+                        {
+                            <RadzenBadge Text="@GetTypeBadge(calcType)"
+                                         BadgeStyle="@GetTypeBadgeStyle(calcType)"
+                                         Style="margin-right:8px; min-width:32px; text-align:center;" />
+                        }
+
+                        <span>@typeItem</span>
+
+                    </div>
+                </ValueTemplate>
+
+            </RadzenDropDown>
+        </div>
+
+        <div class="calc-model-search-actions">
+
+            <RadzenButton Icon="@(_isLeftPaneCollapsed ? "menu_open" : "menu")"
+                          ButtonStyle="ButtonStyle.Light"
+                          Variant="Variant.Text"
+                          class="calc-model-pane-toggle-button"
+                          title="@(_isLeftPaneCollapsed ? "Show calculation list" : "Hide calculation list")"
+                          aria-label="@(_isLeftPaneCollapsed ? "Show calculation list" : "Hide calculation list")"
+                          Click="@ToggleLeftPane" />
+
+            <div class="calc-model-search-wrapper">
+                <RadzenTextBox @bind-Value="_searchText"
+                               Placeholder="Search calculation..."
+                               Change="@(_ => ApplyFilters())"
+                               Disabled="@_isLoading"
+                               class="calc-model-search-box"
+                               Style="width:100%;" />
+
+                @if (!string.IsNullOrWhiteSpace(_searchText))
+                {
+                    <RadzenButton Icon="close"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.Small"
+                                  class="calc-model-search-clear-button"
+                                  Click="@ClearSearch" />
+                }
+            </div>
+
+            <RadzenButton Text="Refresh"
+                          Icon="refresh"
+                          ButtonStyle="ButtonStyle.Light"
+                          Disabled="@_isLoading"
+                          class="calc-model-refresh-button"
+                          Click="@RefreshCatalogAsync" />
+
+            <div class="calc-model-toolbar-spacer"></div>
+
+            @if (_catalog?.LoadedAtUtc is { } loadedAtUtc)
+            {
+                <span class="calc-model-loaded">
+                    Loaded: @loadedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")
+                </span>
+            }
+
+            <RadzenBadge Text="@($"Models: {_filteredModels.Count}")"
+                         BadgeStyle="BadgeStyle.Info" />
+        </div>
+
+    </div>
+
+
+    @if (_isLoading)
+    {
+        <TechMesLoadingBar />
+    }
+
+
+    @if (!string.IsNullOrWhiteSpace(_statusText))
+    {
+        <RadzenAlert AlertStyle="@_statusStyle"
+                     ShowIcon="true"
+                     AllowClose="true"
+                     Close="@ClearStatus">
+            @_statusText
+        </RadzenAlert>
+    }
+
+
+    <div class="@GetMainLayoutCssClass()">
+
+        <section class="calc-model-left-pane">
+
+            @if (_filteredModels.Count == 0 && !_isLoading)
+            {
+                <RadzenCard>
+                    <RadzenText Text="No calculation models found." TextStyle="TextStyle.Subtitle1" />
+
+                    @if (_catalog?.IsLoaded != true)
+                    {
+                        <RadzenText Text="Calc Catalog has not been loaded yet. Start Calc.Service or press Refresh."
+                                    TextStyle="TextStyle.Caption"
+                                    Style="color:gray;" />
+                    }
+                </RadzenCard>
+            }
+            else
+            {
+                <RadzenCard class="calc-model-list-card">
+                    <div class="calc-model-list-scroll">
+
+                        @foreach (var model in _filteredModels)
+                        {
+                            var job = GetJob(model);
+                            var state = GetState(job);
+
+                            <div class="@GetModelRowCss(model)" @onclick="() => SelectModel(model)">
+
+                                <div class="calc-model-row-header">
+
+                                    <RadzenBadge Text="@GetTypeBadge(model.Type)"
+                                                 BadgeStyle="@GetTypeBadgeStyle(model.Type)"
+                                                 class="calc-model-type-badge" />
+
+                                    <span class="calc-model-name">@model.Name</span>
+
+                                    <span class="calc-model-spacer"></span>
+
+                                    @if (job is null)
+                                    {
+                                        <RadzenBadge Text="NOT CONFIGURED" BadgeStyle="BadgeStyle.Light" />
+                                    }
+                                    else if (job.Enabled)
+                                    {
+                                        <RadzenBadge Text="ENABLED" BadgeStyle="BadgeStyle.Success" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenBadge Text="DISABLED" BadgeStyle="BadgeStyle.Light" />
+                                    }
+
+                                    @if (state is not null)
+                                    {
+                                        <RadzenBadge Text="@state.Status.ToString().ToUpperInvariant()"
+                                                     BadgeStyle="@GetStateBadgeStyle(state.Status)" />
+                                    }
+
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(model.Description))
+                                {
+                                    <div class="calc-model-description">
+                                        @model.Description
+                                    </div>
+                                }
+
+                            </div>
+                        }
+
+                    </div>
+                </RadzenCard>
+            }
+
+        </section>
+
+
+        <section class="calc-model-right-pane">
+
+            @if (_selectedModel is null)
+            {
+                <RadzenCard>
+                    <RadzenText Text="Select a calculation model." TextStyle="TextStyle.H6" />
+                    <RadzenText Text="Tank calculation panel will be added in the next stage."
+                                TextStyle="TextStyle.Body2"
+                                Style="color:gray;" />
+                </RadzenCard>
+            }
+            else
+            {
+                var selectedJob = GetJob(_selectedModel);
+                var selectedState = GetState(selectedJob);
+
+                <RadzenCard class="calc-model-details-card">
+
+                    <div class="calc-model-detail-header">
+
+                        <div>
+                            <div class="calc-model-detail-title">
+                                <RadzenBadge Text="@GetTypeBadge(_selectedModel.Type)"
+                                             BadgeStyle="@GetTypeBadgeStyle(_selectedModel.Type)" />
+
+                                <RadzenText Text="@_selectedModel.Name" TextStyle="TextStyle.H5" />
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(_selectedModel.Description))
+                            {
+                                <div class="calc-model-detail-description">
+                                    @_selectedModel.Description
+                                </div>
+                            }
+                        </div>
+
+                        <div class="calc-model-detail-badges">
+                            <RadzenBadge Text="@_selectedModel.Type.ToString()" BadgeStyle="BadgeStyle.Info" />
+                            <RadzenBadge Text="@_selectedModel.Station" BadgeStyle="BadgeStyle.Light" />
+                        </div>
+
+                    </div>
+
+
+                    <div class="calc-model-summary">
+
+                        <div class="calc-model-summary-item">
+                            <span>Station</span>
+                            <strong>@_selectedModel.Station</strong>
+                        </div>
+
+                        <div class="calc-model-summary-item">
+                            <span>Type</span>
+                            <strong>@_selectedModel.Type</strong>
+                        </div>
+
+                        <div class="calc-model-summary-item">
+                            <span>Job</span>
+                            <strong>@(selectedJob?.Name ?? "Not configured")</strong>
+                        </div>
+
+                        <div class="calc-model-summary-item">
+                            <span>Enabled</span>
+                            <strong>@(selectedJob?.Enabled == true ? "Yes" : "No")</strong>
+                        </div>
+
+                        <div class="calc-model-summary-item">
+                            <span>Runtime state</span>
+                            <strong>@(selectedState?.Status.ToString() ?? "—")</strong>
+                        </div>
+
+                    </div>
+
+
+                    <div class="calc-model-placeholder">
+
+                        @if (_selectedModel.Type == CalcModelTypeDto.Tank)
+                        {
+                            <RadzenIcon Icon="oil_barrel" Style="font-size:42px;" />
+                            <RadzenText Text="Tank calculation" TextStyle="TextStyle.H6" />
+                            <RadzenText Text="Tank-specific configuration and calculation UI will be implemented next."
+                                        TextStyle="TextStyle.Body2" />
+                        }
+                        else
+                        {
+                            <RadzenIcon Icon="calculate" Style="font-size:42px;" />
+                            <RadzenText Text="@($"{_selectedModel.Type} calculation")" TextStyle="TextStyle.H6" />
+                            <RadzenText Text="Specialized UI will be implemented after Tank."
+                                        TextStyle="TextStyle.Body2" />
+                        }
+
+                    </div>
+
+                </RadzenCard>
+            }
+
+        </section>
+
+    </div>
+
+</div>
+
+
+@code {
+    private const string AllStationsText = "All stations";
+    private const string AllTypesText = "All types";
+
+    private CalcModelCatalogResponse? _catalog;
+
+    private List<CalcModelDto> _allModels = [];
+    private List<CalcModelDto> _filteredModels = [];
+
+    private Dictionary<string, CalcJobDto> _jobsByEquipment =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private Dictionary<long, CalcJobStateDto> _statesByJobId = [];
+
+    private List<string> _stationItems = [AllStationsText];
+    private List<string> _typeItems = [AllTypesText];
+
+    private string _selectedStation = AllStationsText;
+    private string _selectedType = AllTypesText;
+    private string _searchText = "";
+
+    private CalcModelDto? _selectedModel;
+
+    /// <summary>
+    /// true, если левая панель списка Calc models скрыта.
+    /// Аналогично Equipment page одновременно скрываются Station/Type filters.
+    /// </summary>
+    private bool _isLeftPaneCollapsed;
+
+    private bool _isLoading;
+
+    private string _statusText = "";
+    private AlertStyle _statusStyle = AlertStyle.Info;
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync(refreshCatalog: false);
+    }
+
+
+    /// <summary>
+    /// Загружает cached Calc Catalog, Jobs и Runtime states.
+    /// </summary>
+    private async Task LoadAsync(bool refreshCatalog)
+    {
+        var previousSelection = _selectedModel?.Name;
+
+        _isLoading = true;
+        ClearStatus();
+
+        try
+        {
+            var catalogTask = refreshCatalog
+                ? CalcApi.RefreshModelCatalogAsync()
+                : CalcApi.GetModelCatalogAsync();
+
+            var jobsTask = CalcApi.GetJobsAsync();
+            var statesTask = CalcApi.GetStatesAsync();
+
+            await Task.WhenAll(
+                catalogTask,
+                jobsTask,
+                statesTask);
+
+            _catalog = await catalogTask;
+
+            var jobs = await jobsTask;
+            var states = await statesTask;
+
+            if (!_catalog.IsAvailable)
+            {
+                ShowError(
+                    _catalog.ErrorMessage
+                    ?? "Calc SCADA catalog provider is unavailable.");
+            }
+
+            _allModels = _catalog.Items
+                .OrderBy(model => model.Station, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(model => model.Type)
+                .ThenBy(model => model.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            _jobsByEquipment = jobs
+                .Where(job => !string.IsNullOrWhiteSpace(job.EquipmentName))
+                .GroupBy(
+                    job => job.EquipmentName!,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.OrderByDescending(job => job.Id).First(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            _statesByJobId = states
+                .GroupBy(state => state.JobId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First());
+
+            BuildFilterItems();
+            ApplyFilters();
+
+            if (!string.IsNullOrWhiteSpace(previousSelection))
+            {
+                _selectedModel = _filteredModels.FirstOrDefault(model =>
+                    string.Equals(
+                        model.Name,
+                        previousSelection,
+                        StringComparison.OrdinalIgnoreCase));
+            }
+
+            _selectedModel ??= _filteredModels.FirstOrDefault();
+
+            if (_catalog.IsLoaded && refreshCatalog)
+            {
+                Notify(
+                    NotificationSeverity.Success,
+                    "Calculations",
+                    $"Calc Catalog refreshed. Models: {_catalog.TotalCount}.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError(
+                "Cannot load calculation models: " + ex.Message);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+
+    private Task RefreshCatalogAsync()
+    {
+        return LoadAsync(refreshCatalog: true);
+    }
+
+
+    private void BuildFilterItems()
+    {
+        _stationItems =
+        [
+            AllStationsText,
+            .. _allModels
+                .Select(model => model.Station)
+                .Where(station => !string.IsNullOrWhiteSpace(station))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(station => station, StringComparer.OrdinalIgnoreCase)
+        ];
+
+        _typeItems =
+        [
+            AllTypesText,
+            .. _allModels
+                .Select(model => model.Type.ToString())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(type => type, StringComparer.OrdinalIgnoreCase)
+        ];
+
+        if (!_stationItems.Contains(
+                _selectedStation,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            _selectedStation = AllStationsText;
+        }
+
+        if (!_typeItems.Contains(
+                _selectedType,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            _selectedType = AllTypesText;
+        }
+    }
+
+
+    private void ApplyFilters()
+    {
+        IEnumerable<CalcModelDto> query = _allModels;
+
+        if (!string.Equals(
+                _selectedStation,
+                AllStationsText,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(model =>
+                string.Equals(
+                    model.Station,
+                    _selectedStation,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.Equals(
+                _selectedType,
+                AllTypesText,
+                StringComparison.OrdinalIgnoreCase)
+            && Enum.TryParse<CalcModelTypeDto>(
+                _selectedType,
+                ignoreCase: true,
+                out var selectedType))
+        {
+            query = query.Where(model =>
+                model.Type == selectedType);
+        }
+
+        var search = _searchText.Trim();
+
+        if (search.Length > 0)
+        {
+            query = query.Where(model =>
+                model.Name.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase)
+                || model.Description.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+
+        _filteredModels = query
+            .OrderBy(model => model.Station, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(model => model.Type)
+            .ThenBy(model => model.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (_selectedModel is not null
+            && !_filteredModels.Any(model =>
+                string.Equals(
+                    model.Name,
+                    _selectedModel.Name,
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            _selectedModel = _filteredModels.FirstOrDefault();
+        }
+    }
+
+    /// <summary>
+    /// Возвращает layout фильтров с учётом состояния левой панели.
+    /// </summary>
+    private string GetFilterLayoutCssClass()
+    {
+        return _isLeftPaneCollapsed
+            ? "calc-model-filter-layout is-left-collapsed"
+            : "calc-model-filter-layout";
+    }
+
+    /// <summary>
+    /// Возвращает layout основной области страницы.
+    /// </summary>
+    private string GetMainLayoutCssClass()
+    {
+        return _isLeftPaneCollapsed
+            ? "calc-model-main-layout is-left-collapsed"
+            : "calc-model-main-layout";
+    }
+
+    /// <summary>
+    /// Скрывает или показывает левый список Calc models вместе с Station/Type filters.
+    /// </summary>
+    private void ToggleLeftPane()
+    {
+        _isLeftPaneCollapsed = !_isLeftPaneCollapsed;
+    }
+
+    /// <summary>
+    /// Очищает строку поиска и сразу восстанавливает полный список текущего Station/Type.
+    /// </summary>
+    private void ClearSearch()
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+            return;
+
+        _searchText = "";
+        ApplyFilters();
+    }
+
+
+    private void SelectModel(CalcModelDto model)
+    {
+        _selectedModel = model;
+    }
+
+
+    private CalcJobDto? GetJob(CalcModelDto model)
+    {
+        return _jobsByEquipment.TryGetValue(
+            model.Name,
+            out var job)
+            ? job
+            : null;
+    }
+
+
+    private CalcJobStateDto? GetState(CalcJobDto? job)
+    {
+        if (job is null)
+            return null;
+
+        return _statesByJobId.TryGetValue(
+            job.Id,
+            out var state)
+            ? state
+            : null;
+    }
+
+
+    private string GetModelRowCss(CalcModelDto model)
+    {
+        return _selectedModel is not null
+            && string.Equals(
+                _selectedModel.Name,
+                model.Name,
+                StringComparison.OrdinalIgnoreCase)
+            ? "calc-model-row selected"
+            : "calc-model-row";
+    }
+
+
+    private static string GetTypeBadge(CalcModelTypeDto type)
+    {
+        return type switch
+        {
+            CalcModelTypeDto.Tank => "T",
+            CalcModelTypeDto.Density => "D",
+            CalcModelTypeDto.Capacity => "Cp",
+            CalcModelTypeDto.Content => "Cn",
+            _ => "?"
+        };
+    }
+
+
+    private static BadgeStyle GetTypeBadgeStyle(CalcModelTypeDto type)
+    {
+        return type switch
+        {
+            CalcModelTypeDto.Tank => BadgeStyle.Primary,
+            CalcModelTypeDto.Density => BadgeStyle.Info,
+            CalcModelTypeDto.Capacity => BadgeStyle.Warning,
+            CalcModelTypeDto.Content => BadgeStyle.Success,
+            _ => BadgeStyle.Light
+        };
+    }
+
+    /// <summary>
+    /// Преобразует значение Type-filter в Calc model type.
+    /// Для специального пункта All types возвращает false.
+    /// </summary>
+    private static bool TryGetCalcModelType(string? value, out CalcModelTypeDto type)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || string.Equals(value, AllTypesText, StringComparison.OrdinalIgnoreCase))
+        {
+            type = default;
+            return false;
+        }
+
+        return Enum.TryParse(value, ignoreCase: true, out type);
+    }
+
+    private static BadgeStyle GetStateBadgeStyle(CalcJobStateStatusDto status)
+    {
+        return status switch
+        {
+            CalcJobStateStatusDto.Success => BadgeStyle.Success,
+            CalcJobStateStatusDto.Skipped => BadgeStyle.Warning,
+            CalcJobStateStatusDto.Error => BadgeStyle.Danger,
+            _ => BadgeStyle.Light
+        };
+    }
+
+
+    private void ShowError(string message)
+    {
+        _statusText = message;
+        _statusStyle = AlertStyle.Danger;
+    }
+
+
+    private void ClearStatus()
+    {
+        _statusText = "";
+        _statusStyle = AlertStyle.Info;
+    }
+
+
+    private void Notify(NotificationSeverity severity, string summary, string detail)
+    {
+        NotificationService.Notify(severity, summary, detail, 4000);
+    }
+}

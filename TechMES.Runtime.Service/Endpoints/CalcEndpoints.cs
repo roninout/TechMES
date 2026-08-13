@@ -26,6 +26,12 @@ public static class CalcEndpoints
         app.MapGet("/api/calc/definitions/{code}", GetDefinition);
         app.MapPost("/api/calc/test", TestCalculation);
 
+        // SCADA Calc Catalog.
+        // GET никогда сам не читает CtApi.
+        // POST /refresh является единственным явным запуском scan-а.
+        app.MapGet("/api/calc/models", GetModelCatalogAsync);
+        app.MapPost("/api/calc/models/refresh", RefreshModelCatalogAsync);
+
         app.MapGet("/api/calc/configuration/snapshot", GetConfigurationSnapshotAsync);
 
         app.MapPost("/api/calc/service/heartbeat", ReceiveServiceHeartbeat);
@@ -44,6 +50,27 @@ public static class CalcEndpoints
         app.MapDelete("/api/calc/jobs/{id:long}", DeleteJobAsync);
 
         return app;
+    }
+
+    /// <summary>
+    /// Возвращает только текущий Runtime cache Calc models.
+    /// Автоматический CtApi scan здесь запрещён.
+    /// </summary>
+    private static async Task<IResult> GetModelCatalogAsync(ICalcModelCatalogProvider catalog, CancellationToken ct)
+    {
+        return Results.Ok(await catalog.GetSnapshotAsync(ct));
+    }
+
+    /// <summary>
+    /// Явно перечитывает Tank/Density/Capacity/Content из Plant SCADA.
+    ///
+    /// Вызывается:
+    /// - Calc.Service после получения нового execution lease;
+    /// - вручную кнопкой Refresh в production Calculations page.
+    /// </summary>
+    private static async Task<IResult> RefreshModelCatalogAsync(ICalcModelCatalogProvider catalog, CancellationToken ct)
+    {
+        return Results.Ok(await catalog.ReloadAsync(ct));
     }
 
     /// <summary>

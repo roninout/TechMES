@@ -28,6 +28,25 @@ public sealed class CalcApiClient(IHttpClientFactory httpClientFactory)
     }
 
     /// <summary>
+    /// Возвращает текущий in-memory SCADA Calc Catalog.
+    ///
+    /// GET никогда не инициирует CtApi scan.
+    /// </summary>
+    public Task<CalcModelCatalogResponse> GetModelCatalogAsync(CancellationToken ct = default)
+    {
+        return SendAsync<CalcModelCatalogResponse>(HttpMethod.Get, "api/calc/models", null, ct);
+    }
+
+    /// <summary>
+    /// Явно перечитывает Tank/Density/Capacity/Content через Runtime -> CtApi.
+    /// Используется кнопкой Refresh production Calculations page.
+    /// </summary>
+    public Task<CalcModelCatalogResponse> RefreshModelCatalogAsync(CancellationToken ct = default)
+    {
+        return SendAsync<CalcModelCatalogResponse>(HttpMethod.Post, "api/calc/models/refresh", null, ct);
+    }
+
+    /// <summary>
     /// Выполняет ручной расчёт без PostgreSQL, CtApi и Calc.Service.
     /// </summary>
     public async Task<CalcTestResponse> TestAsync(string definitionCode, IReadOnlyDictionary<string, object?> parameters, bool includeTrace, CancellationToken ct = default)
