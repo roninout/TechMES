@@ -3,18 +3,12 @@
 namespace TechMES.Calc.Tanks.Types;
 
 /// <summary>
-/// TYPE 1.
-/// Вертикальный сборник с двумя эллиптическими днищами.
+/// TYPE 6.
+/// Вертикальный сборник с двумя конусными днищами.
 ///
-/// Используются:
-/// dimA
-/// dimB
-/// dimC
-/// distanceB
-/// distToDistanceA
-/// levelMm
+/// Перенесён GetTypeSixVolume().
 /// </summary>
-public sealed class TankType1VolumeDefinition : TankTypeVolumeDefinitionBase
+public sealed class TankType6VolumeDefinition : TankTypeVolumeDefinitionBase
 {
     private static readonly IReadOnlyList<CalculationParameterDefinition>
         ParameterDefinitions = CreateParameters(
@@ -23,11 +17,11 @@ public sealed class TankType1VolumeDefinition : TankTypeVolumeDefinitionBase
             Dimension("dimC", "dimC", 12)
         );
 
-    public override string Code => "tank.volume.type1";
+    public override string Code => "tank.volume.type6";
 
-    public override string Name => "Type 1 — vertical, two elliptical heads";
+    public override string Name => "Type 6 — vertical, two conical heads";
 
-    public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
+    public override IReadOnlyList<CalculationParameterDefinition>Parameters => ParameterDefinitions;
 
     protected override double CalculateVolume(CalculationParameterSet parameters)
     {
@@ -37,20 +31,10 @@ public sealed class TankType1VolumeDefinition : TankTypeVolumeDefinitionBase
         var dimC = parameters.GetRequiredDouble("dimC");
         var distanceB = parameters.GetRequiredDouble("distanceB");
         var ltoDistanceA = parameters.GetRequiredDouble("distToDistanceA");
-
-        // Радиус сборника, m.
         var radius = dimB * 0.001 / 2.0;
-
-        // Общая высота, включая два эллиптических днища, mm.
         var totalLength = dimA + dimC * 2.0;
-
-        // Неизмеряемая часть от низа сборника, mm.
         var levelFromSensorToBottomOfTheTank = Math.Max(0, totalLength - distanceB + ltoDistanceA);
-
-        // Неучтенный объём под измеряемым диапазоном. 0.848 — существующий поправочный коэффициент рабочего алгоритма.
-        var volumeLeft = Math.PI * radius * radius * levelFromSensorToBottomOfTheTank * 0.001 * 0.848;
-
-        // Объём по текущему уровню.
+        var volumeLeft = Math.PI * radius * radius * levelFromSensorToBottomOfTheTank * 0.001 * 0.8;
         var volumeLevel = Math.PI * radius * radius * Math.Max(0, levelMm) * 0.001;
 
         return volumeLevel + Math.Max(0, volumeLeft);

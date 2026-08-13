@@ -3,57 +3,59 @@
 namespace TechMES.Calc.Tanks.Types;
 
 /// <summary>
-/// TANK TYPE 3.
+/// TYPE 3.
+/// Вертикальный сборник с перегородкой.
 ///
-/// Вертикальный узкий резервуар с нижним выпуклым днищем
-/// и боковой измерительной / присоединительной частью.
-///
-/// По рабочему чертежу используются:
-///
+/// Используются:
 /// dimA
 /// dimB
 /// dimC
 /// dimD
-///
-/// Пока сохраняем эти стабильные имена без попытки
-/// искусственно переименовать размеры.
-///
-/// Точный физический смысл dimD и piecewise-формула
-/// должны быть подтверждены legacy Tank.cs.
+/// distanceB
+/// distToDistanceA
+/// levelMm
 /// </summary>
-public sealed class TankType3VolumeDefinition
-    : TankTypeVolumeDefinitionBase
+public sealed class TankType3VolumeDefinition : TankTypeVolumeDefinitionBase
 {
     private static readonly IReadOnlyList<CalculationParameterDefinition>
-        ParameterDefinitions =
-        CreateParameters(
-            Dimension(
-                key: "dimA",
-                name: "dimA",
-                order: 10),
-
-            Dimension(
-                key: "dimB",
-                name: "dimB",
-                order: 11),
-
-            Dimension(
-                key: "dimC",
-                name: "dimC",
-                order: 12),
-
-            Dimension(
-                key: "dimD",
-                name: "dimD",
-                order: 13)
+        ParameterDefinitions = CreateParameters(
+            Dimension("dimA", "dimA", 10),
+            Dimension("dimB", "dimB", 11),
+            Dimension("dimC", "dimC", 12),
+            Dimension("dimD", "dimD", 13)
         );
 
     public override string Code => "tank.volume.type3";
 
-    public override string Name =>
-        "Type 3 — vertical vessel with side insertion";
+    public override string Name => "Type 3 — vertical with partition";
 
-    public override IReadOnlyList<CalculationParameterDefinition>
-        Parameters =>
-        ParameterDefinitions;
+    public override IReadOnlyList<CalculationParameterDefinition>Parameters => ParameterDefinitions;
+
+    protected override double CalculateVolume(CalculationParameterSet parameters)
+    {
+        var levelMm = parameters.GetRequiredDouble("levelMm");
+        var dimA = parameters.GetRequiredDouble("dimA");
+        var dimB = parameters.GetRequiredDouble("dimB");
+        var dimC = parameters.GetRequiredDouble("dimC");
+        var dimD = parameters.GetRequiredDouble("dimD");
+        var distanceB = parameters.GetRequiredDouble("distanceB");
+        var ltoDistanceA = parameters.GetRequiredDouble("distToDistanceA");
+        var radius = dimB * 0.001 / 2.0;
+        var totalLength = dimA + dimC;
+        var levelFromSensorToBottomOfTheTank = Math.Max(0, totalLength - distanceB + ltoDistanceA);
+
+        double GetSomeVolume(double level)
+        {
+            var alphaRadians = 2.0 * Math.Acos(Math.Max((dimD * 0.001 - radius) / radius, -1.0));
+            var alpha = 360.0 - alphaRadians * 180.0 / Math.PI;
+            var s = 0.5 * radius * radius * (Math.PI * alpha / 180.0 - Math.Sin(2.0 * Math.PI - alphaRadians));
+
+            return s * level;
+        }
+
+        var volumeLeft = GetSomeVolume(levelFromSensorToBottomOfTheTank * 0.001) * 0.85;
+        var volumeLevel = GetSomeVolume(levelMm * 0.001);
+
+        return volumeLeft + volumeLevel;
+    }
 }

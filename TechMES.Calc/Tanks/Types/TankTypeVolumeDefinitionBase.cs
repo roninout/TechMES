@@ -1,23 +1,25 @@
-﻿using TechMES.Calc.Abstractions;
+﻿using System.Globalization;
+using TechMES.Calc.Abstractions;
 using TechMES.Calc.Parameters;
 using TechMES.Calc.Results;
 
 namespace TechMES.Calc.Tanks.Types;
 
 /// <summary>
-/// Общая база production Tank Type definitions.
+/// Общая база всех алгоритмов расчёта объёма Tank.
 ///
-/// Каждый геометрический тип сборника имеет собственный DefinitionCode
-/// и находится в отдельном файле.
+/// Каждый тип сборника реализует свою формулу
+/// в отдельном TankTypeNVolumeDefinition.cs.
 ///
-/// Благодаря этому добавление нового типа Tank не требует изменения
-/// общей модели Calc Job, Runtime API или PostgreSQL.
+/// Общая база содержит только:
+/// - описание общих входных параметров;
+/// - описание выхода Volume;
+/// - преобразование результата в CalculationResult.
+///
+/// Математика конкретного типа здесь отсутствует.
 /// </summary>
 public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
 {
-    /// <summary>
-    /// Общий выход для всех Tank-алгоритмов.
-    /// </summary>
     private static readonly IReadOnlyList<CalculationOutputDefinition>
         OutputDefinitions =
         [
@@ -27,40 +29,34 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
                 Unit: "m³",
                 Decimals: 3,
                 Order: 1,
-                Description: "Calculated liquid volume.")
+                Description: "Calculated tank volume.")
         ];
 
-    /// <summary>
-    /// Все Tank Types относятся к одной категории.
-    /// WEB будет использовать её для формирования списка Tank algorithms.
-    /// </summary>
     public override string Category => "Tanks";
 
-    /// <summary>
-    /// Версия математического поведения алгоритма.
-    /// </summary>
     public override string Version => "1";
 
-    /// <summary>
-    /// Общий выход всех Tank Types.
-    /// </summary>
-    public override IReadOnlyList<CalculationOutputDefinition> Outputs => OutputDefinitions;
+    public override IReadOnlyList<CalculationOutputDefinition>Outputs => OutputDefinitions;
 
     /// <summary>
-    /// Создаёт общий набор параметров Tank.
+    /// Создаёт полный набор параметров конкретного Tank Type.
     ///
-    /// Сначала добавляется текущий уровень,
-    /// затем размеры конкретного Tank Type,
-    /// затем параметры измерительной части датчика.
+    /// geometryParameters содержат только используемые данным типом
+    /// dimA..dimF.
     ///
-    /// Для параметров предусмотрены DefaultValue.
-    /// Это позволяет сначала создать выключенный Job,
-    /// а геометрию и реальные Tag bindings настроить следующим этапом.
+    /// Остальные параметры являются общими для всех Tank.
     /// </summary>
     protected static IReadOnlyList<CalculationParameterDefinition>CreateParameters(params CalculationParameterDefinition[] geometryParameters)
     {
         var result = new List<CalculationParameterDefinition>
         {
+            /*
+             * Текущее значение уровня.
+             *
+             * В production это будет Tag input.
+             * Пока default 0 позволяет создать Disabled Job
+             * до окончательной настройки привязок.
+             */
             Number(
                 key: "levelMm",
                 name: "Measured level",
@@ -68,29 +64,20 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
                 order: 1,
                 defaultValue: 0d,
                 minimum: null,
-                description:
-                    "Current measured level from the level sensor.")
+                description: "Current measured level.")
         };
 
-        /*
-         * Размеры конкретного Tank Type:
-         *
-         * dimA
-         * dimB
-         * dimC
-         * ...
-         */
         result.AddRange(geometryParameters);
 
         /*
-         * Общая измерительная часть.
+         * Параметры измерительной части.
          *
-         * Эти названия соответствуют существующей legacy-модели Tank:
+         * Названия соответствуют старым:
          *
-         * DistanceA
-         * DistanceB
-         * DistToDistanceA / ltoDistanceA
-         * ProbeLength
+         * TankContent.distanceA
+         * TankContent.distanceB
+         * TankContent.distToDistanceA
+         * TankContent.probeLength
          */
         result.AddRange(
         [
@@ -100,8 +87,7 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
                 unit: "mm",
                 order: 90,
                 defaultValue: 0d,
-                description:
-                    "Legacy TankContent.DistanceA."),
+                minimum: 0d),
 
             Number(
                 key: "distanceB",
@@ -109,8 +95,7 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
                 unit: "mm",
                 order: 91,
                 defaultValue: 0d,
-                description:
-                    "Legacy TankContent.DistanceB."),
+                minimum: 0d),
 
             Number(
                 key: "distToDistanceA",
@@ -118,36 +103,41 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
                 unit: "mm",
                 order: 92,
                 defaultValue: 0d,
-                description:
-                    "Legacy TankContent.DistToDistanceA / ltoDistanceA."),
+                minimum: 0d),
 
+            /*
+             * В старом Tank.cs ProbeLength не участвует
+             * ни в одном из 8 алгоритмов.
+             *
+             * Оставляем его в конфигурации,
+             * но НЕ придумываем ему математическое применение.
+             */
             Number(
                 key: "probeLength",
                 name: "Probe length",
                 unit: "mm",
                 order: 93,
                 defaultValue: 0d,
-                description:
-                    "Legacy TankContent.ProbeLength.")
+                minimum: 0d,
+                description: "Stored TankContent parameter. Not used by current Tank volume formulas.")
         ]);
 
         return result;
     }
 
     /// <summary>
-    /// Создаёт геометрический размер Tank.
-    /// По умолчанию размер задаётся в mm.
+    /// Создаёт размер dimA..dimF.
     /// </summary>
     protected static CalculationParameterDefinition Dimension(
         string key,
         string name,
         int order,
-        string? description = null,
         string unit = "mm",
-        double defaultValue = 1d,
-        double minimum = 0d,
+        double defaultValue = 0d,
+        double? minimum = 0d,
         double step = 1d,
-        int decimals = 0)
+        int decimals = 0,
+        string? description = null)
     {
         return Number(
             key,
@@ -156,24 +146,21 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
             order,
             defaultValue,
             minimum,
-            description,
             step,
-            decimals);
+            decimals,
+            description);
     }
 
-    /// <summary>
-    /// Создаёт числовой параметр Calculation Definition.
-    /// </summary>
-    protected static CalculationParameterDefinition Number(
+    private static CalculationParameterDefinition Number(
         string key,
         string name,
         string unit,
         int order,
         double defaultValue,
-        double? minimum = 0d,
-        string? description = null,
+        double? minimum,
         double step = 1d,
-        int decimals = 0)
+        int decimals = 0,
+        string? description = null)
     {
         return new CalculationParameterDefinition(
             Key: key,
@@ -190,21 +177,47 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
     }
 
     /// <summary>
-    /// Временное поведение для Tank Types,
-    /// точная legacy-формула которых ещё не перенесена.
-    ///
-    /// ВАЖНО:
-    /// специально НЕ выполняем приблизительный расчёт.
-    ///
-    /// Новый Job создаётся Disabled, поэтому наличие Definition
-    /// позволяет уже сейчас создавать и конфигурировать Job,
-    /// не рискуя получить неправильный производственный результат.
+    /// Общая оболочка выполнения Tank-алгоритма.
+    /// Конкретная формула находится в CalculateVolume().
     /// </summary>
-    protected override CalculationResult CalculateCore(CalculationParameterSet parameters, bool includeTrace)
+    protected sealed override CalculationResult CalculateCore(CalculationParameterSet parameters, bool includeTrace)
     {
-        _ = parameters;
-        _ = includeTrace;
+        var volumeM3 = CalculateVolume(parameters);
 
-        return CalculationResult.Failure("tank.algorithm.pending", $"{Name} is available for Job configuration, " + "but its exact legacy formula has not been ported yet.");
+        if (!double.IsFinite(volumeM3))
+        {
+            return CalculationResult.Failure("tank.volume.not-finite", "Calculated tank volume is not a finite number.");
+        }
+
+        IReadOnlyList<CalculationTraceItem> trace =
+            includeTrace
+                ?
+                [
+                    new CalculationTraceItem(
+                        Key: "volumeM3",
+                        Name: "Calculated volume",
+                        Value: volumeM3.ToString(
+                            "0.############",
+                            CultureInfo.InvariantCulture),
+                        Unit: "m³")
+                ]
+                :
+                [];
+
+        return CalculationResult.Success(
+            outputs:
+            [
+                new CalculationOutput(
+                    Key: "volume",
+                    Name: "Volume",
+                    Value: volumeM3,
+                    Unit: "m³")
+            ],
+            trace: trace);
     }
+
+    /// <summary>
+    /// Формула конкретного Tank Type.
+    /// </summary>
+    protected abstract double CalculateVolume(CalculationParameterSet parameters);
 }

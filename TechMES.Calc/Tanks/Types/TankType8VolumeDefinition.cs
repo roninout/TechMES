@@ -3,26 +3,14 @@
 namespace TechMES.Calc.Tanks.Types;
 
 /// <summary>
-/// TYPE 5.
-/// Куб колонны со встроенным ребойлером.
+/// TYPE 8.
+/// Вертикальный сборник с усечённым цилиндром.
 ///
-/// Используются:
-/// dimA..dimF
-/// distanceB
-/// distToDistanceA
-/// levelMm
+/// Перенесён GetTypeEighthVolume().
 ///
-/// ВАЖНО:
-/// исходный код использует dimF * 0.001 непосредственно
-/// как полезный объём участка ребойлера.
-///
-/// Хотя описание исходных данных говорит,
-/// что dimF является объёмом трубок ребойлера.
-///
-/// Пока НЕ исправляем это поведение.
-/// Сначала переносим алгоритм 1:1.
+/// По структуре близок TYPE 5, но нижний неучтённый объём умножается на 1/3.
 /// </summary>
-public sealed class TankType5VolumeDefinition : TankTypeVolumeDefinitionBase
+public sealed class TankType8VolumeDefinition : TankTypeVolumeDefinitionBase
 {
     private static readonly IReadOnlyList<CalculationParameterDefinition>
         ParameterDefinitions = CreateParameters(
@@ -31,19 +19,12 @@ public sealed class TankType5VolumeDefinition : TankTypeVolumeDefinitionBase
             Dimension("dimC", "dimC", 12),
             Dimension("dimD", "dimD", 13),
             Dimension("dimE", "dimE", 14),
-
-            Dimension(
-                key: "dimF",
-                name: "dimF — reboiler tube volume",
-                order: 15,
-                unit: "L",
-                step: 0.1,
-                decimals: 1)
+            Dimension(key: "dimF", name: "dimF", order: 15, unit: "L", step: 0.1, decimals: 1)
         );
 
-    public override string Code => "tank.volume.type5";
+    public override string Code => "tank.volume.type8";
 
-    public override string Name => "Type 5 — column with internal reboiler";
+    public override string Name => "Type 8 — vertical with truncated cylinder";
 
     public override IReadOnlyList<CalculationParameterDefinition>Parameters => ParameterDefinitions;
 
@@ -60,7 +41,7 @@ public sealed class TankType5VolumeDefinition : TankTypeVolumeDefinitionBase
         var ltoDistanceA = parameters.GetRequiredDouble("distToDistanceA");
         var radius = dimB * 0.001 / 2.0;
         var totalLength = dimA + dimC;
-        var levelFromSensorToBottomOfTheTank =Math.Max(0, totalLength - distanceB + ltoDistanceA);
+        var levelFromSensorToBottomOfTheTank = Math.Max(0, totalLength - distanceB + ltoDistanceA);
 
         double GetSomeVolume(double level)
         {
@@ -69,7 +50,9 @@ public sealed class TankType5VolumeDefinition : TankTypeVolumeDefinitionBase
         }
 
         double volumeTotal = 0;
-        volumeTotal += GetSomeVolume(levelFromSensorToBottomOfTheTank * 0.001) * 0.85;
+
+        // Старый алгоритм: 1/3 объёма цилиндра для усечённой части.
+        volumeTotal += GetSomeVolume(levelFromSensorToBottomOfTheTank * 0.001) / 3.0;
         var distFromDistBToLowRorvand = Math.Max(0, distanceB - dimD - dimE);
 
         if (levelMm <= distFromDistBToLowRorvand)
@@ -79,11 +62,8 @@ public sealed class TankType5VolumeDefinition : TankTypeVolumeDefinitionBase
         }
 
         volumeTotal += GetSomeVolume(distFromDistBToLowRorvand * 0.001);
-        var distFromDistBToHighRorwand = Math.Max(0, distFromDistBToLowRorvand + dimD);
 
-         // Переносим именно рабочую строку старого кода:
-         // Math.Max(0.0, dimF * 0.001)
-         // Семантику dimF отдельно проверим позже.
+        var distFromDistBToHighRorwand = Math.Max(0, distFromDistBToLowRorvand + dimD);
         var volumeOfReboilerWithoutTubes = Math.Max(0.0, dimF * 0.001);
 
         if (levelMm > distFromDistBToLowRorvand && levelMm <= distFromDistBToHighRorwand)
@@ -96,7 +76,6 @@ public sealed class TankType5VolumeDefinition : TankTypeVolumeDefinitionBase
         var distFromHighRorwand = levelMm - distFromDistBToLowRorvand - dimD;
         var volumeOfTopOfTank = GetSomeVolume(distFromHighRorwand * 0.001);
         volumeTotal += volumeOfTopOfTank;
-
         return volumeTotal;
     }
 }
