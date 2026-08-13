@@ -1,0 +1,131 @@
+.tank-configuration {
+    display: grid;
+    grid-template-columns: minmax(320px, 430px) minmax(360px, 1fr);
+    gap: 16px;
+    margin-top: 18px;
+    min-width: 0;
+}
+
+.tank-preview-column,
+.tank-settings-column {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--rz-border-normal);
+    border-radius: 8px;
+    background: var(--rz-base-50);
+}
+
+.tank-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.tank-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 300px;
+}
+
+.tank-preview-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 10px;
+}
+
+    .tank-preview-info span {
+        color: var(--rz-text-secondary-color);
+        font-family: monospace;
+        font-size: 0.76rem;
+    }
+
+.tank-field {
+    margin-bottom: 14px;
+}
+
+    .tank-field label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 0.84rem;
+        font-weight: 600;
+    }
+
+.tank-status-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.tank-status-item {
+    min-width: 0;
+    padding: 9px 10px;
+    border: 1px solid var(--rz-border-normal);
+    border-radius: 6px;
+    background: var(--rz-base-background-color);
+}
+
+    .tank-status-item span {
+        display: block;
+        margin-bottom: 3px;
+        color: var(--rz-text-secondary-color);
+        font-size: 0.74rem;
+    }
+
+    .tank-status-item strong {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.86rem;
+    }
+
+.tank-parameter-summary {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+    .tank-parameter-summary > div {
+        display: grid;
+        grid-template-columns: 110px minmax(0, 1fr);
+        gap: 8px;
+        align-items: baseline;
+    }
+
+    .tank-parameter-summary span {
+        color: var(--rz-text-secondary-color);
+        font-size: 0.78rem;
+    }
+
+    .tank-parameter-summary strong {
+        font-size: 0.84rem;
+    }
+
+.tank-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
+}
+
+@media (max-width: 1100px) {
+    .tank-configuration {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 650px) {
+    .tank-status-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .tank-parameter-summary > div {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+}

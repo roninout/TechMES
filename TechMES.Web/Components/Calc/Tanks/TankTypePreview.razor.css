@@ -1,0 +1,107 @@
+.tank-preview {
+    width: 100%;
+    min-width: 0;
+}
+
+    .tank-preview svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        max-height: 430px;
+        border: 1px solid var(--rz-border-normal);
+        border-radius: 8px;
+        background: var(--rz-base-background-color);
+    }
+
+.tank-shape {
+    fill: none;
+    stroke: var(--rz-text-color);
+    stroke-width: 2.2px;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+.tank-internal {
+    fill: none;
+    stroke: var(--rz-text-secondary-color);
+    stroke-width: 1.6px;
+    stroke-linejoin: round;
+}
+
+.tank-bundle {
+    stroke: var(--rz-text-secondary-color);
+    stroke-width: 1.1px;
+}
+
+.tank-sensor,
+.tank-sensor-body {
+    stroke: var(--rz-info);
+    stroke-width: 3px;
+    stroke-linecap: round;
+}
+
+.tank-measure,
+.tank-measure-cap {
+    stroke: var(--rz-info);
+    stroke-width: 1.8px;
+}
+
+.tank-measure {
+    stroke-dasharray: 6 4;
+}
+
+.tank-sensor-label {
+    fill: var(--rz-info);
+    font-size: 11px;
+}
+
+.tank-dim,
+.tank-dim-cap {
+    stroke: var(--rz-danger);
+    stroke-width: 1.7px;
+}
+
+.tank-dim-label {
+    fill: var(--rz-danger);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.tank-dimf {
+    font-size: 10px;
+}
+
+.tank-empty-label {
+    fill: var(--rz-text-secondary-color);
+    font-size: 15px;
+}
+
+.tank-preview-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    margin-top: 8px;
+    color: var(--rz-text-secondary-color);
+    font-size: 0.78rem;
+}
+
+    .tank-preview-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .tank-preview-legend i {
+        display: inline-block;
+        width: 18px;
+        height: 3px;
+        border-radius: 2px;
+    }
+
+.tank-legend-sensor {
+    background: var(--rz-info);
+}
+
+.tank-legend-dimension {
+    background: var(--rz-danger);
+}

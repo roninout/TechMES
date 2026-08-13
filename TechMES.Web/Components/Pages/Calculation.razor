@@ -277,24 +277,26 @@
                     </div>
 
 
-                    <div class="calc-model-placeholder">
+                    @if (_selectedModel.Type == CalcModelTypeDto.Tank)
+                    {
+                        <TankConfigurationPanel Model="@_selectedModel"
+                                                Job="@selectedJob"
+                                                JobChanged="@ReloadAfterTankJobChangedAsync" />
+                    }
+                    else
+                    {
+                        <div class="calc-model-placeholder">
 
-                        @if (_selectedModel.Type == CalcModelTypeDto.Tank)
-                        {
-                            <RadzenIcon Icon="oil_barrel" Style="font-size:42px;" />
-                            <RadzenText Text="Tank calculation" TextStyle="TextStyle.H6" />
-                            <RadzenText Text="Tank-specific configuration and calculation UI will be implemented next."
-                                        TextStyle="TextStyle.Body2" />
-                        }
-                        else
-                        {
                             <RadzenIcon Icon="calculate" Style="font-size:42px;" />
-                            <RadzenText Text="@($"{_selectedModel.Type} calculation")" TextStyle="TextStyle.H6" />
+
+                            <RadzenText Text="@($"{_selectedModel.Type} calculation")"
+                                        TextStyle="TextStyle.H6" />
+
                             <RadzenText Text="Specialized UI will be implemented after Tank."
                                         TextStyle="TextStyle.Body2" />
-                        }
 
-                    </div>
+                        </div>
+                    }
 
                 </RadzenCard>
             }
@@ -442,6 +444,16 @@
     private Task RefreshCatalogAsync()
     {
         return LoadAsync(refreshCatalog: true);
+    }
+
+
+    /// <summary>
+    /// После Create/Update Tank Job перечитываем Jobs и Runtime states.
+    /// Сам SCADA Calc Catalog повторно сканировать не требуется.
+    /// </summary>
+    private Task ReloadAfterTankJobChangedAsync()
+    {
+        return LoadAsync(refreshCatalog: false);
     }
 
 

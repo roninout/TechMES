@@ -1,0 +1,427 @@
+﻿@inject CalcApiClient CalcApi
+@inject NotificationService NotificationService
+
+<div class="tank-configuration">
+
+    <section class="tank-preview-column">
+
+        <div class="tank-section-header">
+            <RadzenIcon Icon="oil_barrel" />
+            <span>Tank geometry</span>
+        </div>
+
+        @if (_isLoadingDefinitions)
+        {
+            <div class="tank-loading">
+                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(_loadError))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true">
+                @_loadError
+            </RadzenAlert>
+        }
+        else if (SelectedDefinition is not null)
+        {
+            <TankTypePreview TypeNumber="@SelectedTypeNumber" />
+
+            <div class="tank-preview-info">
+                <strong>@SelectedDefinition.Name</strong>
+                <span>@SelectedDefinition.Code</span>
+            </div>
+        }
+
+    </section>
+
+
+    <section class="tank-settings-column">
+
+        <div class="tank-section-header">
+            <RadzenIcon Icon="settings" />
+            <span>Tank configuration</span>
+        </div>
+
+
+        @if (!_isLoadingDefinitions && string.IsNullOrWhiteSpace(_loadError))
+        {
+            <div class="tank-field">
+
+                <label>Tank type</label>
+
+                <RadzenDropDown TValue="string"
+                                Data="@_tankDefinitions"
+                                TextProperty="@nameof(CalcDefinitionDto.Name)"
+                                ValueProperty="@nameof(CalcDefinitionDto.Code)"
+                                @bind-Value="_selectedDefinitionCode"
+                                Disabled="@_isSaving"
+                                Style="width:100%;" />
+
+            </div>
+
+
+            <div class="tank-status-grid">
+
+                <div class="tank-status-item">
+                    <span>Status</span>
+
+                    @if (Job is null)
+                    {
+                        <strong>NOT CONFIGURED</strong>
+                    }
+                    else if (Job.Enabled)
+                    {
+                        <strong>ENABLED</strong>
+                    }
+                    else
+                    {
+                        <strong>DISABLED</strong>
+                    }
+                </div>
+
+                <div class="tank-status-item">
+                    <span>Tank type</span>
+                    <strong>@(SelectedTypeNumber > 0 ? $"Type {SelectedTypeNumber}" : "—")</strong>
+                </div>
+
+                <div class="tank-status-item">
+                    <span>Algorithm</span>
+                    <strong title="@_selectedDefinitionCode">@(_selectedDefinitionCode ?? "—")</strong>
+                </div>
+
+                @if (Job is not null)
+                {
+                    <div class="tank-status-item">
+                        <span>Revision</span>
+                        <strong>@Job.Revision</strong>
+                    </div>
+                }
+
+            </div>
+
+
+            @if (SelectedDefinition is not null)
+            {
+                <div class="tank-parameter-summary">
+
+                    <div>
+                        <span>Geometry</span>
+                        <strong>@GetGeometryParameterText(SelectedDefinition)</strong>
+                    </div>
+
+                    <div>
+                        <span>Measurement</span>
+                        <strong>Distance A, Distance B, Distance to A, Probe length</strong>
+                    </div>
+
+                    <div>
+                        <span>Output</span>
+                        <strong>Volume, m³</strong>
+                    </div>
+
+                </div>
+            }
+
+
+            @if (Job is null)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                    Select the required Tank type and create the calculation Job.
+                    The new Job will be created disabled. Geometry, SCADA tags and output
+                    bindings will be configured in the next stage.
+                </RadzenAlert>
+
+                <div class="tank-actions">
+                    <RadzenButton Text="Create job"
+                                  Icon="add"
+                                  ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@(_isSaving || SelectedDefinition is null)"
+                                  Click="@CreateJobAsync" />
+                </div>
+            }
+            else
+            {
+                @if (HasTankTypeChanged)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
+                        Tank type has been changed. Saving will replace the calculation
+                        algorithm, clear existing input/output bindings and disable the Job.
+                    </RadzenAlert>
+                }
+                else
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                        This Tank Job is configured for @SelectedDefinition?.Name.
+                        Geometry and measurement parameters will be added in the next stage.
+                    </RadzenAlert>
+                }
+
+                <div class="tank-actions">
+                    <RadzenButton Text="Save tank type"
+                                  Icon="save"
+                                  ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@(_isSaving || !HasTankTypeChanged || SelectedDefinition is null)"
+                                  Click="@SaveTankTypeAsync" />
+                </div>
+            }
+        }
+
+    </section>
+
+</div>
+
+
+@code {
+    [Parameter, EditorRequired]
+    public CalcModelDto Model { get; set; } = default!;
+
+    [Parameter]
+    public CalcJobDto? Job { get; set; }
+
+    [Parameter]
+    public EventCallback JobChanged { get; set; }
+
+
+    private readonly List<CalcDefinitionDto> _tankDefinitions = [];
+
+    private string? _selectedDefinitionCode;
+    private string _contextKey = "";
+    private string _loadError = "";
+
+    private bool _isLoadingDefinitions;
+    private bool _isSaving;
+
+
+    private CalcDefinitionDto? SelectedDefinition =>
+        _tankDefinitions.FirstOrDefault(definition =>
+            string.Equals(definition.Code, _selectedDefinitionCode, StringComparison.OrdinalIgnoreCase));
+
+
+    private int SelectedTypeNumber => GetTypeNumber(_selectedDefinitionCode);
+
+
+    private bool HasTankTypeChanged =>
+        Job is not null
+        && !string.Equals(Job.DefinitionCode, _selectedDefinitionCode, StringComparison.OrdinalIgnoreCase);
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDefinitionsAsync();
+        SynchronizeSelection(force: true);
+    }
+
+
+    protected override void OnParametersSet()
+    {
+        if (_tankDefinitions.Count > 0)
+            SynchronizeSelection();
+    }
+
+
+    /// <summary>
+    /// Загружает только Tank definitions.
+    /// WEB не знает формул — он работает с метаданными Runtime.
+    /// </summary>
+    private async Task LoadDefinitionsAsync()
+    {
+        _isLoadingDefinitions = true;
+        _loadError = "";
+
+        try
+        {
+            var definitions = await CalcApi.GetDefinitionsAsync();
+
+            _tankDefinitions.Clear();
+
+            _tankDefinitions.AddRange(
+                definitions
+                    .Where(definition =>
+                        string.Equals(definition.Category, "Tanks", StringComparison.OrdinalIgnoreCase)
+                        && definition.Code.StartsWith("tank.volume.type", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(definition => GetTypeNumber(definition.Code)));
+
+            if (_tankDefinitions.Count == 0)
+                _loadError = "No Tank calculation algorithms are available in Runtime.";
+        }
+        catch (Exception ex)
+        {
+            _loadError = "Cannot load Tank algorithms: " + ex.Message;
+        }
+        finally
+        {
+            _isLoadingDefinitions = false;
+        }
+    }
+
+
+    /// <summary>
+    /// При переключении выбранного оборудования или после сохранения Job
+    /// восстанавливает тип из самого Job.
+    ///
+    /// Если Job отсутствует — выбирается Type 1.
+    /// </summary>
+    private void SynchronizeSelection(bool force = false)
+    {
+        var newContextKey = $"{Model.Name}|{Job?.Id}|{Job?.Revision}";
+
+        if (!force && string.Equals(_contextKey, newContextKey, StringComparison.Ordinal))
+            return;
+
+        _contextKey = newContextKey;
+
+        if (Job is not null && _tankDefinitions.Any(definition =>
+                string.Equals(definition.Code, Job.DefinitionCode, StringComparison.OrdinalIgnoreCase)))
+        {
+            _selectedDefinitionCode = Job.DefinitionCode;
+            return;
+        }
+
+        _selectedDefinitionCode = _tankDefinitions.FirstOrDefault()?.Code;
+    }
+
+
+    /// <summary>
+    /// Создаёт первоначальный выключенный Tank Job.
+    ///
+    /// Параметры пока не сохраняем отдельными bindings:
+    /// текущие Tank definitions имеют DefaultValue,
+    /// поэтому Runtime разрешает configuration-first сценарий.
+    /// </summary>
+    private async Task CreateJobAsync()
+    {
+        var definition = SelectedDefinition;
+
+        if (definition is null)
+            return;
+
+        _isSaving = true;
+
+        try
+        {
+            var request = new CalcJobSaveRequest
+            {
+                EquipmentName = Model.Name,
+                Name = $"{Model.Name} Tank volume",
+                Description = Model.Description,
+                DefinitionCode = definition.Code,
+                DefinitionVersion = definition.Version,
+                Enabled = false,
+                PeriodMs = 5000,
+                WriteEnabled = false,
+                SortOrder = 0,
+                ExpectedRevision = null,
+                Inputs = [],
+                Outputs = []
+            };
+
+            await CalcApi.CreateJobAsync(request);
+
+            NotificationService.Notify(
+                NotificationSeverity.Success,
+                "Calculations",
+                $"Tank Job created for {Model.Name}.",
+                4000);
+
+            await JobChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(
+                NotificationSeverity.Error,
+                "Calculations",
+                ex.Message,
+                6000);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+
+    /// <summary>
+    /// Меняет алгоритм существующего Tank Job.
+    ///
+    /// Старые bindings нельзя автоматически переносить между разными
+    /// Tank Types, поэтому при изменении типа они очищаются,
+    /// а Job переводится в безопасное Disabled-состояние.
+    /// </summary>
+    private async Task SaveTankTypeAsync()
+    {
+        var definition = SelectedDefinition;
+
+        if (Job is null || definition is null || !HasTankTypeChanged)
+            return;
+
+        _isSaving = true;
+
+        try
+        {
+            var request = new CalcJobSaveRequest
+            {
+                EquipmentName = Job.EquipmentName,
+                Name = Job.Name,
+                Description = Job.Description,
+                DefinitionCode = definition.Code,
+                DefinitionVersion = definition.Version,
+                Enabled = false,
+                PeriodMs = Job.PeriodMs,
+                WriteEnabled = false,
+                SortOrder = Job.SortOrder,
+                ExpectedRevision = Job.Revision,
+                Inputs = [],
+                Outputs = []
+            };
+
+            await CalcApi.UpdateJobAsync(Job.Id, request);
+
+            NotificationService.Notify(
+                NotificationSeverity.Success,
+                "Calculations",
+                $"Tank type changed to Type {SelectedTypeNumber}.",
+                4000);
+
+            await JobChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(
+                NotificationSeverity.Error,
+                "Calculations",
+                ex.Message,
+                6000);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+
+    private static int GetTypeNumber(string? definitionCode)
+    {
+        if (string.IsNullOrWhiteSpace(definitionCode))
+            return 0;
+
+        for (var type = 1; type <= 8; type++)
+        {
+            if (definitionCode.EndsWith($".type{type}", StringComparison.OrdinalIgnoreCase))
+                return type;
+        }
+
+        return 0;
+    }
+
+
+    private static string GetGeometryParameterText(CalcDefinitionDto definition)
+    {
+        var dimensions = definition.Parameters
+            .Where(parameter => parameter.Key.StartsWith("dim", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(parameter => parameter.Order)
+            .Select(parameter => parameter.Key)
+            .ToArray();
+
+        return dimensions.Length == 0 ? "—" : string.Join(", ", dimensions);
+    }
+}
