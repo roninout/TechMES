@@ -16,7 +16,7 @@
 .tank-shape {
     fill: none;
     stroke: var(--rz-text-color);
-    stroke-width: 2.2px;
+    stroke-width: 2.2;
     stroke-linejoin: round;
     stroke-linecap: round;
 }
@@ -24,26 +24,26 @@
 .tank-internal {
     fill: none;
     stroke: var(--rz-text-secondary-color);
-    stroke-width: 1.6px;
+    stroke-width: 1.6;
     stroke-linejoin: round;
 }
 
 .tank-bundle {
     stroke: var(--rz-text-secondary-color);
-    stroke-width: 1.1px;
+    stroke-width: 1.1;
 }
 
 .tank-sensor,
 .tank-sensor-body {
     stroke: var(--rz-info);
-    stroke-width: 3px;
+    stroke-width: 3;
     stroke-linecap: round;
 }
 
 .tank-measure,
 .tank-measure-cap {
     stroke: var(--rz-info);
-    stroke-width: 1.8px;
+    stroke-width: 1.8;
 }
 
 .tank-measure {
@@ -58,7 +58,7 @@
 .tank-dim,
 .tank-dim-cap {
     stroke: var(--rz-danger);
-    stroke-width: 1.7px;
+    stroke-width: 1.8;
 }
 
 .tank-dim-label {
@@ -104,4 +104,21 @@
 
 .tank-legend-dimension {
     background: var(--rz-danger);
+}
+
+.tank-body-line {
+    stroke: var(--rz-text-color);
+    stroke-width: 2.2;
+}
+
+.tank-guide-red {
+    stroke: var(--rz-danger);
+    stroke-width: 1.3;
+    stroke-dasharray: 6 4;
+}
+
+.tank-guide-blue {
+    stroke: var(--rz-info);
+    stroke-width: 1.3;
+    stroke-dasharray: 6 4;
 }
