@@ -23,7 +23,7 @@ public sealed class TankType7VolumeDefinition : TankTypeVolumeDefinitionBase
 
     public override string Name => "Type 7 — horizontal, two conical ends";
 
-    public override IReadOnlyList<CalculationParameterDefinition>Parameters => ParameterDefinitions;
+    public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
 
     protected override double CalculateVolume(CalculationParameterSet parameters)
     {

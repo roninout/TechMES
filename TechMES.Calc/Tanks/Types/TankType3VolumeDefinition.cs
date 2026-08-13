@@ -29,7 +29,7 @@ public sealed class TankType3VolumeDefinition : TankTypeVolumeDefinitionBase
 
     public override string Name => "Type 3 — vertical with partition";
 
-    public override IReadOnlyList<CalculationParameterDefinition>Parameters => ParameterDefinitions;
+    public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
 
     protected override double CalculateVolume(CalculationParameterSet parameters)
     {

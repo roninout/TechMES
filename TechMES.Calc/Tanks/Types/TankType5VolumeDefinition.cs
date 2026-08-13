@@ -45,7 +45,7 @@ public sealed class TankType5VolumeDefinition : TankTypeVolumeDefinitionBase
 
     public override string Name => "Type 5 — column with internal reboiler";
 
-    public override IReadOnlyList<CalculationParameterDefinition>Parameters => ParameterDefinitions;
+    public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
 
     protected override double CalculateVolume(CalculationParameterSet parameters)
     {

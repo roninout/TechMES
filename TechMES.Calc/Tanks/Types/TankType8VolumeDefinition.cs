@@ -26,7 +26,7 @@ public sealed class TankType8VolumeDefinition : TankTypeVolumeDefinitionBase
 
     public override string Name => "Type 8 — vertical with truncated cylinder";
 
-    public override IReadOnlyList<CalculationParameterDefinition>Parameters => ParameterDefinitions;
+    public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
 
     protected override double CalculateVolume(CalculationParameterSet parameters)
     {

@@ -28,7 +28,7 @@ public sealed class TankType2VolumeDefinition
 
     public override string Name => "Type 2 — horizontal, two elliptical ends";
 
-    public override IReadOnlyList<CalculationParameterDefinition>Parameters => ParameterDefinitions;
+    public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
 
     protected override double CalculateVolume(CalculationParameterSet parameters)
     {
@@ -40,7 +40,7 @@ public sealed class TankType2VolumeDefinition
         var ltoDistanceA = parameters.GetRequiredDouble("distToDistanceA");
         var radius =dimB * 0.001 / 2.0;
 
-        var levelFromSensorToBottomOfTheTank =Math.Max(0, dimB - distanceB + ltoDistanceA);
+        var levelFromSensorToBottomOfTheTank = Math.Max(0, dimB - distanceB + ltoDistanceA);
 
         double GetSomeVolume(double level, double length)
         {

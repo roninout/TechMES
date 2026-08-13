@@ -28,7 +28,7 @@ public sealed class TankType4VolumeDefinition : TankTypeVolumeDefinitionBase
 
     public override string Name => "Type 4 — rectangular tank";
 
-    public override IReadOnlyList<CalculationParameterDefinition>Parameters => ParameterDefinitions;
+    public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
 
     protected override double CalculateVolume(CalculationParameterSet parameters)
     {

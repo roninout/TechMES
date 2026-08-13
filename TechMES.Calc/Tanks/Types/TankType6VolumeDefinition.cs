@@ -21,7 +21,7 @@ public sealed class TankType6VolumeDefinition : TankTypeVolumeDefinitionBase
 
     public override string Name => "Type 6 — vertical, two conical heads";
 
-    public override IReadOnlyList<CalculationParameterDefinition>Parameters => ParameterDefinitions;
+    public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
 
     protected override double CalculateVolume(CalculationParameterSet parameters)
     {
