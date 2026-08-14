@@ -18,8 +18,11 @@ public enum CalcModelTypeDto
 /// <summary>
 /// Один calculation model, обнаруженный в Plant SCADA.
 ///
-/// Это только описание SCADA-объекта.
 /// Inputs, Constants, Outputs и алгоритм хранятся отдельно в Calc Job.
+///
+/// TagNames содержит реальные variable tags, которые уже были найдены
+/// во время Calc Catalog scan. Это позволяет специализированному UI
+/// автоматически создавать bindings без повторного CtApi discovery.
 /// </summary>
 public sealed class CalcModelDto
 {
@@ -44,6 +47,20 @@ public sealed class CalcModelDto
     /// Реальный Equipment Type Plant SCADA.
     /// </summary>
     public CalcModelTypeDto Type { get; set; }
+
+    /// <summary>
+    /// Реальные variable tags данного Calc Equipment,
+    /// найденные во время Calc Catalog scan.
+    ///
+    /// Например для Tank:
+    /// *_H_MAX
+    /// *_H_HMI
+    /// *_V_HMI
+    /// *_M_HMI
+    ///
+    /// Для Density здесь же находится его *_HMI tag.
+    /// </summary>
+    public IReadOnlyList<string> TagNames { get; set; } = [];
 }
 
 /// <summary>

@@ -1,7 +1,7 @@
 .tank-configuration {
     display: grid;
-    grid-template-columns: minmax(320px, 420px) minmax(560px, 1fr);
-    gap: 18px;
+    grid-template-columns: minmax(320px, 420px) minmax(600px, 1fr);
+    gap: 20px;
     margin-top: 18px;
     min-width: 0;
 }
@@ -18,6 +18,10 @@
     margin-bottom: 12px;
     font-size: 1rem;
     font-weight: 600;
+}
+
+.tank-secondary-header {
+    margin-top: 22px;
 }
 
 .tank-loading {
@@ -45,25 +49,24 @@
 
 
 /* ============================================================
-   Parameters table
+   Common tables
    ============================================================ */
 
-.tank-parameter-table-wrap {
+.tank-table-wrap {
     width: 100%;
     overflow-x: auto;
     border: 1px solid var(--rz-border-normal);
     border-radius: 7px;
 }
 
-.tank-parameter-table {
+.tank-table {
     width: 100%;
-    min-width: 780px;
     border-collapse: collapse;
     table-layout: auto;
 }
 
-    .tank-parameter-table th {
-        padding: 8px 9px;
+    .tank-table th {
+        padding: 8px 10px;
         text-align: left;
         white-space: nowrap;
         color: var(--rz-text-secondary-color);
@@ -73,67 +76,98 @@
         font-weight: 600;
     }
 
-    .tank-parameter-table td {
-        padding: 8px 9px;
+    .tank-table td {
+        padding: 9px 10px;
         vertical-align: middle;
         border-bottom: 1px solid var(--rz-border-normal);
+        font-size: 0.84rem;
     }
 
-    .tank-parameter-table tbody tr:last-child td {
+    .tank-table tbody tr:last-child td {
         border-bottom: 0;
     }
 
-    .tank-parameter-table tbody tr:hover {
+    .tank-table tbody tr:hover {
         background: var(--rz-base-50);
     }
 
-.tank-use-column {
-    width: 48px;
-    text-align: center !important;
-}
-
-.tank-source-column {
-    width: 165px;
-}
-
-.tank-age-column {
-    width: 105px;
-}
-
-.tank-parameter-name {
-    font-size: 0.84rem;
+.tank-strong {
     font-weight: 600;
-    white-space: nowrap;
 }
 
-.tank-parameter-key {
+.tank-key {
     margin-top: 2px;
     color: var(--rz-text-secondary-color);
     font-size: 0.72rem;
-    white-space: nowrap;
 }
 
-.tank-dependency-source {
-    display: grid;
-    grid-template-columns: minmax(130px, 1fr) minmax(110px, 1fr);
-    gap: 6px;
+.tank-muted {
+    color: var(--rz-text-secondary-color);
 }
 
-.tank-boolean-value {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+.tank-tag {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.78rem;
+    overflow-wrap: anywhere;
+}
+
+.tank-status-column {
+    width: 105px;
+}
+
+.tank-transform-column {
+    width: 105px;
+}
+
+.tank-value-column {
+    width: 180px;
+}
+
+.tank-unit-column {
+    width: 75px;
 }
 
 
 /* ============================================================
-   Actions
+   Messages
    ============================================================ */
+
+.tank-warning {
+    margin-top: 12px;
+}
+
+.tank-inline-warning {
+    margin-top: 8px;
+    color: var(--rz-warning);
+    font-size: 0.78rem;
+}
+
+
+/* ============================================================
+   Job options
+   ============================================================ */
+
+.tank-job-options {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 24px;
+    margin-top: 18px;
+}
+
+.tank-job-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+}
 
 .tank-actions {
     display: flex;
     justify-content: flex-end;
-    margin-top: 14px;
+    margin-top: 16px;
 }
 
 
@@ -143,7 +177,7 @@
 
 @media (max-width: 1250px) {
     .tank-configuration {
-        grid-template-columns: minmax(300px, 380px) minmax(500px, 1fr);
+        grid-template-columns: minmax(300px, 380px) minmax(520px, 1fr);
     }
 }
 
@@ -155,72 +189,4 @@
     .tank-preview-column {
         max-width: 460px;
     }
-}
-
-/* ============================================================
-   LevelTank links
-   ============================================================ */
-
-.tank-link-table-wrap {
-    width: 100%;
-    overflow: hidden;
-    margin-bottom: 12px;
-    border: 1px solid var(--rz-border-normal);
-    border-radius: 7px;
-}
-
-.tank-link-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-    .tank-link-table th {
-        padding: 8px 10px;
-        text-align: left;
-        color: var(--rz-text-secondary-color);
-        background: var(--rz-base-100);
-        border-bottom: 1px solid var(--rz-border-normal);
-        font-size: 0.76rem;
-        font-weight: 600;
-    }
-
-    .tank-link-table td {
-        padding: 9px 10px;
-        border-bottom: 1px solid var(--rz-border-normal);
-        font-size: 0.84rem;
-    }
-
-    .tank-link-table tbody tr:last-child td {
-        border-bottom: 0;
-    }
-
-    .tank-link-table td:first-child {
-        width: 90px;
-        font-weight: 600;
-    }
-
-    .tank-link-table td:last-child {
-        width: 105px;
-    }
-
-.tank-link-warning {
-    margin-bottom: 18px;
-}
-
-.tank-secondary-header {
-    margin-top: 18px;
-}
-
-.tank-job-options {
-    display: flex;
-    align-items: center;
-    margin-top: 14px;
-}
-
-.tank-job-option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.86rem;
-    font-weight: 600;
 }

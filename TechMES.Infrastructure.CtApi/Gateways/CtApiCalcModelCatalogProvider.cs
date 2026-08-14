@@ -92,7 +92,8 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
                     Name = candidate.Equipment,
                     Description = description,
                     Station = ExtractStation(candidate.Equipment),
-                    Type = type
+                    Type = type,
+                    TagNames = candidate.TagNames.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase).ToList()
                 });
             }
 
@@ -126,48 +127,43 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
     /// <summary>
     /// Ищет Equipment-кандидатов по известным tag naming conventions.
     ///
-    /// Эти шаблоны нужны только чтобы не сканировать всю Tag table.
-    /// Окончательный Type всегда подтверждается через EquipGetProperty.
+    /// Помимо Equipment сохраняем все реальные TAG-и найденной модели.
+    /// Они уже получены текущим CtApi scan, поэтому отдельный lookup
+    /// для Tank/Density bindings потом не требуется.
     /// </summary>
     private async Task<Dictionary<string, CalcModelCandidate>> FindCandidatesAsync(CancellationToken ct)
     {
         var result = new Dictionary<string, CalcModelCandidate>(StringComparer.OrdinalIgnoreCase);
-        var cluster = string.IsNullOrWhiteSpace(equipmentOptions.Value.CtApiCluster)
-            ? null
-            : equipmentOptions.Value.CtApiCluster;
+        var cluster = string.IsNullOrWhiteSpace(equipmentOptions.Value.CtApiCluster) ? null : equipmentOptions.Value.CtApiCluster;
 
         foreach (var filter in DiscoveryFilters)
         {
             ct.ThrowIfCancellationRequested();
 
-            var rows = await nativeClient.FindAsync(
-                TagTableName,
-                filter,
-                cluster,
-                [EquipmentField, TagField, CommentField],
-                ct);
+            var rows = await nativeClient.FindAsync(TagTableName, filter, cluster, [EquipmentField, TagField, CommentField], ct);
 
             foreach (var row in rows)
             {
                 var equipment = GetValue(row, EquipmentField).Trim();
+                var tag = GetValue(row, TagField).Trim();
 
                 if (equipment.Length == 0)
                     continue;
 
                 var comment = CleanScadaText(GetValue(row, CommentField));
 
-                if (!result.TryGetValue(equipment, out var existing))
+                if (!result.TryGetValue(equipment, out var candidate))
                 {
-                    result[equipment] = new CalcModelCandidate(equipment, comment);
-                    continue;
+                    candidate = new CalcModelCandidate(equipment, comment);
+                    result[equipment] = candidate;
+                }
+                else if (candidate.FallbackDescription.Length == 0 && comment.Length > 0)
+                {
+                    candidate.FallbackDescription = comment;
                 }
 
-                /*
-                 * Если первая строка была без COMMENT, оставляем
-                 * первый найденный непустой текст как fallback.
-                 */
-                if (existing.FallbackDescription.Length == 0 && comment.Length > 0)
-                    result[equipment] = existing with { FallbackDescription = comment };
+                if (tag.Length > 0)
+                    candidate.TagNames.Add(tag);
             }
         }
 
@@ -257,7 +253,8 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
             Name = source.Name,
             Description = source.Description,
             Station = source.Station,
-            Type = source.Type
+            Type = source.Type,
+            TagNames = source.TagNames.ToList()
         };
     }
 
@@ -358,5 +355,18 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
         return (value ?? "").Replace("\"", "\"\"");
     }
 
-    private sealed record CalcModelCandidate(string Equipment, string FallbackDescription);
+    private sealed class CalcModelCandidate
+    {
+        public CalcModelCandidate(string equipment, string fallbackDescription)
+        {
+            Equipment = equipment;
+            FallbackDescription = fallbackDescription;
+        }
+
+        public string Equipment { get; }
+
+        public string FallbackDescription { get; set; }
+
+        public HashSet<string> TagNames { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
 }
