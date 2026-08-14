@@ -6,78 +6,116 @@ using TechMES.Calc.Results;
 namespace TechMES.Calc.Tanks.Types;
 
 /// <summary>
-/// Общая база всех алгоритмов расчёта объёма Tank.
+/// Общая база всех алгоритмов Tank.
 ///
-/// Каждый тип сборника реализует свою формулу
+/// Конкретная геометрическая формула по-прежнему находится
 /// в отдельном TankTypeNVolumeDefinition.cs.
 ///
-/// Общая база содержит только:
-/// - описание общих входных параметров;
-/// - описание выхода Volume;
-/// - преобразование результата в CalculationResult.
+/// Этот класс теперь выполняет общую legacy-логику LevelTank:
 ///
-/// Математика конкретного типа здесь отсутствует.
+/// Level raw -> LevelMm -> Tank Volume -> Mass.
 /// </summary>
 public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
 {
-    private static readonly IReadOnlyList<CalculationOutputDefinition>
-        OutputDefinitions =
-        [
-            new(
-                Key: "volume",
-                Name: "Volume",
-                Unit: "m³",
-                Decimals: 3,
-                Order: 1,
-                Description: "Calculated tank volume.")
-        ];
+    private static readonly IReadOnlyList<CalculationOutputDefinition> OutputDefinitions =
+    [
+        new(
+            Key: "hMax",
+            Name: "H max",
+            Unit: "mm",
+            Decimals: 0,
+            Order: 1,
+            Description: "Legacy H_MAX = DistanceB - DistanceA."),
+
+        new(
+            Key: "levelMm",
+            Name: "Level",
+            Unit: "mm",
+            Decimals: 0,
+            Order: 2,
+            Description: "Calculated liquid level in millimetres."),
+
+        new(
+            Key: "volume",
+            Name: "Volume",
+            Unit: "m³",
+            Decimals: 3,
+            Order: 3,
+            Description: "Calculated tank volume."),
+
+        new(
+            Key: "mass",
+            Name: "Mass",
+            Unit: "t",
+            Decimals: 3,
+            Order: 4,
+            Description: "Calculated product mass.")
+    ];
 
     public override string Category => "Tanks";
 
-    public override string Version => "1";
+     // Меняем версию, потому что контракт алгоритма теперь другой:
+     //
+     // раньше: levelMm -> volume
+     // теперь: levelRaw + densityHmi -> hMax + levelMm + volume + mass
+    public override string Version => "2";
 
-    public override IReadOnlyList<CalculationOutputDefinition>Outputs => OutputDefinitions;
+    public override IReadOnlyList<CalculationOutputDefinition> Outputs => OutputDefinitions;
 
     /// <summary>
     /// Создаёт полный набор параметров конкретного Tank Type.
     ///
-    /// geometryParameters содержат только используемые данным типом
-    /// dimA..dimF.
+    /// levelRaw и densityHmi являются связанными Runtime inputs.
+    /// В специализированном Tank UI пользователь их редактировать не будет.
     ///
-    /// Остальные параметры являются общими для всех Tank.
+    /// geometryParameters и параметры измерительной части являются
+    /// константами Job.
     /// </summary>
-    protected static IReadOnlyList<CalculationParameterDefinition>CreateParameters(params CalculationParameterDefinition[] geometryParameters)
+    protected static IReadOnlyList<CalculationParameterDefinition> CreateParameters(params CalculationParameterDefinition[] geometryParameters)
     {
         var result = new List<CalculationParameterDefinition>
         {
             /*
-             * Текущее значение уровня.
+             * Старый Level.Val_R.
              *
-             * В production это будет Tag input.
-             * Пока default 0 позволяет создать Disabled Job
-             * до окончательной настройки привязок.
+             * Позже TankConfigurationPanel автоматически привяжет сюда
+             * реальный R-tag связанного Level.
              */
             Number(
-                key: "levelMm",
-                name: "Measured level",
-                unit: "mm",
+                key: "levelRaw",
+                name: "Level raw",
+                unit: "",
                 order: 1,
                 defaultValue: 0d,
                 minimum: null,
-                description: "Current measured level.")
+                description: "Linked Level.R value."),
+
+            /*
+             * Старый Density.ValHmi.
+             *
+             * Позже автоматически привязывается к связанному Density.
+             */
+            Number(
+                key: "densityHmi",
+                name: "Density HMI",
+                unit: "",
+                order: 2,
+                defaultValue: 0d,
+                minimum: null,
+                description: "Linked Density HMI value.")
         };
 
         result.AddRange(geometryParameters);
 
         /*
-         * Параметры измерительной части.
+         * Старый TankContent:
          *
-         * Названия соответствуют старым:
+         * distanceA
+         * distanceB
+         * distToDistanceA
+         * probeLength
          *
-         * TankContent.distanceA
-         * TankContent.distanceB
-         * TankContent.distToDistanceA
-         * TankContent.probeLength
+         * Это обычные константы Job.
          */
         result.AddRange(
         [
@@ -106,11 +144,10 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
                 minimum: 0d),
 
             /*
-             * В старом Tank.cs ProbeLength не участвует
-             * ни в одном из 8 алгоритмов.
+             * ProbeLength сохраняем как конфигурационный параметр.
              *
-             * Оставляем его в конфигурации,
-             * но НЕ придумываем ему математическое применение.
+             * В старом Tank.cs он не участвует ни в одной
+             * из восьми формул объёма.
              */
             Number(
                 key: "probeLength",
@@ -126,7 +163,7 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
     }
 
     /// <summary>
-    /// Создаёт размер dimA..dimF.
+    /// Создаёт геометрический размер dimA..dimF.
     /// </summary>
     protected static CalculationParameterDefinition Dimension(
         string key,
@@ -139,16 +176,7 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
         int decimals = 0,
         string? description = null)
     {
-        return Number(
-            key,
-            name,
-            unit,
-            order,
-            defaultValue,
-            minimum,
-            step,
-            decimals,
-            description);
+        return Number(key, name, unit, order, defaultValue, minimum, step, decimals, description);
     }
 
     private static CalculationParameterDefinition Number(
@@ -177,47 +205,102 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
     }
 
     /// <summary>
-    /// Общая оболочка выполнения Tank-алгоритма.
-    /// Конкретная формула находится в CalculateVolume().
+    /// Общий LevelTank pipeline.
+    ///
+    /// В CalculateVolume() передаётся уже рассчитанный levelMm,
+    /// поэтому сами 8 геометрических алгоритмов менять не нужно.
     /// </summary>
-    protected sealed override CalculationResult CalculateCore(CalculationParameterSet parameters, bool includeTrace)
+    protected sealed override CalculationResult CalculateCore(
+        CalculationParameterSet parameters,
+        bool includeTrace)
     {
-        var volumeM3 = CalculateVolume(parameters);
+        var levelRaw = parameters.GetRequiredDouble("levelRaw");
+        var densityHmi = parameters.GetRequiredDouble("densityHmi");
+        var distanceA = parameters.GetRequiredDouble("distanceA");
+        var distanceB = parameters.GetRequiredDouble("distanceB");
 
-        if (!double.IsFinite(volumeM3))
+        var levelTank = LevelTankCalculator.Calculate(
+            levelRaw,
+            densityHmi,
+            distanceA,
+            distanceB,
+            levelMm =>
+            {
+                /*
+                 * Конкретные TankTypeN остались legacy-compatible
+                 * и ожидают внутренний параметр levelMm.
+                 *
+                 * В Job его больше нет: это производное значение.
+                 */
+                var volumeParameters = parameters.Values.ToDictionary(
+                    item => item.Key,
+                    item => item.Value,
+                    StringComparer.OrdinalIgnoreCase);
+
+                volumeParameters["levelMm"] = levelMm;
+
+                return CalculateVolume(new CalculationParameterSet(volumeParameters));
+            });
+
+        if (!double.IsFinite(levelTank.VolumeM3))
         {
-            return CalculationResult.Failure("tank.volume.not-finite", "Calculated tank volume is not a finite number.");
+            return CalculationResult.Failure(
+                "tank.volume.not-finite",
+                "Calculated tank volume is not a finite number.");
         }
 
-        IReadOnlyList<CalculationTraceItem> trace =
-            includeTrace
-                ?
-                [
-                    new CalculationTraceItem(
-                        Key: "volumeM3",
-                        Name: "Calculated volume",
-                        Value: volumeM3.ToString(
-                            "0.############",
-                            CultureInfo.InvariantCulture),
-                        Unit: "m³")
-                ]
-                :
-                [];
+        if (!double.IsFinite(levelTank.MassT))
+        {
+            return CalculationResult.Failure(
+                "tank.mass.not-finite",
+                "Calculated tank mass is not a finite number.");
+        }
+
+        IReadOnlyList<CalculationTraceItem> trace = includeTrace
+            ?
+            [
+                new(
+                    Key: "hMaxMm",
+                    Name: "H max",
+                    Value: levelTank.HMaxMm.ToString(CultureInfo.InvariantCulture),
+                    Unit: "mm"),
+
+                new(
+                    Key: "levelMm",
+                    Name: "Calculated level",
+                    Value: levelTank.LevelMm.ToString(CultureInfo.InvariantCulture),
+                    Unit: "mm"),
+
+                new(
+                    Key: "volumeM3",
+                    Name: "Calculated volume",
+                    Value: levelTank.VolumeM3.ToString("0.############", CultureInfo.InvariantCulture),
+                    Unit: "m³"),
+
+                new(
+                    Key: "massT",
+                    Name: "Calculated mass",
+                    Value: levelTank.MassT.ToString("0.############", CultureInfo.InvariantCulture),
+                    Unit: "t")
+            ]
+            :
+            [];
 
         return CalculationResult.Success(
             outputs:
             [
-                new CalculationOutput(
-                    Key: "volume",
-                    Name: "Volume",
-                    Value: volumeM3,
-                    Unit: "m³")
+                new("hMax", "H max", levelTank.HMaxMm, "mm"),
+                new("levelMm", "Level", levelTank.LevelMm, "mm"),
+                new("volume", "Volume", levelTank.VolumeM3, "m³"),
+                new("mass", "Mass", levelTank.MassT, "t")
             ],
             trace: trace);
     }
 
     /// <summary>
-    /// Формула конкретного Tank Type.
+    /// Legacy-формула конкретного Tank Type.
+    ///
+    /// Параметр levelMm сюда уже добавлен LevelTankCalculator-оболочкой.
     /// </summary>
     protected abstract double CalculateVolume(CalculationParameterSet parameters);
 }
