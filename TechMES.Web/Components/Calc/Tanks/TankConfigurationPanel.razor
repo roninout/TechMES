@@ -72,6 +72,7 @@
                         <th>Model</th>
                         <th>Equipment</th>
                         <th>Runtime tag</th>
+                        <th class="tank-runtime-column">Value</th>
                         <th class="tank-status-column">Status</th>
                     </tr>
                 </thead>
@@ -82,14 +83,17 @@
                         <td class="tank-strong">Tank</td>
                         <td>@Model.Name</td>
                         <td class="tank-muted">Output structure below</td>
+                        <td class="tank-muted">—</td>
                         <td>
-                            <RadzenBadge Text="LINKED" BadgeStyle="BadgeStyle.Success" />
+                            <RadzenBadge Text="LINKED"
+                                         BadgeStyle="BadgeStyle.Success" />
                         </td>
                     </tr>
 
                     <tr>
                         <td class="tank-strong">Level</td>
                         <td>@ExpectedLevelName</td>
+
                         <td>
                             @if (!string.IsNullOrWhiteSpace(_levelRawTag))
                             {
@@ -100,22 +104,31 @@
                                 <span class="tank-muted">—</span>
                             }
                         </td>
+
+                        <td class="tank-runtime-value">
+                            @FormatLastInputValue("levelRaw")
+                        </td>
+
                         <td>
                             @if (_isResolvingLevelTag)
                             {
-                                <RadzenBadge Text="RESOLVING" BadgeStyle="BadgeStyle.Info" />
+                                <RadzenBadge Text="RESOLVING"
+                                             BadgeStyle="BadgeStyle.Info" />
                             }
                             else if (LinkedLevel is null)
                             {
-                                <RadzenBadge Text="NOT FOUND" BadgeStyle="BadgeStyle.Danger" />
+                                <RadzenBadge Text="NOT FOUND"
+                                             BadgeStyle="BadgeStyle.Danger" />
                             }
                             else if (string.IsNullOrWhiteSpace(_levelRawTag))
                             {
-                                <RadzenBadge Text="TAG NOT FOUND" BadgeStyle="BadgeStyle.Danger" />
+                                <RadzenBadge Text="TAG NOT FOUND"
+                                             BadgeStyle="BadgeStyle.Danger" />
                             }
                             else
                             {
-                                <RadzenBadge Text="LINKED" BadgeStyle="BadgeStyle.Success" />
+                                <RadzenBadge Text="LINKED"
+                                             BadgeStyle="BadgeStyle.Success" />
                             }
                         </td>
                     </tr>
@@ -123,6 +136,7 @@
                     <tr>
                         <td class="tank-strong">Density</td>
                         <td>@ExpectedDensityName</td>
+
                         <td>
                             @if (!string.IsNullOrWhiteSpace(DensityHmiTag))
                             {
@@ -133,18 +147,26 @@
                                 <span class="tank-muted">—</span>
                             }
                         </td>
+
+                        <td class="tank-runtime-value">
+                            @FormatLastInputValue("densityHmi")
+                        </td>
+
                         <td>
                             @if (LinkedDensity is null)
                             {
-                                <RadzenBadge Text="NOT FOUND" BadgeStyle="BadgeStyle.Danger" />
+                                <RadzenBadge Text="NOT FOUND"
+                                             BadgeStyle="BadgeStyle.Danger" />
                             }
                             else if (string.IsNullOrWhiteSpace(DensityHmiTag))
                             {
-                                <RadzenBadge Text="TAG NOT FOUND" BadgeStyle="BadgeStyle.Danger" />
+                                <RadzenBadge Text="TAG NOT FOUND"
+                                             BadgeStyle="BadgeStyle.Danger" />
                             }
                             else
                             {
-                                <RadzenBadge Text="LINKED" BadgeStyle="BadgeStyle.Success" />
+                                <RadzenBadge Text="LINKED"
+                                             BadgeStyle="BadgeStyle.Success" />
                             }
                         </td>
                     </tr>
@@ -197,8 +219,10 @@
                             <tr>
                                 <td>
                                     <div class="tank-strong">@output.Name</div>
+
                                     <div class="tank-key">
                                         @output.Key
+
                                         @if (!string.IsNullOrWhiteSpace(output.Unit))
                                         {
                                             <span> · @output.Unit</span>
@@ -213,11 +237,20 @@
                                     }
                                     else
                                     {
-                                        <RadzenBadge Text="NOT FOUND" BadgeStyle="BadgeStyle.Danger" />
+                                        <RadzenBadge Text="NOT FOUND"
+                                                     BadgeStyle="BadgeStyle.Danger" />
                                     }
                                 </td>
 
-                                @if (string.Equals(output.Key, "volume", StringComparison.OrdinalIgnoreCase))
+                                <!-- Последний реальный результат расчёта -->
+                                <td class="tank-runtime-value">
+                                    @FormatLastOutputValue(output.Key)
+                                </td>
+
+                                @if (string.Equals(
+                                        output.Key,
+                                        "volume",
+                                        StringComparison.OrdinalIgnoreCase))
                                 {
                                     <td>
                                         <RadzenNumeric TValue="double"
@@ -367,6 +400,9 @@
     public CalcJobDto? Job { get; set; }
 
     [Parameter]
+    public CalcJobStateDto? State { get; set; }
+
+    [Parameter]
     public IReadOnlyList<CalcModelDto> CalcModels { get; set; } = [];
 
     [Parameter]
@@ -423,7 +459,6 @@
                 : name;
         }
     }
-
 
     private string ExpectedLevelName => TankRoot;
 
@@ -1094,6 +1129,88 @@
         return normalized.Length == 0 ? null : normalized;
     }
 
+    /// <summary>
+    /// Последнее фактическое значение Input,
+    /// использованное Calc.Service при расчёте Tank.
+    ///
+    /// Для LevelTank это:
+    /// levelRaw
+    /// densityHmi
+    /// </summary>
+    private string FormatLastInputValue(string key)
+    {
+        return TryGetRuntimeNumber(State?.LastInputs, key, out var value)
+            ? FormatRuntimeNumber(key, value)
+            : "—";
+    }
+
+
+    /// <summary>
+    /// Последний инженерный Output алгоритма.
+    ///
+    /// Здесь Scale/Offset ещё не применены.
+    /// </summary>
+    private string FormatLastOutputValue(string key)
+    {
+        return TryGetRuntimeNumber(State?.LastOutputs, key, out var value)
+            ? FormatRuntimeNumber(key, value)
+            : "—";
+    }
+
+
+    /// <summary>
+    /// Безопасно читает числовое значение из LastInputs / LastOutputs.
+    ///
+    /// Сравнение ключей case-insensitive, потому что DTO не должен
+    /// зависеть от способа сериализации Dictionary.
+    /// </summary>
+    private static bool TryGetRuntimeNumber(JsonElement? source, string key, out double value)
+    {
+        value = 0;
+
+        if (!source.HasValue || source.Value.ValueKind != JsonValueKind.Object)
+            return false;
+
+        foreach (var property in source.Value.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, key, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetDouble(out value) && double.IsFinite(value))
+                return true;
+
+            return false;
+        }
+
+        return false;
+    }
+
+
+    /// <summary>
+    /// Форматирование фактических runtime values.
+    ///
+    /// LevelRaw/DensityHmi показываем такими,
+    /// какими они реально пришли из SCADA.
+    ///
+    /// Calculated Level/HMax - целые mm.
+    /// Volume/Mass - инженерные значения.
+    /// </summary>
+    private static string FormatRuntimeNumber(string key, double value)
+    {
+        return key.ToLowerInvariant() switch
+        {
+            "hmax" => value.ToString("0"),
+            "levelmm" => value.ToString("0"),
+
+            "volume" => value.ToString("0.###"),
+            "mass" => value.ToString("0.###"),
+
+            "levelraw" => value.ToString("0.###"),
+            "densityhmi" => value.ToString("0.###"),
+
+            _ => value.ToString("0.###")
+        };
+    }
 
     private sealed class TankInputEditor
     {

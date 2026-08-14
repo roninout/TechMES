@@ -190,3 +190,13 @@
         max-width: 460px;
     }
 }
+
+.tank-runtime-column {
+    width: 120px;
+}
+
+.tank-runtime-value {
+    min-width: 90px;
+    white-space: nowrap;
+    font-weight: 600;
+}
