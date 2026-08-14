@@ -1,4 +1,5 @@
 ﻿@using System.Text.Json
+@using TechMES.Contracts.Equipment
 @inject CalcApiClient CalcApi
 @inject NotificationService NotificationService
 
@@ -54,7 +55,79 @@
          ============================================================ -->
     <section class="tank-parameters-column">
 
+        <!-- ============================================================
+         LEVEL TANK
+         Автоматически найденные связанные модели
+         ============================================================ -->
         <div class="tank-section-header">
+            <RadzenIcon Icon="account_tree" />
+            <span>LevelTank</span>
+        </div>
+
+        <div class="tank-link-table-wrap">
+            <table class="tank-link-table">
+                <thead>
+                    <tr>
+                        <th>Model</th>
+                        <th>Equipment</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr>
+                        <td>Tank</td>
+                        <td>@Model.Name</td>
+                        <td>
+                            <RadzenBadge Text="LINKED" BadgeStyle="BadgeStyle.Success" />
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>Level</td>
+                        <td>@ExpectedLevelName</td>
+                        <td>
+                            @if (LinkedLevel is not null)
+                            {
+                                <RadzenBadge Text="LINKED" BadgeStyle="BadgeStyle.Success" />
+                            }
+                            else
+                            {
+                                <RadzenBadge Text="NOT FOUND" BadgeStyle="BadgeStyle.Danger" />
+                            }
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>Density</td>
+                        <td>@ExpectedDensityName</td>
+                        <td>
+                            @if (LinkedDensity is not null)
+                            {
+                                <RadzenBadge Text="LINKED" BadgeStyle="BadgeStyle.Success" />
+                            }
+                            else
+                            {
+                                <RadzenBadge Text="NOT FOUND" BadgeStyle="BadgeStyle.Danger" />
+                            }
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        @if (!IsLevelTankReady)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Warning"
+                         ShowIcon="true"
+                         class="tank-link-warning">
+                Level and Density must be linked before this Tank Job can be enabled.
+            </RadzenAlert>
+        }
+
+        <!-- Пока оставляем существующую таблицу Parameters.
+         На следующем шаге она будет заменена на OUTPUT + INPUT. -->
+        <div class="tank-section-header tank-secondary-header">
             <RadzenIcon Icon="tune" />
             <span>Parameters</span>
         </div>
@@ -225,6 +298,16 @@
 
             </div>
 
+            <div class="tank-job-options">
+                <div class="tank-job-option">
+                    <RadzenCheckBox TValue="bool"
+                                    @bind-Value="_enabled"
+                                    Disabled="@(_isSaving || !IsLevelTankReady)" />
+
+                    <span>Enabled</span>
+                </div>
+            </div>
+
 
             <div class="tank-actions">
 
@@ -261,6 +344,12 @@
     public CalcJobDto? Job { get; set; }
 
     [Parameter]
+    public IReadOnlyList<CalcModelDto> CalcModels { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<EquipmentDto> EquipmentCatalog { get; set; } = [];
+
+    [Parameter]
     public EventCallback JobChanged { get; set; }
 
 
@@ -275,6 +364,7 @@
 
     private bool _isLoadingDefinitions;
     private bool _isSaving;
+    private bool _enabled;
 
 
     private CalcDefinitionDto? SelectedDefinition =>
@@ -287,6 +377,49 @@
 
     private bool HasTankTypeChanged =>
         Job is not null && !string.Equals(Job.DefinitionCode, _selectedDefinitionCode, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Имя общего LevelTank-корня.
+    ///
+    /// S02.R02.LC01.Tank
+    ///             ↓
+    /// S02.R02.LC01
+    /// </summary>
+    private string TankRoot
+    {
+        get
+        {
+            var name = (Model.Name ?? "").Trim();
+
+            return name.EndsWith(".Tank", StringComparison.OrdinalIgnoreCase)
+                ? name[..^5]
+                : name;
+        }
+    }
+
+    private string ExpectedLevelName => TankRoot;
+
+    private string ExpectedDensityName => TankRoot + ".Density";
+
+    /// <summary>
+    /// Level является обычным AI и уже находится
+    /// в общем Runtime Equipment Catalog.
+    /// </summary>
+    private EquipmentDto? LinkedLevel =>
+        EquipmentCatalog.FirstOrDefault(item =>
+            !item.IsGroup
+            && !item.IsEquipmentChildNode
+            && item.TypeGroup == EquipmentTypeGroup.AI
+            && string.Equals(item.Name, ExpectedLevelName, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Density является Calc model и ищется в уже загруженном Calc Catalog.
+    /// </summary>
+    private CalcModelDto? LinkedDensity =>
+        CalcModels.FirstOrDefault(item =>
+            item.Type == CalcModelTypeDto.Density && string.Equals(item.Name, ExpectedDensityName, StringComparison.OrdinalIgnoreCase));
+
+    private bool IsLevelTankReady => LinkedLevel is not null && LinkedDensity is not null;
 
 
     protected override async Task OnInitializedAsync()
@@ -345,17 +478,20 @@
 
 
     /// <summary>
-    /// Восстанавливает выбранный Tank Type и параметры
-    /// при выборе другого оборудования или после сохранения Job.
+    /// Восстанавливает Tank Type, Inputs и состояние Enabled.
+    ///
+    /// В context key включены найденные Level/Density, чтобы изменение
+    /// Runtime Catalog сразу пересчитало готовность LevelTank.
     /// </summary>
     private void SynchronizeSelection(bool force = false)
     {
-        var newContextKey = $"{Model.Name}|{Job?.Id}|{Job?.Revision}";
+        var newContextKey = $"{Model.Name}|{Job?.Id}|{Job?.Revision}|{LinkedLevel?.Name}|{LinkedDensity?.Name}";
 
         if (!force && string.Equals(_contextKey, newContextKey, StringComparison.Ordinal))
             return;
 
         _contextKey = newContextKey;
+        _enabled = Job?.Enabled == true && IsLevelTankReady;
 
         if (Job is not null && _tankDefinitions.Any(definition =>
                 string.Equals(definition.Code, Job.DefinitionCode, StringComparison.OrdinalIgnoreCase)))
@@ -384,7 +520,19 @@
         if (definition is null)
             return;
 
+        var typeChanged = !string.Equals(
+            _selectedDefinitionCode,
+            definition.Code,
+            StringComparison.OrdinalIgnoreCase);
+
         _selectedDefinitionCode = definition.Code;
+
+        /*
+         * При смене геометрического алгоритма активный Job
+         * безопасно выключаем до сохранения новой конфигурации.
+         */
+        if (typeChanged)
+            _enabled = false;
 
         var storedJob = Job is not null
             && string.Equals(Job.DefinitionCode, definition.Code, StringComparison.OrdinalIgnoreCase)
@@ -575,7 +723,7 @@
                 Description = Model.Description,
                 DefinitionCode = definition.Code,
                 DefinitionVersion = definition.Version,
-                Enabled = false,
+                Enabled = _enabled && IsLevelTankReady,
                 PeriodMs = 5000,
                 WriteEnabled = false,
                 SortOrder = 0,
@@ -639,7 +787,7 @@
                 Description = Job.Description,
                 DefinitionCode = definition.Code,
                 DefinitionVersion = definition.Version,
-                Enabled = typeChanged ? false : Job.Enabled,
+                Enabled = _enabled && IsLevelTankReady,
                 PeriodMs = Job.PeriodMs,
                 WriteEnabled = typeChanged ? false : Job.WriteEnabled,
                 SortOrder = Job.SortOrder,

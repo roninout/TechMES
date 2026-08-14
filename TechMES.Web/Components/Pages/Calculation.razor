@@ -1,6 +1,8 @@
 ﻿@page "/calculations"
 @using TechMES.Contracts.Calc
+@using TechMES.Contracts.Equipment
 @inject CalcApiClient CalcApi
+@inject EquipmentApiClient EquipmentApi
 @inject NotificationService NotificationService
 
 <PageTitle>Calculations</PageTitle>
@@ -281,6 +283,8 @@
                     {
                         <TankConfigurationPanel Model="@_selectedModel"
                                                 Job="@selectedJob"
+                                                CalcModels="@_allModels"
+                                                EquipmentCatalog="@_equipmentCatalog"
                                                 JobChanged="@ReloadAfterTankJobChangedAsync" />
                     }
                     else
@@ -316,6 +320,7 @@
 
     private List<CalcModelDto> _allModels = [];
     private List<CalcModelDto> _filteredModels = [];
+    private List<EquipmentDto> _equipmentCatalog = [];
 
     private Dictionary<string, CalcJobDto> _jobsByEquipment =
         new(StringComparer.OrdinalIgnoreCase);
@@ -350,7 +355,10 @@
 
 
     /// <summary>
-    /// Загружает cached Calc Catalog, Jobs и Runtime states.
+    /// Загружает cached Calc Catalog, Equipment Catalog, Jobs и Runtime states.
+    ///
+    /// Equipment Catalog нужен специализированным расчётам Tank:
+    /// Level ищется среди уже известных Runtime AI без дополнительного CtApi scan.
     /// </summary>
     private async Task LoadAsync(bool refreshCatalog)
     {
@@ -365,24 +373,21 @@
                 ? CalcApi.RefreshModelCatalogAsync()
                 : CalcApi.GetModelCatalogAsync();
 
+            var equipmentTask = EquipmentApi.GetEquipmentListAsync();
             var jobsTask = CalcApi.GetJobsAsync();
             var statesTask = CalcApi.GetStatesAsync();
 
-            await Task.WhenAll(
-                catalogTask,
-                jobsTask,
-                statesTask);
+            await Task.WhenAll(catalogTask, equipmentTask, jobsTask, statesTask);
 
             _catalog = await catalogTask;
 
+            var equipment = await equipmentTask;
             var jobs = await jobsTask;
             var states = await statesTask;
 
             if (!_catalog.IsAvailable)
             {
-                ShowError(
-                    _catalog.ErrorMessage
-                    ?? "Calc SCADA catalog provider is unavailable.");
+                ShowError(_catalog.ErrorMessage ?? "Calc SCADA catalog provider is unavailable.");
             }
 
             _allModels = _catalog.Items
@@ -391,11 +396,23 @@
                 .ThenBy(model => model.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            /*
+             * Для связей LevelTank нужны только реальные root Equipment.
+             *
+             * Одно физическое оборудование может присутствовать в общем
+             * Equipment Catalog второй раз как child-node группы Equipment.
+             * Такие дубли здесь отбрасываем.
+             */
+            _equipmentCatalog = equipment.Equipments
+                .Where(item => !item.IsGroup && !item.IsEquipmentChildNode)
+                .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
             _jobsByEquipment = jobs
                 .Where(job => !string.IsNullOrWhiteSpace(job.EquipmentName))
-                .GroupBy(
-                    job => job.EquipmentName!,
-                    StringComparer.OrdinalIgnoreCase)
+                .GroupBy(job => job.EquipmentName!, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
                     group => group.Key,
                     group => group.OrderByDescending(job => job.Id).First(),
@@ -403,9 +420,7 @@
 
             _statesByJobId = states
                 .GroupBy(state => state.JobId)
-                .ToDictionary(
-                    group => group.Key,
-                    group => group.First());
+                .ToDictionary(group => group.Key, group => group.First());
 
             BuildFilterItems();
             ApplyFilters();
@@ -413,10 +428,7 @@
             if (!string.IsNullOrWhiteSpace(previousSelection))
             {
                 _selectedModel = _filteredModels.FirstOrDefault(model =>
-                    string.Equals(
-                        model.Name,
-                        previousSelection,
-                        StringComparison.OrdinalIgnoreCase));
+                    string.Equals(model.Name, previousSelection, StringComparison.OrdinalIgnoreCase));
             }
 
             _selectedModel ??= _filteredModels.FirstOrDefault();
@@ -431,8 +443,7 @@
         }
         catch (Exception ex)
         {
-            ShowError(
-                "Cannot load calculation models: " + ex.Message);
+            ShowError("Cannot load calculation models: " + ex.Message);
         }
         finally
         {
