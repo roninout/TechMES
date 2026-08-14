@@ -1,8 +1,13 @@
-﻿@inject CalcApiClient CalcApi
+﻿@using System.Text.Json
+@inject CalcApiClient CalcApi
 @inject NotificationService NotificationService
 
 <div class="tank-configuration">
 
+    <!-- ============================================================
+         LEFT
+         Схема сборника + выбор Tank Type
+         ============================================================ -->
     <section class="tank-preview-column">
 
         <div class="tank-section-header">
@@ -26,144 +31,221 @@
         {
             <TankTypePreview TypeNumber="@SelectedTypeNumber" />
 
-            <div class="tank-preview-info">
-                <strong>@SelectedDefinition.Name</strong>
-                <span>@SelectedDefinition.Code</span>
+            <div class="tank-type-field">
+                <RadzenLabel Text="Tank type" />
+
+                <RadzenDropDown TValue="string"
+                                Data="@_tankDefinitions"
+                                TextProperty="@nameof(CalcDefinitionDto.Name)"
+                                ValueProperty="@nameof(CalcDefinitionDto.Code)"
+                                Value="@_selectedDefinitionCode"
+                                Change="@OnTankTypeChanged"
+                                Disabled="@_isSaving"
+                                Style="width:100%;" />
             </div>
         }
 
     </section>
 
 
-    <section class="tank-settings-column">
+    <!-- ============================================================
+         RIGHT
+         Параметры выбранного алгоритма
+         ============================================================ -->
+    <section class="tank-parameters-column">
 
         <div class="tank-section-header">
-            <RadzenIcon Icon="settings" />
-            <span>Tank configuration</span>
+            <RadzenIcon Icon="tune" />
+            <span>Parameters</span>
         </div>
 
-
-        @if (!_isLoadingDefinitions && string.IsNullOrWhiteSpace(_loadError))
+        @if (!_isLoadingDefinitions && string.IsNullOrWhiteSpace(_loadError) && SelectedDefinition is not null)
         {
-            <div class="tank-field">
+            <div class="tank-parameter-table-wrap">
 
-                <label>Tank type</label>
+                <table class="tank-parameter-table">
 
-                <RadzenDropDown TValue="string"
-                                Data="@_tankDefinitions"
-                                TextProperty="@nameof(CalcDefinitionDto.Name)"
-                                ValueProperty="@nameof(CalcDefinitionDto.Code)"
-                                @bind-Value="_selectedDefinitionCode"
-                                Disabled="@_isSaving"
-                                Style="width:100%;" />
+                    <thead>
+                        <tr>
+                            <th class="tank-use-column">Use</th>
+                            <th>Parameter</th>
+                            <th class="tank-source-column">Source</th>
+                            <th>Value / tag</th>
+                            <th class="tank-age-column">Max age, s</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        @foreach (var input in _inputs)
+                        {
+                            <tr>
+
+                                <!-- Use -->
+                                <td class="tank-use-column">
+                                    <RadzenCheckBox TValue="bool"
+                                                    @bind-Value="input.UseBinding"
+                                                    Disabled="@(_isSaving || input.IsRequired)" />
+                                </td>
+
+
+                                <!-- Parameter -->
+                                <td>
+                                    <div class="tank-parameter-name">
+                                        @input.Parameter.Name
+                                    </div>
+
+                                    <div class="tank-parameter-key">
+                                        @input.Parameter.Key
+
+                                        @if (!string.IsNullOrWhiteSpace(input.Parameter.Unit))
+                                        {
+                                            <span> · @input.Parameter.Unit</span>
+                                        }
+                                    </div>
+                                </td>
+
+
+                                <!-- Source -->
+                                <td>
+                                    <RadzenDropDown TValue="CalcInputSourceTypeDto"
+                                                    Data="@GetSourceTypes(input)"
+                                                    @bind-Value="input.SourceType"
+                                                    Disabled="@(_isSaving || !input.UseBinding)"
+                                                    Style="width:100%;" />
+                                </td>
+
+
+                                <!-- Value / tag -->
+                                <td>
+
+                                    @if (input.SourceType == CalcInputSourceTypeDto.Tag)
+                                    {
+                                        <RadzenTextBox @bind-Value="input.TagName"
+                                                       Placeholder="SCADA tag"
+                                                       Disabled="@(_isSaving || !input.UseBinding)"
+                                                       Style="width:100%;" />
+                                    }
+                                    else if (input.SourceType == CalcInputSourceTypeDto.CalculationOutput)
+                                    {
+                                        <div class="tank-dependency-source">
+
+                                            <RadzenDropDown TValue="long?"
+                                                            Data="@GetDependencyJobs()"
+                                                            TextProperty="@nameof(CalcJobDto.Name)"
+                                                            ValueProperty="@nameof(CalcJobDto.Id)"
+                                                            Value="@input.SourceJobId"
+                                                            Change="@((object? value) => OnDependencyJobChanged(input, value))"
+                                                            Placeholder="Source job"
+                                                            Disabled="@(_isSaving || !input.UseBinding)"
+                                                            Style="width:100%;" />
+
+                                            <RadzenDropDown TValue="string"
+                                                            Data="@GetDependencyOutputs(input.SourceJobId)"
+                                                            TextProperty="@nameof(CalcOutputDefinitionDto.Name)"
+                                                            ValueProperty="@nameof(CalcOutputDefinitionDto.Key)"
+                                                            @bind-Value="input.SourceOutputKey"
+                                                            Placeholder="Output"
+                                                            Disabled="@(_isSaving || !input.UseBinding || !input.SourceJobId.HasValue)"
+                                                            Style="width:100%;" />
+
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        @switch (input.Parameter.Type)
+                                        {
+                                            case CalcParameterTypeDto.Number:
+                                                <RadzenNumeric TValue="double?"
+                                                               @bind-Value="input.NumberValue"
+                                                               Disabled="@(_isSaving || !input.UseBinding)"
+                                                               Style="width:100%;" />
+                                                break;
+
+                                            case CalcParameterTypeDto.Integer:
+                                                <RadzenNumeric TValue="int?"
+                                                               @bind-Value="input.IntegerValue"
+                                                               Disabled="@(_isSaving || !input.UseBinding)"
+                                                               Style="width:100%;" />
+                                                break;
+
+                                            case CalcParameterTypeDto.Boolean:
+                                                <div class="tank-boolean-value">
+
+                                                    <RadzenCheckBox TValue="bool"
+                                                                    @bind-Value="input.BooleanValue"
+                                                                    Disabled="@(_isSaving || !input.UseBinding)" />
+
+                                                    <span>@(input.BooleanValue ? "True" : "False")</span>
+
+                                                </div>
+                                                break;
+
+                                            case CalcParameterTypeDto.Selection:
+                                                <RadzenDropDown TValue="string"
+                                                                Data="@input.Parameter.Options"
+                                                                TextProperty="@nameof(CalcParameterOptionDto.Name)"
+                                                                ValueProperty="@nameof(CalcParameterOptionDto.Value)"
+                                                                @bind-Value="input.TextValue"
+                                                                Disabled="@(_isSaving || !input.UseBinding)"
+                                                                Style="width:100%;" />
+                                                break;
+
+                                            case CalcParameterTypeDto.Text:
+                                                <RadzenTextBox @bind-Value="input.TextValue"
+                                                               Disabled="@(_isSaving || !input.UseBinding)"
+                                                               Style="width:100%;" />
+                                                break;
+                                        }
+                                    }
+
+                                </td>
+
+
+                                <!-- Max age -->
+                                <td class="tank-age-column">
+
+                                    @if (input.SourceType is CalcInputSourceTypeDto.Tag or CalcInputSourceTypeDto.CalculationOutput)
+                                    {
+                                        <RadzenNumeric TValue="int?"
+                                                       @bind-Value="input.MaxAgeSeconds"
+                                                       Min="1"
+                                                       Disabled="@(_isSaving || !input.UseBinding)"
+                                                       Style="width:100%;" />
+                                    }
+
+                                </td>
+
+                            </tr>
+                        }
+
+                    </tbody>
+
+                </table>
 
             </div>
 
 
-            <div class="tank-status-grid">
+            <div class="tank-actions">
 
-                <div class="tank-status-item">
-                    <span>Status</span>
-
-                    @if (Job is null)
-                    {
-                        <strong>NOT CONFIGURED</strong>
-                    }
-                    else if (Job.Enabled)
-                    {
-                        <strong>ENABLED</strong>
-                    }
-                    else
-                    {
-                        <strong>DISABLED</strong>
-                    }
-                </div>
-
-                <div class="tank-status-item">
-                    <span>Tank type</span>
-                    <strong>@(SelectedTypeNumber > 0 ? $"Type {SelectedTypeNumber}" : "—")</strong>
-                </div>
-
-                <div class="tank-status-item">
-                    <span>Algorithm</span>
-                    <strong title="@_selectedDefinitionCode">@(_selectedDefinitionCode ?? "—")</strong>
-                </div>
-
-                @if (Job is not null)
+                @if (Job is null)
                 {
-                    <div class="tank-status-item">
-                        <span>Revision</span>
-                        <strong>@Job.Revision</strong>
-                    </div>
-                }
-
-            </div>
-
-
-            @if (SelectedDefinition is not null)
-            {
-                <div class="tank-parameter-summary">
-
-                    <div>
-                        <span>Geometry</span>
-                        <strong>@GetGeometryParameterText(SelectedDefinition)</strong>
-                    </div>
-
-                    <div>
-                        <span>Measurement</span>
-                        <strong>Distance A, Distance B, Distance to A, Probe length</strong>
-                    </div>
-
-                    <div>
-                        <span>Output</span>
-                        <strong>Volume, m³</strong>
-                    </div>
-
-                </div>
-            }
-
-
-            @if (Job is null)
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                    Select the required Tank type and create the calculation Job.
-                    The new Job will be created disabled. Geometry, SCADA tags and output
-                    bindings will be configured in the next stage.
-                </RadzenAlert>
-
-                <div class="tank-actions">
                     <RadzenButton Text="Create job"
                                   Icon="add"
                                   ButtonStyle="ButtonStyle.Primary"
-                                  Disabled="@(_isSaving || SelectedDefinition is null)"
+                                  Disabled="@_isSaving"
                                   Click="@CreateJobAsync" />
-                </div>
-            }
-            else
-            {
-                @if (HasTankTypeChanged)
-                {
-                    <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
-                        Tank type has been changed. Saving will replace the calculation
-                        algorithm, clear existing input/output bindings and disable the Job.
-                    </RadzenAlert>
                 }
                 else
                 {
-                    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                        This Tank Job is configured for @SelectedDefinition?.Name.
-                        Geometry and measurement parameters will be added in the next stage.
-                    </RadzenAlert>
-                }
-
-                <div class="tank-actions">
-                    <RadzenButton Text="Save tank type"
+                    <RadzenButton Text="Save"
                                   Icon="save"
                                   ButtonStyle="ButtonStyle.Primary"
-                                  Disabled="@(_isSaving || !HasTankTypeChanged || SelectedDefinition is null)"
-                                  Click="@SaveTankTypeAsync" />
-                </div>
-            }
+                                  Disabled="@_isSaving"
+                                  Click="@SaveJobAsync" />
+                }
+
+            </div>
         }
 
     </section>
@@ -183,6 +265,9 @@
 
 
     private readonly List<CalcDefinitionDto> _tankDefinitions = [];
+    private readonly List<CalcJobDto> _jobs = [];
+
+    private List<TankInputEditor> _inputs = [];
 
     private string? _selectedDefinitionCode;
     private string _contextKey = "";
@@ -201,8 +286,7 @@
 
 
     private bool HasTankTypeChanged =>
-        Job is not null
-        && !string.Equals(Job.DefinitionCode, _selectedDefinitionCode, StringComparison.OrdinalIgnoreCase);
+        Job is not null && !string.Equals(Job.DefinitionCode, _selectedDefinitionCode, StringComparison.OrdinalIgnoreCase);
 
 
     protected override async Task OnInitializedAsync()
@@ -220,8 +304,9 @@
 
 
     /// <summary>
-    /// Загружает только Tank definitions.
-    /// WEB не знает формул — он работает с метаданными Runtime.
+    /// Загружает Tank definitions и список Jobs.
+    ///
+    /// Jobs нужны для SourceType.CalculationOutput.
     /// </summary>
     private async Task LoadDefinitionsAsync()
     {
@@ -230,16 +315,20 @@
 
         try
         {
-            var definitions = await CalcApi.GetDefinitionsAsync();
+            var definitionsTask = CalcApi.GetDefinitionsAsync();
+            var jobsTask = CalcApi.GetJobsAsync();
+
+            await Task.WhenAll(definitionsTask, jobsTask);
 
             _tankDefinitions.Clear();
+            _tankDefinitions.AddRange((await definitionsTask)
+                .Where(definition =>
+                    string.Equals(definition.Category, "Tanks", StringComparison.OrdinalIgnoreCase)
+                    && definition.Code.StartsWith("tank.volume.type", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(definition => GetTypeNumber(definition.Code)));
 
-            _tankDefinitions.AddRange(
-                definitions
-                    .Where(definition =>
-                        string.Equals(definition.Category, "Tanks", StringComparison.OrdinalIgnoreCase)
-                        && definition.Code.StartsWith("tank.volume.type", StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(definition => GetTypeNumber(definition.Code)));
+            _jobs.Clear();
+            _jobs.AddRange(await jobsTask);
 
             if (_tankDefinitions.Count == 0)
                 _loadError = "No Tank calculation algorithms are available in Runtime.";
@@ -256,10 +345,8 @@
 
 
     /// <summary>
-    /// При переключении выбранного оборудования или после сохранения Job
-    /// восстанавливает тип из самого Job.
-    ///
-    /// Если Job отсутствует — выбирается Type 1.
+    /// Восстанавливает выбранный Tank Type и параметры
+    /// при выборе другого оборудования или после сохранения Job.
     /// </summary>
     private void SynchronizeSelection(bool force = false)
     {
@@ -274,19 +361,201 @@
                 string.Equals(definition.Code, Job.DefinitionCode, StringComparison.OrdinalIgnoreCase)))
         {
             _selectedDefinitionCode = Job.DefinitionCode;
+            BuildInputEditors(SelectedDefinition, Job);
             return;
         }
 
         _selectedDefinitionCode = _tankDefinitions.FirstOrDefault()?.Code;
+        BuildInputEditors(SelectedDefinition, null);
     }
 
 
     /// <summary>
-    /// Создаёт первоначальный выключенный Tank Job.
+    /// Переключает Tank Type.
     ///
-    /// Параметры пока не сохраняем отдельными bindings:
-    /// текущие Tank definitions имеют DefaultValue,
-    /// поэтому Runtime разрешает configuration-first сценарий.
+    /// Если пользователь вернулся к алгоритму,
+    /// который уже сохранён в Job, восстанавливаем его Inputs.
+    /// Для другого алгоритма строим поля из DefaultValue.
+    /// </summary>
+    private void OnTankTypeChanged(object? value)
+    {
+        var definition = FindDefinition(value?.ToString());
+
+        if (definition is null)
+            return;
+
+        _selectedDefinitionCode = definition.Code;
+
+        var storedJob = Job is not null
+            && string.Equals(Job.DefinitionCode, definition.Code, StringComparison.OrdinalIgnoreCase)
+                ? Job
+                : null;
+
+        BuildInputEditors(definition, storedJob);
+    }
+
+
+    /// <summary>
+    /// Строит редакторы всех входных параметров алгоритма.
+    /// </summary>
+    private void BuildInputEditors(CalcDefinitionDto? definition, CalcJobDto? job)
+    {
+        if (definition is null)
+        {
+            _inputs = [];
+            return;
+        }
+
+        _inputs = definition.Parameters
+            .OrderBy(parameter => parameter.Order)
+            .Select(parameter =>
+            {
+                var stored = job?.Inputs.FirstOrDefault(input =>
+                    string.Equals(input.ParameterKey, parameter.Key, StringComparison.OrdinalIgnoreCase));
+
+                return CreateInputEditor(parameter, stored);
+            })
+            .ToList();
+    }
+
+
+    /// <summary>
+    /// Создаёт редактор одного параметра.
+    ///
+    /// Логика совпадает с редактором Calculation Jobs:
+    /// сохранённая binding включена,
+    /// обязательный параметр без DefaultValue включён всегда.
+    /// </summary>
+    private static TankInputEditor CreateInputEditor(CalcParameterDefinitionDto parameter, CalcJobInputDto? stored)
+    {
+        var editor = new TankInputEditor
+        {
+            Parameter = parameter,
+            IsRequired = parameter.IsRequired && !parameter.DefaultValue.HasValue,
+            UseBinding = stored is not null || (parameter.IsRequired && !parameter.DefaultValue.HasValue),
+            SourceType = stored?.SourceType ?? CalcInputSourceTypeDto.Constant,
+            TagName = stored?.TagName ?? "",
+            SourceJobId = stored?.SourceJobId,
+            SourceOutputKey = stored?.SourceOutputKey ?? "",
+            MaxAgeSeconds = stored?.MaxAgeSeconds
+        };
+
+        LoadConstantValue(editor, stored?.ConstantValue ?? parameter.DefaultValue);
+        return editor;
+    }
+
+
+    /// <summary>
+    /// Загружает ConstantValue в типизированное поле редактора.
+    /// </summary>
+    private static void LoadConstantValue(TankInputEditor editor, JsonElement? value)
+    {
+        if (!value.HasValue)
+            return;
+
+        var element = value.Value;
+
+        switch (editor.Parameter.Type)
+        {
+            case CalcParameterTypeDto.Number when element.TryGetDouble(out var number):
+                editor.NumberValue = number;
+                break;
+
+            case CalcParameterTypeDto.Integer when element.TryGetInt32(out var integer):
+                editor.IntegerValue = integer;
+                break;
+
+            case CalcParameterTypeDto.Boolean when element.ValueKind is JsonValueKind.True or JsonValueKind.False:
+                editor.BooleanValue = element.GetBoolean();
+                break;
+
+            case CalcParameterTypeDto.Selection:
+            case CalcParameterTypeDto.Text:
+                editor.TextValue = element.ValueKind == JsonValueKind.String ? element.GetString() ?? "" : "";
+                break;
+        }
+    }
+
+
+    /// <summary>
+    /// Допустимые источники параметров.
+    ///
+    /// Используем ту же логику, что и в Calculation Jobs.
+    /// </summary>
+    private static IReadOnlyList<CalcInputSourceTypeDto> GetSourceTypes(TankInputEditor input)
+    {
+        return input.Parameter.Type switch
+        {
+            CalcParameterTypeDto.Number or CalcParameterTypeDto.Integer =>
+            [
+                CalcInputSourceTypeDto.Tag,
+                CalcInputSourceTypeDto.Constant,
+                CalcInputSourceTypeDto.CalculationOutput
+            ],
+
+            CalcParameterTypeDto.Boolean =>
+            [
+                CalcInputSourceTypeDto.Tag,
+                CalcInputSourceTypeDto.Constant
+            ],
+
+            _ =>
+            [
+                CalcInputSourceTypeDto.Constant
+            ]
+        };
+    }
+
+
+    /// <summary>
+    /// Source Job не может быть текущим Tank Job.
+    /// </summary>
+    private IReadOnlyList<CalcJobDto> GetDependencyJobs()
+    {
+        return _jobs
+            .Where(job => Job is null || job.Id != Job.Id)
+            .OrderBy(job => job.SortOrder)
+            .ThenBy(job => job.Name)
+            .ToList();
+    }
+
+
+    /// <summary>
+    /// Outputs выбранного source Job.
+    /// </summary>
+    private IReadOnlyList<CalcOutputDefinitionDto> GetDependencyOutputs(long? sourceJobId)
+    {
+        if (!sourceJobId.HasValue)
+            return [];
+
+        var sourceJob = _jobs.FirstOrDefault(job => job.Id == sourceJobId.Value);
+
+        if (sourceJob is null)
+            return [];
+
+        return FindAnyDefinition(sourceJob.DefinitionCode)?.Outputs
+            .OrderBy(output => output.Order)
+            .ToList()
+            ?? [];
+    }
+
+
+    private void OnDependencyJobChanged(TankInputEditor input, object? value)
+    {
+        input.SourceJobId = value is null ? null : Convert.ToInt64(value);
+
+        var outputs = GetDependencyOutputs(input.SourceJobId);
+
+        if (!outputs.Any(output =>
+                string.Equals(output.Key, input.SourceOutputKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            input.SourceOutputKey = outputs.FirstOrDefault()?.Key ?? "";
+        }
+    }
+
+
+    /// <summary>
+    /// Создаёт новый Tank Job вместе с выбранными Inputs.
     /// </summary>
     private async Task CreateJobAsync()
     {
@@ -311,7 +580,7 @@
                 WriteEnabled = false,
                 SortOrder = 0,
                 ExpectedRevision = null,
-                Inputs = [],
+                Inputs = _inputs.Where(input => input.UseBinding).Select(BuildInputBinding).ToList(),
                 Outputs = []
             };
 
@@ -341,18 +610,23 @@
 
 
     /// <summary>
-    /// Меняет алгоритм существующего Tank Job.
+    /// Сохраняет параметры существующего Tank Job.
     ///
-    /// Старые bindings нельзя автоматически переносить между разными
-    /// Tank Types, поэтому при изменении типа они очищаются,
-    /// а Job переводится в безопасное Disabled-состояние.
+    /// При смене Tank Type:
+    /// - Job выключается;
+    /// - output writes выключаются;
+    /// - старые Outputs очищаются.
+    ///
+    /// При сохранении того же типа существующие Outputs сохраняются.
     /// </summary>
-    private async Task SaveTankTypeAsync()
+    private async Task SaveJobAsync()
     {
         var definition = SelectedDefinition;
 
-        if (Job is null || definition is null || !HasTankTypeChanged)
+        if (Job is null || definition is null)
             return;
+
+        var typeChanged = HasTankTypeChanged;
 
         _isSaving = true;
 
@@ -365,13 +639,13 @@
                 Description = Job.Description,
                 DefinitionCode = definition.Code,
                 DefinitionVersion = definition.Version,
-                Enabled = false,
+                Enabled = typeChanged ? false : Job.Enabled,
                 PeriodMs = Job.PeriodMs,
-                WriteEnabled = false,
+                WriteEnabled = typeChanged ? false : Job.WriteEnabled,
                 SortOrder = Job.SortOrder,
                 ExpectedRevision = Job.Revision,
-                Inputs = [],
-                Outputs = []
+                Inputs = _inputs.Where(input => input.UseBinding).Select(BuildInputBinding).ToList(),
+                Outputs = typeChanged ? [] : Job.Outputs.Select(BuildOutputBinding).ToList()
             };
 
             await CalcApi.UpdateJobAsync(Job.Id, request);
@@ -379,7 +653,9 @@
             NotificationService.Notify(
                 NotificationSeverity.Success,
                 "Calculations",
-                $"Tank type changed to Type {SelectedTypeNumber}.",
+                typeChanged
+                    ? $"Tank type changed to Type {SelectedTypeNumber}."
+                    : $"Tank parameters saved for {Model.Name}.",
                 4000);
 
             await JobChanged.InvokeAsync();
@@ -399,6 +675,89 @@
     }
 
 
+    private static CalcJobInputSaveDto BuildInputBinding(TankInputEditor input)
+    {
+        var result = new CalcJobInputSaveDto
+        {
+            ParameterKey = input.Parameter.Key,
+            SourceType = input.SourceType,
+            SortOrder = input.Parameter.Order
+        };
+
+        switch (input.SourceType)
+        {
+            case CalcInputSourceTypeDto.Tag:
+                result.TagName = NullIfEmpty(input.TagName);
+                result.MaxAgeSeconds = input.MaxAgeSeconds;
+                break;
+
+            case CalcInputSourceTypeDto.Constant:
+                result.ConstantValue = CreateConstantValue(input);
+                break;
+
+            case CalcInputSourceTypeDto.CalculationOutput:
+                result.SourceJobId = input.SourceJobId;
+                result.SourceOutputKey = NullIfEmpty(input.SourceOutputKey);
+                result.MaxAgeSeconds = input.MaxAgeSeconds;
+                break;
+        }
+
+        return result;
+    }
+
+
+    private static CalcJobOutputSaveDto BuildOutputBinding(CalcJobOutputDto output)
+    {
+        return new CalcJobOutputSaveDto
+        {
+            OutputKey = output.OutputKey,
+            TagName = output.TagName,
+            WriteEnabled = output.WriteEnabled,
+            Scale = output.Scale,
+            Offset = output.Offset,
+            SortOrder = output.SortOrder
+        };
+    }
+
+
+    private static JsonElement? CreateConstantValue(TankInputEditor input)
+    {
+        object? value = input.Parameter.Type switch
+        {
+            CalcParameterTypeDto.Number => input.NumberValue,
+            CalcParameterTypeDto.Integer => input.IntegerValue,
+            CalcParameterTypeDto.Boolean => input.BooleanValue,
+            CalcParameterTypeDto.Selection => NullIfEmpty(input.TextValue),
+            CalcParameterTypeDto.Text => NullIfEmpty(input.TextValue),
+            _ => null
+        };
+
+        return value is null
+            ? null
+            : JsonSerializer.SerializeToElement(value, value.GetType());
+    }
+
+
+    private CalcDefinitionDto? FindDefinition(string? code)
+    {
+        return _tankDefinitions.FirstOrDefault(definition =>
+            string.Equals(definition.Code, code, StringComparison.OrdinalIgnoreCase));
+    }
+
+
+    private CalcDefinitionDto? FindAnyDefinition(string? code)
+    {
+        /*
+         * Для dependency outputs сначала ищем среди Tank.
+         *
+         * Если позже понадобится подключение результата Density/Capacity,
+         * список definitions лучше будет поднять на уровень Calculation.razor
+         * и передавать сюда полностью.
+         */
+        return FindDefinition(code);
+    }
+
+
     private static int GetTypeNumber(string? definitionCode)
     {
         if (string.IsNullOrWhiteSpace(definitionCode))
@@ -414,14 +773,30 @@
     }
 
 
-    private static string GetGeometryParameterText(CalcDefinitionDto definition)
+    private static string? NullIfEmpty(string? value)
     {
-        var dimensions = definition.Parameters
-            .Where(parameter => parameter.Key.StartsWith("dim", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(parameter => parameter.Order)
-            .Select(parameter => parameter.Key)
-            .ToArray();
+        var normalized = (value ?? "").Trim();
+        return normalized.Length == 0 ? null : normalized;
+    }
 
-        return dimensions.Length == 0 ? "—" : string.Join(", ", dimensions);
+
+    private sealed class TankInputEditor
+    {
+        public CalcParameterDefinitionDto Parameter { get; set; } = new();
+
+        public bool IsRequired { get; set; }
+        public bool UseBinding { get; set; }
+
+        public CalcInputSourceTypeDto SourceType { get; set; } = CalcInputSourceTypeDto.Constant;
+
+        public string TagName { get; set; } = "";
+        public long? SourceJobId { get; set; }
+        public string SourceOutputKey { get; set; } = "";
+        public int? MaxAgeSeconds { get; set; }
+
+        public double? NumberValue { get; set; }
+        public int? IntegerValue { get; set; }
+        public bool BooleanValue { get; set; }
+        public string TextValue { get; set; } = "";
     }
 }
