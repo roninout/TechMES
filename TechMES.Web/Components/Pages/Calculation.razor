@@ -342,8 +342,11 @@
     /// Аналогично Equipment page одновременно скрываются Station/Type filters.
     /// </summary>
     private bool _isLeftPaneCollapsed;
-
     private bool _isLoading;
+
+    private PeriodicTimer? _runtimeStateTimer;
+    private CancellationTokenSource? _runtimeStateTimerCts;
+    private bool _runtimeStateRefreshInProgress;
 
     private string _statusText = "";
     private AlertStyle _statusStyle = AlertStyle.Info;
@@ -352,6 +355,13 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync(refreshCatalog: false);
+
+        // Calc Job выполняется независимо от WEB.
+        // WEB лишь периодически перечитывает лёгкий state endpoint, чтобы Runtime state / LastInputs / LastOutputs обновлялись без ручного Refresh страницы.
+        _runtimeStateTimerCts = new CancellationTokenSource();
+        _runtimeStateTimer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+
+        _ = RunRuntimeStateLoopAsync(_runtimeStateTimerCts.Token);
     }
 
 
@@ -460,14 +470,121 @@
 
 
     /// <summary>
-    /// После Create/Update Tank Job перечитываем Jobs и Runtime states.
-    /// Сам SCADA Calc Catalog повторно сканировать не требуется.
+    /// После сохранения Tank Job обновляем только Job и его Runtime state.
+    ///
+    /// Calc Catalog и Equipment Catalog не изменились,
+    /// поэтому повторно загружать их и заново resolve Level.R не нужно.
     /// </summary>
     private Task ReloadAfterTankJobChangedAsync()
     {
-        return LoadAsync(refreshCatalog: false);
+        return ReloadJobsAndStatesAsync();
     }
 
+    /// <summary>
+    /// Перечитывает Jobs и States после изменения конфигурации.
+    ///
+    /// Не трогает Calc Catalog и Equipment Catalog.
+    /// Поэтому Tank Level/Density links остаются стабильными.
+    /// </summary>
+    private async Task ReloadJobsAndStatesAsync(CancellationToken ct = default)
+    {
+        if (_runtimeStateRefreshInProgress)
+            return;
+
+        _runtimeStateRefreshInProgress = true;
+
+        try
+        {
+            var jobsTask = CalcApi.GetJobsAsync(ct);
+            var statesTask = CalcApi.GetStatesAsync(ct);
+
+            await Task.WhenAll(jobsTask, statesTask);
+
+            var jobs = await jobsTask;
+            var states = await statesTask;
+
+            _jobsByEquipment = jobs
+                .Where(job => !string.IsNullOrWhiteSpace(job.EquipmentName))
+                .GroupBy(job => job.EquipmentName!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.OrderByDescending(job => job.Id).First(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            _statesByJobId = states
+                .GroupBy(state => state.JobId)
+                .ToDictionary(group => group.Key, group => group.First());
+        }
+        finally
+        {
+            _runtimeStateRefreshInProgress = false;
+        }
+    }
+
+    /// <summary>
+    /// Периодически перечитывает только Runtime states.
+    ///
+    /// Здесь нет:
+    /// - CtApi scan;
+    /// - Calc Catalog reload;
+    /// - Equipment Catalog reload;
+    /// - Level tag resolution.
+    ///
+    /// Поэтому этот polling лёгкий и безопасный для страницы Calculations.
+    /// </summary>
+    private async Task RefreshRuntimeStatesAsync(CancellationToken ct)
+    {
+        if (_isLoading || _runtimeStateRefreshInProgress)
+            return;
+
+        _runtimeStateRefreshInProgress = true;
+
+        try
+        {
+            var states = await CalcApi.GetStatesAsync(ct);
+
+            _statesByJobId = states
+                .GroupBy(state => state.JobId)
+                .ToDictionary(group => group.Key, group => group.First());
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            /*
+             * Временная ошибка polling-а не должна очищать
+             * последние отображаемые Runtime values.
+             */
+        }
+        finally
+        {
+            _runtimeStateRefreshInProgress = false;
+        }
+    }
+
+    private async Task RunRuntimeStateLoopAsync(CancellationToken ct)
+    {
+        if (_runtimeStateTimer is null)
+            return;
+
+        try
+        {
+            while (await _runtimeStateTimer.WaitForNextTickAsync(ct))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshRuntimeStatesAsync(ct);
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Нормальное закрытие страницы.
+        }
+    }
 
     private void BuildFilterItems()
     {
@@ -717,5 +834,14 @@
     private void Notify(NotificationSeverity severity, string summary, string detail)
     {
         NotificationService.Notify(severity, summary, detail, 4000);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _runtimeStateTimerCts?.Cancel();
+        _runtimeStateTimerCts?.Dispose();
+        _runtimeStateTimer?.Dispose();
+
+        return ValueTask.CompletedTask;
     }
 }
