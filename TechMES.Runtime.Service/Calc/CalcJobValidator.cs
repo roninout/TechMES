@@ -48,10 +48,16 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
         }
 
         var inputValidation = ValidateInputs(definition, request.Inputs ?? []);
+
         if (!inputValidation.IsValid)
             return inputValidation;
 
-        return ValidateOutputs(definition, request.Outputs ?? []);
+        var outputValidation = ValidateOutputs(definition, request.Outputs ?? []);
+
+        if (!outputValidation.IsValid)
+            return outputValidation;
+
+        return ValidateSpecializedConfiguration(definition, request);
     }
 
     /// <summary>
@@ -307,6 +313,87 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
             if (output.WriteEnabled && string.IsNullOrWhiteSpace(output.TagName))
                 return Invalid("output.write-tag-empty",
                     $"Calculation output '{key}' is enabled for writing but Target Tag is empty.");
+        }
+
+        return CalcJobValidationResult.Success();
+    }
+
+    /// <summary>
+    /// Дополнительные правила специализированных расчётов.
+    ///
+    /// Для Tank общий DefaultValue недостаточен:
+    /// активный LevelTank обязан получать Level.R и Density HMI
+    /// из реальных SCADA tags.
+    ///
+    /// При выключенном Job неполную конфигурацию сохранять разрешаем,
+    /// чтобы её можно было закончить позже.
+    /// </summary>
+    private static CalcJobValidationResult ValidateSpecializedConfiguration(ICalculationDefinition definition, CalcJobSaveRequest request)
+    {
+        if (!string.Equals(definition.Category, "Tanks", StringComparison.OrdinalIgnoreCase))
+            return CalcJobValidationResult.Success();
+
+        var inputs = request.Inputs ?? [];
+        var outputs = request.Outputs ?? [];
+
+        if (request.Enabled)
+        {
+            var levelRaw = inputs.FirstOrDefault(input => string.Equals(input.ParameterKey, "levelRaw", StringComparison.OrdinalIgnoreCase));
+
+            if (levelRaw is null || levelRaw.SourceType != CalcInputSourceTypeDto.Tag || string.IsNullOrWhiteSpace(levelRaw.TagName))
+            {
+                return Invalid(
+                    "tank.level-binding-required",
+                    "Enabled Tank Job requires Level raw to be linked to the Level.R SCADA tag.");
+            }
+
+            var densityHmi = inputs.FirstOrDefault(input => string.Equals(input.ParameterKey, "densityHmi", StringComparison.OrdinalIgnoreCase));
+
+            if (densityHmi is null || densityHmi.SourceType != CalcInputSourceTypeDto.Tag || string.IsNullOrWhiteSpace(densityHmi.TagName))
+            {
+                return Invalid(
+                    "tank.density-binding-required",
+                    "Enabled Tank Job requires Density HMI to be linked to a SCADA tag.");
+            }
+        }
+
+        /*
+         * Для пользователя существует только один switch:
+         * Allow output writes = Job.WriteEnabled.
+         *
+         * Внутренний Output.WriteEnabled оставляем только ради существующего
+         * общего Runtime safety pipeline, но для Tank все четыре выхода
+         * должны включаться одновременно.
+         */
+        if (request.WriteEnabled)
+        {
+            string[] requiredOutputs = ["hMax", "levelMm", "volume", "mass"];
+
+            foreach (var outputKey in requiredOutputs)
+            {
+                var output = outputs.FirstOrDefault(item => string.Equals(item.OutputKey, outputKey, StringComparison.OrdinalIgnoreCase));
+
+                if (output is null)
+                {
+                    return Invalid(
+                        "tank.output-binding-missing",
+                        $"Tank output '{outputKey}' is required when output writes are enabled.");
+                }
+
+                if (!output.WriteEnabled)
+                {
+                    return Invalid(
+                        "tank.output-write-inconsistent",
+                        $"Tank output '{outputKey}' must be enabled together with the global Allow output writes option.");
+                }
+
+                if (string.IsNullOrWhiteSpace(output.TagName))
+                {
+                    return Invalid(
+                        "tank.output-tag-missing",
+                        $"Tank output '{outputKey}' does not have a target SCADA tag.");
+                }
+            }
         }
 
         return CalcJobValidationResult.Success();
