@@ -658,7 +658,7 @@
     align-items: flex-start;
     justify-content: center;
     flex: 1 1 auto;
-    min-height: 425px;
+    min-height: 370px;
 }
 
 .tank-model-loading-bar {
