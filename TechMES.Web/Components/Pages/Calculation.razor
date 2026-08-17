@@ -154,7 +154,7 @@
                             var job = GetJob(model);
                             var state = GetState(job);
 
-                            <div class="@GetModelRowCss(model)" @onclick="() => SelectModel(model)">
+                            <div class="@GetModelRowCss(model)" @onclick="() => SelectModelAsync(model)">
 
                                 <div class="calc-model-row-header">
 
@@ -166,24 +166,22 @@
 
                                     <span class="calc-model-spacer"></span>
 
-                                    @if (job is null)
-                                    {
-                                        <RadzenBadge Text="NOT CONFIGURED" BadgeStyle="BadgeStyle.Light" />
-                                    }
-                                    else if (job.Enabled)
-                                    {
-                                        <RadzenBadge Text="ENABLED" BadgeStyle="BadgeStyle.Success" />
-                                    }
-                                    else
-                                    {
-                                        <RadzenBadge Text="DISABLED" BadgeStyle="BadgeStyle.Light" />
-                                    }
+                                    <div class="calc-model-status-icons">
 
-                                    @if (state is not null)
-                                    {
-                                        <RadzenBadge Text="@state.Status.ToString().ToUpperInvariant()"
-                                                     BadgeStyle="@GetStateBadgeStyle(state.Status)" />
-                                    }
+                                        <!-- Job configuration state -->
+                                        <RadzenIcon Icon="@GetJobStatusIcon(job)"
+                                                    class="@GetJobStatusIconCss(job)"
+                                                    title="@GetJobStatusTitle(job)" />
+
+                                        <!-- Runtime state -->
+                                        @if (state is not null)
+                                        {
+                                            <RadzenIcon Icon="@GetRuntimeStatusIcon(state.Status)"
+                                                        class="@GetRuntimeStatusIconCss(state.Status)"
+                                                        title="@GetRuntimeStatusTitle(state.Status)" />
+                                        }
+
+                                    </div>
 
                                 </div>
 
@@ -230,7 +228,9 @@
                                              BadgeStyle="@GetTypeBadgeStyle(_selectedModel.Type)"
                                              class="calc-model-type-badge" />
 
-                                <RadzenText Text="@_selectedModel.Name" TextStyle="TextStyle.H5" />
+                                <span class="calc-model-detail-name">
+                                    @_selectedModel.Name
+                                </span>
                             </div>
 
                             @if (!string.IsNullOrWhiteSpace(_selectedModel.Description))
@@ -241,32 +241,49 @@
                             }
                         </div>
 
+                        @if (GetJobLastUpdate(selectedJob, selectedState) is { } lastUpdate)
+                        {
+                            <div class="calc-model-detail-updated">
+                                Updated: @lastUpdate.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")
+                            </div>
+                        }
+
                     </div>
 
-
-                    @if (_selectedModel.Type == CalcModelTypeDto.Tank)
+                    @if (IsModelSelectionLoading)
                     {
-                        <TankConfigurationPanel Model="@_selectedModel"
-                                                Job="@selectedJob"
-                                                State="@selectedState"
-                                                CalcModels="@_allModels"
-                                                EquipmentCatalog="@_equipmentCatalog"
-                                                JobChanged="@ReloadAfterTankJobChangedAsync" />
-                    }
-                    else
-                    {
-                        <div class="calc-model-placeholder">
-
-                            <RadzenIcon Icon="calculate" Style="font-size:42px;" />
-
-                            <RadzenText Text="@($"{_selectedModel.Type} calculation")"
-                                        TextStyle="TextStyle.H6" />
-
-                            <RadzenText Text="Specialized UI will be implemented after Tank."
-                                        TextStyle="TextStyle.Body2" />
-
+                        <div class="calc-model-selection-progress">
+                            <TechMesLoadingBar />
                         </div>
                     }
+
+                    <div class="@GetDetailContentCssClass()">
+
+                        @if (_selectedModel.Type == CalcModelTypeDto.Tank)
+                        {
+                            <TankConfigurationPanel Model="@_selectedModel"
+                                                    Job="@selectedJob"
+                                                    State="@selectedState"
+                                                    CalcModels="@_allModels"
+                                                    EquipmentCatalog="@_equipmentCatalog"
+                                                    JobChanged="@ReloadAfterTankJobChangedAsync"
+                                                    ModelLoaded="@OnTankModelLoadedAsync" />
+                        }
+                        else
+                        {
+                            <div class="calc-model-placeholder">
+
+                                <RadzenIcon Icon="calculate" Style="font-size:42px;" />
+
+                                <RadzenText Text="@($"{_selectedModel.Type} calculation")"
+                                            TextStyle="TextStyle.H6" />
+
+                                <RadzenText Text="Specialized UI will be implemented after Tank."
+                                            TextStyle="TextStyle.Body2" />
+
+                            </div>
+                        }
+                    </div>
 
                 </RadzenCard>
             }
@@ -301,6 +318,10 @@
     private string _searchText = "";
 
     private CalcModelDto? _selectedModel;
+
+    private string? _loadingModelName;
+
+    private bool IsModelSelectionLoading => !string.IsNullOrWhiteSpace(_loadingModelName);
 
     /// <summary>
     /// true, если левая панель списка Calc models скрыта.
@@ -688,9 +709,28 @@
     }
 
 
-    private void SelectModel(CalcModelDto model)
+    private async Task SelectModelAsync(CalcModelDto model)
     {
+        if (_selectedModel is not null
+            && string.Equals(_selectedModel.Name, model.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _loadingModelName = model.Name;
         _selectedModel = model;
+
+        await InvokeAsync(StateHasChanged);
+
+        /*
+         * Пока специализированная асинхронная загрузка есть только у Tank.
+         * Для остальных типов отображается placeholder сразу.
+         */
+        if (model.Type != CalcModelTypeDto.Tank)
+        {
+            _loadingModelName = null;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
 
@@ -808,5 +848,101 @@
         _runtimeStateTimer?.Dispose();
 
         return ValueTask.CompletedTask;
+    }
+
+    private static string GetJobStatusIcon(CalcJobDto? job)
+    {
+        if (job is null)
+            return "settings";
+
+        return job.Enabled
+            ? "play_circle"
+            : "pause_circle";
+    }
+
+    private static string GetJobStatusIconCss(CalcJobDto? job)
+    {
+        if (job is null)
+            return "calc-model-status-icon is-neutral";
+
+        return job.Enabled
+            ? "calc-model-status-icon is-success"
+            : "calc-model-status-icon is-neutral";
+    }
+
+    private static string GetJobStatusTitle(CalcJobDto? job)
+    {
+        if (job is null)
+            return "Not configured";
+
+        return job.Enabled
+            ? "Enabled"
+            : "Disabled";
+    }
+
+
+    private static string GetRuntimeStatusIcon(CalcJobStateStatusDto status)
+    {
+        return status switch
+        {
+            CalcJobStateStatusDto.Running => "sync",
+            CalcJobStateStatusDto.Success => "check_circle",
+            CalcJobStateStatusDto.Skipped => "warning",
+            CalcJobStateStatusDto.Error => "error",
+            _ => "schedule"
+        };
+    }
+
+    private static string GetRuntimeStatusIconCss(CalcJobStateStatusDto status)
+    {
+        return status switch
+        {
+            CalcJobStateStatusDto.Running => "calc-model-status-icon is-info",
+            CalcJobStateStatusDto.Success => "calc-model-status-icon is-success",
+            CalcJobStateStatusDto.Skipped => "calc-model-status-icon is-warning",
+            CalcJobStateStatusDto.Error => "calc-model-status-icon is-danger",
+            _ => "calc-model-status-icon is-neutral"
+        };
+    }
+
+    private static string GetRuntimeStatusTitle(CalcJobStateStatusDto status)
+    {
+        return status switch
+        {
+            CalcJobStateStatusDto.NeverRun => "Never run",
+            CalcJobStateStatusDto.Running => "Running",
+            CalcJobStateStatusDto.Success => "Success",
+            CalcJobStateStatusDto.Skipped => "Skipped",
+            CalcJobStateStatusDto.Error => "Error",
+            _ => status.ToString()
+        };
+    }
+
+    private static DateTimeOffset? GetJobLastUpdate(CalcJobDto? job, CalcJobStateDto? state)
+    {
+        if (state is not null)
+            return state.UpdatedAtUtc;
+
+        return job?.UpdatedAtUtc;
+    }
+
+    private async Task OnTankModelLoadedAsync(string modelName)
+    {
+        /*
+         * Если пользователь быстро выбрал уже другой Tank,
+         * завершение старого запроса не должно убрать его ProgressBar.
+         */
+        if (!string.Equals(_loadingModelName, modelName, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _loadingModelName = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string GetDetailContentCssClass()
+    {
+        return IsModelSelectionLoading
+            ? "calc-model-detail-content is-loading"
+            : "calc-model-detail-content";
     }
 }

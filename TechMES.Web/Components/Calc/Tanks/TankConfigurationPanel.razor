@@ -467,6 +467,8 @@
     [Parameter]
     public EventCallback JobChanged { get; set; }
 
+    [Parameter]
+    public EventCallback<string> ModelLoaded { get; set; }
 
     private readonly List<CalcDefinitionDto> _tankDefinitions = [];
 
@@ -620,8 +622,18 @@
         if (_tankDefinitions.Count == 0)
             return;
 
+        /*
+         * Сохраняем имя до await.
+         * Если пользователь быстро выберет другой Tank,
+         * callback всё равно будет относиться к конкретной загрузке.
+         */
+        var loadingModelName = Model.Name;
+
         await ResolveLinkedLevelTagAsync();
         SynchronizeSelection();
+
+        if (ModelLoaded.HasDelegate)
+            await ModelLoaded.InvokeAsync(loadingModelName);
     }
 
 

@@ -291,6 +291,16 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    min-height: 32px;
+}
+
+.calc-model-detail-name {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1;
 }
 
 .calc-model-detail-description {
@@ -378,3 +388,56 @@
         grid-template-columns: 1fr;
     }
 }
+
+.calc-model-status-icons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+::deep .calc-model-status-icon {
+    font-size: 19px;
+    line-height: 1;
+}
+
+    ::deep .calc-model-status-icon.is-success {
+        color: var(--rz-success);
+    }
+
+    ::deep .calc-model-status-icon.is-warning {
+        color: var(--rz-warning);
+    }
+
+    ::deep .calc-model-status-icon.is-danger {
+        color: var(--rz-danger);
+    }
+
+    ::deep .calc-model-status-icon.is-info {
+        color: var(--rz-info);
+    }
+
+    ::deep .calc-model-status-icon.is-neutral {
+        color: var(--rz-text-secondary-color);
+    }
+
+.calc-model-detail-updated {
+    flex: 0 0 auto;
+    padding-top: 2px;
+    color: var(--rz-text-secondary-color);
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+.calc-model-selection-progress {
+    margin: 8px 0 4px;
+}
+
+.calc-model-detail-content {
+    transition: opacity 120ms ease;
+}
+
+    .calc-model-detail-content.is-loading {
+        opacity: 0.45;
+        pointer-events: none;
+    }
