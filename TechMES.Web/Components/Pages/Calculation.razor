@@ -241,41 +241,6 @@
                             }
                         </div>
 
-                        <div class="calc-model-detail-badges">
-                            <RadzenBadge Text="@_selectedModel.Type.ToString()" BadgeStyle="BadgeStyle.Info" />
-                            <RadzenBadge Text="@_selectedModel.Station" BadgeStyle="BadgeStyle.Light" />
-                        </div>
-
-                    </div>
-
-
-                    <div class="calc-model-summary">
-
-                        <div class="calc-model-summary-item">
-                            <span>Station</span>
-                            <strong>@_selectedModel.Station</strong>
-                        </div>
-
-                        <div class="calc-model-summary-item">
-                            <span>Type</span>
-                            <strong>@_selectedModel.Type</strong>
-                        </div>
-
-                        <div class="calc-model-summary-item">
-                            <span>Job</span>
-                            <strong>@(selectedJob?.Name ?? "Not configured")</strong>
-                        </div>
-
-                        <div class="calc-model-summary-item">
-                            <span>Enabled</span>
-                            <strong>@(selectedJob?.Enabled == true ? "Yes" : "No")</strong>
-                        </div>
-
-                        <div class="calc-model-summary-item">
-                            <span>Runtime state</span>
-                            <strong>@(selectedState?.Status.ToString() ?? "—")</strong>
-                        </div>
-
                     </div>
 
 

@@ -12,11 +12,6 @@
          ============================================================ -->
     <section class="tank-preview-column">
 
-        <div class="tank-section-header">
-            <RadzenIcon Icon="oil_barrel" />
-            <span>Tank geometry</span>
-        </div>
-
         @if (_isLoadingDefinitions)
         {
             <div class="tank-loading">
@@ -31,9 +26,7 @@
         }
         else if (SelectedDefinition is not null)
         {
-            <TankTypePreview TypeNumber="@SelectedTypeNumber" />
-
-            <div class="tank-type-field">
+            <div class="tank-type-field tank-type-field-top">
                 <RadzenLabel Text="Tank type" />
 
                 <RadzenDropDown TValue="string"
@@ -45,353 +38,372 @@
                                 Disabled="@_isSaving"
                                 Style="width:100%;" />
             </div>
+
+            <TankTypePreview TypeNumber="@SelectedTypeNumber" />
+
+            <div class="tank-switches">
+
+                <div class="tank-switch-row">
+                    <span class="tank-switch-state @GetSwitchStateClass(_enabled)">
+                        @GetSwitchStateText(_enabled)
+                    </span>
+
+                    <RadzenSwitch @bind-Value="_enabled"
+                                  Disabled="@(_isSaving || !IsLevelTankReady)" />
+
+                    <span class="tank-switch-label">Enabled</span>
+                </div>
+
+                <div class="tank-switch-row">
+                    <span class="tank-switch-state @GetSwitchStateClass(_allowOutputWrites)">
+                        @GetSwitchStateText(_allowOutputWrites)
+                    </span>
+
+                    <RadzenSwitch @bind-Value="_allowOutputWrites"
+                                  Disabled="@(_isSaving || !IsLevelTankReady || !IsOutputBindingReady)" />
+
+                    <span class="tank-switch-label">Allow output writes</span>
+                </div>
+
+            </div>
         }
 
     </section>
 
 
-    <!-- ============================================================
-         RIGHT
-         LevelTank / Output / Input
-         ============================================================ -->
     <section class="tank-parameters-column">
 
         <!-- ============================================================
-             LEVEL TANK
-             ============================================================ -->
-        <div class="tank-section-header">
-            <RadzenIcon Icon="account_tree" />
-            <span>LevelTank</span>
-        </div>
+         VALUE
+         LevelTank + calculated outputs
+         ============================================================ -->
+        <ParamAiPanel Title="Value"
+                      Icon="monitoring">
 
-        <div class="tank-table-wrap">
-            <table class="tank-table tank-link-table">
+            <div class="tank-panel-content">
 
-                <thead>
-                    <tr>
-                        <th>Model</th>
-                        <th>Equipment</th>
-                        <th>Runtime tag</th>
-                        <th class="tank-runtime-column">Value</th>
-                        <th class="tank-status-column">Status</th>
-                    </tr>
-                </thead>
+                <!-- ====================================================
+                 LevelTank
+                 ==================================================== -->
+                <div class="tank-subsection-title">
+                    <RadzenIcon Icon="account_tree" />
+                    <span>LevelTank</span>
+                </div>
 
-                <tbody>
+                <div class="tank-table-wrap">
+                    <table class="tank-table tank-link-table">
 
-                    <tr>
-                        <td class="tank-strong">Tank</td>
-                        <td>@Model.Name</td>
-                        <td class="tank-muted">Output structure below</td>
-                        <td class="tank-muted">—</td>
-                        <td>
-                            <RadzenBadge Text="LINKED"
-                                         BadgeStyle="BadgeStyle.Success" />
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <td class="tank-strong">Level</td>
-                        <td>@ExpectedLevelName</td>
-
-                        <td>
-                            @if (!string.IsNullOrWhiteSpace(_levelRawTag))
-                            {
-                                <span class="tank-tag">@_levelRawTag</span>
-                            }
-                            else
-                            {
-                                <span class="tank-muted">—</span>
-                            }
-                        </td>
-
-                        <td class="tank-runtime-value">
-                            @FormatLastInputValue("levelRaw")
-                        </td>
-
-                        <td>
-                            @if (_isResolvingLevelTag)
-                            {
-                                <RadzenBadge Text="RESOLVING"
-                                             BadgeStyle="BadgeStyle.Info" />
-                            }
-                            else if (LinkedLevel is null)
-                            {
-                                <RadzenBadge Text="NOT FOUND"
-                                             BadgeStyle="BadgeStyle.Danger" />
-                            }
-                            else if (string.IsNullOrWhiteSpace(_levelRawTag))
-                            {
-                                <RadzenBadge Text="TAG NOT FOUND"
-                                             BadgeStyle="BadgeStyle.Danger" />
-                            }
-                            else
-                            {
-                                <RadzenBadge Text="LINKED"
-                                             BadgeStyle="BadgeStyle.Success" />
-                            }
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <td class="tank-strong">Density</td>
-                        <td>@ExpectedDensityName</td>
-
-                        <td>
-                            @if (!string.IsNullOrWhiteSpace(DensityHmiTag))
-                            {
-                                <span class="tank-tag">@DensityHmiTag</span>
-                            }
-                            else
-                            {
-                                <span class="tank-muted">—</span>
-                            }
-                        </td>
-
-                        <td class="tank-runtime-value">
-                            @FormatLastInputValue("densityHmi")
-                        </td>
-
-                        <td>
-                            @if (LinkedDensity is null)
-                            {
-                                <RadzenBadge Text="NOT FOUND"
-                                             BadgeStyle="BadgeStyle.Danger" />
-                            }
-                            else if (string.IsNullOrWhiteSpace(DensityHmiTag))
-                            {
-                                <RadzenBadge Text="TAG NOT FOUND"
-                                             BadgeStyle="BadgeStyle.Danger" />
-                            }
-                            else
-                            {
-                                <RadzenBadge Text="LINKED"
-                                             BadgeStyle="BadgeStyle.Success" />
-                            }
-                        </td>
-                    </tr>
-
-                </tbody>
-
-            </table>
-        </div>
-
-        @if (!IsLevelTankReady)
-        {
-            <RadzenAlert AlertStyle="AlertStyle.Warning"
-                         ShowIcon="true"
-                         class="tank-warning">
-                Level.R and Density HMI must be linked before this Tank Job can be enabled.
-                @if (!string.IsNullOrWhiteSpace(_levelTagError))
-                {
-                    <span> @_levelTagError</span>
-                }
-            </RadzenAlert>
-        }
-
-
-        @if (!_isLoadingDefinitions && string.IsNullOrWhiteSpace(_loadError) && SelectedDefinition is not null)
-        {
-            <!-- ============================================================
-     OUTPUT
-     ============================================================ -->
-            <div class="tank-section-header tank-secondary-header">
-                <RadzenIcon Icon="output" />
-                <span>Output</span>
-            </div>
-
-            <div class="tank-table-wrap">
-                <table class="tank-table tank-output-table">
-
-                    <thead>
-                        <tr>
-                            <th>Output</th>
-                            <th>Target tag</th>
-                            <th class="tank-runtime-column">Value</th>
-                            <th class="tank-runtime-column">Write value</th>
-                            <th class="tank-transform-column">Scale</th>
-                            <th class="tank-transform-column">Offset</th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-
-                        @foreach (var output in OutputRows)
-                        {
+                        <thead>
                             <tr>
+                                <th>Model</th>
+                                <th>Equipment</th>
+                                <th>Runtime tag</th>
+                                <th class="tank-runtime-column">Value</th>
+                                <th class="tank-status-column">Status</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+
+                            <tr>
+                                <td class="tank-strong">Tank</td>
+                                <td>@Model.Name</td>
+                                <td class="tank-muted">Output structure below</td>
+                                <td class="tank-muted">—</td>
+                                <td>
+                                    <RadzenBadge Text="LINKED"
+                                                 BadgeStyle="BadgeStyle.Success" />
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <td class="tank-strong">Level</td>
+                                <td>@ExpectedLevelName</td>
 
                                 <td>
-                                    <div class="tank-strong">@output.Name</div>
+                                    @if (!string.IsNullOrWhiteSpace(_levelRawTag))
+                                    {
+                                        <span class="tank-tag">@_levelRawTag</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="tank-muted">—</span>
+                                    }
+                                </td>
 
-                                    <div class="tank-key">
-                                        @output.Key
-
-                                        @if (!string.IsNullOrWhiteSpace(output.Unit))
-                                        {
-                                            <span> · @output.Unit</span>
-                                        }
-                                    </div>
+                                <td class="tank-runtime-value">
+                                    @FormatLastInputValue("levelRaw")
                                 </td>
 
                                 <td>
-                                    @if (!string.IsNullOrWhiteSpace(output.TagName))
+                                    @if (_isResolvingLevelTag)
                                     {
-                                        <span class="tank-tag">@output.TagName</span>
+                                        <RadzenBadge Text="RESOLVING"
+                                                     BadgeStyle="BadgeStyle.Info" />
                                     }
-                                    else
+                                    else if (LinkedLevel is null)
                                     {
                                         <RadzenBadge Text="NOT FOUND"
                                                      BadgeStyle="BadgeStyle.Danger" />
                                     }
+                                    else if (string.IsNullOrWhiteSpace(_levelRawTag))
+                                    {
+                                        <RadzenBadge Text="TAG NOT FOUND"
+                                                     BadgeStyle="BadgeStyle.Danger" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenBadge Text="LINKED"
+                                                     BadgeStyle="BadgeStyle.Success" />
+                                    }
                                 </td>
-
-                                <!-- Исходный инженерный результат алгоритма -->
-                                <td class="tank-runtime-value">
-                                    @FormatLastOutputValue(output.Key)
-                                </td>
-
-                                <!-- Значение после Scale / Offset, которое уходит в SCADA -->
-                                <td class="tank-runtime-value">
-                                    @FormatWriteOutputValue(output.Key)
-                                </td>
-
-                                @if (string.Equals(output.Key, "volume", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    <td>
-                                        <RadzenNumeric TValue="double"
-                                                       Value="@_volumeScale"
-                                                       Change="@OnVolumeScaleChanged"
-                                                       Disabled="@_isSaving"
-                                                       Style="width:100%;" />
-                                    </td>
-
-                                    <td>
-                                        <RadzenNumeric TValue="double"
-                                                       @bind-Value="_volumeOffset"
-                                                       Disabled="@_isSaving"
-                                                       Style="width:100%;" />
-                                    </td>
-                                }
-                                else
-                                {
-                                    <td class="tank-muted">—</td>
-                                    <td class="tank-muted">—</td>
-                                }
-
                             </tr>
+
+                            <tr>
+                                <td class="tank-strong">Density</td>
+                                <td>@ExpectedDensityName</td>
+
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(DensityHmiTag))
+                                    {
+                                        <span class="tank-tag">@DensityHmiTag</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="tank-muted">—</span>
+                                    }
+                                </td>
+
+                                <td class="tank-runtime-value">
+                                    @FormatLastInputValue("densityHmi")
+                                </td>
+
+                                <td>
+                                    @if (LinkedDensity is null)
+                                    {
+                                        <RadzenBadge Text="NOT FOUND"
+                                                     BadgeStyle="BadgeStyle.Danger" />
+                                    }
+                                    else if (string.IsNullOrWhiteSpace(DensityHmiTag))
+                                    {
+                                        <RadzenBadge Text="TAG NOT FOUND"
+                                                     BadgeStyle="BadgeStyle.Danger" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenBadge Text="LINKED"
+                                                     BadgeStyle="BadgeStyle.Success" />
+                                    }
+                                </td>
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+                </div>
+
+                @if (!IsLevelTankReady)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                 ShowIcon="true"
+                                 class="tank-warning">
+                        Level.R and Density HMI must be linked before this Tank Job can be enabled.
+
+                        @if (!string.IsNullOrWhiteSpace(_levelTagError))
+                        {
+                            <span> @_levelTagError</span>
                         }
+                    </RadzenAlert>
+                }
 
-                    </tbody>
 
-                </table>
+                <!-- ====================================================
+                 Output
+                 ==================================================== -->
+                <div class="tank-subsection-title tank-subsection-spacing">
+                    <RadzenIcon Icon="output" />
+                    <span>Output</span>
+                </div>
+
+                @if (!_isLoadingDefinitions
+                    && string.IsNullOrWhiteSpace(_loadError)
+                    && SelectedDefinition is not null)
+                {
+                    <div class="tank-table-wrap">
+                        <table class="tank-table tank-output-table">
+
+                            <thead>
+                                <tr>
+                                    <th>Output</th>
+                                    <th>Target tag</th>
+                                    <th class="tank-runtime-column">Value</th>
+                                    <th class="tank-runtime-column">Write value</th>
+                                    <th class="tank-transform-column">Scale</th>
+                                    <th class="tank-transform-column">Offset</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+
+                                @foreach (var output in OutputRows)
+                                {
+                                    <tr>
+
+                                        <td>
+                                            <div class="tank-strong">@output.Name</div>
+
+                                            <div class="tank-key">
+                                                @output.Key
+
+                                                @if (!string.IsNullOrWhiteSpace(output.Unit))
+                                                {
+                                                    <span> · @output.Unit</span>
+                                                }
+                                            </div>
+                                        </td>
+
+                                        <td>
+                                            @if (!string.IsNullOrWhiteSpace(output.TagName))
+                                            {
+                                                <span class="tank-tag">@output.TagName</span>
+                                            }
+                                            else
+                                            {
+                                                <RadzenBadge Text="NOT FOUND"
+                                                             BadgeStyle="BadgeStyle.Danger" />
+                                            }
+                                        </td>
+
+                                        <td class="tank-runtime-value">
+                                            @FormatLastOutputValue(output.Key)
+                                        </td>
+
+                                        <td class="tank-runtime-value">
+                                            @FormatWriteOutputValue(output.Key)
+                                        </td>
+
+                                        @if (string.Equals(
+                                                output.Key,
+                                                "volume",
+                                                StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <td>
+                                                <RadzenNumeric TValue="double"
+                                                               Value="@_volumeScale"
+                                                               Change="@OnVolumeScaleChanged"
+                                                               Disabled="@_isSaving"
+                                                               Style="width:100%;" />
+                                            </td>
+
+                                            <td>
+                                                <RadzenNumeric TValue="double"
+                                                               @bind-Value="_volumeOffset"
+                                                               Disabled="@_isSaving"
+                                                               Style="width:100%;" />
+                                            </td>
+                                        }
+                                        else
+                                        {
+                                            <td class="tank-muted">—</td>
+                                            <td class="tank-muted">—</td>
+                                        }
+
+                                    </tr>
+                                }
+
+                            </tbody>
+
+                        </table>
+                    </div>
+
+                    @if (!IsOutputBindingReady)
+                    {
+                        <div class="tank-inline-warning">
+                            One or more Tank output tags were not found. Output writes cannot be enabled.
+                        </div>
+                    }
+                }
+
             </div>
 
-            @if (!IsOutputBindingReady)
+        </ParamAiPanel>
+
+
+        <!-- ============================================================
+         INPUT
+         Job constants визуально повторяет PLC panel: описание слева, поле значения справа.
+         ============================================================ -->
+        <ParamAiPanel Title="Input"
+                      Icon="input">
+
+            <div class="tank-input-panel-body">
+
+                <!-- ========================================================
+             Tank geometry
+             dimA ... dimF конкретного выбранного Tank Type
+             ======================================================== -->
+                <section class="tank-input-section">
+
+                    <div class="tank-input-section-title">
+                        <RadzenIcon Icon="oil_barrel" />
+                        <span>Tank geometry</span>
+                    </div>
+
+                    @foreach (var input in GeometryInputs)
+                    {
+                        @RenderInputRow(input)
+                    }
+
+                </section>
+
+
+                <!-- ========================================================
+             Sensor
+             Положение/геометрия измерительной части
+             Отделена от Tank geometry линией и отступом.
+             ======================================================== -->
+                <section class="tank-input-section tank-input-sensor-section">
+
+                    <div class="tank-input-section-title">
+                        <RadzenIcon Icon="sensors" />
+                        <span>Sensor</span>
+                    </div>
+
+                    @foreach (var input in SensorInputs)
+                    {
+                        @RenderInputRow(input)
+                    }
+
+                </section>
+
+            </div>
+
+        </ParamAiPanel>
+
+
+        <!-- ============================================================
+         SAVE
+         ============================================================ -->
+        <div class="tank-actions">
+
+            @if (Job is null)
             {
-                <div class="tank-inline-warning">
-                    One or more Tank output tags were not found. Output writes cannot be enabled.
-                </div>
+                <RadzenButton Text="Create job"
+                              Icon="add"
+                              ButtonStyle="ButtonStyle.Primary"
+                              Disabled="@_isSaving"
+                              Click="@CreateJobAsync" />
+            }
+            else
+            {
+                <RadzenButton Text="Save"
+                              Icon="save"
+                              ButtonStyle="ButtonStyle.Primary"
+                              Disabled="@_isSaving"
+                              Click="@SaveJobAsync" />
             }
 
-
-            <!-- ============================================================
-                 INPUT
-                 Только Job constants
-                 ============================================================ -->
-            <div class="tank-section-header tank-secondary-header">
-                <RadzenIcon Icon="input" />
-                <span>Input</span>
-            </div>
-
-            <div class="tank-table-wrap">
-                <table class="tank-table tank-input-table">
-
-                    <thead>
-                        <tr>
-                            <th>Parameter</th>
-                            <th class="tank-value-column">Value</th>
-                            <th class="tank-unit-column">Unit</th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-
-                        @foreach (var input in EditableInputs)
-                        {
-                            <tr>
-                                <td>
-                                    <div class="tank-strong">@input.Parameter.Name</div>
-                                    <div class="tank-key">@input.Parameter.Key</div>
-                                </td>
-
-                                <td>
-                                    <RadzenNumeric TValue="double"
-                                                   Value="@input.NumberValue"
-                                                   Change="@((double value) => OnNumberValueChanged(input, value))"
-                                                   Disabled="@_isSaving"
-                                                   Style="width:100%;" />
-                                </td>
-
-                                <td class="tank-muted">
-                                    @(string.IsNullOrWhiteSpace(input.Parameter.Unit) ? "—" : input.Parameter.Unit)
-                                </td>
-                            </tr>
-                        }
-
-                    </tbody>
-
-                </table>
-            </div>
-
-
-            <!-- ============================================================
-                 JOB OPTIONS
-                 ============================================================ -->
-            <div class="tank-job-options">
-
-                <label class="tank-job-option">
-                    <RadzenCheckBox TValue="bool"
-                                    @bind-Value="_enabled"
-                                    Disabled="@(_isSaving || !IsLevelTankReady)" />
-
-                    <span>Enabled</span>
-                </label>
-
-                <label class="tank-job-option">
-                    <RadzenCheckBox TValue="bool"
-                                    @bind-Value="_allowOutputWrites"
-                                    Disabled="@(_isSaving || !IsLevelTankReady || !IsOutputBindingReady)" />
-
-                    <span>Allow output writes</span>
-                </label>
-
-            </div>
-
-
-            <!-- ============================================================
-                 SAVE
-                 ============================================================ -->
-            <div class="tank-actions">
-
-                @if (Job is null)
-                {
-                    <RadzenButton Text="Create job"
-                                  Icon="add"
-                                  ButtonStyle="ButtonStyle.Primary"
-                                  Disabled="@_isSaving"
-                                  Click="@CreateJobAsync" />
-                }
-                else
-                {
-                    <RadzenButton Text="Save"
-                                  Icon="save"
-                                  ButtonStyle="ButtonStyle.Primary"
-                                  Disabled="@_isSaving"
-                                  Click="@SaveJobAsync" />
-                }
-
-            </div>
-        }
+        </div>
 
     </section>
 
@@ -507,6 +519,26 @@
             .OrderBy(input => input.Parameter.Order)
             .ToList();
 
+    /// <summary>
+    /// Геометрические параметры самого сборника.
+    ///
+    /// Все dimA...dimF относятся к Tank geometry.
+    /// Конкретный Tank Type сам определяет, какие из них присутствуют.
+    /// </summary>
+    private IReadOnlyList<TankInputEditor> GeometryInputs => EditableInputs
+            .Where(input => input.Parameter.Key.StartsWith("dim", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+
+    /// <summary>
+    /// Параметры установки/измерительной части датчика.
+    ///
+    /// levelRaw и densityHmi сюда не попадают, потому что они исключены
+    /// ещё на уровне EditableInputs и связаны автоматически через LevelTank.
+    /// </summary>
+    private IReadOnlyList<TankInputEditor> SensorInputs => EditableInputs
+            .Where(input => !input.Parameter.Key.StartsWith("dim", StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
     private IReadOnlyList<TankOutputRow> OutputRows =>
         SelectedDefinition?.Outputs
@@ -1246,6 +1278,166 @@
             _ => value.ToString("0.###")
         };
     }
+
+    /// <summary>
+    /// Одна строка Tank Input.
+    ///
+    /// По компоновке повторяет PLC:
+    /// описание параметра слева,
+    /// компактное поле значения справа.
+    /// </summary>
+    private RenderFragment RenderInputRow(TankInputEditor input) => @<div class="tank-input-row">
+
+        <div class="tank-input-row-title">
+
+            <div class="tank-input-row-name">
+                @input.Parameter.Name
+            </div>
+
+            <div class="tank-input-row-description">
+                @GetInputDescription(input.Parameter.Key)
+            </div>
+
+        </div>
+
+        <div class="tank-input-row-value">
+
+            <RadzenFormField AllowFloatingLabel="false"
+                             Text="Value"
+                             class="tank-input-form-field">
+
+                <RadzenNumeric TValue="double"
+                               Value="@input.NumberValue"
+                               Change="@((double value) => OnNumberValueChanged(input, value))"
+                               Format="@GetInputNumberFormat(input)"
+                               Disabled="@_isSaving"
+                               class="tank-input-numeric" />
+
+            </RadzenFormField>
+
+        </div>
+
+    </div>;
+
+    private string GetInputDescription(string key)
+    {
+        return key.ToLowerInvariant() switch
+        {
+            "dima" => GetDimADescription(),
+            "dimb" => GetDimBDescription(),
+            "dimc" => GetDimCDescription(),
+            "dimd" => GetDimDDescription(),
+            "dime" => GetDimEDescription(),
+            "dimf" => "Reboiler tube volume, l",
+
+            "distancea" => "Lower measurement offset",
+            "distanceb" => "Upper measurement offset",
+            "disttodistancea" => "Unmeasured distance below Distance A",
+            "probelength" => "Immersion length of the probe",
+
+            _ => key
+        };
+    }
+
+
+    private string GetDimADescription()
+    {
+        return SelectedTypeNumber switch
+        {
+            1 => "Height of cylindrical part",
+            2 => "Length of cylindrical part",
+            3 => "Height of main body",
+            4 => "Height of tank body",
+            5 => "Height to bottom head start",
+            6 => "Height of cylindrical part",
+            7 => "Length of cylindrical part",
+            8 => "Height to bottom head start",
+            _ => "Main tank dimension"
+        };
+    }
+
+
+    private string GetDimBDescription()
+    {
+        return SelectedTypeNumber switch
+        {
+            1 => "Tank diameter",
+            2 => "Tank diameter",
+            3 => "Bottom section width",
+            4 => "Tank width",
+            5 => "Bottom head width",
+            6 => "Tank diameter",
+            7 => "Tank diameter",
+            8 => "Bottom head width",
+            _ => "Tank width / diameter"
+        };
+    }
+
+
+    private string GetDimCDescription()
+    {
+        return SelectedTypeNumber switch
+        {
+            1 => "Elliptical head height",
+            2 => "Support / bottom offset",
+            3 => "Bottom head height",
+            4 => "Bottom depth",
+            5 => "Bottom head height",
+            6 => "Conical head height",
+            7 => "Conical head length",
+            8 => "Bottom head height",
+            _ => "Additional tank dimension"
+        };
+    }
+
+
+    private string GetDimDDescription()
+    {
+        return SelectedTypeNumber switch
+        {
+            3 => "Internal partition width",
+            5 => "Tube bundle height",
+            7 => "Right conical end width",
+            8 => "Tube bundle height",
+            _ => "Additional section dimension"
+        };
+    }
+
+
+    private string GetDimEDescription()
+    {
+        return SelectedTypeNumber switch
+        {
+            5 => "Upper section height",
+            8 => "Upper section height",
+            _ => "Upper section dimension"
+        };
+    }
+
+    /// <summary>
+    /// Единица измерения отображается непосредственно в поле,
+    /// как во вкладке PLC.
+    ///
+    /// Например:
+    /// 2500 mm
+    /// </summary>
+    private static string GetInputNumberFormat(TankInputEditor input)
+    {
+        return string.IsNullOrWhiteSpace(input.Parameter.Unit)
+            ? "0.###"
+            : $"0.### {input.Parameter.Unit}";
+    }
+
+    private static string GetSwitchStateText(bool value)
+    {
+        return value ? "on" : "off";
+    }
+
+    private static string GetSwitchStateClass(bool value)
+    {
+        return value ? "is-on" : "is-off";
+    }
+
 
     private sealed class TankInputEditor
     {
