@@ -157,7 +157,9 @@
     }
 
     .tank-preview-column {
-        max-width: 460px;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
     }
 }
 
@@ -347,8 +349,14 @@
 }
 
 .tank-type-field-top {
-    margin-bottom: 18px;
+    width: 100%;
+    max-width: 420px;
+    margin: 0 auto 18px;
 }
+
+/*.tank-type-field-top {
+    margin-bottom: 18px;
+}*/
 
 
 /* ============================================================
@@ -389,4 +397,266 @@
     ::deep .tank-input-form-field {
         width: 112px;
     }
+}
+
+/* ============================================================
+   Tank Value panel
+   PLC/Input-like layout
+   ============================================================ */
+
+.tank-value-panel-body {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    min-width: 0;
+    padding: 24px 28px;
+}
+
+.tank-value-section {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    min-width: 0;
+}
+
+.tank-value-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    margin-bottom: 4px;
+    color: var(--rz-text-color);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+    .tank-value-section-title ::deep .rz-icon {
+        font-size: 18px;
+    }
+
+
+/* ============================================================
+   Reference rows
+   Name + equipment | Badge | Value field
+   ============================================================ */
+
+.tank-value-reference-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 115px 150px;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    min-height: 48px;
+}
+
+.tank-value-output-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+    min-height: 48px;
+}
+
+.tank-value-row-title {
+    min-width: 0;
+    padding-left: 16px;
+}
+
+.tank-value-row-name {
+    overflow: hidden;
+    color: var(--rz-text-color);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tank-value-row-description {
+    margin-top: 3px;
+    overflow: hidden;
+    color: var(--rz-text-secondary-color);
+    font-size: 12px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tank-value-badge-cell {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.tank-value-field-cell {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+
+/* ============================================================
+   Reference / Output separator
+   ============================================================ */
+
+.tank-value-separator {
+    height: 1px;
+    margin: 18px 0;
+    background: var(--rz-border-color, #d7dbe0);
+}
+
+
+/* ============================================================
+   Value fields
+   ============================================================ */
+
+::deep .tank-value-form-field {
+    width: 130px;
+}
+
+::deep .tank-value-readonly {
+    width: 100%;
+    text-align: right;
+}
+
+    ::deep .tank-value-readonly .rz-inputtext {
+        text-align: right;
+    }
+
+
+/* ============================================================
+   Volume Scale / Offset / Write value
+   ============================================================ */
+
+.tank-value-transform-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+    min-height: 48px;
+}
+
+.tank-value-transform-fields {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+::deep .tank-value-transform-field {
+    width: 130px;
+}
+
+::deep .tank-value-transform-numeric {
+    width: 100%;
+}
+
+    ::deep .tank-value-transform-numeric .rz-inputtext {
+        text-align: right;
+    }
+
+
+/* ============================================================
+   Responsive Value panel
+   ============================================================ */
+
+@media (max-width: 760px) {
+    .tank-value-panel-body {
+        padding: 18px 14px;
+    }
+
+    .tank-value-reference-row {
+        grid-template-columns: minmax(0, 1fr) 96px 124px;
+        gap: 8px;
+    }
+
+    .tank-value-output-row {
+        grid-template-columns: minmax(0, 1fr) 124px;
+        gap: 8px;
+    }
+
+    .tank-value-row-title {
+        padding-left: 8px;
+    }
+
+    .tank-value-transform-row {
+        grid-template-columns: 1fr;
+    }
+
+    .tank-value-transform-fields {
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+
+    ::deep .tank-value-form-field,
+    ::deep .tank-value-transform-field {
+        width: 112px;
+    }
+}
+
+/* ============================================================
+   Switch panel
+   ============================================================ */
+
+.tank-switch-panel {
+    width: 100%;
+    max-width: 420px;
+    margin: auto auto 0;
+    padding: 18px 20px;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    border-radius: 2px;
+    background: transparent;
+}
+
+.tank-switches {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 0;
+}
+
+.tank-switch-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 34px;
+}
+
+.tank-switch-state {
+    width: 24px;
+    text-align: right;
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
+    line-height: 1;
+    text-transform: lowercase;
+}
+
+    .tank-switch-state.is-on {
+        color: var(--rz-text-color);
+        font-weight: 600;
+    }
+
+    .tank-switch-state.is-off {
+        color: var(--rz-text-secondary-color);
+    }
+
+.tank-switch-label {
+    color: var(--rz-text-color);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.tank-switch-row ::deep .rz-switch {
+    flex: 0 0 auto;
+}
+
+.tank-preview-figure {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    flex: 1 1 auto;
+    min-height: 425px;
 }
