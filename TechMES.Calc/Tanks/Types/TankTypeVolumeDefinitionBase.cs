@@ -124,7 +124,7 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
                 name: "Distance A",
                 unit: "mm",
                 order: 90,
-                defaultValue: 0d,
+                defaultValue: 150d,
                 minimum: 0d),
 
             Number(
@@ -132,7 +132,7 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
                 name: "Distance B",
                 unit: "mm",
                 order: 91,
-                defaultValue: 0d,
+                defaultValue: 3000d,
                 minimum: 0d),
 
             Number(
@@ -140,24 +140,18 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
                 name: "Distance to A",
                 unit: "mm",
                 order: 92,
-                defaultValue: 0d,
+                defaultValue: 150d,
                 minimum: 0d),
 
-            /*
-             * ProbeLength сохраняем как конфигурационный параметр.
-             *
-             * В старом Tank.cs он не участвует ни в одной
-             * из восьми формул объёма.
-             */
             Number(
                 key: "probeLength",
                 name: "Probe length",
                 unit: "mm",
                 order: 93,
-                defaultValue: 0d,
+                defaultValue: 3100d,
                 minimum: 0d,
                 description: "Stored TankContent parameter. Not used by current Tank volume formulas.")
-        ]);
+                ]);
 
         return result;
     }
@@ -165,30 +159,34 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
     /// <summary>
     /// Создаёт геометрический размер dimA..dimF.
     /// </summary>
-    protected static CalculationParameterDefinition Dimension(
-        string key,
-        string name,
-        int order,
-        string unit = "mm",
-        double defaultValue = 0d,
-        double? minimum = 0d,
-        double step = 1d,
-        int decimals = 0,
-        string? description = null)
+    protected static CalculationParameterDefinition Dimension(string key, string name, int order, string unit = "mm", double? defaultValue = null, double? minimum = 0d, double step = 1d, int decimals = 0, string? description = null)
     {
-        return Number(key, name, unit, order, defaultValue, minimum, step, decimals, description);
+        var resolvedDefaultValue = defaultValue ?? GetDefaultDimensionValue(key);
+
+        return Number(key, name, unit, order, resolvedDefaultValue, minimum, step, decimals, description);
     }
 
-    private static CalculationParameterDefinition Number(
-        string key,
-        string name,
-        string unit,
-        int order,
-        double defaultValue,
-        double? minimum,
-        double step = 1d,
-        int decimals = 0,
-        string? description = null)
+    /// <summary>
+    /// Начальные геометрические размеры нового Tank Job.
+    ///
+    /// Эти значения используются только при создании новой конфигурации.
+    /// Для существующего Job всегда загружаются сохранённые ConstantValue.
+    /// </summary>
+    private static double GetDefaultDimensionValue(string key)
+    {
+        return key.ToLowerInvariant() switch
+        {
+            "dima" => 2500d,
+            "dimb" => 1600d,
+            "dimc" => 400d,
+            "dimd" => 350d,
+            "dime" => 0d,
+            "dimf" => 0d,
+            _ => 0d
+        };
+    }
+
+    private static CalculationParameterDefinition Number(string key, string name, string unit, int order, double defaultValue, double? minimum, double step = 1d, int decimals = 0, string? description = null)
     {
         return new CalculationParameterDefinition(
             Key: key,
@@ -210,9 +208,7 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
     /// В CalculateVolume() передаётся уже рассчитанный levelMm,
     /// поэтому сами 8 геометрических алгоритмов менять не нужно.
     /// </summary>
-    protected sealed override CalculationResult CalculateCore(
-        CalculationParameterSet parameters,
-        bool includeTrace)
+    protected sealed override CalculationResult CalculateCore(CalculationParameterSet parameters, bool includeTrace)
     {
         var levelRaw = parameters.GetRequiredDouble("levelRaw");
         var densityHmi = parameters.GetRequiredDouble("densityHmi");
