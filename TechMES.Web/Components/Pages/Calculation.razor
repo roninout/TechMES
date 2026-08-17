@@ -154,7 +154,7 @@
                             var job = GetJob(model);
                             var state = GetState(job);
 
-                            <div class="@GetModelRowCss(model)" @onclick="() => SelectModelAsync(model)">
+                            <div class="@GetModelRowCss(model)" @onclick="() => SelectModel(model)">
 
                                 <div class="calc-model-row-header">
 
@@ -250,40 +250,31 @@
 
                     </div>
 
-                    @if (IsModelSelectionLoading)
+                    @if (_selectedModel.Type == CalcModelTypeDto.Tank)
                     {
-                        <div class="calc-model-selection-progress">
-                            <TechMesLoadingBar />
+                        <TankConfigurationPanel @key="_selectedModel.Name"
+                                                Model="@_selectedModel"
+                                                Job="@selectedJob"
+                                                State="@selectedState"
+                                                CalcModels="@_allModels"
+                                                EquipmentCatalog="@_equipmentCatalog"
+                                                JobChanged="@ReloadAfterTankJobChangedAsync" />
+                    }
+                    else
+                    {
+                        <div class="calc-model-placeholder">
+
+                            <RadzenIcon Icon="calculate"
+                                        Style="font-size:42px;" />
+
+                            <RadzenText Text="@($"{_selectedModel.Type} calculation")"
+                                        TextStyle="TextStyle.H6" />
+
+                            <RadzenText Text="Specialized UI will be implemented after Tank."
+                                        TextStyle="TextStyle.Body2" />
+
                         </div>
                     }
-
-                    <div class="@GetDetailContentCssClass()">
-
-                        @if (_selectedModel.Type == CalcModelTypeDto.Tank)
-                        {
-                            <TankConfigurationPanel Model="@_selectedModel"
-                                                    Job="@selectedJob"
-                                                    State="@selectedState"
-                                                    CalcModels="@_allModels"
-                                                    EquipmentCatalog="@_equipmentCatalog"
-                                                    JobChanged="@ReloadAfterTankJobChangedAsync"
-                                                    ModelLoaded="@OnTankModelLoadedAsync" />
-                        }
-                        else
-                        {
-                            <div class="calc-model-placeholder">
-
-                                <RadzenIcon Icon="calculate" Style="font-size:42px;" />
-
-                                <RadzenText Text="@($"{_selectedModel.Type} calculation")"
-                                            TextStyle="TextStyle.H6" />
-
-                                <RadzenText Text="Specialized UI will be implemented after Tank."
-                                            TextStyle="TextStyle.Body2" />
-
-                            </div>
-                        }
-                    </div>
 
                 </RadzenCard>
             }
@@ -318,10 +309,6 @@
     private string _searchText = "";
 
     private CalcModelDto? _selectedModel;
-
-    private string? _loadingModelName;
-
-    private bool IsModelSelectionLoading => !string.IsNullOrWhiteSpace(_loadingModelName);
 
     /// <summary>
     /// true, если левая панель списка Calc models скрыта.
@@ -709,28 +696,18 @@
     }
 
 
-    private async Task SelectModelAsync(CalcModelDto model)
+    private void SelectModel(CalcModelDto model)
     {
         if (_selectedModel is not null
-            && string.Equals(_selectedModel.Name, model.Name, StringComparison.OrdinalIgnoreCase))
+            && string.Equals(
+                _selectedModel.Name,
+                model.Name,
+                StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        _loadingModelName = model.Name;
         _selectedModel = model;
-
-        await InvokeAsync(StateHasChanged);
-
-        /*
-         * Пока специализированная асинхронная загрузка есть только у Tank.
-         * Для остальных типов отображается placeholder сразу.
-         */
-        if (model.Type != CalcModelTypeDto.Tank)
-        {
-            _loadingModelName = null;
-            await InvokeAsync(StateHasChanged);
-        }
     }
 
 
@@ -924,25 +901,5 @@
             return state.UpdatedAtUtc;
 
         return job?.UpdatedAtUtc;
-    }
-
-    private async Task OnTankModelLoadedAsync(string modelName)
-    {
-        /*
-         * Если пользователь быстро выбрал уже другой Tank,
-         * завершение старого запроса не должно убрать его ProgressBar.
-         */
-        if (!string.Equals(_loadingModelName, modelName, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        _loadingModelName = null;
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private string GetDetailContentCssClass()
-    {
-        return IsModelSelectionLoading
-            ? "calc-model-detail-content is-loading"
-            : "calc-model-detail-content";
     }
 }

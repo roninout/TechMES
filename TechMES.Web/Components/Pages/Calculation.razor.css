@@ -429,15 +429,3 @@
     white-space: nowrap;
 }
 
-.calc-model-selection-progress {
-    margin: 8px 0 4px;
-}
-
-.calc-model-detail-content {
-    transition: opacity 120ms ease;
-}
-
-    .calc-model-detail-content.is-loading {
-        opacity: 0.45;
-        pointer-events: none;
-    }

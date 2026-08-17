@@ -4,6 +4,13 @@
 @inject ParamApiClient ParamApi
 @inject NotificationService NotificationService
 
+@if (_isLoadingDefinitions || _isResolvingLevelTag)
+{
+    <div class="tank-model-loading-bar">
+        <TechMesLoadingBar Label="Loading Tank configuration" />
+    </div>
+}
+
 <div class="tank-configuration">
 
     <!-- ============================================================
@@ -12,66 +19,63 @@
      ============================================================ -->
     <section class="tank-preview-column">
 
-        @if (_isLoadingDefinitions)
+        @if (!_isLoadingDefinitions)
         {
-            <div class="tank-loading">
-                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
-            </div>
-        }
-        else if (!string.IsNullOrWhiteSpace(_loadError))
-        {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true">
-                @_loadError
-            </RadzenAlert>
-        }
-        else if (SelectedDefinition is not null)
-        {
-            <div class="tank-type-field tank-type-field-top">
-                <RadzenLabel Text="Tank type" />
+            if (!string.IsNullOrWhiteSpace(_loadError))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true">
+                    @_loadError
+                </RadzenAlert>
+            }
+            else if (SelectedDefinition is not null)
+            {
+                <div class="tank-type-field tank-type-field-top">
+                    <RadzenLabel Text="Tank type" />
 
-                <RadzenDropDown TValue="string"
-                                Data="@_tankDefinitions"
-                                TextProperty="@nameof(CalcDefinitionDto.Name)"
-                                ValueProperty="@nameof(CalcDefinitionDto.Code)"
-                                Value="@_selectedDefinitionCode"
-                                Change="@OnTankTypeChanged"
-                                Disabled="@_isSaving"
-                                Style="width:100%;" />
-            </div>
+                    <RadzenDropDown TValue="string"
+                    Data="@_tankDefinitions"
+                    TextProperty="@nameof(CalcDefinitionDto.Name)"
+                    ValueProperty="@nameof(CalcDefinitionDto.Code)"
+                    Value="@_selectedDefinitionCode"
+                    Change="@OnTankTypeChanged"
+                    Disabled="@_isSaving"
+                    Style="width:100%;" />
+                </div>
 
-            <div class="tank-preview-figure">
-                <TankTypePreview TypeNumber="@SelectedTypeNumber" />
-            </div>
+                <div class="tank-preview-figure">
+                    <TankTypePreview TypeNumber="@SelectedTypeNumber" />
+                </div>
 
-            <div class="tank-switch-panel">
+                <div class="tank-switch-panel">
 
-                <div class="tank-switches">
+                    <div class="tank-switches">
 
-                    <div class="tank-switch-row">
-                        <span class="tank-switch-state @GetSwitchStateClass(_enabled)">
-                            @GetSwitchStateText(_enabled)
-                        </span>
+                        <div class="tank-switch-row">
+                            <span class="tank-switch-state @GetSwitchStateClass(_enabled)">
+                                @GetSwitchStateText(_enabled)
+                            </span>
 
-                        <RadzenSwitch @bind-Value="_enabled"
-                                      Disabled="@(_isSaving || !IsLevelTankReady)" />
+                            <RadzenSwitch @bind-Value="_enabled"
+                            Disabled="@(_isSaving || !IsLevelTankReady)" />
 
-                        <span class="tank-switch-label">Enabled</span>
-                    </div>
+                            <span class="tank-switch-label">Enabled</span>
+                        </div>
 
-                    <div class="tank-switch-row">
-                        <span class="tank-switch-state @GetSwitchStateClass(_allowOutputWrites)">
-                            @GetSwitchStateText(_allowOutputWrites)
-                        </span>
+                        <div class="tank-switch-row">
+                            <span class="tank-switch-state @GetSwitchStateClass(_allowOutputWrites)">
+                                @GetSwitchStateText(_allowOutputWrites)
+                            </span>
 
-                        <RadzenSwitch @bind-Value="_allowOutputWrites"
-                                      Disabled="@(_isSaving || !IsLevelTankReady || !IsOutputBindingReady)" />
+                            <RadzenSwitch @bind-Value="_allowOutputWrites"
+                            Disabled="@(_isSaving || !IsLevelTankReady || !IsOutputBindingReady)" />
 
-                        <span class="tank-switch-label">Allow output writes</span>
+                            <span class="tank-switch-label">Allow output writes</span>
+                        </div>
+
                     </div>
 
                 </div>
-
-            </div>
+            }
         }
 
     </section>
@@ -94,10 +98,10 @@
              ======================================================== -->
                 <section class="tank-value-section">
 
-                    <div class="tank-value-section-title">
+@*                     <div class="tank-value-section-title">
                         <RadzenIcon Icon="account_tree" />
                         <span>Reference</span>
-                    </div>
+                    </div> *@
 
                     <!-- Level -->
                     <div class="tank-value-reference-row">
@@ -467,9 +471,6 @@
     [Parameter]
     public EventCallback JobChanged { get; set; }
 
-    [Parameter]
-    public EventCallback<string> ModelLoaded { get; set; }
-
     private readonly List<CalcDefinitionDto> _tankDefinitions = [];
 
     private List<TankInputEditor> _inputs = [];
@@ -622,18 +623,9 @@
         if (_tankDefinitions.Count == 0)
             return;
 
-        /*
-         * Сохраняем имя до await.
-         * Если пользователь быстро выберет другой Tank,
-         * callback всё равно будет относиться к конкретной загрузке.
-         */
-        var loadingModelName = Model.Name;
-
         await ResolveLinkedLevelTagAsync();
-        SynchronizeSelection();
 
-        if (ModelLoaded.HasDelegate)
-            await ModelLoaded.InvokeAsync(loadingModelName);
+        SynchronizeSelection();
     }
 
 

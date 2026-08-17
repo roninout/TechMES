@@ -660,3 +660,8 @@
     flex: 1 1 auto;
     min-height: 425px;
 }
+
+.tank-model-loading-bar {
+    margin-top: 12px;
+    margin-bottom: 8px;
+}
