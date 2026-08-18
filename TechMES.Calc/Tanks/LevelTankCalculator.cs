@@ -30,7 +30,7 @@ public static class LevelTankCalculator
          // - сохраняем коэффициенты 10 / 10000;
          // - сохраняем именно приведение к int, без Round();
          // - Math.Max выполняется после приведения.
-        var levelMm = Math.Max(0, (int)((distanceB - distanceA) * levelRaw * 10.0 / 10000.0));
+        var levelMm = Math.Max(0, (int)((distanceB - distanceA) * levelRaw * 10.0 / 1000.0));
 
         
         //* H_MAX в старом LevelTankCreatorCtApi: DistanceB - DistanceA
@@ -45,7 +45,7 @@ public static class LevelTankCalculator
          //     return Volume * Density.ValHmi * 0.0001;
          //
          // Density теперь передаётся значением, поэтому проверяем densityHmi.
-        var massT = densityHmi > 0 ? volumeM3 * densityHmi * 0.0001 : 0.0;
+        var massT = densityHmi > 0 ? volumeM3 * densityHmi * 0.001 : 0.0;
 
         return new LevelTankResult(hMaxMm, levelMm, volumeM3, massT);
     }
