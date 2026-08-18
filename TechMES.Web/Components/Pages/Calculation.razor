@@ -319,7 +319,9 @@
 
     private PeriodicTimer? _runtimeStateTimer;
     private CancellationTokenSource? _runtimeStateTimerCts;
+
     private bool _runtimeStateRefreshInProgress;
+    private bool _jobsAndStatesReloadInProgress;
 
     private string _statusText = "";
     private AlertStyle _statusStyle = AlertStyle.Info;
@@ -461,10 +463,10 @@
     /// </summary>
     private async Task ReloadJobsAndStatesAsync(CancellationToken ct = default)
     {
-        if (_runtimeStateRefreshInProgress)
+        if (_jobsAndStatesReloadInProgress)
             return;
 
-        _runtimeStateRefreshInProgress = true;
+        _jobsAndStatesReloadInProgress = true;
 
         try
         {
@@ -486,11 +488,13 @@
 
             _statesByJobId = states
                 .GroupBy(state => state.JobId)
-                .ToDictionary(group => group.Key, group => group.First());
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First());
         }
         finally
         {
-            _runtimeStateRefreshInProgress = false;
+            _jobsAndStatesReloadInProgress = false;
         }
     }
 
@@ -507,7 +511,7 @@
     /// </summary>
     private async Task RefreshRuntimeStatesAsync(CancellationToken ct)
     {
-        if (_isLoading || _runtimeStateRefreshInProgress)
+        if (_isLoading || _runtimeStateRefreshInProgress || _jobsAndStatesReloadInProgress)
             return;
 
         _runtimeStateRefreshInProgress = true;
@@ -526,10 +530,7 @@
         }
         catch
         {
-            /*
-             * Временная ошибка polling-а не должна очищать
-             * последние отображаемые Runtime values.
-             */
+            // Временная ошибка polling-а не должна очищать последние отображаемые Runtime values.
         }
         finally
         {
