@@ -23,6 +23,11 @@ public sealed class TankType6VolumeDefinition : TankTypeVolumeDefinitionBase
 
     public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
 
+    protected override double GetTotalLengthMm(CalculationParameterSet parameters)
+    {
+        return parameters.GetRequiredDouble("dimA") + parameters.GetRequiredDouble("dimC") * 2.0;
+    }
+
     protected override double CalculateVolume(CalculationParameterSet parameters)
     {
         var levelMm = parameters.GetRequiredDouble("levelMm");

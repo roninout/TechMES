@@ -55,8 +55,7 @@
                                 @GetSwitchStateText(_enabled)
                             </span>
 
-                            <RadzenSwitch @bind-Value="_enabled"
-                            Disabled="@(_isSaving || !IsLevelTankReady)" />
+                            <RadzenSwitch @bind-Value="_enabled" Disabled="@(_isSaving || !IsLevelTankReady || !IsSensorGeometryValid)" />
 
                             <span class="tank-switch-label">Enabled</span>
                         </div>
@@ -66,8 +65,7 @@
                                 @GetSwitchStateText(_allowOutputWrites)
                             </span>
 
-                            <RadzenSwitch @bind-Value="_allowOutputWrites"
-                            Disabled="@(_isSaving || !IsLevelTankReady || !IsOutputBindingReady)" />
+                            <RadzenSwitch @bind-Value="_allowOutputWrites" Disabled="@(_isSaving || !IsLevelTankReady || !IsOutputBindingReady)" />
 
                             <span class="tank-switch-label">Allow output writes</span>
                         </div>
@@ -411,9 +409,21 @@
                         <span>Sensor</span>
                     </div>
 
-                    @foreach (var input in SensorInputs)
+                    @if (UpperDeadAreaInput is not null)
                     {
-                        @RenderInputRow(input)
+                        @RenderInputRow(UpperDeadAreaInput)
+                    }
+
+                    @RenderMeasurementAreaRow()
+
+                    @if (LowerDeadAreaInput is not null)
+                    {
+                        @RenderInputRow(LowerDeadAreaInput)
+                    }
+
+                    @if (CalculateAbove100Input is not null)
+                    {
+                        @RenderBooleanInputRow(CalculateAbove100Input)
                     }
 
                 </section>
@@ -577,9 +587,34 @@
     /// levelRaw и densityHmi сюда не попадают, потому что они исключены
     /// ещё на уровне EditableInputs и связаны автоматически через LevelTank.
     /// </summary>
-    private IReadOnlyList<TankInputEditor> SensorInputs => EditableInputs
-            .Where(input => !input.Parameter.Key.StartsWith("dim", StringComparison.OrdinalIgnoreCase))
-            .ToList();
+    private TankInputEditor? UpperDeadAreaInput => FindInputEditor("upperDeadArea");
+
+    private TankInputEditor? LowerDeadAreaInput => FindInputEditor("lowerDeadArea");
+
+    private TankInputEditor? CalculateAbove100Input => FindInputEditor("calculateAbove100");
+
+    private double CurrentTotalLengthMm => SelectedTypeNumber switch
+    {
+        1 => GetInputNumber("dimA") + GetInputNumber("dimC") * 2.0,
+        2 => GetInputNumber("dimB"),
+        3 => GetInputNumber("dimA") + GetInputNumber("dimC"),
+        4 => GetInputNumber("dimA"),
+        5 => GetInputNumber("dimA") + GetInputNumber("dimC"),
+        6 => GetInputNumber("dimA") + GetInputNumber("dimC") * 2.0,
+        7 => GetInputNumber("dimB"),
+        8 => GetInputNumber("dimA") + GetInputNumber("dimC"),
+        _ => 0.0
+    };
+
+    private double CurrentMeasurementAreaMm => Math.Max(0.0, CurrentTotalLengthMm - GetInputNumber("upperDeadArea") - GetInputNumber("lowerDeadArea"));
+
+    private bool IsSensorGeometryValid => CurrentTotalLengthMm > 0 && CurrentMeasurementAreaMm > 0;
+
+    private TankInputEditor? FindInputEditor(string key)
+    {
+        return _inputs.FirstOrDefault(input =>
+            string.Equals(input.Parameter.Key, key, StringComparison.OrdinalIgnoreCase));
+    }
 
     private IReadOnlyList<TankOutputRow> OutputRows =>
         SelectedDefinition?.Outputs
@@ -627,7 +662,6 @@
 
         SynchronizeSelection();
     }
-
 
     /// <summary>
     /// Загружает встроенные Tank algorithms.
@@ -736,16 +770,14 @@
             ? ""
             : string.Join("|", LinkedDensity.TagNames.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase));
 
-        var newContextKey =
-            $"{Model.Name}|{Job?.Id}|{Job?.Revision}|{_levelRawTag}|{DensityHmiTag}|{tankTagSignature}|{densityTagSignature}";
+        var newContextKey = $"{Model.Name}|{Job?.Id}|{Job?.Revision}|{_levelRawTag}|{DensityHmiTag}|{tankTagSignature}|{densityTagSignature}";
 
         if (!force && string.Equals(_contextKey, newContextKey, StringComparison.Ordinal))
             return;
 
         _contextKey = newContextKey;
 
-        if (Job is not null && _tankDefinitions.Any(definition =>
-                string.Equals(definition.Code, Job.DefinitionCode, StringComparison.OrdinalIgnoreCase)))
+        if (Job is not null && _tankDefinitions.Any(definition => string.Equals(definition.Code, Job.DefinitionCode, StringComparison.OrdinalIgnoreCase)))
         {
             _selectedDefinitionCode = Job.DefinitionCode;
             BuildInputEditors(SelectedDefinition, Job);
@@ -756,12 +788,9 @@
             BuildInputEditors(SelectedDefinition, null);
         }
 
-        _enabled = Job?.Enabled == true && IsLevelTankReady;
+        _enabled = Job?.Enabled == true && IsLevelTankReady && IsSensorGeometryValid;
 
-        _allowOutputWrites =
-            Job?.WriteEnabled == true
-            && IsLevelTankReady
-            && IsOutputBindingReady;
+        _allowOutputWrites = Job?.WriteEnabled == true && IsLevelTankReady && IsOutputBindingReady;
     }
 
 
@@ -813,9 +842,7 @@
             return;
         }
 
-        _inputs = definition.Parameters
-            .OrderBy(parameter => parameter.Order)
-            .Select(parameter =>
+        _inputs = definition.Parameters.OrderBy(parameter => parameter.Order).Select(parameter =>
             {
                 var stored = job?.Inputs.FirstOrDefault(input =>
                     string.Equals(input.ParameterKey, parameter.Key, StringComparison.OrdinalIgnoreCase));
@@ -840,7 +867,23 @@
         return new TankInputEditor
         {
             Parameter = parameter,
-            NumberValue = ReadNumber(value)
+            NumberValue = ReadNumber(value),
+            BooleanValue = ReadBoolean(value)
+        };
+    }
+
+    private static bool ReadBoolean(JsonElement? value)
+    {
+        if (!value.HasValue)
+            return false;
+
+        return value.Value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number when value.Value.TryGetInt32(out var number) => number != 0,
+            JsonValueKind.String when bool.TryParse(value.Value.GetString(), out var boolean) => boolean,
+            _ => false
         };
     }
 
@@ -912,7 +955,7 @@
                 Description = Model.Description,
                 DefinitionCode = definition.Code,
                 DefinitionVersion = definition.Version,
-                Enabled = _enabled && IsLevelTankReady,
+                Enabled = _enabled && IsLevelTankReady && IsSensorGeometryValid,
                 PeriodMs = 5000,
                 WriteEnabled = allowWrites,
                 SortOrder = 0,
@@ -969,7 +1012,7 @@
                 Description = Job.Description,
                 DefinitionCode = definition.Code,
                 DefinitionVersion = definition.Version,
-                Enabled = _enabled && IsLevelTankReady,
+                Enabled = _enabled && IsLevelTankReady && IsSensorGeometryValid,
                 PeriodMs = Job.PeriodMs,
                 WriteEnabled = allowWrites,
                 SortOrder = Job.SortOrder,
@@ -1051,10 +1094,13 @@
                 continue;
             }
 
-            var editor = _inputs.FirstOrDefault(input =>
-                string.Equals(input.Parameter.Key, parameter.Key, StringComparison.OrdinalIgnoreCase));
+            var editor = _inputs.FirstOrDefault(input => string.Equals(input.Parameter.Key, parameter.Key, StringComparison.OrdinalIgnoreCase));
+            object value;
 
-            var value = editor?.NumberValue ?? ReadNumber(parameter.DefaultValue);
+            if (parameter.Type == CalcParameterTypeDto.Boolean)
+                value = editor?.BooleanValue ?? ReadBoolean(parameter.DefaultValue);
+            else
+                value = editor?.NumberValue ?? ReadNumber(parameter.DefaultValue);
 
             result.Add(new CalcJobInputSaveDto
             {
@@ -1382,6 +1428,49 @@
 
     </div>;
 
+    private RenderFragment RenderMeasurementAreaRow() => @<div class="tank-input-row">
+
+        <div class="tank-input-row-title">
+            <div class="tank-input-row-name">Measurement area</div>
+            <div class="tank-input-row-description">Calculated sensor working range</div>
+        </div>
+
+        <div class="tank-input-row-value">
+
+            <RadzenFormField AllowFloatingLabel="false"
+                             Text="Measurement area"
+                             class="tank-input-form-field">
+
+                <RadzenTextBox Value="@($"{CurrentMeasurementAreaMm:0} mm")"
+                               ReadOnly="true"
+                               class="tank-input-numeric" />
+
+            </RadzenFormField>
+
+        </div>
+
+    </div>;
+
+    private RenderFragment RenderBooleanInputRow(TankInputEditor input) => @<div class="tank-input-row">
+
+        <div class="tank-input-row-title">
+            <div class="tank-input-row-name">@input.Parameter.Name</div>
+            <div class="tank-input-row-description">@GetInputDescription(input.Parameter.Key)</div>
+        </div>
+
+        <div class="tank-input-switch-value">
+
+            <span class="tank-switch-state @GetSwitchStateClass(input.BooleanValue)">
+                @GetSwitchStateText(input.BooleanValue)
+            </span>
+
+            <RadzenSwitch @bind-Value="input.BooleanValue"
+                          Disabled="@_isSaving" />
+
+        </div>
+
+    </div>;
+
     private string GetInputDescription(string key)
     {
         return key.ToLowerInvariant() switch
@@ -1393,10 +1482,9 @@
             "dime" => GetDimEDescription(),
             "dimf" => "Reboiler tube volume, l",
 
-            "distancea" => "Lower measurement offset",
-            "distanceb" => "Upper measurement offset",
-            "disttodistancea" => "Unmeasured distance below Distance A",
-            "probelength" => "Immersion length of the probe",
+            "upperdeadarea" => "Unmeasured area above the working range",
+            "lowerdeadarea" => "Unmeasured area below the working range",
+            "calculateabove100" => "Continue volume calculation above 100% inside the upper dead area",
 
             _ => key
         };
@@ -1501,12 +1589,13 @@
         return value ? "is-on" : "is-off";
     }
 
-
     private sealed class TankInputEditor
     {
         public CalcParameterDefinitionDto Parameter { get; set; } = new();
 
         public double NumberValue { get; set; }
+
+        public bool BooleanValue { get; set; }
     }
 
 

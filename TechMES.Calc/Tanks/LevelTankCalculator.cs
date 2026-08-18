@@ -1,64 +1,95 @@
 ﻿namespace TechMES.Calc.Tanks;
 
 /// <summary>
-/// Общая legacy-compatible логика LevelTank.
+/// Общая логика LevelTank.
 ///
-/// Старый TechParamsCalc выполнял расчёт в два этапа:
+/// Геометрия Tank сюда не входит.
+/// Калькулятор отвечает только за:
 ///
-/// 1. По сырым показаниям Level.Val_R вычислялся физический уровень, mm.
-/// 2. Tank по этому уровню вычислял Volume.
-/// 3. По Density.ValHmi вычислялась Mass.
-///
-/// Геометрия конкретного Tank Type сюда намеренно не перенесена.
-/// Она остаётся в TankType1...TankType8.
+/// Level.R, %
+/// -> рабочая зона измерения
+/// -> измеренный Level, mm
+/// -> физическая высота жидкости от дна
+/// -> Volume
+/// -> Mass.
 /// </summary>
 public static class LevelTankCalculator
 {
     /// <summary>
     /// Выполняет полный расчёт LevelTank.
     ///
-    /// Формулы намеренно повторяют старый рабочий TechParamsCalc.
+    /// totalLengthMm     - полный размер Tank по направлению измерения;
+    /// lowerDeadAreaMm   - нижняя мёртвая зона;
+    /// upperDeadAreaMm   - верхняя мёртвая зона;
+    /// calculateAbove100 - разрешает продолжать расчёт Volume выше 100 %
+    ///                     внутри upper dead area.
+    ///
+    /// Level при этом НИКОГДА не ограничивается сверху 100 %.
+    /// Ограничивается только физическая высота, передаваемая
+    /// в геометрический расчёт Volume.
     /// </summary>
-    public static LevelTankResult Calculate(double levelRaw, double densityHmi, double distanceA, double distanceB, Func<int, double> calculateVolume)
+    public static LevelTankResult Calculate(double levelRaw, double densityHmi, double totalLengthMm, double lowerDeadAreaMm, double upperDeadAreaMm, bool calculateAbove100, Func<double, double> calculateVolume)
     {
         ArgumentNullException.ThrowIfNull(calculateVolume);
 
-         // Старый LevelTank:
-         // LevelMm = Math.Max(0, (int)((DistanceB - DistanceA) * Level.Val_R * 10 / 10000));
-         //
-         // Важно:
-         // - сохраняем коэффициенты 10 / 10000;
-         // - сохраняем именно приведение к int, без Round();
-         // - Math.Max выполняется после приведения.
-        var levelMm = Math.Max(0, (int)((distanceB - distanceA) * levelRaw * 10.0 / 1000.0));
+        var measurementAreaMm = totalLengthMm - lowerDeadAreaMm - upperDeadAreaMm;
 
-        
-        //* H_MAX в старом LevelTankCreatorCtApi: DistanceB - DistanceA
-        var hMaxMm = (int)(distanceB - distanceA);
+        /*
+         * Level.R приходит в реальных процентах.
+         *
+         * 58.6 -> 58.6 %
+         *
+         * Снизу сохраняем старую защиту:
+         * отрицательный Level не используем.
+         *
+         * Сверху НЕ ограничиваем:
+         * 105 %, 110 % и т.д. остаются допустимыми.
+         */
+        var levelMm = Math.Max(0.0, measurementAreaMm * levelRaw / 100.0);
 
-        // Геометрическая формула остаётся внутри конкретного Tank Type.
-        var volumeM3 = calculateVolume(levelMm);
+        /*
+         * Физическая высота жидкости от самого нижнего края Tank.
+         *
+         * При 0 %:
+         * liquidHeight = lowerDeadArea.
+         *
+         * При 100 %:
+         * liquidHeight = lowerDeadArea + measurementArea.
+         */
+        var liquidHeightMm = lowerDeadAreaMm + levelMm;
 
-         // Старый LevelTank.Mass:
-         //
-         // if (Density != null && Density.ValHmi > 0)
-         //     return Volume * Density.ValHmi * 0.0001;
-         //
-         // Density теперь передаётся значением, поэтому проверяем densityHmi.
+        /*
+         * Если расчёт выше 100 % запрещён,
+         * Volume останавливается на верхней границе рабочей зоны.
+         *
+         * Сам Level при этом продолжает отображаться > 100 %.
+         */
+        if (!calculateAbove100)
+            liquidHeightMm = Math.Min(liquidHeightMm, lowerDeadAreaMm + measurementAreaMm);
+
+        /*
+         * Даже при calculateAbove100=true нельзя считать
+         * виртуальный объём выше физической геометрии Tank.
+         */
+        liquidHeightMm = Math.Clamp(liquidHeightMm, 0.0, totalLengthMm);
+
+        var volumeM3 = calculateVolume(liquidHeightMm);
         var massT = densityHmi > 0 ? volumeM3 * densityHmi * 0.001 : 0.0;
 
-        return new LevelTankResult(hMaxMm, levelMm, volumeM3, massT);
+        return new LevelTankResult(measurementAreaMm, levelMm, liquidHeightMm, volumeM3, massT);
     }
 }
 
+
 /// <summary>
-/// Полный набор результатов одного расчёта LevelTank.
+/// Результат одного расчёта LevelTank.
 ///
-/// Эти четыре значения соответствуют старой Tank-структуре:
+/// HMaxMm         -> *_H_MAX
+/// LevelMm        -> *_H_HMI
+/// VolumeM3       -> *_V_HMI
+/// MassT          -> *_M_HMI
 ///
-/// HMaxMm  -> *_H_MAX
-/// LevelMm -> *_H_HMI
-/// VolumeM3 -> *_V_HMI
-/// MassT   -> *_M_HMI
+/// LiquidHeightMm является внутренней физической координатой
+/// и в Tank structure не записывается.
 /// </summary>
-public sealed record LevelTankResult(int HMaxMm, int LevelMm, double VolumeM3, double MassT);
+public sealed record LevelTankResult(double HMaxMm, double LevelMm, double LiquidHeightMm, double VolumeM3, double MassT);

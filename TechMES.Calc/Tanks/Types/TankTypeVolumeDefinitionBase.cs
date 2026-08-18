@@ -58,7 +58,7 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
      //
      // раньше: levelMm -> volume
      // теперь: levelRaw + densityHmi -> hMax + levelMm + volume + mass
-    public override string Version => "2";
+    public override string Version => "3";
 
     public override IReadOnlyList<CalculationOutputDefinition> Outputs => OutputDefinitions;
 
@@ -74,86 +74,45 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
     protected static IReadOnlyList<CalculationParameterDefinition> CreateParameters(params CalculationParameterDefinition[] geometryParameters)
     {
         var result = new List<CalculationParameterDefinition>
-        {
-            /*
-             * Старый Level.Val_R.
-             *
-             * Позже TankConfigurationPanel автоматически привяжет сюда
-             * реальный R-tag связанного Level.
-             */
-            Number(
-                key: "levelRaw",
-                name: "Level raw",
-                unit: "",
-                order: 1,
-                defaultValue: 0d,
-                minimum: null,
-                description: "Linked Level.R value."),
-
-            /*
-             * Старый Density.ValHmi.
-             *
-             * Позже автоматически привязывается к связанному Density.
-             */
-            Number(
-                key: "densityHmi",
-                name: "Density HMI",
-                unit: "",
-                order: 2,
-                defaultValue: 0d,
-                minimum: null,
-                description: "Linked Density HMI value.")
-        };
+    {
+        Number("levelRaw", "Level raw", "%", 1, 0d, null, description: "Linked Level.R value."),
+        Number("densityHmi", "Density HMI", "kg/m³", 2, 0d, null, description: "Linked Density HMI value.")
+    };
 
         result.AddRange(geometryParameters);
 
         /*
-         * Старый TankContent:
+         * Новая модель измерительной части.
          *
+         * Старые:
          * distanceA
          * distanceB
          * distToDistanceA
          * probeLength
          *
-         * Это обычные константы Job.
+         * больше не являются частью Tank Job.
          */
         result.AddRange(
         [
-            Number(
-                key: "distanceA",
-                name: "Distance A",
-                unit: "mm",
-                order: 90,
-                defaultValue: 150d,
-                minimum: 0d),
-
-            Number(
-                key: "distanceB",
-                name: "Distance B",
-                unit: "mm",
-                order: 91,
-                defaultValue: 3000d,
-                minimum: 0d),
-
-            Number(
-                key: "distToDistanceA",
-                name: "Distance to A",
-                unit: "mm",
-                order: 92,
-                defaultValue: 150d,
-                minimum: 0d),
-
-            Number(
-                key: "probeLength",
-                name: "Probe length",
-                unit: "mm",
-                order: 93,
-                defaultValue: 3100d,
-                minimum: 0d,
-                description: "Stored TankContent parameter. Not used by current Tank volume formulas.")
-                ]);
+            Number("upperDeadArea", "Upper dead area", "mm", 90, 150d, 0d, description: "Unmeasured area above the sensor working range."),
+            Number("lowerDeadArea", "Lower dead area", "mm", 91, 150d, 0d, description: "Unmeasured area below the sensor working range."),
+            Boolean("calculateAbove100", "Calculate above 100%", 92, false, "Continue volume calculation above 100% inside the upper dead area.")
+        ]);
 
         return result;
+    }
+
+    private static CalculationParameterDefinition Boolean(string key, string name, int order, bool defaultValue, string? description = null)
+    {
+        return new CalculationParameterDefinition(
+            Key: key,
+            Name: name,
+            Type: CalculationParameterType.Boolean,
+            Unit: null,
+            IsRequired: true,
+            DefaultValue: defaultValue,
+            Order: order,
+            Description: description);
     }
 
     /// <summary>
@@ -203,6 +162,14 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
     }
 
     /// <summary>
+    /// Полный физический размер Tank по направлению измерения уровня.
+    ///
+    /// Для вертикального Tank это высота.
+    /// Для горизонтального Tank это внутренний диаметр по вертикали.
+    /// </summary>
+    protected abstract double GetTotalLengthMm(CalculationParameterSet parameters);
+
+    /// <summary>
     /// Общий LevelTank pipeline.
     ///
     /// В CalculateVolume() передаётся уже рассчитанный levelMm,
@@ -212,72 +179,58 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
     {
         var levelRaw = parameters.GetRequiredDouble("levelRaw");
         var densityHmi = parameters.GetRequiredDouble("densityHmi");
-        var distanceA = parameters.GetRequiredDouble("distanceA");
-        var distanceB = parameters.GetRequiredDouble("distanceB");
+        var upperDeadArea = parameters.GetRequiredDouble("upperDeadArea");
+        var lowerDeadArea = parameters.GetRequiredDouble("lowerDeadArea");
+        var calculateAbove100 = parameters.GetRequiredBoolean("calculateAbove100");
 
-        var levelTank = LevelTankCalculator.Calculate(
-            levelRaw,
-            densityHmi,
-            distanceA,
-            distanceB,
-            levelMm =>
+        var totalLengthMm = GetTotalLengthMm(parameters);
+
+        if (!double.IsFinite(totalLengthMm) || totalLengthMm <= 0)
+            return CalculationResult.Failure("tank.geometry.invalid-total-length", "Tank total length must be greater than zero.");
+
+        if (upperDeadArea < 0 || lowerDeadArea < 0)
+            return CalculationResult.Failure("tank.sensor.invalid-dead-area", "Tank dead areas cannot be negative.");
+
+        var measurementAreaMm = totalLengthMm - lowerDeadArea - upperDeadArea;
+
+        if (measurementAreaMm <= 0)
+            return CalculationResult.Failure("tank.sensor.invalid-measurement-area", "Lower dead area and upper dead area leave no valid sensor measurement area.");
+
+        var levelTank = LevelTankCalculator.Calculate(levelRaw, densityHmi, totalLengthMm, lowerDeadArea, upperDeadArea, calculateAbove100, liquidHeightMm =>
             {
                 /*
-                 * Конкретные TankTypeN остались legacy-compatible
-                 * и ожидают внутренний параметр levelMm.
+                 * ВРЕМЕННЫЙ compatibility bridge для Type 2..8.
                  *
-                 * В Job его больше нет: это производное значение.
+                 * После перевода всех геометрий на точные формулы этот блок distance* полностью удалим.
+                 * levelMm здесь уже означает ФИЗИЧЕСКУЮ высоту жидкости от дна Tank.
                  */
-                var volumeParameters = parameters.Values.ToDictionary(
-                    item => item.Key,
-                    item => item.Value,
-                    StringComparer.OrdinalIgnoreCase);
+                var volumeParameters = parameters.Values.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
 
-                volumeParameters["levelMm"] = levelMm;
+                volumeParameters["levelMm"] = liquidHeightMm;
+                volumeParameters["distanceA"] = 0d;
+                volumeParameters["distanceB"] = totalLengthMm;
+                volumeParameters["distToDistanceA"] = 0d;
 
                 return CalculateVolume(new CalculationParameterSet(volumeParameters));
             });
 
         if (!double.IsFinite(levelTank.VolumeM3))
-        {
-            return CalculationResult.Failure(
-                "tank.volume.not-finite",
-                "Calculated tank volume is not a finite number.");
-        }
-
+            return CalculationResult.Failure("tank.volume.not-finite", "Calculated tank volume is not a finite number.");
+ 
         if (!double.IsFinite(levelTank.MassT))
-        {
-            return CalculationResult.Failure(
-                "tank.mass.not-finite",
-                "Calculated tank mass is not a finite number.");
-        }
-
+            return CalculationResult.Failure("tank.mass.not-finite", "Calculated tank mass is not a finite number.");
+     
         IReadOnlyList<CalculationTraceItem> trace = includeTrace
             ?
             [
-                new(
-                    Key: "hMaxMm",
-                    Name: "H max",
-                    Value: levelTank.HMaxMm.ToString(CultureInfo.InvariantCulture),
-                    Unit: "mm"),
-
-                new(
-                    Key: "levelMm",
-                    Name: "Calculated level",
-                    Value: levelTank.LevelMm.ToString(CultureInfo.InvariantCulture),
-                    Unit: "mm"),
-
-                new(
-                    Key: "volumeM3",
-                    Name: "Calculated volume",
-                    Value: levelTank.VolumeM3.ToString("0.############", CultureInfo.InvariantCulture),
-                    Unit: "m³"),
-
-                new(
-                    Key: "massT",
-                    Name: "Calculated mass",
-                    Value: levelTank.MassT.ToString("0.############", CultureInfo.InvariantCulture),
-                    Unit: "t")
+                new("totalLengthMm", "Tank total length", totalLengthMm.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
+                new("upperDeadAreaMm", "Upper dead area", upperDeadArea.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
+                new("measurementAreaMm", "Measurement area", levelTank.HMaxMm.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
+                new("lowerDeadAreaMm", "Lower dead area", lowerDeadArea.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
+                new("levelMm", "Measured level", levelTank.LevelMm.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
+                new("liquidHeightMm", "Physical liquid height", levelTank.LiquidHeightMm.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
+                new("volumeM3", "Calculated volume", levelTank.VolumeM3.ToString("0.############", CultureInfo.InvariantCulture), "m³"),
+                new("massT", "Calculated mass", levelTank.MassT.ToString("0.############", CultureInfo.InvariantCulture), "t")
             ]
             :
             [];

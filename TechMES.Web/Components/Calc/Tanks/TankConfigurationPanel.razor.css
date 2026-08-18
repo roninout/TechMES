@@ -665,3 +665,11 @@
     margin-top: 12px;
     margin-bottom: 8px;
 }
+
+.tank-input-switch-value {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    min-width: 0;
+}

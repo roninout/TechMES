@@ -14,8 +14,7 @@ namespace TechMES.Calc.Tanks.Types;
 /// distToDistanceA
 /// levelMm
 /// </summary>
-public sealed class TankType2VolumeDefinition
-    : TankTypeVolumeDefinitionBase
+public sealed class TankType2VolumeDefinition : TankTypeVolumeDefinitionBase
 {
     private static readonly IReadOnlyList<CalculationParameterDefinition>
         ParameterDefinitions = CreateParameters(
@@ -29,6 +28,11 @@ public sealed class TankType2VolumeDefinition
     public override string Name => "Type 2 — horizontal, two elliptical ends";
 
     public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
+
+    protected override double GetTotalLengthMm(CalculationParameterSet parameters)
+    {
+        return parameters.GetRequiredDouble("dimB");
+    }
 
     protected override double CalculateVolume(CalculationParameterSet parameters)
     {
