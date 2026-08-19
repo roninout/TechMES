@@ -253,6 +253,26 @@
 
         </div>
 
+        <!-- ============================================================
+        dimC
+        ============================================================ -->
+        <div class="tank-side-field"
+             style="@GetLeftFieldStyle(DimCCenterY)">
+
+            <RadzenFormField Text="dimC"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@DimC"
+                               Change="@((double value) => DimCChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
+            </RadzenFormField>
+
+        </div>
+
         <div class="tank-side-field"
              style="@GetLeftFieldStyle(DimACenterY)">
 

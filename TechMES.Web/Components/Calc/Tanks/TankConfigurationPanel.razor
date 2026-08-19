@@ -209,7 +209,7 @@
 
         <section class="tank-parameters-column">
 
-            <!-- ============================================================
+         <!-- ============================================================
          VALUE
          References + calculated values
          ============================================================ -->
@@ -268,9 +268,12 @@
                                                  Text="Level"
                                                  class="tank-value-form-field">
 
-                                    <RadzenTextBox Value="@FormatReferenceValue("levelRaw", "%")"
-                                                   ReadOnly="true"
-                                                   class="tank-value-readonly" />
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetLastInputNumber("levelRaw")"
+                                                       Format="0.### %"
+                                                       Disabled="true"
+                                                       ShowUpDown="false"
+                                                       Style="width:100%;" />
 
                                 </RadzenFormField>
 
@@ -322,9 +325,12 @@
                                                  Text="Density"
                                                  class="tank-value-form-field">
 
-                                    <RadzenTextBox Value="@FormatReferenceValue("densityHmi", "kg/m³")"
-                                                   ReadOnly="true"
-                                                   class="tank-value-readonly" />
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetLastInputNumber("densityHmi")"
+                                                       Format="0.### kg/m³"
+                                                       Disabled="true"
+                                                       ShowUpDown="false"
+                                                       Style="width:100%;" />
 
                                 </RadzenFormField>
 
@@ -398,9 +404,12 @@
                                                  Text="H max"
                                                  class="tank-value-form-field">
 
-                                    <RadzenTextBox Value="@FormatOutputFieldValue("hMax", "mm")"
-                                                   ReadOnly="true"
-                                                   class="tank-value-readonly" />
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetLastOutputNumber("hMax")"
+                                                       Format="0 mm"
+                                                       Disabled="true"
+                                                       ShowUpDown="false"
+                                                       Style="width:100%;" />
 
                                 </RadzenFormField>
 
@@ -431,9 +440,12 @@
                                                  Text="Level"
                                                  class="tank-value-form-field">
 
-                                    <RadzenTextBox Value="@FormatOutputFieldValue("levelMm", "mm")"
-                                                   ReadOnly="true"
-                                                   class="tank-value-readonly" />
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetLastOutputNumber("levelMm")"
+                                                       Format="0 mm"
+                                                       Disabled="true"
+                                                       ShowUpDown="false"
+                                                       Style="width:100%;" />
 
                                 </RadzenFormField>
 
@@ -464,9 +476,12 @@
                                                  Text="Mass"
                                                  class="tank-value-form-field">
 
-                                    <RadzenTextBox Value="@FormatOutputFieldValue("mass", "t")"
-                                                   ReadOnly="true"
-                                                   class="tank-value-readonly" />
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetLastOutputNumber("mass")"
+                                                       Format="0.### t"
+                                                       Disabled="true"
+                                                       ShowUpDown="false"
+                                                       Style="width:100%;" />
 
                                 </RadzenFormField>
 
@@ -497,9 +512,12 @@
                                                  Text="Volume"
                                                  class="tank-value-form-field">
 
-                                    <RadzenTextBox Value="@FormatOutputFieldValue("volume", "m³")"
-                                                   ReadOnly="true"
-                                                   class="tank-value-readonly" />
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetLastOutputNumber("volume")"
+                                                       Format="0.### m³"
+                                                       Disabled="true"
+                                                       ShowUpDown="false"
+                                                       Style="width:100%;" />
 
                                 </RadzenFormField>
 
@@ -508,46 +526,28 @@
                         </div>
 
 
-                        <!-- Volume transform -->
+                        <!-- ========================================================
+                            SCADA write value
+
+                            Фактическое значение, которое будет передано
+                            Runtime.Service в целевой SCADA tag.
+                            ======================================================== -->
                         <div class="tank-value-transform-row">
 
                             <div></div>
 
-
                             <div class="tank-value-transform-fields">
 
                                 <RadzenFormField AllowFloatingLabel="false"
-                                                 Text="Scale"
-                                                 class="tank-value-transform-field">
+                                                    Text="Write value"
+                                                    class="tank-value-transform-field">
 
-                                    <RadzenNumeric TValue="double"
-                                                   Value="@_volumeScale"
-                                                   Change="@OnVolumeScaleChanged"
-                                                   Disabled="@_isSaving"
-                                                   class="tank-value-transform-numeric" />
-
-                                </RadzenFormField>
-
-
-                                <RadzenFormField AllowFloatingLabel="false"
-                                                 Text="Offset"
-                                                 class="tank-value-transform-field">
-
-                                    <RadzenNumeric TValue="double"
-                                                   @bind-Value="_volumeOffset"
-                                                   Disabled="@_isSaving"
-                                                   class="tank-value-transform-numeric" />
-
-                                </RadzenFormField>
-
-
-                                <RadzenFormField AllowFloatingLabel="false"
-                                                 Text="Write value"
-                                                 class="tank-value-transform-field">
-
-                                    <RadzenTextBox Value="@FormatWriteOutputValue("volume")"
-                                                   ReadOnly="true"
-                                                   class="tank-value-readonly" />
+                                    <RadzenNumeric TValue="double?"
+                                                    Value="@GetWriteOutputNumber("volume")"
+                                                    Format="0.###"
+                                                    Disabled="true"
+                                                    ShowUpDown="false"
+                                                    Style="width:100%;" />
 
                                 </RadzenFormField>
 
@@ -738,9 +738,64 @@
     private bool _enabled;
     private bool _allowOutputWrites;
 
-    private bool _volumeScaleAuto = true;
-    private double _volumeScale = 1000.0;
-    private double _volumeOffset;
+    // Множитель формата SCADA для Volume и Mass.
+    //
+    // Повторяет логику старого TechCalc:
+    //
+    // dimB >= 2000 mm -> x100
+    // dimB <  2000 mm -> x1000
+    //
+    // В отличие от старого TechCalc результат не приводится к short.
+    private double TankWriteScale => ResolveTankWriteScale(GetInputNumber("dimB"));
+
+    // ============================================================
+    // Числовые runtime values для disabled RadzenNumeric.
+    //
+    // В отличие от старых Format... методов здесь возвращается
+    // настоящее число. Это позволяет использовать одинаковый
+    // визуальный стиль RadzenNumeric для всех read-only значений.
+    // ============================================================
+
+    private double? GetLastInputNumber(string key)
+    {
+        return TryGetRuntimeNumber(State?.LastInputs, key, out var value)
+            ? value
+            : null;
+    }
+
+
+    private double? GetLastOutputNumber(string key)
+    {
+        return TryGetRuntimeNumber(State?.LastOutputs, key, out var value)
+            ? value
+            : null;
+    }
+
+
+    // Возвращает фактическое значение,
+    // которое Runtime отправит в SCADA.
+    //
+    // H max / Level:
+    //     raw value
+    //
+    // Volume / Mass:
+    //     raw value * TankWriteScale
+    private double? GetWriteOutputNumber(string key)
+    {
+        if (!TryGetRuntimeNumber(State?.LastOutputs, key, out var rawValue))
+            return null;
+
+        var scale = key.ToLowerInvariant() switch
+        {
+            "volume" => TankWriteScale,
+            "mass" => TankWriteScale,
+            _ => 1.0
+        };
+
+        var writeValue = rawValue * scale;
+
+        return double.IsFinite(writeValue) ? writeValue : null;
+    }
 
 
     private CalcDefinitionDto? SelectedDefinition =>
@@ -893,7 +948,7 @@
     /// Для Volume Scale теперь можно изменить вручную.
     /// Для Mass этот legacy multiplier остаётся автоматическим.
     /// </summary>
-    private double LegacyMassScale => ResolveLegacyScale(GetInputNumber("dimB"));
+    private double LegacyMassScale => ResolveTankWriteScale(GetInputNumber("dimB"));
 
 
     protected override async Task OnInitializedAsync()
@@ -1101,8 +1156,6 @@
                 return CreateInputEditor(parameter, stored);
             })
             .ToList();
-
-        ConfigureVolumeTransform(job);
     }
 
 
@@ -1139,49 +1192,10 @@
     }
 
 
-    /// <summary>
-    /// Восстанавливает сохранённый Volume Scale/Offset.
-    ///
-    /// Если output ещё не существует, применяется legacy default,
-    /// зависящий от dimB.
-    /// </summary>
-    private void ConfigureVolumeTransform(CalcJobDto? job)
-    {
-        var volumeOutput = job?.Outputs.FirstOrDefault(output =>
-            string.Equals(output.OutputKey, "volume", StringComparison.OrdinalIgnoreCase));
-
-        if (volumeOutput is not null)
-        {
-            _volumeScale = volumeOutput.Scale;
-            _volumeOffset = volumeOutput.Offset;
-            _volumeScaleAuto = false;
-            return;
-        }
-
-        _volumeScale = ResolveLegacyScale(GetInputNumber("dimB"));
-        _volumeOffset = 0;
-        _volumeScaleAuto = true;
-    }
-
-
     private void OnNumberValueChanged(TankInputEditor input, double value)
     {
         input.NumberValue = value;
-
-        if (_volumeScaleAuto
-            && string.Equals(input.Parameter.Key, "dimB", StringComparison.OrdinalIgnoreCase))
-        {
-            _volumeScale = ResolveLegacyScale(value);
-        }
     }
-
-
-    private void OnVolumeScaleChanged(double value)
-    {
-        _volumeScale = value;
-        _volumeScaleAuto = false;
-    }
-
 
     /// <summary>
     /// Новый Tank Job.
@@ -1365,42 +1379,48 @@
         return result;
     }
 
-
-    /// <summary>
-    /// Формирует фиксированную Tank output structure.
-    ///
-    /// Индивидуального Allow Write в UI нет.
-    /// Все внутренние Output.WriteEnabled получают одно значение
-    /// из глобального Job "Allow output writes".
-    ///
-    /// Это оставляет существующий Runtime safety pipeline без изменений.
-    /// </summary>
+    // Формирует фиксированную Tank output structure.
+    //
+    // H max и Level записываются в SCADA без преобразования.
+    //
+    // Volume и Mass перед записью преобразуются в формат SCADA
+    // по правилу старого TechCalc:
+    //
+    // dimB >= 2000 mm -> x100
+    // dimB <  2000 mm -> x1000
+    //
+    // Приведения результата к short нет.
+    //
+    // Offset для Tank не используется и всегда равен 0.
+    //
+    // Индивидуального Allow Write в UI нет.
+    // Все Output.WriteEnabled получают одно глобальное значение
+    // Allow output writes.
     private List<CalcJobOutputSaveDto> BuildTankOutputs(CalcDefinitionDto definition, bool allowWrites)
     {
-        var massScale = LegacyMassScale;
+        var writeScale = TankWriteScale;
 
-        return definition.Outputs
-            .OrderBy(output => output.Order)
-            .Select(output =>
+        return definition.Outputs.OrderBy(output => output.Order).Select(output =>
             {
                 var scale = output.Key.ToLowerInvariant() switch
                 {
-                    "volume" => _volumeScale,
-                    "mass" => massScale,
+                    "volume" => writeScale,
+                    "mass" => writeScale,
                     _ => 1.0
                 };
-
-                var offset = string.Equals(output.Key, "volume", StringComparison.OrdinalIgnoreCase)
-                    ? _volumeOffset
-                    : 0.0;
 
                 return new CalcJobOutputSaveDto
                 {
                     OutputKey = output.Key,
                     TagName = ResolveTankOutputTag(output.Key),
                     WriteEnabled = allowWrites,
+
+                    // Scale остаётся частью универсального Calc binding, но для Tank пользователь его не задаёт.
                     Scale = scale,
-                    Offset = offset,
+
+                    // Tank не использует Offset.
+                    Offset = 0.0,
+
                     SortOrder = output.Order
                 };
             })
@@ -1477,7 +1497,8 @@
         input.BooleanValue = value;
     }
 
-    private static double ResolveLegacyScale(double dimB)
+    // Определяет коэффициент преобразования инженерных Volume/Mass в формат SCADA.
+    private static double ResolveTankWriteScale(double dimB)
     {
         return dimB >= 2000.0 ? 100.0 : 1000.0;
     }
@@ -1562,29 +1583,33 @@
     }
 
     /// <summary>
-    /// Значение, которое Runtime отправит в SCADA после применения Scale/Offset.
+    /// Значение, которое Runtime фактически отправит в SCADA.
     ///
-    /// H max / Level: Scale = 1, Offset = 0.
-    /// Volume: пользовательские Scale / Offset.
-    /// Mass: legacy Scale зависит от dimB.
+    /// H max / Level записываются без преобразования.
+    ///
+    /// Volume / Mass преобразуются по правилу старого TechCalc:
+    ///
+    /// dimB >= 2000 mm -> x100
+    /// dimB <  2000 mm -> x1000
+    ///
+    /// Дополнительный Offset для Tank не используется.
+    /// Приведение к short здесь не выполняется.
     /// </summary>
     private string FormatWriteOutputValue(string key)
     {
         if (!TryGetRuntimeNumber(State?.LastOutputs, key, out var rawValue))
             return "—";
 
+        var writeScale = ResolveTankWriteScale(GetInputNumber("dimB"));
+
         var scale = key.ToLowerInvariant() switch
         {
-            "volume" => _volumeScale,
-            "mass" => LegacyMassScale,
+            "volume" => writeScale,
+            "mass" => writeScale,
             _ => 1.0
         };
 
-        var offset = string.Equals(key, "volume", StringComparison.OrdinalIgnoreCase)
-            ? _volumeOffset
-            : 0.0;
-
-        var writeValue = rawValue * scale + offset;
+        var writeValue = rawValue * scale;
 
         return double.IsFinite(writeValue)
             ? FormatRuntimeNumber(key, writeValue)
