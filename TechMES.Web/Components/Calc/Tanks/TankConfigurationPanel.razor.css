@@ -565,48 +565,6 @@
     width: 130px;
 }
 
-::deep .tank-value-readonly {
-    width: 100%;
-    text-align: right;
-}
-
-    ::deep .tank-value-readonly .rz-inputtext {
-        text-align: right;
-    }
-
-
-/* ============================================================
-   Volume Scale / Offset / Write value
-   ============================================================ */
-
-.tank-value-transform-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 16px;
-    min-width: 0;
-    min-height: 48px;
-}
-
-.tank-value-transform-fields {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-}
-
-::deep .tank-value-transform-field {
-    width: 130px;
-}
-
-::deep .tank-value-transform-numeric {
-    width: 100%;
-}
-
-    ::deep .tank-value-transform-numeric .rz-inputtext {
-        text-align: right;
-    }
-
 
 /* ============================================================
    Responsive Value panel

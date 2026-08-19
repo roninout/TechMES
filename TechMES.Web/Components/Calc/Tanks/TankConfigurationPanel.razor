@@ -381,7 +381,6 @@
                     <!-- Calculated values -->
                     <section class="tank-value-section">
 
-
                         <!-- H max -->
                         <div class="tank-value-output-row">
 
@@ -416,7 +415,6 @@
                             </div>
 
                         </div>
-
 
                         <!-- Level -->
                         <div class="tank-value-output-row">
@@ -453,6 +451,40 @@
 
                         </div>
 
+                        <!-- Volume -->
+                        <div class="tank-value-output-row">
+
+                            <div class="tank-value-row-title">
+
+                                <div class="tank-value-row-name">
+                                    Volume
+                                </div>
+
+                                <div class="tank-value-row-description">
+                                    Volume calculated from the level
+                                </div>
+
+                            </div>
+
+
+                            <div class="tank-value-field-cell">
+
+                                <RadzenFormField AllowFloatingLabel="false"
+                                                    Text="Volume"
+                                                    class="tank-value-form-field">
+
+                                    <RadzenNumeric TValue="double?"
+                                                    Value="@GetLastOutputNumber("volume")"
+                                                    Format="0.### m³"
+                                                    Disabled="true"
+                                                    ShowUpDown="false"
+                                                    Style="width:100%;" />
+
+                                </RadzenFormField>
+
+                            </div>
+
+                        </div>
 
                         <!-- Mass -->
                         <div class="tank-value-output-row">
@@ -482,72 +514,6 @@
                                                        Disabled="true"
                                                        ShowUpDown="false"
                                                        Style="width:100%;" />
-
-                                </RadzenFormField>
-
-                            </div>
-
-                        </div>
-
-
-                        <!-- Volume -->
-                        <div class="tank-value-output-row">
-
-                            <div class="tank-value-row-title">
-
-                                <div class="tank-value-row-name">
-                                    Volume
-                                </div>
-
-                                <div class="tank-value-row-description">
-                                    Volume calculated from the level
-                                </div>
-
-                            </div>
-
-
-                            <div class="tank-value-field-cell">
-
-                                <RadzenFormField AllowFloatingLabel="false"
-                                                 Text="Volume"
-                                                 class="tank-value-form-field">
-
-                                        <RadzenNumeric TValue="double?"
-                                                       Value="@GetLastOutputNumber("volume")"
-                                                       Format="0.### m³"
-                                                       Disabled="true"
-                                                       ShowUpDown="false"
-                                                       Style="width:100%;" />
-
-                                </RadzenFormField>
-
-                            </div>
-
-                        </div>
-
-
-                        <!-- ========================================================
-                            SCADA write value
-
-                            Фактическое значение, которое будет передано
-                            Runtime.Service в целевой SCADA tag.
-                            ======================================================== -->
-                        <div class="tank-value-transform-row">
-
-                            <div></div>
-
-                            <div class="tank-value-transform-fields">
-
-                                <RadzenFormField AllowFloatingLabel="false"
-                                                    Text="Write value"
-                                                    class="tank-value-transform-field">
-
-                                    <RadzenNumeric TValue="double?"
-                                                    Value="@GetWriteOutputNumber("volume")"
-                                                    Format="0.###"
-                                                    Disabled="true"
-                                                    ShowUpDown="false"
-                                                    Style="width:100%;" />
 
                                 </RadzenFormField>
 
@@ -763,7 +729,6 @@
             : null;
     }
 
-
     private double? GetLastOutputNumber(string key)
     {
         return TryGetRuntimeNumber(State?.LastOutputs, key, out var value)
@@ -771,37 +736,9 @@
             : null;
     }
 
-
-    // Возвращает фактическое значение,
-    // которое Runtime отправит в SCADA.
-    //
-    // H max / Level:
-    //     raw value
-    //
-    // Volume / Mass:
-    //     raw value * TankWriteScale
-    private double? GetWriteOutputNumber(string key)
-    {
-        if (!TryGetRuntimeNumber(State?.LastOutputs, key, out var rawValue))
-            return null;
-
-        var scale = key.ToLowerInvariant() switch
-        {
-            "volume" => TankWriteScale,
-            "mass" => TankWriteScale,
-            _ => 1.0
-        };
-
-        var writeValue = rawValue * scale;
-
-        return double.IsFinite(writeValue) ? writeValue : null;
-    }
-
-
     private CalcDefinitionDto? SelectedDefinition =>
         _tankDefinitions.FirstOrDefault(definition =>
             string.Equals(definition.Code, _selectedDefinitionCode, StringComparison.OrdinalIgnoreCase));
-
 
     private int SelectedTypeNumber => GetTypeNumber(_selectedDefinitionCode);
 
@@ -933,23 +870,9 @@
             .ToList()
         ?? [];
 
-
     private bool IsOutputBindingReady =>
         OutputRows.Count > 0
         && OutputRows.All(output => !string.IsNullOrWhiteSpace(output.TagName));
-
-
-    /// <summary>
-    /// В старом LevelTankCreatorCtApi и Volume, и Mass
-    /// использовали один и тот же legacy multiplier:
-    ///
-    /// dimB >= 2000 ? 100 : 1000
-    ///
-    /// Для Volume Scale теперь можно изменить вручную.
-    /// Для Mass этот legacy multiplier остаётся автоматическим.
-    /// </summary>
-    private double LegacyMassScale => ResolveTankWriteScale(GetInputNumber("dimB"));
-
 
     protected override async Task OnInitializedAsync()
     {
@@ -957,7 +880,6 @@
         await ResolveLinkedLevelTagAsync();
         SynchronizeSelection(force: true);
     }
-
 
     protected override async Task OnParametersSetAsync()
     {
@@ -1546,90 +1468,6 @@
         return normalized.Length == 0 ? null : normalized;
     }
 
-    private string FormatReferenceValue(string key, string unit)
-    {
-        var value = FormatLastInputValue(key);
-
-        return value == "—"
-            ? value
-            : $"{value} {unit}";
-    }
-
-    /// <summary>
-    /// Последнее фактическое значение Input,
-    /// использованное Calc.Service при расчёте Tank.
-    ///
-    /// Для LevelTank это:
-    /// levelRaw
-    /// densityHmi
-    /// </summary>
-    private string FormatLastInputValue(string key)
-    {
-        return TryGetRuntimeNumber(State?.LastInputs, key, out var value)
-            ? FormatRuntimeNumber(key, value)
-            : "—";
-    }
-
-    /// <summary>
-    /// Последний инженерный Output алгоритма.
-    ///
-    /// Здесь Scale/Offset ещё не применены.
-    /// </summary>
-    private string FormatLastOutputValue(string key)
-    {
-        return TryGetRuntimeNumber(State?.LastOutputs, key, out var value)
-            ? FormatRuntimeNumber(key, value)
-            : "—";
-    }
-
-    /// <summary>
-    /// Значение, которое Runtime фактически отправит в SCADA.
-    ///
-    /// H max / Level записываются без преобразования.
-    ///
-    /// Volume / Mass преобразуются по правилу старого TechCalc:
-    ///
-    /// dimB >= 2000 mm -> x100
-    /// dimB <  2000 mm -> x1000
-    ///
-    /// Дополнительный Offset для Tank не используется.
-    /// Приведение к short здесь не выполняется.
-    /// </summary>
-    private string FormatWriteOutputValue(string key)
-    {
-        if (!TryGetRuntimeNumber(State?.LastOutputs, key, out var rawValue))
-            return "—";
-
-        var writeScale = ResolveTankWriteScale(GetInputNumber("dimB"));
-
-        var scale = key.ToLowerInvariant() switch
-        {
-            "volume" => writeScale,
-            "mass" => writeScale,
-            _ => 1.0
-        };
-
-        var writeValue = rawValue * scale;
-
-        return double.IsFinite(writeValue)
-            ? FormatRuntimeNumber(key, writeValue)
-            : "—";
-    }
-
-    /// <summary>
-    /// Значение Output для read-only поля.
-    ///
-    /// Если результата ещё нет, показываем "—" без единицы измерения.
-    /// </summary>
-    private string FormatOutputFieldValue(string key, string unit)
-    {
-        var value = FormatLastOutputValue(key);
-
-        return value == "—"
-            ? value
-            : $"{value} {unit}";
-    }
-
     /// <summary>
     /// Безопасно читает числовое значение из LastInputs / LastOutputs.
     ///
@@ -1655,32 +1493,6 @@
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// Форматирование фактических runtime values.
-    ///
-    /// LevelRaw/DensityHmi показываем такими,
-    /// какими они реально пришли из SCADA.
-    ///
-    /// Calculated Level/HMax - целые mm.
-    /// Volume/Mass - инженерные значения.
-    /// </summary>
-    private static string FormatRuntimeNumber(string key, double value)
-    {
-        return key.ToLowerInvariant() switch
-        {
-            "hmax" => value.ToString("0"),
-            "levelmm" => value.ToString("0"),
-
-            "volume" => value.ToString("0.###"),
-            "mass" => value.ToString("0.###"),
-
-            "levelraw" => value.ToString("0.###"),
-            "densityhmi" => value.ToString("0.###"),
-
-            _ => value.ToString("0.###")
-        };
     }
 
     /// <summary>
