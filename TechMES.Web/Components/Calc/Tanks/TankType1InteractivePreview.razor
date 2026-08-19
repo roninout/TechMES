@@ -228,7 +228,6 @@
 
         </svg>
 
-
         @if (HasLevel)
         {
             <div class="tank-live-level-overlay"
@@ -236,7 +235,6 @@
                 @LevelLabel
             </div>
         }
-
 
         <div class="tank-side-field"
              style="@GetRightFieldStyle(MeasurementAreaCenterY)">
@@ -255,7 +253,6 @@
 
         </div>
 
-
         <div class="tank-side-field"
              style="@GetLeftFieldStyle(DimACenterY)">
 
@@ -272,7 +269,6 @@
             </RadzenFormField>
 
         </div>
-
 
         <div class="tank-side-field"
              style="@GetRightFieldStyle(UpperDeadAreaCenterY)">
@@ -291,7 +287,6 @@
 
         </div>
 
-
         <div class="tank-side-field"
              style="@GetRightFieldStyle(LowerDeadAreaCenterY)">
 
@@ -309,7 +304,6 @@
 
         </div>
 
-
         <div class="tank-bottom-field"
              style="@DimBOverlayStyle">
 
@@ -324,25 +318,6 @@
                                Style="width:100%;" />
 
             </RadzenFormField>
-
-        </div>
-
-
-        <div class="tank-overlay-above100">
-
-            <div class="tank-preview-switch">
-
-                <span class="tank-preview-switch-state">
-                    @(CalculateAbove100 ? "on" : "off")
-                </span>
-
-                <RadzenSwitch Value="@CalculateAbove100"
-                              Change="@((bool value) => CalculateAbove100Changed.InvokeAsync(value))"
-                              Disabled="@Disabled" />
-
-                <span>Calculate above 100%</span>
-
-            </div>
 
         </div>
 
@@ -368,9 +343,6 @@
     public double LowerDeadArea { get; set; }
 
     [Parameter]
-    public bool CalculateAbove100 { get; set; }
-
-    [Parameter]
     public double? LevelPercent { get; set; }
 
     [Parameter]
@@ -391,9 +363,6 @@
 
     [Parameter]
     public EventCallback<double> LowerDeadAreaChanged { get; set; }
-
-    [Parameter]
-    public EventCallback<bool> CalculateAbove100Changed { get; set; }
 
     private readonly string ClipId = $"tankType1Clip_{Guid.NewGuid():N}";
 

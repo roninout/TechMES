@@ -123,30 +123,6 @@
         text-align: right;
     }
 
-.tank-overlay-above100 {
-    position: absolute;
-    right: 0;
-    bottom: 1.5%;
-    width: 220px;
-    z-index: 2;
-}
-
-.tank-preview-switch {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 9px;
-    min-height: 34px;
-    white-space: nowrap;
-    font-size: 13px;
-}
-
-.tank-preview-switch-state {
-    width: 22px;
-    text-align: right;
-    color: var(--rz-text-secondary-color);
-}
-
 @media (max-width: 850px) {
     .tank-type1-canvas {
         width: 100%;
