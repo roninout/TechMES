@@ -17,30 +17,109 @@
      LEFT
      Tank geometry + Tank Type
      ============================================================ -->
-    <section class="tank-preview-column">
+    <div class="tank-preview-column">
 
-        @if (!_isLoadingDefinitions)
-        {
-            if (!string.IsNullOrWhiteSpace(_loadError))
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true">
-                    @_loadError
-                </RadzenAlert>
-            }
-            else if (SelectedDefinition is not null)
-            {
-                <div class="tank-type-field tank-type-field-top">
-                    <RadzenLabel Text="Tank type" />
+        @* ============================================================
+       Верхняя строка.
 
-                    <RadzenDropDown TValue="string"
-                    Data="@_tankDefinitions"
-                    TextProperty="@nameof(CalcDefinitionDto.Name)"
-                    ValueProperty="@nameof(CalcDefinitionDto.Code)"
-                    Value="@_selectedDefinitionCode"
-                    Change="@OnTankTypeChanged"
-                    Disabled="@_isSaving"
-                    Style="width:100%;" />
+       Слева:
+       выбор типа Tank.
+
+       По центру:
+       сообщение, если Job выключен.
+
+       Справа:
+       Enabled.
+       ============================================================ *@
+        <div class="tank-preview-toolbar">
+
+            <div class="tank-preview-toolbar-type">
+
+                <label class="tank-field-label">
+                    Tank type
+                </label>
+
+                <RadzenDropDown TValue="string"
+                                Data="@_tankDefinitions"
+                                TextProperty="@nameof(CalcDefinitionDto.Name)"
+                                ValueProperty="@nameof(CalcDefinitionDto.Code)"
+                                Value="@_selectedDefinitionCode"
+                                Change="@OnTankTypeChanged"
+                                Disabled="@_isSaving"
+                                Style="width:100%;" />
+
+            </div>
+
+
+            <div class="tank-preview-toolbar-status">
+
+                @if (!_enabled)
+                {
+                    <div class="tank-inline-message tank-inline-message-danger">
+
+                        <RadzenIcon Icon="error_outline" />
+
+                        <span>
+                            Job is disabled. Calculation is not running.
+                        </span>
+
+                    </div>
+                }
+
+            </div>
+
+
+            <div class="tank-preview-toolbar-enabled">
+
+                <span class="tank-switch-state @GetSwitchStateClass(_enabled)">
+                    @GetSwitchStateText(_enabled)
+                </span>
+
+                <RadzenSwitch @bind-Value="_enabled"
+                              Disabled="@(_isSaving || !IsLevelTankReady || !IsSensorGeometryValid)" />
+
+                <span class="tank-switch-label">
+                    Enabled
+                </span>
+
+            </div>
+
+        </div>
+
+
+        @* ============================================================
+       Общая панель геометрии Tank.
+
+       В эту рамку входит:
+       предупреждение о SCADA writes,
+       сам интерактивный Tank,
+       Calculate above 100%.
+       ============================================================ *@
+        <div class="tank-preview-panel">
+
+
+            @* ========================================================
+           Если Job работает, но Allow output writes выключен,
+           расчёт продолжается, однако запись в SCADA не выполняется.
+           ======================================================== *@
+            @if (_enabled && !_allowOutputWrites)
+            {
+                <div class="tank-inline-message tank-inline-message-warning">
+
+                    <RadzenIcon Icon="warning_amber" />
+
+                    <span>
+                        SCADA output writing is disabled because Allow output writes is off.
+                    </span>
+
                 </div>
+            }
+
+
+            @* ========================================================
+           Интерактивная схема Tank.
+           ======================================================== *@
+            <div class="tank-preview-panel-content">
 
                 @if (SelectedTypeNumber == 1)
                 {
@@ -49,55 +128,53 @@
                                                  DimC="@CurrentDimC"
                                                  UpperDeadArea="@CurrentUpperDeadArea"
                                                  LowerDeadArea="@CurrentLowerDeadArea"
-                                                 CalculateAbove100="@CurrentCalculateAbove100"
                                                  LevelPercent="@CurrentLevelPercent"
                                                  Disabled="@_isSaving"
                                                  DimAChanged="@((double value) => SetInputNumber("dimA", value))"
                                                  DimBChanged="@((double value) => SetInputNumber("dimB", value))"
                                                  DimCChanged="@((double value) => SetInputNumber("dimC", value))"
                                                  UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
-                                                 LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))"
-                                                 CalculateAbove100Changed="@((bool value) => SetInputBoolean("calculateAbove100", value))" />
+                                                 LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
                 }
                 else
                 {
                     <div class="tank-preview-figure">
+
                         <TankTypePreview TypeNumber="@SelectedTypeNumber" />
+
                     </div>
                 }
 
-                <div class="tank-switch-panel">
+            </div>
 
-                    <div class="tank-switches">
 
-                        <div class="tank-switch-row">
-                            <span class="tank-switch-state @GetSwitchStateClass(_enabled)">
-                                @GetSwitchStateText(_enabled)
-                            </span>
+            @* ========================================================
+           Этот параметр относится непосредственно к алгоритму Tank,
+           поэтому оставляем его внутри панели геометрии.
+           ======================================================== *@
+            <div class="tank-preview-panel-footer">
 
-                            <RadzenSwitch @bind-Value="_enabled" Disabled="@(_isSaving || !IsLevelTankReady || !IsSensorGeometryValid)" />
+                <div class="tank-preview-option">
 
-                            <span class="tank-switch-label">Enabled</span>
-                        </div>
+                    <span class="tank-switch-state @GetSwitchStateClass(CurrentCalculateAbove100)">
+                        @GetSwitchStateText(CurrentCalculateAbove100)
+                    </span>
 
-                        <div class="tank-switch-row">
-                            <span class="tank-switch-state @GetSwitchStateClass(_allowOutputWrites)">
-                                @GetSwitchStateText(_allowOutputWrites)
-                            </span>
+                    <RadzenSwitch Value="@CurrentCalculateAbove100"
+                                  Change="@((bool value) => SetInputBoolean("calculateAbove100", value))"
+                                  Disabled="@_isSaving" />
 
-                            <RadzenSwitch @bind-Value="_allowOutputWrites" Disabled="@(_isSaving || !IsLevelTankReady || !IsOutputBindingReady)" />
-
-                            <span class="tank-switch-label">Allow output writes</span>
-                        </div>
-
-                    </div>
+                    <span class="tank-switch-label">
+                        Calculate above 100%
+                    </span>
 
                 </div>
-            }
-        }
 
-    </section>
+            </div>
 
+        </div>
+
+    </div>
 
     <section class="tank-parameters-column">
 

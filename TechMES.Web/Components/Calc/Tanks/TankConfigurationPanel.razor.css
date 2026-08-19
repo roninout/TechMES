@@ -682,3 +682,113 @@
     gap: 10px;
     min-width: 0;
 }
+
+.tank-preview-toolbar {
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) minmax(300px, 1fr) auto;
+    align-items: end;
+    gap: 20px;
+    width: 100%;
+    min-width: 0;
+    margin-bottom: 14px;
+}
+
+.tank-preview-toolbar-type {
+    min-width: 0;
+}
+
+.tank-preview-toolbar-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 38px;
+}
+
+.tank-preview-toolbar-enabled {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 9px;
+    min-height: 38px;
+    white-space: nowrap;
+}
+
+.tank-preview-panel {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    padding: 12px 18px 14px;
+    border: 1px solid var(--rz-border-color);
+    border-radius: 2px;
+    background: transparent;
+}
+
+.tank-preview-panel-content {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+}
+
+.tank-preview-panel-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    min-height: 42px;
+    margin-top: 4px;
+}
+
+.tank-preview-option {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    white-space: nowrap;
+}
+
+.tank-inline-message {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    min-height: 38px;
+    padding: 7px 12px;
+    border: 1px solid;
+    border-radius: 3px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.tank-inline-message-danger {
+    color: var(--rz-danger);
+    border-color: var(--rz-danger);
+}
+
+.tank-inline-message-warning {
+    margin-bottom: 10px;
+    color: var(--rz-warning);
+    border-color: var(--rz-warning);
+}
+
+@media (max-width: 900px) {
+    .tank-preview-toolbar {
+        grid-template-columns: minmax(220px, 1fr) auto;
+    }
+
+    .tank-preview-toolbar-type {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .tank-preview-toolbar-enabled {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .tank-preview-toolbar-status {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+}
