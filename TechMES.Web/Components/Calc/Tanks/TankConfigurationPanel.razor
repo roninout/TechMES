@@ -42,9 +42,29 @@
                     Style="width:100%;" />
                 </div>
 
-                <div class="tank-preview-figure">
-                    <TankTypePreview TypeNumber="@SelectedTypeNumber" />
-                </div>
+                @if (SelectedTypeNumber == 1)
+                {
+                    <TankType1InteractivePreview DimA="@CurrentDimA"
+                                                 DimB="@CurrentDimB"
+                                                 DimC="@CurrentDimC"
+                                                 UpperDeadArea="@CurrentUpperDeadArea"
+                                                 LowerDeadArea="@CurrentLowerDeadArea"
+                                                 CalculateAbove100="@CurrentCalculateAbove100"
+                                                 LevelPercent="@CurrentLevelPercent"
+                                                 Disabled="@_isSaving"
+                                                 DimAChanged="@((double value) => SetInputNumber("dimA", value))"
+                                                 DimBChanged="@((double value) => SetInputNumber("dimB", value))"
+                                                 DimCChanged="@((double value) => SetInputNumber("dimC", value))"
+                                                 UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
+                                                 LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))"
+                                                 CalculateAbove100Changed="@((bool value) => SetInputBoolean("calculateAbove100", value))" />
+                }
+                else
+                {
+                    <div class="tank-preview-figure">
+                        <TankTypePreview TypeNumber="@SelectedTypeNumber" />
+                    </div>
+                }
 
                 <div class="tank-switch-panel">
 
@@ -372,67 +392,68 @@
          INPUT
          Job constants визуально повторяет PLC panel: описание слева, поле значения справа.
          ============================================================ -->
-        <ParamAiPanel Title="Input"
-                      Icon="input"
-                      InitiallyCollapsed="true">
+        @if (SelectedTypeNumber != 1)
+        {
+            <ParamAiPanel Title="Input"
+            Icon="input"
+            InitiallyCollapsed="true">
 
-            <div class="tank-input-panel-body">
+                <div class="tank-input-panel-body">
 
-                <!-- ========================================================
-             Tank geometry
-             dimA ... dimF конкретного выбранного Tank Type
-             ======================================================== -->
-                <section class="tank-input-section">
+                    <!-- ========================================================
+                    Tank geometry
+                    dimA ... dimF конкретного выбранного Tank Type
+                    ======================================================== -->
+                    <section class="tank-input-section">
 
-                    <div class="tank-input-section-title">
-                        <RadzenIcon Icon="oil_barrel" />
-                        <span>Tank geometry</span>
-                    </div>
+                        <div class="tank-input-section-title">
+                            <RadzenIcon Icon="oil_barrel" />
+                            <span>Tank geometry</span>
+                        </div>
 
-                    @foreach (var input in GeometryInputs)
-                    {
-                        @RenderInputRow(input)
-                    }
+                        @foreach (var input in GeometryInputs)
+                        {
+                            @RenderInputRow(input)
+                        }
 
-                </section>
-
-
-                <!-- ========================================================
-             Sensor
-             Положение/геометрия измерительной части
-             Отделена от Tank geometry линией и отступом.
-             ======================================================== -->
-                <section class="tank-input-section tank-input-sensor-section">
-
-                    <div class="tank-input-section-title">
-                        <RadzenIcon Icon="sensors" />
-                        <span>Sensor</span>
-                    </div>
-
-                    @if (UpperDeadAreaInput is not null)
-                    {
-                        @RenderInputRow(UpperDeadAreaInput)
-                    }
-
-                    @RenderMeasurementAreaRow()
-
-                    @if (LowerDeadAreaInput is not null)
-                    {
-                        @RenderInputRow(LowerDeadAreaInput)
-                    }
-
-                    @if (CalculateAbove100Input is not null)
-                    {
-                        @RenderBooleanInputRow(CalculateAbove100Input)
-                    }
-
-                </section>
-
-            </div>
-
-        </ParamAiPanel>
+                    </section>
 
 
+                    <!-- ========================================================
+                    Sensor
+                    Положение/геометрия измерительной части
+                    Отделена от Tank geometry линией и отступом.
+                    ======================================================== -->
+                    <section class="tank-input-section tank-input-sensor-section">
+
+                        <div class="tank-input-section-title">
+                            <RadzenIcon Icon="sensors" />
+                            <span>Sensor</span>
+                        </div>
+
+                        @if (UpperDeadAreaInput is not null)
+                        {
+                            @RenderInputRow(UpperDeadAreaInput)
+                        }
+
+                        @RenderMeasurementAreaRow()
+
+                        @if (LowerDeadAreaInput is not null)
+                        {
+                            @RenderInputRow(LowerDeadAreaInput)
+                        }
+
+                        @if (CalculateAbove100Input is not null)
+                        {
+                            @RenderBooleanInputRow(CalculateAbove100Input)
+                        }
+
+                    </section>
+
+                </div>
+
+            </ParamAiPanel>
+        }
         <!-- ============================================================
          SAVE
          ============================================================ -->
@@ -607,6 +628,20 @@
     };
 
     private double CurrentMeasurementAreaMm => Math.Max(0.0, CurrentTotalLengthMm - GetInputNumber("upperDeadArea") - GetInputNumber("lowerDeadArea"));
+
+    private double CurrentDimA => GetInputNumber("dimA");
+
+    private double CurrentDimB => GetInputNumber("dimB");
+
+    private double CurrentDimC => GetInputNumber("dimC");
+
+    private double CurrentUpperDeadArea => GetInputNumber("upperDeadArea");
+
+    private double CurrentLowerDeadArea => GetInputNumber("lowerDeadArea");
+
+    private bool CurrentCalculateAbove100 => GetInputBoolean("calculateAbove100");
+
+    private double? CurrentLevelPercent => TryGetRuntimeNumber(State?.LastInputs, "levelRaw", out var value) ? value : null;
 
     private bool IsSensorGeometryValid => CurrentTotalLengthMm > 0 && CurrentMeasurementAreaMm > 0;
 
@@ -1156,7 +1191,6 @@
             .ToList();
     }
 
-
     private string? ResolveTankOutputTag(string outputKey)
     {
         return outputKey.ToLowerInvariant() switch
@@ -1168,7 +1202,6 @@
             _ => null
         };
     }
-
 
     private static string? FindTag(IEnumerable<string>? tags, params string[] suffixes)
     {
@@ -1192,7 +1225,6 @@
         return null;
     }
 
-
     private double GetInputNumber(string key)
     {
         return _inputs.FirstOrDefault(input =>
@@ -1201,12 +1233,38 @@
             ?? 0.0;
     }
 
+    private bool GetInputBoolean(string key)
+    {
+        return _inputs.FirstOrDefault(input =>
+                string.Equals(input.Parameter.Key, key, StringComparison.OrdinalIgnoreCase))
+            ?.BooleanValue
+            ?? false;
+    }
+
+    private void SetInputNumber(string key, double value)
+    {
+        var input = FindInputEditor(key);
+
+        if (input is null)
+            return;
+
+        OnNumberValueChanged(input, value);
+    }
+
+    private void SetInputBoolean(string key, bool value)
+    {
+        var input = FindInputEditor(key);
+
+        if (input is null)
+            return;
+
+        input.BooleanValue = value;
+    }
 
     private static double ResolveLegacyScale(double dimB)
     {
         return dimB >= 2000.0 ? 100.0 : 1000.0;
     }
-
 
     private static bool IsLinkedInput(string key)
     {
@@ -1214,13 +1272,11 @@
             || string.Equals(key, "densityHmi", StringComparison.OrdinalIgnoreCase);
     }
 
-
     private CalcDefinitionDto? FindDefinition(string? code)
     {
         return _tankDefinitions.FirstOrDefault(definition =>
             string.Equals(definition.Code, code, StringComparison.OrdinalIgnoreCase));
     }
-
 
     private static double ReadNumber(JsonElement? value)
     {
@@ -1232,7 +1288,6 @@
 
         return 0.0;
     }
-
 
     private static int GetTypeNumber(string? definitionCode)
     {
@@ -1247,7 +1302,6 @@
 
         return 0;
     }
-
 
     private static string? NullIfEmpty(string? value)
     {
