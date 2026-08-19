@@ -106,33 +106,28 @@
     }
 
 .tank-overlay-dimc {
-    left: 1.5%;
-    top: 10%;
+    top: 8%;
 }
 
 .tank-overlay-dima {
-    left: 1.5%;
-    top: 39%;
+    top: 40%;
 }
 
-.tank-overlay-dimb {
+/*.tank-overlay-dimb {
     left: 37%;
     top: 80%;
-}
+}*/
 
 .tank-overlay-upper {
-    right: 1%;
-    top: 10%;
+    top: 8%;
 }
 
 .tank-overlay-measure {
-    right: 1%;
-    top: 39%;
+    top: 40%;
 }
 
 .tank-overlay-lower {
-    right: 1%;
-    top: 68%;
+    top: 70%;
 }
 
 .tank-overlay-above100 {
