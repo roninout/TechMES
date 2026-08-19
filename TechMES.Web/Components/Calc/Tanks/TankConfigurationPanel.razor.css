@@ -133,12 +133,6 @@
     margin-top: 12px;
 }
 
-.tank-inline-warning {
-    margin-top: 8px;
-    color: var(--rz-warning);
-    font-size: 0.78rem;
-}
-
 
 /* ============================================================
    Job options
@@ -421,6 +415,52 @@
     padding: 24px 28px;
 }
 
+/* ============================================================
+   Allow output writes
+   ============================================================ */
+
+.tank-value-write-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    width: 100%;
+    min-width: 0;
+    min-height: 54px;
+    padding: 0 16px;
+}
+
+.tank-value-write-text {
+    min-width: 0;
+}
+
+.tank-value-write-title {
+    color: var(--rz-text-color);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.tank-value-write-description {
+    margin-top: 3px;
+    color: var(--rz-text-secondary-color);
+    font-size: 12px;
+    line-height: 1.2;
+}
+
+.tank-value-write-switch {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.tank-value-write-switch ::deep .rz-switch {
+    flex: 0 0 auto;
+}
+
 .tank-value-section {
     display: grid;
     align-content: start;
@@ -604,6 +644,11 @@
     ::deep .tank-value-transform-field {
         width: 112px;
     }
+
+    .tank-value-write-section {
+        padding: 0 8px;
+        gap: 12px;
+    }
 }
 
 /* ============================================================
@@ -670,11 +715,6 @@
     min-height: 370px;
 }
 
-.tank-model-loading-bar {
-    margin-top: 12px;
-    margin-bottom: 8px;
-}
-
 .tank-input-switch-value {
     display: flex;
     align-items: center;
@@ -683,6 +723,27 @@
     min-width: 0;
 }
 
+/* ============================================================
+   Tank preview panel
+   ============================================================ */
+
+.tank-preview-panel {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    padding: 16px 18px 14px;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    border-radius: 2px;
+    background: transparent;
+}
+
+
+/* ============================================================
+   Top toolbar
+   Tank type | Job warning | Enabled
+   ============================================================ */
+
 .tank-preview-toolbar {
     display: grid;
     grid-template-columns: minmax(260px, 320px) minmax(300px, 1fr) auto;
@@ -690,7 +751,6 @@
     gap: 20px;
     width: 100%;
     min-width: 0;
-    margin-bottom: 14px;
 }
 
 .tank-preview-toolbar-type {
@@ -699,10 +759,20 @@
 
 .tank-preview-toolbar-status {
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: flex-end;
+    justify-content: stretch;
+    align-self: end;
     min-width: 0;
-    min-height: 38px;
+    min-height: 0;
+}
+
+.tank-toolbar-alert {
+    width: 100%;
+    margin: 0 !important;
+}
+
+.tank-preview-toolbar-status ::deep .rz-alert {
+    margin-bottom: 0 !important;
 }
 
 .tank-preview-toolbar-enabled {
@@ -714,16 +784,32 @@
     white-space: nowrap;
 }
 
-.tank-preview-panel {
-    display: flex;
-    flex-direction: column;
+
+/* ============================================================
+   Separator after toolbar
+   ============================================================ */
+
+.tank-preview-panel-separator {
     width: 100%;
-    min-width: 0;
-    padding: 12px 18px 14px;
-    border: 1px solid var(--rz-border-color);
-    border-radius: 2px;
-    background: transparent;
+    height: 1px;
+    margin: 14px 0;
+    background: var(--rz-border-color, #d7dbe0);
 }
+
+
+/* ============================================================
+   SCADA write warning
+   ============================================================ */
+
+.tank-write-alert {
+    width: 100%;
+    margin: 0 0 10px;
+}
+
+
+/* ============================================================
+   Tank drawing
+   ============================================================ */
 
 .tank-preview-panel-content {
     display: flex;
@@ -731,6 +817,11 @@
     width: 100%;
     min-width: 0;
 }
+
+
+/* ============================================================
+   Bottom options
+   ============================================================ */
 
 .tank-preview-panel-footer {
     display: flex;
@@ -748,28 +839,36 @@
     white-space: nowrap;
 }
 
-.tank-inline-message {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    width: 100%;
-    min-height: 38px;
-    padding: 7px 12px;
-    border: 1px solid;
-    border-radius: 3px;
-    font-size: 13px;
-    font-weight: 500;
-}
 
-.tank-inline-message-danger {
-    color: var(--rz-danger);
-    border-color: var(--rz-danger);
-}
+/* ============================================================
+   Tablet
+   ============================================================ */
 
-.tank-inline-message-warning {
-    margin-bottom: 10px;
-    color: var(--rz-warning);
-    border-color: var(--rz-warning);
+@media (max-width: 900px) {
+
+    .tank-preview-panel {
+        padding: 14px 12px;
+    }
+
+    .tank-preview-toolbar {
+        grid-template-columns: minmax(220px, 1fr) auto;
+        gap: 12px;
+    }
+
+    .tank-preview-toolbar-type {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .tank-preview-toolbar-enabled {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .tank-preview-toolbar-status {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
 }
 
 @media (max-width: 900px) {
@@ -791,4 +890,52 @@
         grid-column: 1 / -1;
         grid-row: 2;
     }
+}
+
+/* ============================================================
+   Atomic Tank loading
+
+   Пока новый Tank загружается, промежуточное состояние
+   конфигурации пользователю не показывается.
+   ============================================================ */
+
+.tank-configuration-host {
+    width: 100%;
+    min-width: 0;
+}
+
+.tank-configuration-loading {
+    position: relative;
+    width: 100%;
+    min-height: 620px;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    border-radius: 2px;
+    background: var(--rz-base-background-color);
+}
+
+.tank-configuration-loading-content {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.tank-configuration-loading-icon {
+    color: var(--rz-text-secondary-color);
+    font-size: 30px;
+}
+
+.tank-configuration-loading-title {
+    color: var(--rz-text-color);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.tank-configuration-loading-model {
+    color: var(--rz-text-secondary-color);
+    font-size: 12px;
 }
