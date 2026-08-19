@@ -238,15 +238,17 @@
         }
 
 
-        <div class="tank-side-field tank-side-field-readonly"
+        <div class="tank-side-field"
              style="@GetRightFieldStyle(MeasurementAreaCenterY)">
 
             <RadzenFormField Text="Measurement area"
                              AllowFloatingLabel="false">
 
-                <RadzenTextBox Value="@MeasurementAreaText"
-                               ReadOnly="true"
-                               class="tank-readonly-input"
+                <RadzenNumeric TValue="double"
+                               Value="@MeasurementAreaMm"
+                               Format="0.### mm"
+                               Disabled="true"
+                               ShowUpDown="false"
                                Style="width:100%;" />
 
             </RadzenFormField>
@@ -283,21 +285,6 @@
                                Change="@((double value) => UpperDeadAreaChanged.InvokeAsync(value))"
                                Format="0.### mm"
                                Disabled="@Disabled"
-                               Style="width:100%;" />
-
-            </RadzenFormField>
-
-        </div>
-
-
-        <div class="tank-side-field"
-             style="@GetRightFieldStyle(MeasurementAreaCenterY)">
-
-            <RadzenFormField Text="Measurement area"
-                             AllowFloatingLabel="false">
-
-                <RadzenTextBox Value="@MeasurementAreaText"
-                               ReadOnly="true"
                                Style="width:100%;" />
 
             </RadzenFormField>
@@ -438,8 +425,6 @@
     private double TotalLengthMm => Math.Max(0.0, DimA + DimC * 2.0);
 
     private double MeasurementAreaMm => Math.Max(0.0, TotalLengthMm - UpperDeadArea - LowerDeadArea);
-
-    private string MeasurementAreaText => $"{MeasurementAreaMm:0.###} mm";
 
     // Ширина Tank отображается пропорционально dimB,
     // но имеет разумные визуальные границы, чтобы схема оставалась читаемой на планшете.

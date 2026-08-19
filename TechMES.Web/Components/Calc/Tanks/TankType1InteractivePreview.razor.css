@@ -166,13 +166,3 @@
     }
 }
 
-.tank-side-field-readonly ::deep .rz-inputtext {
-    text-align: right;
-    background-color: var(--rz-base-200);
-    color: var(--rz-text-secondary-color);
-    cursor: not-allowed;
-}
-
-.tank-side-field-readonly ::deep input[readonly] {
-    text-align: right;
-}
