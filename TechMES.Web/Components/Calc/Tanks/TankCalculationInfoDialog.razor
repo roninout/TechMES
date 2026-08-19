@@ -1,0 +1,162 @@
+﻿@inject DialogService DialogService
+
+<div class="tank-help">
+
+    <RadzenAlert AlertStyle="AlertStyle.Info"
+                 Variant="Variant.Flat"
+                 Shade="Shade.Lighter"
+                 AllowClose="false"
+                 ShowIcon="true">
+
+        The formulas and intermediate values below are returned by the
+        selected Tank calculation algorithm itself.
+
+    </RadzenAlert>
+
+
+    <section class="tank-help-section">
+
+        <h3>
+            @Definition.Name
+        </h3>
+
+        <div class="tank-help-code">
+            @Definition.Code · version @Definition.Version
+        </div>
+
+    </section>
+
+
+    @if (!Result.IsSuccess)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger"
+                     AllowClose="false"
+                     ShowIcon="true">
+
+            @Result.ErrorMessage
+
+        </RadzenAlert>
+    }
+    else
+    {
+        @RenderTraceSection(
+            "Sensor / measurement",
+            "help.sensor.")
+
+
+        @RenderTraceSection(
+            "Tank geometry",
+            "help.geometry.")
+
+
+        @RenderTraceSection(
+            "Volume calculation",
+            "help.volume.")
+
+
+        @RenderTraceSection(
+            "Result",
+            "help.result.")
+
+
+        <section class="tank-help-section">
+
+            <h3>
+                Final outputs
+            </h3>
+
+            <div class="tank-help-values">
+
+                @foreach (var output in Result.Outputs)
+                {
+                    <div class="tank-help-value-row">
+
+                        <div class="tank-help-value-name">
+                            @output.Name
+                        </div>
+
+                        <div class="tank-help-value-number">
+                            @FormatOutput(output)
+                        </div>
+
+                    </div>
+                }
+
+            </div>
+
+        </section>
+    }
+
+
+    <div class="tank-help-actions">
+
+        <RadzenButton Text="Close"
+                      Icon="close"
+                      ButtonStyle="ButtonStyle.Light"
+                      Click="@Close" />
+
+    </div>
+
+</div>
+
+
+@code {
+    [Parameter, EditorRequired]
+    public CalcDefinitionDto Definition { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public CalcTestResponse Result { get; set; } = default!;
+
+    private RenderFragment RenderTraceSection(string title, string keyPrefix)
+    {
+        var items = Result.Trace.Where(item => item.Key.StartsWith(keyPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (items.Count == 0)
+            return _ => { };
+
+        return @<section class="tank-help-section">
+
+            <h3>
+                @title
+            </h3>
+
+            <div class="tank-help-trace">
+
+                @foreach (var item in items)
+                {
+                    <div class="tank-help-trace-row">
+
+                        <div class="tank-help-trace-name">
+                            @item.Name
+                        </div>
+
+                        <div class="tank-help-trace-value">
+                            @item.Value
+
+                            @if (!string.IsNullOrWhiteSpace(item.Unit))
+                            {
+                                <span class="tank-help-trace-unit">
+                                    @item.Unit
+                                </span>
+                            }
+                        </div>
+
+                    </div>
+                }
+
+            </div>
+
+        </section>;
+    }
+
+    private static string FormatOutput(CalcOutputDto output)
+    {
+        var value = output.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        return string.IsNullOrWhiteSpace(output.Unit) ? value : $"{value} {output.Unit}";
+    }
+
+    private void Close()
+    {
+        DialogService.Close();
+    }
+}

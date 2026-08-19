@@ -1,0 +1,90 @@
+.tank-help {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-width: 0;
+}
+
+.tank-help-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+    .tank-help-section h3 {
+        margin: 0;
+        color: var(--rz-text-color);
+        font-size: 1rem;
+        font-weight: 700;
+    }
+
+.tank-help-code {
+    color: var(--rz-text-secondary-color);
+    font-size: 12px;
+}
+
+.tank-help-trace,
+.tank-help-values {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.tank-help-trace-row,
+.tank-help-value-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 34%) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--rz-border-color, #d7dbe0);
+}
+
+    .tank-help-trace-row:last-child,
+    .tank-help-value-row:last-child {
+        border-bottom: 0;
+    }
+
+.tank-help-trace-name,
+.tank-help-value-name {
+    color: var(--rz-text-color);
+    font-weight: 600;
+}
+
+.tank-help-trace-value {
+    color: var(--rz-text-color);
+    font-family: Consolas, "Courier New", monospace;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.tank-help-trace-unit {
+    margin-left: 4px;
+    color: var(--rz-text-secondary-color);
+}
+
+.tank-help-value-number {
+    text-align: right;
+    color: var(--rz-text-color);
+    font-weight: 600;
+}
+
+.tank-help-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 4px;
+}
+
+@media (max-width: 700px) {
+    .tank-help-trace-row,
+    .tank-help-value-row {
+        grid-template-columns: 1fr;
+        gap: 5px;
+    }
+
+    .tank-help-value-number {
+        text-align: left;
+    }
+}

@@ -182,7 +182,6 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
         var upperDeadArea = parameters.GetRequiredDouble("upperDeadArea");
         var lowerDeadArea = parameters.GetRequiredDouble("lowerDeadArea");
         var calculateAbove100 = parameters.GetRequiredBoolean("calculateAbove100");
-
         var totalLengthMm = GetTotalLengthMm(parameters);
 
         if (!double.IsFinite(totalLengthMm) || totalLengthMm <= 0)
@@ -196,14 +195,13 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
         if (measurementAreaMm <= 0)
             return CalculationResult.Failure("tank.sensor.invalid-measurement-area", "Lower dead area and upper dead area leave no valid sensor measurement area.");
 
+
+        // Общая LevelTank-логика находится здесь, потому что она одинакова для всех Tank Type.
+        // Конкретный Tank Type получает уже физическую высоту жидкости от самого дна Tank.
         var levelTank = LevelTankCalculator.Calculate(levelRaw, densityHmi, totalLengthMm, lowerDeadArea, upperDeadArea, calculateAbove100, liquidHeightMm =>
             {
-                /*
-                 * ВРЕМЕННЫЙ compatibility bridge для Type 2..8.
-                 *
-                 * После перевода всех геометрий на точные формулы этот блок distance* полностью удалим.
-                 * levelMm здесь уже означает ФИЗИЧЕСКУЮ высоту жидкости от дна Tank.
-                 */
+                // Type 2..8 пока ещё используют compatibility parameters.
+                // После перевода всех геометрий на новую точную модель distance* можно будет удалить полностью.
                 var volumeParameters = parameters.Values.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
 
                 volumeParameters["levelMm"] = liquidHeightMm;
@@ -216,24 +214,119 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
 
         if (!double.IsFinite(levelTank.VolumeM3))
             return CalculationResult.Failure("tank.volume.not-finite", "Calculated tank volume is not a finite number.");
- 
+
         if (!double.IsFinite(levelTank.MassT))
             return CalculationResult.Failure("tank.mass.not-finite", "Calculated tank mass is not a finite number.");
-     
-        IReadOnlyList<CalculationTraceItem> trace = includeTrace
-            ?
-            [
-                new("totalLengthMm", "Tank total length", totalLengthMm.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
-                new("upperDeadAreaMm", "Upper dead area", upperDeadArea.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
-                new("measurementAreaMm", "Measurement area", levelTank.HMaxMm.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
-                new("lowerDeadAreaMm", "Lower dead area", lowerDeadArea.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
-                new("levelMm", "Measured level", levelTank.LevelMm.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
-                new("liquidHeightMm", "Physical liquid height", levelTank.LiquidHeightMm.ToString("0.############", CultureInfo.InvariantCulture), "mm"),
-                new("volumeM3", "Calculated volume", levelTank.VolumeM3.ToString("0.############", CultureInfo.InvariantCulture), "m³"),
-                new("massT", "Calculated mass", levelTank.MassT.ToString("0.############", CultureInfo.InvariantCulture), "t")
-            ]
-            :
-            [];
+
+        var trace = new List<CalculationTraceItem>();
+
+        if (includeTrace)
+        {
+            // ============================================================
+            // Обычные диагностические значения.
+            // ============================================================
+
+            trace.Add(
+                new CalculationTraceItem(
+                    "totalLengthMm",
+                    "Tank total length",
+                    totalLengthMm.ToString("0.############", CultureInfo.InvariantCulture),
+                    "mm"));
+
+            trace.Add(
+                new CalculationTraceItem(
+                    "upperDeadAreaMm",
+                    "Upper dead area",
+                    upperDeadArea.ToString("0.############", CultureInfo.InvariantCulture),
+                    "mm"));
+
+            trace.Add(
+                new CalculationTraceItem(
+                    "measurementAreaMm",
+                    "Measurement area",
+                    levelTank.HMaxMm.ToString("0.############", CultureInfo.InvariantCulture),
+                    "mm"));
+
+            trace.Add(
+                new CalculationTraceItem(
+                    "lowerDeadAreaMm",
+                    "Lower dead area",
+                    lowerDeadArea.ToString("0.############", CultureInfo.InvariantCulture),
+                    "mm"));
+
+            trace.Add(
+                new CalculationTraceItem(
+                    "levelMm",
+                    "Measured level",
+                    levelTank.LevelMm.ToString("0.############", CultureInfo.InvariantCulture),
+                    "mm"));
+
+            trace.Add(
+                new CalculationTraceItem(
+                    "liquidHeightMm",
+                    "Physical liquid height",
+                    levelTank.LiquidHeightMm.ToString("0.############", CultureInfo.InvariantCulture),
+                    "mm"));
+
+            trace.Add(
+                new CalculationTraceItem(
+                    "volumeM3",
+                    "Calculated volume",
+                    levelTank.VolumeM3.ToString("0.############", CultureInfo.InvariantCulture),
+                    "m³"));
+
+            trace.Add(
+                new CalculationTraceItem(
+                    "massT",
+                    "Calculated mass",
+                    levelTank.MassT.ToString("0.############", CultureInfo.InvariantCulture),
+                    "t"));
+
+
+            // ============================================================
+            // Общая Help-информация измерительной части.
+            // Эти формулы одинаковы для всех Tank Type, поэтому они находятся в Base, а не копируются восемь раз.
+            // ============================================================
+
+            trace.Add(new CalculationTraceItem("help.sensor.measurement.formula", "Measurement area formula", "Hmeas = Htotal - HupperDead - HlowerDead"));
+            trace.Add(new CalculationTraceItem("help.sensor.measurement.calculation", "Measurement area calculation", $"{F(totalLengthMm)} - {F(upperDeadArea)} - {F(lowerDeadArea)} = {F(measurementAreaMm)} mm"));
+            trace.Add(new CalculationTraceItem("help.sensor.level.formula", "Measured level formula", "Hlevel = Hmeas × Level / 100"));
+            trace.Add(new CalculationTraceItem("help.sensor.level.calculation", "Measured level calculation", $"{F(measurementAreaMm)} × {F(levelRaw)} / 100 = {F(levelTank.LevelMm)} mm"));
+            trace.Add(new CalculationTraceItem("help.sensor.liquid-height.formula", "Physical liquid height formula", "Hliquid = HlowerDead + Hlevel"));
+            trace.Add(new CalculationTraceItem("help.sensor.liquid-height.calculation", "Physical liquid height calculation", $"{F(lowerDeadArea)} + {F(levelTank.LevelMm)} = {F(levelTank.LiquidHeightMm)} mm"));
+
+            if (!calculateAbove100)
+            {
+                trace.Add(new CalculationTraceItem("help.sensor.above100", "Above 100%", "Volume calculation is limited at the upper boundary of the measurement area."));
+            }
+            else
+            {
+                trace.Add(new CalculationTraceItem("help.sensor.above100", "Above 100%", "Volume calculation may continue inside the upper dead area, but never above the physical Tank geometry."));
+            }
+
+
+            // ============================================================
+            // Здесь конкретный Tank Type добавляет СВОИ:
+            //
+            // - геометрические формулы;
+            // - промежуточные объёмы;
+            // - реальные подстановки;
+            // - пояснение текущей области заполнения.
+            //
+            // Type 1 -> TankType1VolumeDefinition
+            // Type 2 -> TankType2VolumeDefinition
+            // ...
+            // ============================================================
+
+            trace.AddRange(BuildVolumeTrace(parameters, levelTank.LiquidHeightMm));
+
+            // ============================================================
+            // Mass общая для всех Tank Type.
+            // ============================================================
+
+            trace.Add(new CalculationTraceItem("help.result.mass.formula", "Mass formula", "Mass = Volume × Density × 0.001"));
+            trace.Add(new CalculationTraceItem("help.result.mass.calculation", "Mass calculation", $"{F(levelTank.VolumeM3)} × {F(densityHmi)} × 0.001 = {F(levelTank.MassT)} t"));
+        }
 
         return CalculationResult.Success(
             outputs:
@@ -246,10 +339,26 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
             trace: trace);
     }
 
-    /// <summary>
-    /// Legacy-формула конкретного Tank Type.
-    ///
-    /// Параметр levelMm сюда уже добавлен LevelTankCalculator-оболочкой.
-    /// </summary>
+    // ============================================================
+    // Type-specific Help.
+    // По умолчанию конкретный Tank Type может ничего не возвращать.
+    // Благодаря этому Type 2..8 продолжат компилироваться, пока мы будем переводить их на новый Help по одному.
+    // ============================================================
+    protected virtual IReadOnlyList<CalculationTraceItem> BuildVolumeTrace(CalculationParameterSet parameters, double liquidHeightMm)
+    {
+        return [];
+    }
+
+    // ============================================================
+    // Геометрический расчёт конкретного Tank Type.
+    // ============================================================
     protected abstract double CalculateVolume(CalculationParameterSet parameters);
+
+    // ============================================================
+    // Единое форматирование чисел для Help.
+    // ============================================================
+    protected static string F(double value)
+    {
+        return value.ToString("0.###", CultureInfo.InvariantCulture);
+    }
 }

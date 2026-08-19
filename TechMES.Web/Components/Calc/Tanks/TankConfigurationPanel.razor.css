@@ -887,3 +887,18 @@
     color: var(--rz-text-secondary-color);
     font-size: 12px;
 }
+
+.tank-preview-help-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    min-height: 36px;
+}
+
+.tank-preview-help-row ::deep .rz-button {
+    min-width: 34px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+}

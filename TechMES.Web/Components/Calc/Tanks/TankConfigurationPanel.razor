@@ -1,5 +1,7 @@
 ﻿@using System.Text.Json
 @using TechMES.Contracts.Equipment
+@using System.Globalization
+@inject DialogService DialogService
 @inject CalcApiClient CalcApi
 @inject ParamApiClient ParamApi
 @inject NotificationService NotificationService
@@ -88,21 +90,49 @@
                     </div>
 
 
-                    <div class="tank-preview-toolbar-status">
+                        <div class="tank-preview-toolbar-status">
 
-                        @if (!_enabled)
-                        {
-                            <RadzenAlert AlertStyle="AlertStyle.Warning"
-                                         AllowClose="false"
-                                         ShowIcon="true"
-                                         class="tank-toolbar-alert">
+                            @if (HasUnsavedChanges)
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                             Variant="Variant.Flat"
+                                             Shade="Shade.Lighter"
+                                             AllowClose="false"
+                                             ShowIcon="true"
+                                             class="tank-toolbar-alert">
 
-                                Job is disabled. Calculation is not running.
+                                    Unsaved changes. Runtime continues using the last saved configuration.
 
-                            </RadzenAlert>
-                        }
+                                </RadzenAlert>
+                            }
+                            else if (Job is null)
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                             Variant="Variant.Flat"
+                                             Shade="Shade.Lighter"
+                                             AllowClose="false"
+                                             ShowIcon="true"
+                                             class="tank-toolbar-alert">
 
-                    </div>
+                                    Job is not configured. Calculation is not running.
+
+                                </RadzenAlert>
+                            }
+                            else if (!Job.Enabled)
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                             Variant="Variant.Flat"
+                                             Shade="Shade.Lighter"
+                                             AllowClose="false"
+                                             ShowIcon="true"
+                                             class="tank-toolbar-alert">
+
+                                    Job is disabled. Calculation is not running.
+
+                                </RadzenAlert>
+                            }
+
+                        </div>
 
 
                     <div class="tank-preview-toolbar-enabled">
@@ -128,6 +158,20 @@
                  ======================================================== -->
                 <div class="tank-preview-panel-separator"></div>
 
+                    <!-- ========================================================
+                     Tank calculation help
+                     ======================================================== -->
+                    <div class="tank-preview-help-row">
+
+                        <RadzenButton Icon="info_outline"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Size="ButtonSize.Small"
+                                      Disabled="@(_isOpeningHelp || SelectedDefinition is null)"
+                                      title="Calculation help"
+                                      Click="@OpenTankHelpAsync" />
+
+                    </div>
+
 
                 <!-- ========================================================
                  SCADA output warning
@@ -135,17 +179,19 @@
                  Job может быть Enabled и выполнять расчёт,
                  но запись результатов в SCADA отключена.
                  ======================================================== -->
-                @if (_enabled && !_allowOutputWrites)
-                {
-                    <RadzenAlert AlertStyle="AlertStyle.Danger"
-                                 AllowClose="false"
-                                 ShowIcon="true"
-                                 class="tank-write-alert">
+                    @if (Job?.Enabled == true && Job.WriteEnabled != true)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger"
+                                     Variant="Variant.Flat"
+                                     Shade="Shade.Lighter"
+                                     AllowClose="false"
+                                     ShowIcon="true"
+                                     class="tank-write-alert">
 
-                        SCADA output writing is disabled because Allow output writes is off.
+                            SCADA output writing is disabled in the saved Job configuration.
 
-                    </RadzenAlert>
-                }
+                        </RadzenAlert>
+                    }
 
 
                 <!-- ========================================================
@@ -649,11 +695,11 @@
                 }
                 else
                 {
-                    <RadzenButton Text="Save"
-                                  Icon="save"
-                                  ButtonStyle="ButtonStyle.Primary"
-                                  Disabled="@_isSaving"
-                                  Click="@SaveJobAsync" />
+                        <RadzenButton Text="Save"
+                                      Icon="save"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@(_isSaving || !HasUnsavedChanges)"
+                                      Click="@SaveJobAsync" />
                 }
 
             </div>
@@ -701,8 +747,56 @@
     private bool _isLoadingDefinitions;
     private bool _isResolvingLevelTag;
     private bool _isSaving;
+    private bool _isOpeningHelp;
+
     private bool _enabled;
     private bool _allowOutputWrites;
+
+
+    // ============================================================
+    // Unsaved changes
+    // ============================================================
+
+    // Signature состояния, которое сейчас реально сохранено в Job.
+    //
+    // UI сравнивает с ним текущее состояние редактора.
+    // Поэтому отдельные SetDirty() во всех обработчиках не нужны.
+    private string _savedEditorSignature = "";
+
+    // Есть ли изменения, которые Runtime ещё не получил.
+    private bool HasUnsavedChanges => !string.Equals(_savedEditorSignature, BuildEditorSignature(), StringComparison.Ordinal);
+
+    // ============================================================
+    // Editor state signature
+    // ============================================================
+    private string BuildEditorSignature()
+    {
+        var parts = new List<string> {
+            $"definition={_selectedDefinitionCode ?? ""}",
+            $"enabled={_enabled}",
+            $"writes={_allowOutputWrites}"};
+
+        foreach (var input in _inputs
+            .Where(input => !IsLinkedInput(input.Parameter.Key))
+            .OrderBy(input => input.Parameter.Order)
+            .ThenBy(input => input.Parameter.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            if (input.Parameter.Type == CalcParameterTypeDto.Boolean)
+            {
+                parts.Add($"{input.Parameter.Key}=bool:{input.BooleanValue}");
+                continue;
+            }
+
+            parts.Add($"{input.Parameter.Key}=number:" + input.NumberValue.ToString("R", CultureInfo.InvariantCulture));
+        }
+
+        return string.Join("|", parts);
+    }
+
+    private void CaptureSavedEditorState()
+    {
+        _savedEditorSignature = BuildEditorSignature();
+    }
 
     // Множитель формата SCADA для Volume и Mass.
     //
@@ -1017,8 +1111,10 @@
         }
 
         _enabled = Job?.Enabled == true && IsLevelTankReady && IsSensorGeometryValid;
-
         _allowOutputWrites = Job?.WriteEnabled == true && IsLevelTankReady && IsOutputBindingReady;
+
+        // Всё, что сейчас загрузили в редактор, является последней сохранённой конфигурацией.
+        CaptureSavedEditorState();
     }
 
 
@@ -1153,21 +1249,14 @@
 
             await CalcApi.CreateJobAsync(request);
 
-            NotificationService.Notify(
-                NotificationSeverity.Success,
-                "Calculations",
-                $"Tank Job created for {Model.Name}.",
-                4000);
+            CaptureSavedEditorState();
+            NotificationService.Notify(NotificationSeverity.Success, "Calculations", $"Tank Job created for {Model.Name}.", 4000);
 
             await JobChanged.InvokeAsync();
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(
-                NotificationSeverity.Error,
-                "Calculations",
-                ex.Message,
-                6000);
+            NotificationService.Notify(NotificationSeverity.Error, "Calculations", ex.Message, 6000);
         }
         finally
         {
@@ -1210,21 +1299,14 @@
 
             await CalcApi.UpdateJobAsync(Job.Id, request);
 
-            NotificationService.Notify(
-                NotificationSeverity.Success,
-                "Calculations",
-                $"Tank configuration saved for {Model.Name}.",
-                4000);
+            CaptureSavedEditorState();
+            NotificationService.Notify(NotificationSeverity.Success, "Calculations", $"Tank configuration saved for {Model.Name}.", 4000);
 
             await JobChanged.InvokeAsync();
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(
-                NotificationSeverity.Error,
-                "Calculations",
-                ex.Message,
-                6000);
+            NotificationService.Notify(NotificationSeverity.Error, "Calculations", ex.Message, 6000);
         }
         finally
         {
@@ -1705,6 +1787,83 @@
         public bool BooleanValue { get; set; }
     }
 
-
     private sealed record TankOutputRow(string Key, string Name, string Unit, string? TagName);
+
+    // ============================================================
+    // Tank Help
+    // ============================================================
+
+    private Dictionary<string, object?> BuildCurrentTestParameters(CalcDefinitionDto definition)
+    {
+        var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var parameter in definition.Parameters.OrderBy(parameter => parameter.Order))
+        {
+            if (string.Equals(parameter.Key, "levelRaw", StringComparison.OrdinalIgnoreCase))
+            {
+                result[parameter.Key] = GetLastInputNumber("levelRaw") ?? 0.0;
+                continue;
+            }
+
+            if (string.Equals(parameter.Key, "densityHmi", StringComparison.OrdinalIgnoreCase))
+            {
+                result[parameter.Key] = GetLastInputNumber("densityHmi") ?? 0.0;
+                continue;
+            }
+
+            var editor = FindInputEditor(parameter.Key);
+
+            if (parameter.Type == CalcParameterTypeDto.Boolean)
+            {
+                result[parameter.Key] = editor?.BooleanValue ?? ReadBoolean(parameter.DefaultValue);
+                continue;
+            }
+
+            result[parameter.Key] = editor?.NumberValue ?? ReadNumber(parameter.DefaultValue);
+        }
+
+        return result;
+    }
+
+    private async Task OpenTankHelpAsync()
+    {
+        var definition = SelectedDefinition;
+
+        if (definition is null)
+            return;
+
+        _isOpeningHelp = true;
+
+        try
+        {
+            // Важно:
+            //
+            // Help запускает тот же настоящий алгоритм, который используется Calc.Service.
+            // Никаких формул в WEB нет.
+            var response = await CalcApi.TestAsync( definition.Code, BuildCurrentTestParameters(definition), includeTrace: true);
+
+            await DialogService.OpenAsync<TankCalculationInfoDialog>("Tank volume calculation", new Dictionary<string, object>
+                {
+                    [nameof(TankCalculationInfoDialog.Definition)] = definition,
+                    [nameof(TankCalculationInfoDialog.Result)] = response
+                },
+                new DialogOptions
+                {
+                    Width = "980px",
+                    Height = "82vh",
+                    Resizable = true,
+                    Draggable = true,
+                    CloseDialogOnEsc = true,
+                    CloseDialogOnOverlayClick = true
+                });
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Calculations", ex.Message, 6000);
+        }
+        finally
+        {
+            _isOpeningHelp = false;
+        }
+    }
 }
