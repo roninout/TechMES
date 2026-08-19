@@ -40,10 +40,7 @@ public sealed class TankType1VolumeDefinition : TankTypeVolumeDefinitionBase
 
     protected override double CalculateVolume(CalculationParameterSet parameters)
     {
-        /*
-         * В Base compatibility layer параметр levelMm
-         * уже содержит физическую высоту жидкости от самого дна Tank.
-         */
+         // В Base compatibility layer параметр levelMm уже содержит физическую высоту жидкости от самого дна Tank.
         var liquidHeightMm = parameters.GetRequiredDouble("levelMm");
         var dimA = parameters.GetRequiredDouble("dimA");
         var dimB = parameters.GetRequiredDouble("dimB");
@@ -60,56 +57,34 @@ public sealed class TankType1VolumeDefinition : TankTypeVolumeDefinitionBase
 
         var circleArea = Math.PI * radius * radius;
 
-        /*
-         * Если dimC = 0, получаем обычный цилиндр
-         * с плоскими верхом и низом.
-         */
+         // Если dimC = 0, получаем обычный цилиндр с плоскими верхом и низом.
         if (headHeight <= 0)
             return circleArea * Math.Min(liquidHeight, bodyHeight);
 
-        /*
-         * Полный объём одного полуэллипсоидного днища:
-         *
-         * V = 2/3 * PI * R² * C
-         */
+         // Полный объём одного полуэллипсоидного днища:
+         // V = 2/3 * PI * R² * C
         var fullHeadVolume = 2.0 * Math.PI * radius * radius * headHeight / 3.0;
 
-        /*
-         * Нижнее эллиптическое днище.
-         *
-         * Интеграл площади горизонтального сечения
-         * полуэллипсоида от нижней точки до высоты h:
-         *
-         * V(h) = PI * R² * (h²/C - h³/(3*C²))
-         */
+         // Нижнее эллиптическое днище.
+         // Интеграл площади горизонтального сечения полуэллипсоида от нижней точки до высоты h:
+         // V(h) = PI * R² * (h²/C - h³/(3*C²))
         if (liquidHeight <= headHeight)
         {
-            return Math.PI * radius * radius *
-                   (liquidHeight * liquidHeight / headHeight
-                    - Math.Pow(liquidHeight, 3.0) / (3.0 * headHeight * headHeight));
+            return Math.PI * radius * radius * (liquidHeight * liquidHeight / headHeight - Math.Pow(liquidHeight, 3.0) / (3.0 * headHeight * headHeight));
         }
 
-        /*
-         * Цилиндрическая часть.
-         */
+         // Цилиндрическая часть.
         if (liquidHeight <= headHeight + bodyHeight)
         {
             var bodyLiquidHeight = liquidHeight - headHeight;
             return fullHeadVolume + circleArea * bodyLiquidHeight;
         }
 
-        /*
-         * Верхнее эллиптическое днище.
-         *
-         * x - заполнение верхнего днища от его основания.
-         *
-         * V(x) = PI * R² * (x - x³/(3*C²))
-         */
+         // Верхнее эллиптическое днище.
+         // x - заполнение верхнего днища от его основания.
+         // V(x) = PI * R² * (x - x³/(3*C²))
         var upperHeadLevel = liquidHeight - headHeight - bodyHeight;
-
-        var upperHeadVolume = Math.PI * radius * radius *
-                              (upperHeadLevel
-                               - Math.Pow(upperHeadLevel, 3.0) / (3.0 * headHeight * headHeight));
+        var upperHeadVolume = Math.PI * radius * radius * (upperHeadLevel - Math.Pow(upperHeadLevel, 3.0) / (3.0 * headHeight * headHeight));
 
         return fullHeadVolume + circleArea * bodyHeight + upperHeadVolume;
     }

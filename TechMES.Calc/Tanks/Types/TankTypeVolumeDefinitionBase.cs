@@ -25,7 +25,7 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
             Unit: "mm",
             Decimals: 0,
             Order: 1,
-            Description: "Legacy H_MAX = DistanceB - DistanceA."),
+            Description: "Sensor measurement area height."),
 
         new(
             Key: "levelMm",
