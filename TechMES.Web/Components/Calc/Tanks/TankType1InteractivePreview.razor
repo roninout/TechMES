@@ -49,97 +49,107 @@
                   y2="@Svg(BodyBottomY)" />
 
 
+
+
             <line class="tank-guide-dim"
-                  x1="145"
+                  x1="190"
                   y1="@Svg(TankTopY)"
                   x2="@Svg(TankCenterX)"
                   y2="@Svg(TankTopY)" />
 
             <line class="tank-guide-dim"
-                  x1="145"
+                  x1="190"
                   y1="@Svg(BodyTopY)"
                   x2="@Svg(TankLeft)"
                   y2="@Svg(BodyTopY)" />
 
             <line class="tank-dimension"
-                  x1="145"
+                  x1="190"
                   y1="@Svg(TankTopY)"
-                  x2="145"
+                  x2="190"
                   y2="@Svg(BodyTopY)" />
 
             <line class="tank-dimension-cap"
-                  x1="136"
+                  x1="181"
                   y1="@Svg(TankTopY)"
-                  x2="154"
+                  x2="199"
                   y2="@Svg(TankTopY)" />
 
             <line class="tank-dimension-cap"
-                  x1="136"
+                  x1="181"
                   y1="@Svg(BodyTopY)"
-                  x2="154"
+                  x2="199"
                   y2="@Svg(BodyTopY)" />
 
 
+
+
             <line class="tank-guide-dim"
-                  x1="115"
+                  x1="165"
                   y1="@Svg(BodyTopY)"
                   x2="@Svg(TankLeft)"
                   y2="@Svg(BodyTopY)" />
 
             <line class="tank-guide-dim"
-                  x1="115"
+                  x1="165"
                   y1="@Svg(BodyBottomY)"
                   x2="@Svg(TankLeft)"
                   y2="@Svg(BodyBottomY)" />
 
             <line class="tank-dimension"
-                  x1="115"
+                  x1="165"
                   y1="@Svg(BodyTopY)"
-                  x2="115"
+                  x2="165"
                   y2="@Svg(BodyBottomY)" />
 
             <line class="tank-dimension-cap"
-                  x1="106"
+                  x1="156"
                   y1="@Svg(BodyTopY)"
-                  x2="124"
+                  x2="174"
                   y2="@Svg(BodyTopY)" />
 
             <line class="tank-dimension-cap"
-                  x1="106"
+                  x1="156"
                   y1="@Svg(BodyBottomY)"
-                  x2="124"
+                  x2="174"
                   y2="@Svg(BodyBottomY)" />
 
 
+
+
+
             <line class="tank-guide-dim"
                   x1="@Svg(TankLeft)"
                   y1="@Svg(BodyBottomY)"
                   x2="@Svg(TankLeft)"
-                  y2="555" />
+                  y2="470" />
 
             <line class="tank-guide-dim"
                   x1="@Svg(TankRight)"
                   y1="@Svg(BodyBottomY)"
                   x2="@Svg(TankRight)"
-                  y2="555" />
+                  y2="470" />
 
             <line class="tank-dimension"
                   x1="@Svg(TankLeft)"
-                  y1="555"
+                  y1="470"
                   x2="@Svg(TankRight)"
-                  y2="555" />
+                  y2="470" />
 
             <line class="tank-dimension-cap"
                   x1="@Svg(TankLeft)"
-                  y1="546"
+                  y1="461"
                   x2="@Svg(TankLeft)"
-                  y2="564" />
+                  y2="479" />
 
             <line class="tank-dimension-cap"
                   x1="@Svg(TankRight)"
-                  y1="546"
+                  y1="461"
                   x2="@Svg(TankRight)"
-                  y2="564" />
+                  y2="479" />
+
+
+
 
 
             <line class="tank-zone-guide"
@@ -352,19 +362,17 @@
 
     private readonly string ClipId = $"tankType1Clip_{Guid.NewGuid():N}";
 
-    private const double TankTopY = 75.0;
-    private const double TankBottomY = 500.0;
+    private const double TankTopY = 120.0;
+    private const double TankBottomY = 425.0;
     private const double TankCenterX = 345.0;
     private const double TankVisualHeight = TankBottomY - TankTopY;
 
     private double TotalLengthMm => Math.Max(0.0, DimA + DimC * 2.0);
-
     private double MeasurementAreaMm => Math.Max(0.0, TotalLengthMm - UpperDeadArea - LowerDeadArea);
 
     private string MeasurementAreaText => $"{MeasurementAreaMm:0.###} mm";
 
-    // Ширину корпуса отображаем пропорционально геометрии,
-    // но ограничиваем диапазон, чтобы схема оставалась читаемой на планшете.
+    // Ширину корпуса отображаем пропорционально геометрии, но ограничиваем диапазон, чтобы схема оставалась читаемой на планшете.
     private double TankWidth
     {
         get
@@ -376,9 +384,7 @@
             return Math.Clamp(proportionalWidth, 175.0, 270.0);
         }
     }
-
     private double TankLeft => TankCenterX - TankWidth / 2.0;
-
     private double TankRight => TankCenterX + TankWidth / 2.0;
 
     // Высота эллиптического днища в SVG берётся из реального отношения
@@ -390,14 +396,11 @@
             if (TotalLengthMm <= 0)
                 return 0.0;
 
-            return Math.Clamp(TankVisualHeight * Math.Max(0.0, DimC) / TotalLengthMm, 0.0, 115.0);
+            return Math.Clamp(TankVisualHeight * Math.Max(0.0, DimC) / TotalLengthMm, 0.0, 85.0);
         }
     }
-
     private double BodyTopY => TankTopY + HeadVisualHeight;
-
     private double BodyBottomY => TankBottomY - HeadVisualHeight;
-
     private double UpperDeadBoundaryY
     {
         get
@@ -409,7 +412,6 @@
             return TankTopY + TankVisualHeight * value / TotalLengthMm;
         }
     }
-
     private double LowerDeadBoundaryY
     {
         get
@@ -463,13 +465,28 @@
     {
         get
         {
+            var radiusX = TankWidth / 2.0;
+            var radiusY = HeadVisualHeight;
+
             return
                 $"M {Svg(TankLeft)} {Svg(BodyTopY)} " +
-                $"C {Svg(TankLeft)} {Svg(TankTopY)}, {Svg(TankRight)} {Svg(TankTopY)}, {Svg(TankRight)} {Svg(BodyTopY)} " +
+                $"A {Svg(radiusX)} {Svg(radiusY)} 0 0 1 {Svg(TankRight)} {Svg(BodyTopY)} " +
                 $"L {Svg(TankRight)} {Svg(BodyBottomY)} " +
-                $"C {Svg(TankRight)} {Svg(TankBottomY)}, {Svg(TankLeft)} {Svg(TankBottomY)}, {Svg(TankLeft)} {Svg(BodyBottomY)} Z";
+                $"A {Svg(radiusX)} {Svg(radiusY)} 0 0 1 {Svg(TankLeft)} {Svg(BodyBottomY)} Z";
         }
     }
+
+    // private string TankPath
+    // {
+    //     get
+    //     {
+    //         return
+    //             $"M {Svg(TankLeft)} {Svg(BodyTopY)} " +
+    //             $"C {Svg(TankLeft)} {Svg(TankTopY)}, {Svg(TankRight)} {Svg(TankTopY)}, {Svg(TankRight)} {Svg(BodyTopY)} " +
+    //             $"L {Svg(TankRight)} {Svg(BodyBottomY)} " +
+    //             $"C {Svg(TankRight)} {Svg(TankBottomY)}, {Svg(TankLeft)} {Svg(TankBottomY)}, {Svg(TankLeft)} {Svg(BodyBottomY)} Z";
+    //     }
+    // }
 
     private static string Svg(double value)
     {

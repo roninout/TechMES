@@ -28,7 +28,7 @@
 }
 
 .tank-body-line {
-    stroke: var(--rz-text-color);
+    stroke: var(--rz-text-color);<line class="tank-guide-dim"
     stroke-width: 2.2;
 }
 
@@ -59,12 +59,12 @@
 
 .tank-dimension,
 .tank-dimension-cap {
-    stroke: var(--rz-danger);
+    stroke: var(--rz-text-secondary-color);
     stroke-width: 1.8;
 }
 
 .tank-guide-dim {
-    stroke: var(--rz-danger);
+    stroke: var(--rz-text-secondary-color);
     stroke-width: 1.3;
     stroke-dasharray: 6 5;
 }
@@ -116,8 +116,8 @@
 }
 
 .tank-overlay-dimb {
-    left: 37.5%;
-    top: 88%;
+    left: 37%;
+    top: 80%;
 }
 
 .tank-overlay-upper {
