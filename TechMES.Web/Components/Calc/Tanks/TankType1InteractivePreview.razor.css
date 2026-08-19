@@ -28,7 +28,7 @@
 }
 
 .tank-body-line {
-    stroke: var(--rz-text-color);<line class="tank-guide-dim"
+    stroke: var(--rz-text-color);
     stroke-width: 2.2;
 }
 
@@ -40,6 +40,36 @@
 .tank-live-level {
     stroke: var(--rz-info);
     stroke-width: 2.5;
+}
+
+.tank-dimension,
+.tank-dimension-cap {
+    stroke: var(--rz-text-secondary-color);
+    stroke-width: 1.8;
+}
+
+.tank-guide-dim {
+    stroke: var(--rz-text-secondary-color);
+    stroke-width: 1.3;
+    stroke-dasharray: 6 5;
+}
+
+.tank-zone-guide {
+    stroke: var(--rz-text-secondary-color);
+    stroke-width: 1.2;
+    stroke-dasharray: 6 5;
+}
+
+.tank-dead-zone,
+.tank-zone-cap {
+    stroke: var(--rz-text-secondary-color);
+    stroke-width: 1.8;
+}
+
+.tank-measure-zone,
+.tank-measure-cap {
+    stroke: var(--rz-success);
+    stroke-width: 2;
 }
 
 .tank-live-level-overlay {
@@ -57,83 +87,48 @@
     pointer-events: none;
 }
 
-.tank-dimension,
-.tank-dimension-cap {
-    stroke: var(--rz-text-secondary-color);
-    stroke-width: 1.8;
-}
-
-.tank-guide-dim {
-    stroke: var(--rz-text-secondary-color);
-    stroke-width: 1.3;
-    stroke-dasharray: 6 5;
-}
-
-.tank-zone-guide {
-    stroke: var(--rz-info);
-    stroke-width: 1.2;
-    stroke-dasharray: 6 5;
-}
-
-.tank-dead-zone,
-.tank-zone-cap {
-    stroke: var(--rz-info);
-    stroke-width: 1.8;
-}
-
-.tank-measure-zone,
-.tank-measure-cap {
-    stroke: var(--rz-success);
-    stroke-width: 2;
-}
-
-.tank-overlay {
+.tank-side-field {
     position: absolute;
     width: 142px;
     z-index: 2;
 }
 
-    .tank-overlay ::deep .rz-form-field {
+    .tank-side-field ::deep .rz-form-field {
         width: 100%;
     }
 
-    .tank-overlay ::deep .rz-numeric {
+    .tank-side-field ::deep .rz-numeric {
         width: 100%;
     }
 
-    .tank-overlay ::deep .rz-inputtext {
+    .tank-side-field ::deep .rz-inputtext {
         text-align: right;
     }
 
-.tank-overlay-dimc {
-    top: 8%;
+.tank-bottom-field {
+    position: absolute;
+    width: 142px;
+    z-index: 2;
 }
 
-.tank-overlay-dima {
-    top: 40%;
-}
+    .tank-bottom-field ::deep .rz-form-field {
+        width: 100%;
+    }
 
-/*.tank-overlay-dimb {
-    left: 37%;
-    top: 80%;
-}*/
+    .tank-bottom-field ::deep .rz-numeric {
+        width: 100%;
+    }
 
-.tank-overlay-upper {
-    top: 8%;
-}
-
-.tank-overlay-measure {
-    top: 40%;
-}
-
-.tank-overlay-lower {
-    top: 70%;
-}
+    .tank-bottom-field ::deep .rz-inputtext {
+        text-align: right;
+    }
 
 .tank-overlay-above100 {
+    position: absolute;
     right: 0;
-    top: 84%;
+    bottom: 1.5%;
     width: 220px;
+    z-index: 2;
 }
 
 .tank-preview-switch {
@@ -157,7 +152,8 @@
         width: 100%;
     }
 
-    .tank-overlay {
+    .tank-side-field,
+    .tank-bottom-field {
         width: 124px;
     }
 
@@ -168,4 +164,15 @@
     .tank-preview-switch {
         font-size: 12px;
     }
+}
+
+.tank-side-field-readonly ::deep .rz-inputtext {
+    text-align: right;
+    background-color: var(--rz-base-200);
+    color: var(--rz-text-secondary-color);
+    cursor: not-allowed;
+}
+
+.tank-side-field-readonly ::deep input[readonly] {
+    text-align: right;
 }
