@@ -857,12 +857,6 @@ public sealed class TankTypeVolumeDefinitionTests
 
     private static double GetOutput(CalculationResult result, string key)
     {
-        return result.Outputs
-            .Single(output =>
-                string.Equals(
-                    output.Key,
-                    key,
-                    StringComparison.OrdinalIgnoreCase))
-            .Value;
+        return result.Outputs.Single(output => string.Equals(output.Key, key, StringComparison.OrdinalIgnoreCase)).Value;
     }
 }

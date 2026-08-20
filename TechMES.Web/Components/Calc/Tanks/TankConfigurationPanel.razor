@@ -197,8 +197,8 @@
                  ======================================================== -->
                 <div class="tank-preview-panel-content">
 
-                    @if (SelectedTypeNumber == 1)
-                    {
+                        @if (SelectedTypeNumber == 1)
+                        {
                             <TankType1InteractivePreview DimA="@CurrentDimA"
                                                          DimB="@CurrentDimB"
                                                          DimC="@CurrentDimC"
@@ -212,7 +212,7 @@
                                                          DimCChanged="@((double value) => SetInputNumber("dimC", value))"
                                                          UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
                                                          LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
-                    }
+                        }
                         else if (SelectedTypeNumber == 2)
                         {
                             <TankType2InteractivePreview DimA="@CurrentDimA"
@@ -229,14 +229,30 @@
                                                          UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
                                                          LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
                         }
-                    else
-                    {
-                        <div class="tank-preview-figure">
-
-                            <TankTypePreview TypeNumber="@SelectedTypeNumber" />
-
-                        </div>
-                    }
+                        else if (SelectedTypeNumber == 3)
+                        {
+                            <TankType3InteractivePreview DimA="@CurrentDimA"
+                                                         DimB="@CurrentDimB"
+                                                         DimC="@CurrentDimC"
+                                                         DimD="@CurrentDimD"
+                                                         UpperDeadArea="@CurrentUpperDeadArea"
+                                                         LowerDeadArea="@CurrentLowerDeadArea"
+                                                         CalculateAbove100="@CurrentCalculateAbove100"
+                                                         LevelPercent="@CurrentLevelPercent"
+                                                         Disabled="@_isSaving"
+                                                         DimAChanged="@((double value) => SetInputNumber("dimA", value))"
+                                                         DimBChanged="@((double value) => SetInputNumber("dimB", value))"
+                                                         DimCChanged="@((double value) => SetInputNumber("dimC", value))"
+                                                         DimDChanged="@((double value) => SetInputNumber("dimD", value))"
+                                                         UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
+                                                         LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
+                        }
+                        else
+                        {
+                            <div class="tank-preview-figure">
+                                <TankTypePreview TypeNumber="@SelectedTypeNumber" />
+                            </div>
+                        }
 
                 </div>
 
@@ -851,15 +867,12 @@
     private double CurrentMeasurementAreaMm => Math.Max(0.0, CurrentTotalLengthMm - GetInputNumber("upperDeadArea") - GetInputNumber("lowerDeadArea"));
 
     private double CurrentDimA => GetInputNumber("dimA");
-
     private double CurrentDimB => GetInputNumber("dimB");
-
     private double CurrentDimC => GetInputNumber("dimC");
+    private double CurrentDimD => GetInputNumber("dimD");
 
     private double CurrentUpperDeadArea => GetInputNumber("upperDeadArea");
-
     private double CurrentLowerDeadArea => GetInputNumber("lowerDeadArea");
-
     private bool CurrentCalculateAbove100 => GetInputBoolean("calculateAbove100");
 
     private double? CurrentLevelPercent => TryGetRuntimeNumber(State?.LastInputs, "levelRaw", out var value) ? value : null;
