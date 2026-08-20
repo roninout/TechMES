@@ -252,106 +252,6 @@
     flex: 0 0 auto;
 }
 
-/* ============================================================
-   Tank Input panel
-   PLC-like row layout
-   ============================================================ */
-
-.tank-input-panel-body {
-    display: grid;
-    align-content: start;
-    gap: 8px;
-    min-width: 0;
-    padding: 24px 28px;
-}
-
-
-/* ============================================================
-   Input sections
-   ============================================================ */
-
-.tank-input-section {
-    display: grid;
-    align-content: start;
-    gap: 8px;
-    min-width: 0;
-}
-
-.tank-input-section-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 32px;
-    margin-bottom: 4px;
-    color: var(--rz-text-color);
-    font-size: 14px;
-    font-weight: 600;
-}
-
-    .tank-input-section-title ::deep .rz-icon {
-        font-size: 18px;
-    }
-
-
-/*
- * Sensor визуально является второй группой Input.
- *
- * Горизонтальная линия отделяет параметры установки датчика
- * от геометрии самого Tank.
- */
-.tank-input-sensor-section {
-    margin-top: 18px;
-    padding-top: 18px;
-    border-top: 1px solid var(--rz-border-color, #d7dbe0);
-}
-
-
-/* ============================================================
-   Input row
-   Повторяет принцип PLC:
-   left content + compact value field on the right
-   ============================================================ */
-
-.tank-input-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 150px;
-    align-items: center;
-    gap: 16px;
-    min-width: 0;
-    min-height: 48px;
-}
-
-.tank-input-row-title {
-    min-width: 0;
-    padding-left: 16px;
-}
-
-.tank-input-row-name {
-    overflow: hidden;
-    color: var(--rz-text-color);
-    font-size: 14px;
-    font-weight: 500;
-    line-height: 1.25;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.tank-input-row-description {
-    margin-top: 3px;
-    overflow: hidden;
-    color: var(--rz-text-secondary-color);
-    font-size: 12px;
-    line-height: 1.2;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.tank-input-row-value {
-    display: flex;
-    justify-content: flex-end;
-    min-width: 0;
-}
-
 .tank-type-field-top {
     width: 100%;
     max-width: 620px;
@@ -362,14 +262,6 @@
 /* ============================================================
    Numeric field
    ============================================================ */
-
-::deep .tank-input-form-field {
-    width: 130px;
-}
-
-::deep .tank-input-numeric {
-    width: 100%;
-}
 
     ::deep .tank-input-numeric .rz-inputtext {
         text-align: right;
@@ -661,14 +553,6 @@
     justify-content: center;
     flex: 1 1 auto;
     min-height: 370px;
-}
-
-.tank-input-switch-value {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    min-width: 0;
 }
 
 /* ============================================================

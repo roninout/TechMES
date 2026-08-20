@@ -274,7 +274,7 @@
          VALUE
          References + calculated values
          ============================================================ -->
-            <ParamAiPanel Title="Value" Icon="monitoring">
+             <ParamAiPanel Title="Value" Icon="monitoring" InitiallyCollapsed="true">
 
                 <div class="tank-value-panel-body">
 
@@ -341,7 +341,6 @@
                             </div>
 
                         </div>
-
 
                         <!-- Density -->
                         <div class="tank-value-reference-row">
@@ -589,7 +588,6 @@
                  ======================================================== -->
                 <div class="tank-value-separator tank-value-write-separator"></div>
 
-
                 <!-- ========================================================
                  Allow output writes
 
@@ -628,73 +626,6 @@
 
             </ParamAiPanel>
 
-
-            <!-- ============================================================
-             INPUT
-             Job constants визуально повторяет PLC panel: описание слева, поле значения справа.
-             ============================================================ -->
-            @if (SelectedTypeNumber != 1)
-            {
-                <ParamAiPanel Title="Input"
-                Icon="input"
-                InitiallyCollapsed="true">
-
-                    <div class="tank-input-panel-body">
-
-                        <!-- ========================================================
-                        Tank geometry
-                        dimA ... dimF конкретного выбранного Tank Type
-                        ======================================================== -->
-                        <section class="tank-input-section">
-
-                            <div class="tank-input-section-title">
-                                <RadzenIcon Icon="oil_barrel" />
-                                <span>Tank geometry</span>
-                            </div>
-
-                            @foreach (var input in GeometryInputs)
-                            {
-                                @RenderInputRow(input)
-                            }
-
-                        </section>
-
-
-                        <!-- ========================================================
-                        Sensor
-                        Положение/геометрия измерительной части
-                        Отделена от Tank geometry линией и отступом.
-                        ======================================================== -->
-                        <section class="tank-input-section tank-input-sensor-section">
-
-                            <div class="tank-input-section-title">
-                                <RadzenIcon Icon="sensors" />
-                                <span>Sensor</span>
-                            </div>
-
-                            @if (UpperDeadAreaInput is not null)
-                            {
-                                @RenderInputRow(UpperDeadAreaInput)
-                            }
-
-                            @RenderMeasurementAreaRow()
-
-                            @if (LowerDeadAreaInput is not null)
-                            {
-                                @RenderInputRow(LowerDeadAreaInput)
-                            }
-
-                            @if (CalculateAbove100Input is not null)
-                            {
-                                @RenderBooleanInputRow(CalculateAbove100Input)
-                            }
-
-                        </section>
-
-                    </div>
-
-                </ParamAiPanel>
-            }
             <!-- ============================================================
              SAVE
              ============================================================ -->
@@ -897,42 +828,12 @@
     private string? DensityHmiTag =>
         FindTag(LinkedDensity?.TagNames, "_DENS_HMI", "_HMI");
 
+    private bool IsLevelTankReady => LinkedLevel is not null && LinkedDensity is not null && !string.IsNullOrWhiteSpace(_levelRawTag) && !string.IsNullOrWhiteSpace(DensityHmiTag);
 
-    private bool IsLevelTankReady =>
-        LinkedLevel is not null
-        && LinkedDensity is not null
-        && !string.IsNullOrWhiteSpace(_levelRawTag)
-        && !string.IsNullOrWhiteSpace(DensityHmiTag);
-
-
-    private IReadOnlyList<TankInputEditor> EditableInputs =>
-        _inputs
+    private IReadOnlyList<TankInputEditor> EditableInputs => _inputs
             .Where(input => !IsLinkedInput(input.Parameter.Key))
             .OrderBy(input => input.Parameter.Order)
             .ToList();
-
-    /// <summary>
-    /// Геометрические параметры самого сборника.
-    ///
-    /// Все dimA...dimF относятся к Tank geometry.
-    /// Конкретный Tank Type сам определяет, какие из них присутствуют.
-    /// </summary>
-    private IReadOnlyList<TankInputEditor> GeometryInputs => EditableInputs
-            .Where(input => input.Parameter.Key.StartsWith("dim", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-
-    /// <summary>
-    /// Параметры установки/измерительной части датчика.
-    ///
-    /// levelRaw и densityHmi сюда не попадают, потому что они исключены
-    /// ещё на уровне EditableInputs и связаны автоматически через LevelTank.
-    /// </summary>
-    private TankInputEditor? UpperDeadAreaInput => FindInputEditor("upperDeadArea");
-
-    private TankInputEditor? LowerDeadAreaInput => FindInputEditor("lowerDeadArea");
-
-    private TankInputEditor? CalculateAbove100Input => FindInputEditor("calculateAbove100");
 
     private double CurrentTotalLengthMm => SelectedTypeNumber switch
     {
@@ -1611,89 +1512,6 @@
         return false;
     }
 
-    /// <summary>
-    /// Одна строка Tank Input.
-    ///
-    /// По компоновке повторяет PLC:
-    /// описание параметра слева,
-    /// компактное поле значения справа.
-    /// </summary>
-    private RenderFragment RenderInputRow(TankInputEditor input) => @<div class="tank-input-row">
-
-        <div class="tank-input-row-title">
-
-            <div class="tank-input-row-name">
-                @input.Parameter.Name
-            </div>
-
-            <div class="tank-input-row-description">
-                @GetInputDescription(input.Parameter.Key)
-            </div>
-
-        </div>
-
-        <div class="tank-input-row-value">
-
-            <RadzenFormField AllowFloatingLabel="false"
-                             Text="@input.Parameter.Name"
-                             class="tank-input-form-field">
-
-                <RadzenNumeric TValue="double"
-                               Value="@input.NumberValue"
-                               Change="@((double value) => OnNumberValueChanged(input, value))"
-                               Format="@GetInputNumberFormat(input)"
-                               Disabled="@_isSaving"
-                               class="tank-input-numeric" />
-
-            </RadzenFormField>
-
-        </div>
-
-    </div>;
-
-    private RenderFragment RenderMeasurementAreaRow() => @<div class="tank-input-row">
-
-        <div class="tank-input-row-title">
-            <div class="tank-input-row-name">Measurement area</div>
-            <div class="tank-input-row-description">Calculated sensor working range</div>
-        </div>
-
-        <div class="tank-input-row-value">
-
-            <RadzenFormField AllowFloatingLabel="false"
-                             Text="Measurement area"
-                             class="tank-input-form-field">
-
-                <RadzenTextBox Value="@($"{CurrentMeasurementAreaMm:0} mm")"
-                               ReadOnly="true"
-                               class="tank-input-numeric" />
-
-            </RadzenFormField>
-
-        </div>
-
-    </div>;
-
-    private RenderFragment RenderBooleanInputRow(TankInputEditor input) => @<div class="tank-input-row">
-
-        <div class="tank-input-row-title">
-            <div class="tank-input-row-name">@input.Parameter.Name</div>
-            <div class="tank-input-row-description">@GetInputDescription(input.Parameter.Key)</div>
-        </div>
-
-        <div class="tank-input-switch-value">
-
-            <span class="tank-switch-state @GetSwitchStateClass(input.BooleanValue)">
-                @GetSwitchStateText(input.BooleanValue)
-            </span>
-
-            <RadzenSwitch @bind-Value="input.BooleanValue"
-                          Disabled="@_isSaving" />
-
-        </div>
-
-    </div>;
-
     private string GetInputDescription(string key)
     {
         return key.ToLowerInvariant() switch
@@ -1713,7 +1531,6 @@
         };
     }
 
-
     private string GetDimADescription()
     {
         return SelectedTypeNumber switch
@@ -1729,7 +1546,6 @@
             _ => "Main tank dimension"
         };
     }
-
 
     private string GetDimBDescription()
     {
@@ -1747,7 +1563,6 @@
         };
     }
 
-
     private string GetDimCDescription()
     {
         return SelectedTypeNumber switch
@@ -1764,7 +1579,6 @@
         };
     }
 
-
     private string GetDimDDescription()
     {
         return SelectedTypeNumber switch
@@ -1776,7 +1590,6 @@
             _ => "Additional section dimension"
         };
     }
-
 
     private string GetDimEDescription()
     {
