@@ -453,9 +453,17 @@
    Value fields
    ============================================================ */
 
-::deep .tank-value-form-field {
-    width: 130px;
-}
+    ::deep .tank-value-form-field {
+        width: 130px;
+    }
+
+    ::deep .tank-value-form-field .rz-inputtext {
+        text-align: right;
+    }
+
+    ::deep .tank-value-form-field .rz-numeric-input {
+        text-align: right;
+    }
 
 
 /* ============================================================
