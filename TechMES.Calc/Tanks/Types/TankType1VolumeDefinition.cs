@@ -27,9 +27,9 @@ public sealed class TankType1VolumeDefinition : TankTypeVolumeDefinitionBase
 {
     private static readonly IReadOnlyList<CalculationParameterDefinition>
         ParameterDefinitions = CreateParameters(
-                Dimension("dimA", "dimA", 10),
-                Dimension("dimB", "dimB", 11),
-                Dimension("dimC", "dimC", 12));
+            Dimension("dimA", "dimA", 10),
+            Dimension("dimB", "dimB", 11, minimum: 1d),
+            Dimension("dimC", "dimC", 12));
 
     public override string Code => "tank.volume.type1";
 

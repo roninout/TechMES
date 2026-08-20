@@ -1,113 +1,19 @@
 ﻿using TechMES.Calc.Abstractions;
 using TechMES.Calc.Parameters;
+using TechMES.Calc.Results;
 using TechMES.Calc.Tanks.Types;
 
 namespace TechMES.Calc.Tests;
 
 /// <summary>
-/// Regression tests для полного legacy LevelTank -> Tank pipeline.
+/// Regression tests общей Tank infrastructure и полностью
+/// переведённого на новую модель Tank Type 1.
 ///
-/// Геометрические expected Volume зафиксированы по рабочему
-/// TechParamsCalc Tank.cs.
-///
-/// Дополнительно проверяем:
-/// - H_MAX;
-/// - преобразование Level.Val_R -> LevelMm;
-/// - Mass через Density.ValHmi.
+/// Type 2..8 будут получать собственные geometry tests
+/// по мере их перевода на новую реализацию.
 /// </summary>
 public sealed class TankTypeVolumeDefinitionTests
 {
-    [Theory]
-    [InlineData("tank.volume.type1", 8.203326737053668)]
-    [InlineData("tank.volume.type2", 8.270689298743592)]
-    [InlineData("tank.volume.type3", 4.812037329034269)]
-    [InlineData("tank.volume.type4", 0.960000000000000)]
-    [InlineData("tank.volume.type5", 5.372934717770584)]
-    [InlineData("tank.volume.type6", 7.916813487046279)]
-    [InlineData("tank.volume.type7", 8.236114359980968)]
-    [InlineData("tank.volume.type8", 2.613569170367549)]
-    public void CalculatesExpectedLegacyCompatibleVolume(
-        string definitionCode,
-        double expectedVolume)
-    {
-        var catalog = BuiltInCalculationCatalog.Create();
-        var definition = catalog.GetRequired(definitionCode);
-        var result = definition.Calculate(CreateParameters(definition));
-
-        Assert.True(result.IsSuccess, result.ErrorMessage);
-
-        var volume = result.Outputs.Single(output => output.Key == "volume");
-
-        Assert.Equal("m³", volume.Unit);
-        Assert.Equal(expectedVolume, volume.Value, precision: 10);
-    }
-
-    [Fact]
-    public void CalculatesLegacyLevelTankOutputs()
-    {
-        var definition = new TankType4VolumeDefinition();
-        var result = definition.Calculate(CreateParameters(definition));
-
-        Assert.True(result.IsSuccess, result.ErrorMessage);
-        Assert.Equal(4, result.Outputs.Count);
-
-        var hMax = result.Outputs.Single(output => output.Key == "hMax");
-        var level = result.Outputs.Single(output => output.Key == "levelMm");
-        var volume = result.Outputs.Single(output => output.Key == "volume");
-        var mass = result.Outputs.Single(output => output.Key == "mass");
-
-        /*
-         * distanceB - distanceA = 1600 - 100 = 1500 mm
-         */
-        Assert.Equal(1500.0, hMax.Value, precision: 10);
-
-        /*
-         * (1500 * 666.667 * 10 / 10000) -> (int)1000.0005 -> 1000 mm
-         */
-        Assert.Equal(1000.0, level.Value, precision: 10);
-
-        Assert.Equal(0.96, volume.Value, precision: 10);
-
-        /*
-         * 0.96 * 12000 * 0.0001 = 1.152 t
-         */
-        Assert.Equal(1.152, mass.Value, precision: 10);
-    }
-
-    [Fact]
-    public void NegativeLevelRawProducesZeroLevel()
-    {
-        var definition = new TankType1VolumeDefinition();
-        var parameters = CreateParameterValues(definition);
-
-        parameters["levelRaw"] = -100.0;
-
-        var result = definition.Calculate(new CalculationParameterSet(parameters));
-
-        Assert.True(result.IsSuccess, result.ErrorMessage);
-
-        var level = result.Outputs.Single(output => output.Key == "levelMm");
-
-        Assert.Equal(0.0, level.Value, precision: 10);
-    }
-
-    [Fact]
-    public void NonPositiveDensityProducesZeroMass()
-    {
-        var definition = new TankType1VolumeDefinition();
-        var parameters = CreateParameterValues(definition);
-
-        parameters["densityHmi"] = 0.0;
-
-        var result = definition.Calculate(new CalculationParameterSet(parameters));
-
-        Assert.True(result.IsSuccess, result.ErrorMessage);
-
-        var mass = result.Outputs.Single(output => output.Key == "mass");
-
-        Assert.Equal(0.0, mass.Value, precision: 10);
-    }
-
     [Fact]
     public void BuiltInCatalogContainsAllEightTankTypes()
     {
@@ -118,7 +24,7 @@ public sealed class TankTypeVolumeDefinitionTests
             var definition = catalog.GetRequired($"tank.volume.type{type}");
 
             Assert.Equal("Tanks", definition.Category);
-            Assert.Equal("2", definition.Version);
+            Assert.Equal("3", definition.Version);
         }
     }
 
@@ -138,76 +44,307 @@ public sealed class TankTypeVolumeDefinitionTests
     }
 
     [Fact]
-    public void TypeFourUsesDistanceAInUnmeasuredBottomCalculation()
+    public void Type1CalculatesKnownWorkingPoint()
     {
-        var definition = new TankType4VolumeDefinition();
-        var result = definition.Calculate(CreateParameters(definition));
+        // Geometry:
+        // dimA = 2500 mm
+        // dimB = 1600 mm
+        // dimC = 400 mm
+        //
+        // Total physical height:
+        // 2500 + 400 + 400 = 3300 mm
+        //
+        // Sensor:
+        // lower dead = 150 mm
+        // upper dead = 150 mm
+        // measurement area = 3000 mm
+        //
+        // Level.R = 49.8 %
+        // measured level = 1494 mm
+        // physical liquid height = 150 + 1494 = 1644 mm
+
+        var result = CalculateType1(
+            levelRaw: 49.8,
+            densityHmi: 1218.1,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false);
 
         Assert.True(result.IsSuccess, result.ErrorMessage);
 
-        var volume = result.Outputs.Single(output => output.Key == "volume");
+        Assert.Equal(
+            3000.0,
+            GetOutput(result, "hMax"),
+            precision: 10);
 
-        Assert.Equal(0.96, volume.Value, precision: 10);
+        Assert.Equal(
+            1494.0,
+            GetOutput(result, "levelMm"),
+            precision: 10);
+
+        Assert.Equal(
+            3.0373755532947078,
+            GetOutput(result, "volume"),
+            precision: 10);
+
+        Assert.Equal(
+            3.699827161468283,
+            GetOutput(result, "mass"),
+            precision: 10);
+    }
+
+    [Theory]
+    [InlineData(0.0, 0.0)]
+    [InlineData(200.0, 0.1675516081914557)]
+    [InlineData(400.0, 0.5361651462126582)]
+    [InlineData(1650.0, 3.049439269084493)]
+    [InlineData(2900.0, 5.562713391956327)]
+    [InlineData(3100.0, 5.931326929977530)]
+    [InlineData(3300.0, 6.098878538168986)]
+    public void Type1VolumeMatchesReferenceGeometry(double liquidHeightMm, double expectedVolumeM3)
+    {
+        const double totalHeightMm = 3300.0;
+
+        // При нулевых dead areas Level.R напрямую задаёт
+        // физическую высоту жидкости относительно полной высоты Tank.
+        var levelRaw = liquidHeightMm / totalHeightMm * 100.0;
+
+        var result = CalculateType1(
+            levelRaw: levelRaw,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(
+            liquidHeightMm,
+            GetOutput(result, "levelMm"),
+            precision: 8);
+
+        Assert.Equal(
+            expectedVolumeM3,
+            GetOutput(result, "volume"),
+            precision: 10);
     }
 
     [Fact]
-    public void ReturnsLevelTankTraceWhenRequested()
+    public void Type1StopsVolumeAtMeasurementBoundaryWhenAbove100IsDisabled()
     {
-        var definition = new TankType4VolumeDefinition();
-        var result = definition.Calculate(
-            CreateParameters(definition),
+        var result = CalculateType1(
+            levelRaw: 110.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // Level остаётся реальным и не ограничивается 100 %.
+        Assert.Equal(
+            3300.0,
+            GetOutput(result, "levelMm"),
+            precision: 10);
+
+        // Но Volume останавливается на 3150 mm:
+        // 150 lower dead + 3000 measurement area.
+        Assert.Equal(
+            5.999918369580907,
+            GetOutput(result, "volume"),
+            precision: 10);
+    }
+
+    [Fact]
+    public void Type1ContinuesVolumeIntoUpperDeadAreaWhenAbove100IsEnabled()
+    {
+        var result = CalculateType1(
+            levelRaw: 110.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // 110 % выводит расчёт выше рабочей зоны,
+        // но физическая высота ограничивается полной геометрией Tank.
+        Assert.Equal(
+            3300.0,
+            GetOutput(result, "levelMm"),
+            precision: 10);
+
+        Assert.Equal(
+            6.098878538168986,
+            GetOutput(result, "volume"),
+            precision: 10);
+    }
+
+    [Fact]
+    public void NegativeLevelProducesZeroMeasuredLevel()
+    {
+        var result = CalculateType1(
+            levelRaw: -25.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(
+            0.0,
+            GetOutput(result, "levelMm"),
+            precision: 10);
+    }
+
+    [Fact]
+    public void NonPositiveDensityProducesZeroMass()
+    {
+        var result = CalculateType1(
+            levelRaw: 50.0,
+            densityHmi: 0.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(
+            0.0,
+            GetOutput(result, "mass"),
+            precision: 10);
+    }
+
+    [Fact]
+    public void Type1RejectsZeroDiameter()
+    {
+        var result = CalculateType1(
+            levelRaw: 50.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 0,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(
+            "dimB",
+            result.ErrorMessage ?? "",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RejectsInvalidMeasurementArea()
+    {
+        var result = CalculateType1(
+            levelRaw: 50.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 1700,
+            lowerDeadArea: 1600,
+            calculateAbove100: false);
+
+        Assert.False(result.IsSuccess);
+
+        Assert.Contains(
+            "measurement area",
+            result.ErrorMessage ?? "",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Type1ReturnsCalculationHelpTrace()
+    {
+        var result = CalculateType1(
+            levelRaw: 49.8,
+            densityHmi: 1218.1,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false,
             includeTrace: true);
 
         Assert.True(result.IsSuccess, result.ErrorMessage);
 
-        Assert.Contains(result.Trace, item => item.Key == "hMaxMm");
-        Assert.Contains(result.Trace, item => item.Key == "levelMm");
-        Assert.Contains(result.Trace, item => item.Key == "volumeM3");
-        Assert.Contains(result.Trace, item => item.Key == "massT");
+        Assert.Contains(
+            result.Trace,
+            item => item.Key == "help.sensor.measurement.formula");
+
+        Assert.Contains(
+            result.Trace,
+            item => item.Key == "help.geometry.radius.formula");
+
+        Assert.Contains(
+            result.Trace,
+            item => item.Key == "help.volume.head.formula");
+
+        Assert.Contains(
+            result.Trace,
+            item => item.Key == "help.volume.current.region");
+
+        Assert.Contains(
+            result.Trace,
+            item => item.Key == "help.result.volume.calculation");
+
+        Assert.Contains(
+            result.Trace,
+            item => item.Key == "help.result.mass.calculation");
     }
 
-    private static CalculationParameterSet CreateParameters(
-        ICalculationDefinition definition)
+    private static CalculationResult CalculateType1(double levelRaw, double densityHmi, double dimA, double dimB, double dimC, double upperDeadArea, double lowerDeadArea, bool calculateAbove100, bool includeTrace = false)
     {
-        return new CalculationParameterSet(CreateParameterValues(definition));
-    }
-
-    /// <summary>
-    /// Stable regression vector.
-    ///
-    /// levelRaw = 666.667 специально выбран так, чтобы legacy-формула
-    /// при DistanceA=100 / DistanceB=1600 дала ровно LevelMm=1000.
-    /// </summary>
-    private static Dictionary<string, object?> CreateParameterValues(
-        ICalculationDefinition definition)
-    {
-        var values = new Dictionary<string, object?>(
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var parameter in definition.Parameters)
-        {
-            values[parameter.Key] = parameter.Key switch
+        var parameters = new CalculationParameterSet(
+            new Dictionary<string, object?>
             {
-                "levelRaw" => 666.667,
-                "densityHmi" => 12000.0,
+                ["levelRaw"] = levelRaw,
+                ["densityHmi"] = densityHmi,
 
-                "dimA" => 3000.0,
-                "dimB" => 2000.0,
-                "dimC" => 200.0,
-                "dimD" => 1200.0,
-                "dimE" => 400.0,
-                "dimF" => 1000.0,
+                ["dimA"] = dimA,
+                ["dimB"] = dimB,
+                ["dimC"] = dimC,
 
-                "distanceA" => 100.0,
-                "distanceB" => 1600.0,
-                "distToDistanceA" => 100.0,
-                "probeLength" => 2000.0,
+                ["upperDeadArea"] = upperDeadArea,
+                ["lowerDeadArea"] = lowerDeadArea,
+                ["calculateAbove100"] = calculateAbove100
+            });
 
-                _ => throw new InvalidOperationException(
-                    $"Unknown Tank test parameter '{parameter.Key}'.")
-            };
-        }
+        return new TankType1VolumeDefinition()
+            .Calculate(parameters, includeTrace);
+    }
 
-        return values;
+    private static double GetOutput(CalculationResult result, string key)
+    {
+        return result.Outputs
+            .Single(output =>
+                string.Equals(
+                    output.Key,
+                    key,
+                    StringComparison.OrdinalIgnoreCase))
+            .Value;
     }
 }

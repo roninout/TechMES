@@ -765,6 +765,9 @@
     // Есть ли изменения, которые Runtime ещё не получил.
     private bool HasUnsavedChanges => !string.Equals(_savedEditorSignature, BuildEditorSignature(), StringComparison.Ordinal);
 
+    // Родительская страница использует это свойство перед переключением на другой Calculation model.
+    public bool HasPendingChanges => HasUnsavedChanges;
+
     // ============================================================
     // Editor state signature
     // ============================================================
@@ -944,7 +947,13 @@
 
     private double? CurrentLevelPercent => TryGetRuntimeNumber(State?.LastInputs, "levelRaw", out var value) ? value : null;
 
-    private bool IsSensorGeometryValid => CurrentTotalLengthMm > 0 && CurrentMeasurementAreaMm > 0;
+    // Проверяем не только рабочую высоту датчика, но и ограничения геометрических параметров, объявленные непосредственно выбранным алгоритмом.
+    // Благодаря этому WEB не дублирует правила вроде "dimB должен быть больше нуля" для каждого Tank Type.
+    private bool AreEditorValuesWithinDefinitionRanges => _inputs
+            .Where(input => !IsLinkedInput(input.Parameter.Key) && input.Parameter.Type == CalcParameterTypeDto.Number)
+            .All(input => (!input.Parameter.Minimum.HasValue || input.NumberValue >= input.Parameter.Minimum.Value) && (!input.Parameter.Maximum.HasValue || input.NumberValue <= input.Parameter.Maximum.Value));
+
+    private bool IsSensorGeometryValid => CurrentTotalLengthMm > 0 && CurrentMeasurementAreaMm > 0 && AreEditorValuesWithinDefinitionRanges;
 
     private TankInputEditor? FindInputEditor(string key)
     {
@@ -1116,36 +1125,46 @@
         CaptureSavedEditorState();
     }
 
-
     /// <summary>
-    /// Tank Type всегда можно изменить.
+    /// Переключает Tank Type.
     ///
-    /// После изменения активный Job безопасно выключаем.
+    /// Если текущая конфигурация уже была изменена, сначала спрашиваем разрешение отбросить эти изменения.
+    /// Само переключение Type является новым изменением и после него пользователь должен нажать Save.
     /// </summary>
-    private void OnTankTypeChanged(object? value)
+    private async Task OnTankTypeChanged(object? value)
     {
         var definition = FindDefinition(value?.ToString());
 
         if (definition is null)
             return;
 
-        var typeChanged = !string.Equals(
-            _selectedDefinitionCode,
-            definition.Code,
-            StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(_selectedDefinitionCode, definition.Code, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (HasUnsavedChanges)
+        {
+            var confirmed = await DialogService.Confirm("The current Tank configuration contains unsaved changes. Discard them and change Tank type?", "Unsaved changes",
+                new ConfirmOptions
+                {
+                    OkButtonText = "Discard",
+                    CancelButtonText = "Stay"
+                });
+
+            if (confirmed != true)
+            {
+                StateHasChanged();
+                return;
+            }
+        }
 
         _selectedDefinitionCode = definition.Code;
 
-        if (typeChanged)
-        {
-            _enabled = false;
-            _allowOutputWrites = false;
-        }
+        // После смены физической модели Tank старый активный Job
+        // не должен продолжать работать или писать в SCADA.
+        _enabled = false;
+        _allowOutputWrites = false;
 
-        var storedJob = Job is not null
-            && string.Equals(Job.DefinitionCode, definition.Code, StringComparison.OrdinalIgnoreCase)
-                ? Job
-                : null;
+        var storedJob = Job is not null && string.Equals(Job.DefinitionCode, definition.Code, StringComparison.OrdinalIgnoreCase) ? Job : null;
 
         BuildInputEditors(definition, storedJob);
     }

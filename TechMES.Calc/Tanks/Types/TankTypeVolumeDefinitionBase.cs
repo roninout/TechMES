@@ -291,12 +291,15 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
             trace.Add(new CalculationTraceItem("help.sensor.measurement.formula",
                 "Measurement area formula",
                 "Hmeas = Htotal - HupperDead - HlowerDead"));
+
             trace.Add(new CalculationTraceItem("help.sensor.measurement.calculation",
                 "Measurement area calculation",
                 $"{F(totalLengthMm)} - {F(upperDeadArea)} - {F(lowerDeadArea)} = {F(measurementAreaMm)} mm"));
+
             trace.Add(new CalculationTraceItem("help.sensor.level.formula",
                 "Measured level formula",
-                "Hlevel = Hmeas × Level / 100"));
+                "Hlevel = max(0, Hmeas × Level / 100)"));
+
             trace.Add(new CalculationTraceItem("help.sensor.level.calculation",
                 "Measured level calculation",
                 $"{F(measurementAreaMm)} × {F(levelRaw)} / 100 = {F(levelTank.LevelMm)} mm"));
@@ -349,8 +352,26 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
             // Mass общая для всех Tank Type.
             // ============================================================
 
-            trace.Add(new CalculationTraceItem("help.result.mass.formula", "Mass formula", "Mass = Volume × Density × 0.001"));
-            trace.Add(new CalculationTraceItem("help.result.mass.calculation", "Mass calculation", $"{F(levelTank.VolumeM3)} × {F(densityHmi)} × 0.001 = {F(levelTank.MassT)} t"));
+            if (densityHmi > 0)
+            {
+                trace.Add(new CalculationTraceItem("help.result.mass.formula",
+                    "Mass formula",
+                    "Mass = Volume × Density × 0.001"));
+
+                trace.Add(new CalculationTraceItem("help.result.mass.calculation",
+                    "Mass calculation",
+                    $"{F(levelTank.VolumeM3)} × {F(densityHmi)} × 0.001 = {F(levelTank.MassT)} t"));
+            }
+            else
+            {
+                trace.Add(new CalculationTraceItem("help.result.mass.formula",
+                    "Mass formula",
+                    "Density must be greater than zero. Otherwise Mass = 0."));
+
+                trace.Add(new CalculationTraceItem("help.result.mass.calculation",
+                    "Mass calculation",
+                    $"Density = {F(densityHmi)} kg/m³, therefore Mass = {F(levelTank.MassT)} t"));
+            }
         }
 
         return CalculationResult.Success(

@@ -4,6 +4,7 @@
 @inject CalcApiClient CalcApi
 @inject EquipmentApiClient EquipmentApi
 @inject NotificationService NotificationService
+@inject DialogService DialogService
 
 <PageTitle>Calculations</PageTitle>
 
@@ -154,7 +155,7 @@
                             var job = GetJob(model);
                             var state = GetState(job);
 
-                            <div class="@GetModelRowCss(model)" @onclick="() => SelectModel(model)">
+                            <div class="@GetModelRowCss(model)" @onclick="() => SelectModelAsync(model)">
 
                                 <div class="calc-model-row-header">
 
@@ -252,7 +253,8 @@
 
                     @if (_selectedModel.Type == CalcModelTypeDto.Tank)
                     {
-                        <TankConfigurationPanel @key="_selectedModel.Name"
+                        <TankConfigurationPanel @ref="_tankConfigurationPanel"
+                                                @key="_selectedModel.Name"
                                                 Model="@_selectedModel"
                                                 Job="@selectedJob"
                                                 State="@selectedState"
@@ -309,6 +311,7 @@
     private string _searchText = "";
 
     private CalcModelDto? _selectedModel;
+    private TankConfigurationPanel? _tankConfigurationPanel;
 
     /// <summary>
     /// true, если левая панель списка Calc models скрыта.
@@ -601,59 +604,22 @@
     {
         IEnumerable<CalcModelDto> query = _allModels;
 
-        if (!string.Equals(
-                _selectedStation,
-                AllStationsText,
-                StringComparison.OrdinalIgnoreCase))
-        {
-            query = query.Where(model =>
-                string.Equals(
-                    model.Station,
-                    _selectedStation,
-                    StringComparison.OrdinalIgnoreCase));
-        }
+        if (!string.Equals(_selectedStation, AllStationsText, StringComparison.OrdinalIgnoreCase))
+            query = query.Where(model => string.Equals(model.Station, _selectedStation, StringComparison.OrdinalIgnoreCase));
 
-        if (!string.Equals(
-                _selectedType,
-                AllTypesText,
-                StringComparison.OrdinalIgnoreCase)
-            && Enum.TryParse<CalcModelTypeDto>(
-                _selectedType,
-                ignoreCase: true,
-                out var selectedType))
-        {
-            query = query.Where(model =>
-                model.Type == selectedType);
-        }
+        if (!string.Equals(_selectedType, AllTypesText, StringComparison.OrdinalIgnoreCase) && Enum.TryParse<CalcModelTypeDto>(_selectedType, ignoreCase: true, out var selectedType))
+            query = query.Where(model => model.Type == selectedType);
 
         var search = _searchText.Trim();
 
         if (search.Length > 0)
-        {
-            query = query.Where(model =>
-                model.Name.Contains(
-                    search,
-                    StringComparison.OrdinalIgnoreCase)
-                || model.Description.Contains(
-                    search,
-                    StringComparison.OrdinalIgnoreCase));
-        }
+            query = query.Where(model => model.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || model.Description.Contains(search, StringComparison.OrdinalIgnoreCase));
 
         _filteredModels = query
             .OrderBy(model => model.Station, StringComparer.OrdinalIgnoreCase)
             .ThenBy(model => model.Type)
             .ThenBy(model => model.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
-
-        if (_selectedModel is not null
-            && !_filteredModels.Any(model =>
-                string.Equals(
-                    model.Name,
-                    _selectedModel.Name,
-                    StringComparison.OrdinalIgnoreCase)))
-        {
-            _selectedModel = _filteredModels.FirstOrDefault();
-        }
     }
 
     /// <summary>
@@ -697,17 +663,25 @@
     }
 
 
-    private void SelectModel(CalcModelDto model)
+    private async Task SelectModelAsync(CalcModelDto model)
     {
-        if (_selectedModel is not null
-            && string.Equals(
-                _selectedModel.Name,
-                model.Name,
-                StringComparison.OrdinalIgnoreCase))
-        {
+        if (_selectedModel is not null && string.Equals(_selectedModel.Name, model.Name, StringComparison.OrdinalIgnoreCase))
             return;
+
+        if (_tankConfigurationPanel?.HasPendingChanges == true)
+        {
+            var confirmed = await DialogService.Confirm("The current Tank configuration contains unsaved changes. Discard them and open another calculation?", "Unsaved changes",
+                new ConfirmOptions
+                {
+                    OkButtonText = "Discard",
+                    CancelButtonText = "Stay"
+                });
+
+            if (confirmed != true)
+                return;
         }
 
+        _tankConfigurationPanel = null;
         _selectedModel = model;
     }
 
