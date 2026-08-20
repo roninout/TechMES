@@ -636,6 +636,44 @@ public sealed class TankTypeVolumeDefinitionTests
     }
 
     [Fact]
+    public void Type3PartitionAtRightWallProducesFullTankVolume()
+    {
+        // dimD = dimB означает, что перегородка совпадает
+        // с правой стенкой Tank.
+        //
+        // Следовательно рассчитываемый левый отсек
+        // становится всем Tank целиком.
+        //
+        // Geometry:
+        // dimA = 2500 mm
+        // dimB = 1600 mm
+        // dimC = 400 mm
+        //
+        // Vbody = π × R² × dimA
+        // Vhead = 2/3 × π × R² × dimC
+        //
+        // Vfull = 5.562713391956327 m³.
+
+        var result = CalculateType3(
+            levelRaw: 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1600,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(
+            5.562713391956327,
+            GetOutput(result, "volume"),
+            precision: 10);
+    }
+
+    [Fact]
     public void Type3PartialLowerHeadAtCenteredPartitionIsExactlyHalfOfHeadVolume()
     {
         const double totalHeightMm = 2900.0;
