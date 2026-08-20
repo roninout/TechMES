@@ -1,0 +1,693 @@
+﻿@using System.Globalization
+
+<div class="tank-type4-editor">
+
+    <div class="tank-type4-canvas">
+
+        <svg viewBox="0 0 760 620"
+             role="img"
+             aria-label="Tank Type 4 interactive geometry">
+
+            @* ============================================================
+               Liquid
+
+               Type 4 имеет постоянное прямоугольное горизонтальное
+               сечение.
+
+               Показываем:
+               - заполнение передней грани;
+               - заполнение правой боковой грани;
+               - поверхность жидкости в перспективе.
+               ============================================================ *@
+
+            @if (HasLevel)
+            {
+                <rect class="tank-liquid-fill"
+                      x="@Svg(FrontLeft)"
+                      y="@Svg(FillFrontY)"
+                      width="@Svg(FrontWidth)"
+                      height="@Svg(Math.Max(0.0, FrontBottomY - FillFrontY))" />
+
+                <polygon class="tank-liquid-side"
+                         points="@LiquidSidePoints" />
+
+                @if (PreviewLiquidHeightMm > 0.0)
+                {
+                    <polygon class="tank-liquid-surface"
+                             points="@LiquidSurfacePoints" />
+                }
+
+                <line class="tank-live-level"
+                      x1="@Svg(FrontLeft)"
+                      y1="@Svg(FillFrontY)"
+                      x2="@Svg(FrontRight)"
+                      y2="@Svg(FillFrontY)" />
+            }
+
+
+            @* ============================================================
+               Tank body
+
+               Параллелепипед отображается в простой изометрической
+               перспективе:
+
+               front face
+               top face
+               right face
+
+               Геометрический расчёт остаётся обычным прямоугольным:
+               dimA × dimB × dimC.
+               ============================================================ *@
+
+            <polygon class="tank-face tank-top-face"
+                     points="@TopFacePoints" />
+
+            <polygon class="tank-face tank-right-face"
+                     points="@RightFacePoints" />
+
+            <rect class="tank-face tank-front-face"
+                  x="@Svg(FrontLeft)"
+                  y="@Svg(FrontTopY)"
+                  width="@Svg(FrontWidth)"
+                  height="@Svg(FrontHeight)" />
+
+
+            @* ============================================================
+               dimA
+               Tank height
+               ============================================================ *@
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(DimAScaleX)"
+                  y1="@Svg(FrontTopY)"
+                  x2="@Svg(FrontLeft)"
+                  y2="@Svg(FrontTopY)" />
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(DimAScaleX)"
+                  y1="@Svg(FrontBottomY)"
+                  x2="@Svg(FrontLeft)"
+                  y2="@Svg(FrontBottomY)" />
+
+            <line class="tank-dimension"
+                  x1="@Svg(DimAScaleX)"
+                  y1="@Svg(FrontTopY)"
+                  x2="@Svg(DimAScaleX)"
+                  y2="@Svg(FrontBottomY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(DimAScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(FrontTopY)"
+                  x2="@Svg(DimAScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(FrontTopY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(DimAScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(FrontBottomY)"
+                  x2="@Svg(DimAScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(FrontBottomY)" />
+
+
+            @* ============================================================
+               dimB
+               Front width
+               ============================================================ *@
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(FrontLeft)"
+                  y1="@Svg(FrontBottomY)"
+                  x2="@Svg(FrontLeft)"
+                  y2="@Svg(DimBScaleY)" />
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(FrontRight)"
+                  y1="@Svg(FrontBottomY)"
+                  x2="@Svg(FrontRight)"
+                  y2="@Svg(DimBScaleY)" />
+
+            <line class="tank-dimension"
+                  x1="@Svg(FrontLeft)"
+                  y1="@Svg(DimBScaleY)"
+                  x2="@Svg(FrontRight)"
+                  y2="@Svg(DimBScaleY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(FrontLeft)"
+                  y1="@Svg(DimBScaleY - ScaleCapHalfWidth)"
+                  x2="@Svg(FrontLeft)"
+                  y2="@Svg(DimBScaleY + ScaleCapHalfWidth)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(FrontRight)"
+                  y1="@Svg(DimBScaleY - ScaleCapHalfWidth)"
+                  x2="@Svg(FrontRight)"
+                  y2="@Svg(DimBScaleY + ScaleCapHalfWidth)" />
+
+
+            @* ============================================================
+               dimC
+               Tank depth
+
+               Размерная линия идёт параллельно глубине Tank.
+               ============================================================ *@
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(FrontLeft)"
+                  y1="@Svg(FrontTopY)"
+                  x2="@Svg(DimCStartX)"
+                  y2="@Svg(DimCStartY)" />
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(BackLeft)"
+                  y1="@Svg(BackTopY)"
+                  x2="@Svg(DimCEndX)"
+                  y2="@Svg(DimCEndY)" />
+
+            <line class="tank-dimension"
+                  x1="@Svg(DimCStartX)"
+                  y1="@Svg(DimCStartY)"
+                  x2="@Svg(DimCEndX)"
+                  y2="@Svg(DimCEndY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(DimCStartX - DimCCapX)"
+                  y1="@Svg(DimCStartY - DimCCapY)"
+                  x2="@Svg(DimCStartX + DimCCapX)"
+                  y2="@Svg(DimCStartY + DimCCapY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(DimCEndX - DimCCapX)"
+                  y1="@Svg(DimCEndY - DimCCapY)"
+                  x2="@Svg(DimCEndX + DimCCapX)"
+                  y2="@Svg(DimCEndY + DimCCapY)" />
+
+
+            @* ============================================================
+               Sensor zones
+               ============================================================ *@
+
+            <line class="tank-zone-guide"
+                  x1="@Svg(FrontRight)"
+                  y1="@Svg(FrontTopY)"
+                  x2="@Svg(RightDeadAreaScaleX)"
+                  y2="@Svg(FrontTopY)" />
+
+            <line class="tank-zone-guide"
+                  x1="@Svg(FrontRight)"
+                  y1="@Svg(UpperDeadBoundaryY)"
+                  x2="@Svg(RightMeasurementScaleX)"
+                  y2="@Svg(UpperDeadBoundaryY)" />
+
+            <line class="tank-zone-guide"
+                  x1="@Svg(FrontRight)"
+                  y1="@Svg(LowerDeadBoundaryY)"
+                  x2="@Svg(RightMeasurementScaleX)"
+                  y2="@Svg(LowerDeadBoundaryY)" />
+
+            <line class="tank-zone-guide"
+                  x1="@Svg(FrontRight)"
+                  y1="@Svg(FrontBottomY)"
+                  x2="@Svg(RightDeadAreaScaleX)"
+                  y2="@Svg(FrontBottomY)" />
+
+
+            @* ============================================================
+               Upper dead area
+               ============================================================ *@
+
+            <line class="tank-dead-zone"
+                  x1="@Svg(RightDeadAreaScaleX)"
+                  y1="@Svg(FrontTopY)"
+                  x2="@Svg(RightDeadAreaScaleX)"
+                  y2="@Svg(UpperDeadBoundaryY)" />
+
+            <line class="tank-zone-cap"
+                  x1="@Svg(RightDeadAreaScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(FrontTopY)"
+                  x2="@Svg(RightDeadAreaScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(FrontTopY)" />
+
+            <line class="tank-zone-cap"
+                  x1="@Svg(RightDeadAreaScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(UpperDeadBoundaryY)"
+                  x2="@Svg(RightDeadAreaScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(UpperDeadBoundaryY)" />
+
+
+            @* ============================================================
+               Measurement area
+               ============================================================ *@
+
+            <line class="tank-measure-zone"
+                  x1="@Svg(RightMeasurementScaleX)"
+                  y1="@Svg(UpperDeadBoundaryY)"
+                  x2="@Svg(RightMeasurementScaleX)"
+                  y2="@Svg(LowerDeadBoundaryY)" />
+
+            <line class="tank-measure-cap"
+                  x1="@Svg(RightMeasurementScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(UpperDeadBoundaryY)"
+                  x2="@Svg(RightMeasurementScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(UpperDeadBoundaryY)" />
+
+            <line class="tank-measure-cap"
+                  x1="@Svg(RightMeasurementScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(LowerDeadBoundaryY)"
+                  x2="@Svg(RightMeasurementScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(LowerDeadBoundaryY)" />
+
+
+            @* ============================================================
+               Lower dead area
+               ============================================================ *@
+
+            <line class="tank-dead-zone"
+                  x1="@Svg(RightDeadAreaScaleX)"
+                  y1="@Svg(LowerDeadBoundaryY)"
+                  x2="@Svg(RightDeadAreaScaleX)"
+                  y2="@Svg(FrontBottomY)" />
+
+            <line class="tank-zone-cap"
+                  x1="@Svg(RightDeadAreaScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(LowerDeadBoundaryY)"
+                  x2="@Svg(RightDeadAreaScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(LowerDeadBoundaryY)" />
+
+            <line class="tank-zone-cap"
+                  x1="@Svg(RightDeadAreaScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(FrontBottomY)"
+                  x2="@Svg(RightDeadAreaScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(FrontBottomY)" />
+
+        </svg>
+
+
+        @if (HasLevel)
+        {
+            <div class="tank-live-level-overlay"
+                 style="@LevelLabelStyle">
+                @LevelLabel
+            </div>
+        }
+
+
+        @* ============================================================
+           dimA
+           ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetLeftFieldStyle(DimACenterY)">
+
+            <RadzenFormField Text="dimA"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@DimA"
+                               Change="@((double value) => DimAChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           dimB
+           ============================================================ *@
+
+        <div class="tank-bottom-field"
+             style="@DimBFieldStyle">
+
+            <RadzenFormField Text="dimB"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@DimB"
+                               Change="@((double value) => DimBChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           dimC
+           ============================================================ *@
+
+        <div class="tank-depth-field"
+             style="@DimCFieldStyle">
+
+            <RadzenFormField Text="dimC"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@DimC"
+                               Change="@((double value) => DimCChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           Upper dead area
+           ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetRightFieldStyle(UpperDeadAreaCenterY)">
+
+            <RadzenFormField Text="Upper dead area"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@UpperDeadArea"
+                               Change="@((double value) => UpperDeadAreaChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           Measurement area
+           ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetRightFieldStyle(MeasurementAreaCenterY)">
+
+            <RadzenFormField Text="Measurement area"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@MeasurementAreaMm"
+                               Format="0.### mm"
+                               Disabled="true"
+                               ShowUpDown="false"
+                               Style="width:100%;" />
+
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           Lower dead area
+           ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetRightFieldStyle(LowerDeadAreaCenterY)">
+
+            <RadzenFormField Text="Lower dead area"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@LowerDeadArea"
+                               Change="@((double value) => LowerDeadAreaChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
+            </RadzenFormField>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+@code {
+    [Parameter] public double DimA { get; set; }
+    [Parameter] public double DimB { get; set; }
+    [Parameter] public double DimC { get; set; }
+
+    [Parameter] public double UpperDeadArea { get; set; }
+    [Parameter] public double LowerDeadArea { get; set; }
+
+    [Parameter] public double? LevelPercent { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool CalculateAbove100 { get; set; }
+
+    [Parameter] public EventCallback<double> DimAChanged { get; set; }
+    [Parameter] public EventCallback<double> DimBChanged { get; set; }
+    [Parameter] public EventCallback<double> DimCChanged { get; set; }
+    [Parameter] public EventCallback<double> UpperDeadAreaChanged { get; set; }
+    [Parameter] public EventCallback<double> LowerDeadAreaChanged { get; set; }
+
+    private const double SvgWidth = 760.0;
+    private const double SvgHeight = 620.0;
+
+    // Передняя грань Tank.
+    private const double FrontCenterX = 340.0;
+    private const double FrontWidth = 210.0;
+    private const double FrontTopY = 145.0;
+
+    // Размерные шкалы.
+    private const double ScaleGapFromTank = 60.0;
+    private const double ScaleLaneGap = 25.0;
+    private const double ScaleCapHalfWidth = 9.0;
+    private const double FieldGapFromScale = 30.0;
+    private const double DimCScaleOffset = 34.0;
+
+    private double MeasurementAreaMm => Math.Max(0.0, DimA - UpperDeadArea - LowerDeadArea);
+
+    // Высота передней грани немного учитывает реальное отношение dimA/dimB,
+    // но ограничивается для сохранения читаемости интерфейса.
+    private double FrontHeight
+    {
+        get
+        {
+            if (DimB <= 0)
+                return 280.0;
+
+            return Math.Clamp(FrontWidth * DimA / DimB, 225.0, 310.0);
+        }
+    }
+
+    private double FrontLeft => FrontCenterX - FrontWidth / 2.0;
+    private double FrontRight => FrontCenterX + FrontWidth / 2.0;
+    private double FrontBottomY => FrontTopY + FrontHeight;
+
+    // Глубина в перспективе зависит от dimC/dimB.
+    // При нулевой глубине изображение становится плоским прямоугольником.
+    private double DepthVisualLength
+    {
+        get
+        {
+            if (DimB <= 0 || DimC <= 0)
+                return 0.0;
+
+            return Math.Clamp(FrontWidth * DimC / DimB, 25.0, 95.0);
+        }
+    }
+
+    private double DepthDx => DepthVisualLength * 0.82;
+    private double DepthDy => -DepthVisualLength * 0.52;
+
+    private double BackLeft => FrontLeft + DepthDx;
+    private double BackRight => FrontRight + DepthDx;
+    private double BackTopY => FrontTopY + DepthDy;
+    private double BackBottomY => FrontBottomY + DepthDy;
+
+    // ============================================================
+    // dimA
+    // ============================================================
+
+    private double DimAScaleX => FrontLeft - ScaleGapFromTank;
+    private double DimACenterY => (FrontTopY + FrontBottomY) / 2.0;
+
+    // ============================================================
+    // dimB
+    // ============================================================
+
+    private double DimBScaleY => FrontBottomY + ScaleGapFromTank;
+
+    // ============================================================
+    // dimC
+    //
+    // Размерная линия параллельна вектору перспективной глубины.
+    // ============================================================
+
+    private double DepthLengthPx => Math.Max(1.0, Math.Sqrt(DepthDx * DepthDx + DepthDy * DepthDy));
+    private double DepthUnitX => DepthDx / DepthLengthPx;
+    private double DepthUnitY => DepthDy / DepthLengthPx;
+
+    // Нормаль направлена вверх-влево относительно Tank.
+    private double DimCNormalX => DepthUnitY;
+    private double DimCNormalY => -DepthUnitX;
+
+    private double DimCStartX => FrontLeft + DimCNormalX * DimCScaleOffset;
+    private double DimCStartY => FrontTopY + DimCNormalY * DimCScaleOffset;
+    private double DimCEndX => BackLeft + DimCNormalX * DimCScaleOffset;
+    private double DimCEndY => BackTopY + DimCNormalY * DimCScaleOffset;
+
+    private double DimCCapX => DimCNormalX * ScaleCapHalfWidth;
+    private double DimCCapY => DimCNormalY * ScaleCapHalfWidth;
+
+    // ============================================================
+    // Sensor
+    // ============================================================
+
+    private double RightDeadAreaScaleX => BackRight + 45.0;
+    private double RightMeasurementScaleX => RightDeadAreaScaleX + ScaleLaneGap;
+
+    private double UpperDeadBoundaryY
+    {
+        get
+        {
+            if (DimA <= 0)
+                return FrontTopY;
+
+            return FrontTopY + FrontHeight * Math.Clamp(UpperDeadArea, 0.0, DimA) / DimA;
+        }
+    }
+
+    private double LowerDeadBoundaryY
+    {
+        get
+        {
+            if (DimA <= 0)
+                return FrontBottomY;
+
+            return FrontBottomY - FrontHeight * Math.Clamp(LowerDeadArea, 0.0, DimA) / DimA;
+        }
+    }
+
+    private double UpperDeadAreaCenterY => (FrontTopY + UpperDeadBoundaryY) / 2.0;
+    private double MeasurementAreaCenterY => (UpperDeadBoundaryY + LowerDeadBoundaryY) / 2.0;
+    private double LowerDeadAreaCenterY => (LowerDeadBoundaryY + FrontBottomY) / 2.0;
+
+    // ============================================================
+    // Current Level
+    // ============================================================
+
+    private bool HasLevel => LevelPercent.HasValue && double.IsFinite(LevelPercent.Value) && DimA > 0 && MeasurementAreaMm > 0;
+
+    private double PreviewMeasuredLevelMm => HasLevel ? Math.Max(0.0, MeasurementAreaMm * LevelPercent!.Value / 100.0) : 0.0;
+
+    private double PreviewLiquidHeightMm
+    {
+        get
+        {
+            if (!HasLevel)
+                return 0.0;
+
+            var height = LowerDeadArea + PreviewMeasuredLevelMm;
+
+            if (!CalculateAbove100)
+                height = Math.Min(height, LowerDeadArea + MeasurementAreaMm);
+
+            return Math.Clamp(height, 0.0, DimA);
+        }
+    }
+
+    private double FillFrontY => DimA > 0 ? FrontBottomY - FrontHeight * PreviewLiquidHeightMm / DimA : FrontBottomY;
+    private double FillBackY => FillFrontY + DepthDy;
+
+    private string LiquidSidePoints => Points(
+        FrontRight, FillFrontY,
+        BackRight, FillBackY,
+        BackRight, BackBottomY,
+        FrontRight, FrontBottomY);
+
+    private string LiquidSurfacePoints => Points(
+        FrontLeft, FillFrontY,
+        FrontRight, FillFrontY,
+        BackRight, FillBackY,
+        BackLeft, FillBackY);
+
+    // ============================================================
+    // Tank faces
+    // ============================================================
+
+    private string TopFacePoints => Points(
+        FrontLeft, FrontTopY,
+        BackLeft, BackTopY,
+        BackRight, BackTopY,
+        FrontRight, FrontTopY);
+
+    private string RightFacePoints => Points(
+        FrontRight, FrontTopY,
+        BackRight, BackTopY,
+        BackRight, BackBottomY,
+        FrontRight, FrontBottomY);
+
+    // ============================================================
+    // Field positions
+    // ============================================================
+
+    private string GetLeftFieldStyle(double centerY)
+    {
+        var fieldRightX = DimAScaleX - FieldGapFromScale;
+        return string.Create(CultureInfo.InvariantCulture,
+            $"left:{PctX(fieldRightX):0.###}%; top:{PctY(centerY):0.###}%; transform:translate(-100%, -50%);");
+    }
+
+    private string GetRightFieldStyle(double centerY)
+    {
+        var fieldLeftX = RightMeasurementScaleX + FieldGapFromScale;
+        return string.Create(CultureInfo.InvariantCulture,
+            $"left:{PctX(fieldLeftX):0.###}%; top:{PctY(centerY):0.###}%; transform:translateY(-50%);");
+    }
+
+    private string DimBFieldStyle
+    {
+        get
+        {
+            var topY = DimBScaleY + FieldGapFromScale;
+            return string.Create(CultureInfo.InvariantCulture,
+                $"left:{PctX(FrontCenterX):0.###}%; top:{PctY(topY):0.###}%; transform:translateX(-50%);");
+        }
+    }
+
+    private string DimCFieldStyle
+    {
+        get
+        {
+            var centerX = (DimCStartX + DimCEndX) / 2.0 + DimCNormalX * 40.0;
+            var centerY = (DimCStartY + DimCEndY) / 2.0 + DimCNormalY * 40.0;
+
+            return string.Create(CultureInfo.InvariantCulture,
+                $"left:{PctX(centerX):0.###}%; top:{PctY(centerY):0.###}%; transform:translate(-50%, -50%);");
+        }
+    }
+
+    private string LevelLabelStyle
+    {
+        get
+        {
+            var labelY = Math.Max(FrontTopY + 18.0, FillFrontY - 10.0);
+
+            return string.Create(CultureInfo.InvariantCulture,
+                $"left:{PctX(FrontCenterX):0.###}%; top:{PctY(labelY):0.###}%;");
+        }
+    }
+
+    private string LevelLabel => HasLevel ? $"{LevelPercent!.Value:0.###}% / {PreviewMeasuredLevelMm:0} mm" : "";
+
+    private double PctX(double x) => x / SvgWidth * 100.0;
+    private double PctY(double y) => y / SvgHeight * 100.0;
+
+    private static string Svg(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+
+    private static string Points(params double[] values)
+    {
+        var result = new string[values.Length / 2];
+
+        for (var i = 0; i < values.Length; i += 2)
+            result[i / 2] = $"{Svg(values[i])},{Svg(values[i + 1])}";
+
+        return string.Join(" ", result);
+    }
+}

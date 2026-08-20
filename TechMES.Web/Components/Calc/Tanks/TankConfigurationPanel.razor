@@ -247,6 +247,22 @@
                                                          UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
                                                          LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
                         }
+                        else if (SelectedTypeNumber == 4)
+                        {
+                            <TankType4InteractivePreview DimA="@CurrentDimA"
+                                                         DimB="@CurrentDimB"
+                                                         DimC="@CurrentDimC"
+                                                         UpperDeadArea="@CurrentUpperDeadArea"
+                                                         LowerDeadArea="@CurrentLowerDeadArea"
+                                                         CalculateAbove100="@CurrentCalculateAbove100"
+                                                         LevelPercent="@CurrentLevelPercent"
+                                                         Disabled="@_isSaving"
+                                                         DimAChanged="@((double value) => SetInputNumber("dimA", value))"
+                                                         DimBChanged="@((double value) => SetInputNumber("dimB", value))"
+                                                         DimCChanged="@((double value) => SetInputNumber("dimC", value))"
+                                                         UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
+                                                         LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
+                        }
                         else
                         {
                             <div class="tank-preview-figure">
