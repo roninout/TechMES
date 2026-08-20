@@ -899,13 +899,42 @@
             .Where(input => !IsLinkedInput(input.Parameter.Key) && input.Parameter.Type == CalcParameterTypeDto.Number)
             .All(input => (!input.Parameter.Minimum.HasValue || input.NumberValue >= input.Parameter.Minimum.Value) && (!input.Parameter.Maximum.HasValue || input.NumberValue <= input.Parameter.Maximum.Value));
 
-    // Кроме Min/Max из Definition некоторые Tank Type имеют геометрические ограничения между несколькими размерами.
-    // Type 3: перегородка должна находиться внутри диаметра Tank.
+    // Кроме обычных Min/Max отдельные Tank Type имеют
+    // ограничения между несколькими геометрическими размерами.
+    //
+    // Type 3:
+    // перегородка должна находиться внутри Tank.
+    //
+    // Type 5:
+    // трубный пучок должен полностью помещаться
+    // внутри цилиндрической части;
+    // объём труб не может превышать геометрический
+    // объём области трубного пучка.
     private bool IsTypeSpecificGeometryValid => SelectedTypeNumber switch
     {
         3 => GetInputNumber("dimD") > 0.0 && GetInputNumber("dimD") <= GetInputNumber("dimB"),
+        5 => IsType5GeometryValid(),
         _ => true
     };
+
+    private bool IsType5GeometryValid()
+    {
+        var dimA = GetInputNumber("dimA");
+        var dimB = GetInputNumber("dimB");
+        var dimD = GetInputNumber("dimD");
+        var dimE = GetInputNumber("dimE");
+        var dimF = GetInputNumber("dimF");
+
+        if (dimA <= 0 || dimB <= 0 || dimD <= 0 || dimE < 0 || dimF < 0 || dimD + dimE > dimA)
+            return false;
+
+        var radiusM = dimB * 0.001 / 2.0;
+        var bundleHeightM = dimD * 0.001;
+        var tubeVolumeM3 = dimF * 0.001;
+        var grossBundleRegionVolumeM3 = Math.PI * radiusM * radiusM * bundleHeightM;
+
+        return tubeVolumeM3 <= grossBundleRegionVolumeM3;
+    }
 
     private bool IsSensorGeometryValid => CurrentTotalLengthMm > 0 && CurrentMeasurementAreaMm > 0 && AreEditorValuesWithinDefinitionRanges && IsTypeSpecificGeometryValid;
 
@@ -1558,7 +1587,7 @@
             "dimc" => GetDimCDescription(),
             "dimd" => GetDimDDescription(),
             "dime" => GetDimEDescription(),
-            "dimf" => "Reboiler tube volume, l",
+            "dimf" => "Tube bundle displacement volume, l",
 
             "upperdeadarea" => "Unmeasured area above the working range",
             "lowerdeadarea" => "Unmeasured area below the working range",
@@ -1576,7 +1605,7 @@
             2 => "Length of cylindrical part",
             3 => "Height of cylindrical part",
             4 => "Height of tank body",
-            5 => "Height to bottom head start",
+            5 => "Height of cylindrical part",
             6 => "Height of cylindrical part",
             7 => "Length of cylindrical part",
             8 => "Height to bottom head start",
@@ -1592,7 +1621,7 @@
             2 => "Tank diameter",
             3 => "Tank diameter",
             4 => "Tank width",
-            5 => "Bottom head width",
+            5 => "Tank diameter",
             6 => "Tank diameter",
             7 => "Tank diameter",
             8 => "Bottom head width",
@@ -1608,7 +1637,7 @@
             2 => "Elliptical end depth",
             3 => "Lower elliptical head height",
             4 => "Bottom depth",
-            5 => "Bottom head height",
+            5 => "Lower elliptical head height",
             6 => "Conical head height",
             7 => "Conical head length",
             8 => "Bottom head height",
@@ -1632,7 +1661,7 @@
     {
         return SelectedTypeNumber switch
         {
-            5 => "Upper section height",
+            5 => "Distance from tank top to tube bundle",
             8 => "Upper section height",
             _ => "Upper section dimension"
         };
