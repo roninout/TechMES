@@ -9,9 +9,21 @@
              aria-label="Tank Type 3 interactive geometry">
 
             <defs>
+
+                @* ============================================================
+               Clip только рассчитываемого левого отсека.
+
+               dimD задаёт расстояние от левой стенки Tank
+               до вертикальной перегородки.
+
+               Правая часть Tank не относится к рассчитываемому объёму
+               и поэтому никогда не должна закрашиваться уровнем.
+               ============================================================ *@
+
                 <clipPath id="@ClipId">
-                    <path d="@TankPath" />
+                    <path d="@LeftCompartmentPath" />
                 </clipPath>
+
             </defs>
 
 
@@ -664,6 +676,47 @@
 
             return string.Create(CultureInfo.InvariantCulture,
                 $"M {TankLeft:0.###} {TankTopY:0.###} L {TankRight:0.###} {TankTopY:0.###} L {TankRight:0.###} {BodyBottomY:0.###} A {TankWidth / 2.0:0.###} {HeadVisualHeight:0.###} 0 0 1 {TankLeft:0.###} {BodyBottomY:0.###} Z");
+        }
+    }
+
+    // ============================================================
+    // Рассчитываемый левый отсек Type 3.
+    //
+    // dimD задаёт расстояние от левой стенки Tank до вертикальной перегородки.
+    //
+    // Эта геометрия используется только для визуального Clip.
+    // Расчёт Volume выполняется отдельно в TankType3VolumeDefinition по той же физической границе.
+    //
+    // В цилиндрической части правая граница отсека = PartitionX.
+    //
+    // В нижнем эллиптическом днище перегородка заканчивается точно в точке пересечения с эллипсом. Далее границей
+    // рассчитываемого отсека становится сам контур днища.
+    //
+    // При dimD = dimB PartitionX совпадает с правой стенкой, поэтому LeftCompartmentPath становится всем Tank.
+    // ============================================================
+    private string LeftCompartmentPath
+    {
+        get
+        {
+            // Если нижнего эллиптического днища нет, левый отсек является обычным прямоугольником.
+            if (HeadVisualHeight <= 0.0)
+            {
+                return string.Create(CultureInfo.InvariantCulture,
+                    $"M {TankLeft:0.###} {TankTopY:0.###} " +
+                    $"L {PartitionX:0.###} {TankTopY:0.###} " +
+                    $"L {PartitionX:0.###} {TankBottomY:0.###} " +
+                    $"L {TankLeft:0.###} {TankBottomY:0.###} Z");
+            }
+
+            // Начинаем от левой верхней точки, идём по верху до перегородки,
+            // затем вниз до её пересечения с эллиптическим днищем, после чего по настоящей дуге днища возвращаемся
+            // к левой цилиндрической стенке.
+            return string.Create(CultureInfo.InvariantCulture,
+                $"M {TankLeft:0.###} {TankTopY:0.###} " +
+                $"L {PartitionX:0.###} {TankTopY:0.###} " +
+                $"L {PartitionX:0.###} {PartitionBottomY:0.###} " +
+                $"A {TankWidth / 2.0:0.###} {HeadVisualHeight:0.###} 0 0 1 {TankLeft:0.###} {BodyBottomY:0.###} " +
+                $"L {TankLeft:0.###} {TankTopY:0.###} Z");
         }
     }
 
