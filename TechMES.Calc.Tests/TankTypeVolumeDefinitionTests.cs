@@ -827,7 +827,202 @@ public sealed class TankTypeVolumeDefinitionTests
         Assert.Contains(result.Trace, item => item.Key == "help.result.mass.calculation");
     }
 
+    // ============================================================
+    // TYPE 4
+    // ============================================================
 
+    [Fact]
+    public void Type4CalculatesKnownWorkingPoint()
+    {
+        // Geometry:
+        //
+        // dimA = 2500 mm - Tank height
+        // dimB = 1600 mm - Tank width
+        // dimC = 400 mm  - Tank depth
+        //
+        // Base area:
+        //
+        // 1.6 × 0.4 = 0.64 m²
+        //
+        // Sensor:
+        //
+        // upper dead = 150 mm
+        // lower dead = 150 mm
+        //
+        // Measurement area:
+        //
+        // 2500 - 150 - 150 = 2200 mm
+        //
+        // Level.R = 49.8 %
+        //
+        // Measured level:
+        //
+        // 2200 × 49.8 / 100 = 1095.6 mm
+        //
+        // Physical liquid height:
+        //
+        // 150 + 1095.6 = 1245.6 mm
+        //
+        // Volume:
+        //
+        // 0.64 × 1.2456 = 0.797184 m³
+
+        var result = CalculateType4(
+            levelRaw: 49.8,
+            densityHmi: 1218.1,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(2200.0, GetOutput(result, "hMax"), precision: 10);
+        Assert.Equal(1095.6, GetOutput(result, "levelMm"), precision: 10);
+        Assert.Equal(0.797184, GetOutput(result, "volume"), precision: 10);
+        Assert.Equal(0.9710498304, GetOutput(result, "mass"), precision: 10);
+    }
+
+    [Theory]
+    [InlineData(0.0, 0.0)]
+    [InlineData(625.0, 0.4)]
+    [InlineData(1250.0, 0.8)]
+    [InlineData(1875.0, 1.2)]
+    [InlineData(2500.0, 1.6)]
+    public void Type4VolumeMatchesReferenceGeometry(double liquidHeightMm, double expectedVolumeM3)
+    {
+        const double totalHeightMm = 2500.0;
+
+        // При нулевых dead areas Level.R напрямую задаёт
+        // физическую высоту жидкости по всей высоте Tank.
+        var levelRaw = liquidHeightMm / totalHeightMm * 100.0;
+
+        var result = CalculateType4(
+            levelRaw: levelRaw,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(liquidHeightMm, GetOutput(result, "levelMm"), precision: 8);
+        Assert.Equal(expectedVolumeM3, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type4StopsVolumeAtMeasurementBoundaryWhenAbove100IsDisabled()
+    {
+        var result = CalculateType4(
+            levelRaw: 110.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // Measurement area:
+        //
+        // 2500 - 150 - 150 = 2200 mm
+        //
+        // LevelMm:
+        //
+        // 2200 × 110% = 2420 mm.
+        //
+        // Сам Level не ограничиваем значением 100%.
+        Assert.Equal(2420.0, GetOutput(result, "levelMm"), precision: 10);
+
+        // Calculate above 100% = OFF.
+        //
+        // Volume останавливается на верхней границе
+        // рабочей зоны датчика:
+        //
+        // Hvolume = 150 + 2200 = 2350 mm
+        //
+        // V = 1.6 × 0.4 × 2.35
+        //   = 1.504 m³
+        Assert.Equal(1.504, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type4ContinuesVolumeIntoUpperDeadAreaWhenAbove100IsEnabled()
+    {
+        var result = CalculateType4(
+            levelRaw: 110.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // Measured Level остаётся:
+        //
+        // 2200 × 110% = 2420 mm.
+        Assert.Equal(2420.0, GetOutput(result, "levelMm"), precision: 10);
+
+        // Raw physical height:
+        //
+        // 150 + 2420 = 2570 mm.
+        //
+        // Но физическая высота Tank = 2500 mm,
+        // поэтому объём ограничивается полным Tank:
+        //
+        // Vfull = 1.6 × 0.4 × 2.5 = 1.6 m³.
+        Assert.Equal(1.6, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type4RejectsZeroDepth()
+    {
+        var result = CalculateType4(
+            levelRaw: 50.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 0,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: false);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public void Type4ReturnsCalculationHelpTrace()
+    {
+        var result = CalculateType4(
+            levelRaw: 49.8,
+            densityHmi: 1218.1,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false,
+            includeTrace: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Contains(result.Trace, item => item.Key == "help.geometry.height.formula");
+        Assert.Contains(result.Trace, item => item.Key == "help.volume.base-area.formula");
+        Assert.Contains(result.Trace, item => item.Key == "help.volume.base-area.calculation");
+        Assert.Contains(result.Trace, item => item.Key == "help.volume.full.calculation");
+        Assert.Contains(result.Trace, item => item.Key == "help.result.volume.calculation");
+        Assert.Contains(result.Trace, item => item.Key == "help.result.mass.calculation");
+    }
 
 
     private static CalculationResult CalculateType1(double levelRaw, double densityHmi, double dimA, double dimB, double dimC, double upperDeadArea, double lowerDeadArea, bool calculateAbove100, bool includeTrace = false)
@@ -890,7 +1085,23 @@ public sealed class TankTypeVolumeDefinitionTests
         return new TankType3VolumeDefinition().Calculate(parameters, includeTrace);
     }
 
+    private static CalculationResult CalculateType4(double levelRaw, double densityHmi, double dimA, double dimB, double dimC, double upperDeadArea, double lowerDeadArea, bool calculateAbove100, bool includeTrace = false)
+    {
+        var parameters = new CalculationParameterSet(
+            new Dictionary<string, object?>
+            {
+                ["levelRaw"] = levelRaw,
+                ["densityHmi"] = densityHmi,
+                ["dimA"] = dimA,
+                ["dimB"] = dimB,
+                ["dimC"] = dimC,
+                ["upperDeadArea"] = upperDeadArea,
+                ["lowerDeadArea"] = lowerDeadArea,
+                ["calculateAbove100"] = calculateAbove100
+            });
 
+        return new TankType4VolumeDefinition().Calculate(parameters, includeTrace);
+    }
 
 
     private static double GetOutput(CalculationResult result, string key)

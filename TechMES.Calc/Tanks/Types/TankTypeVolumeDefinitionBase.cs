@@ -81,17 +81,7 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
 
         result.AddRange(geometryParameters);
 
-        /*
-         * Новая модель измерительной части.
-         *
-         * Старые:
-         * distanceA
-         * distanceB
-         * distToDistanceA
-         * probeLength
-         *
-         * больше не являются частью Tank Job.
-         */
+        // Новая модель измерительной части.
         result.AddRange(
         [
             Number("upperDeadArea", "Upper dead area", "mm", 90, 150d, 0d, description: "Unmeasured area above the sensor working range."),
@@ -200,8 +190,8 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
         // Конкретный Tank Type получает уже физическую высоту жидкости от самого дна Tank.
         var levelTank = LevelTankCalculator.Calculate(levelRaw, densityHmi, totalLengthMm, lowerDeadArea, upperDeadArea, calculateAbove100, liquidHeightMm =>
             {
-                // Type 4..8 пока ещё используют compatibility parameters.
-                // После перевода всех геометрий на новую точную модель distance* можно будет удалить полностью.
+                // Type 5..8 пока ещё используют compatibility parameters.
+                // После перевода всех геометрий на новую точную модель distance можно будет удалить полностью.
                 var volumeParameters = parameters.Values.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
 
                 volumeParameters["levelMm"] = liquidHeightMm;
