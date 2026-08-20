@@ -200,7 +200,7 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
         // Конкретный Tank Type получает уже физическую высоту жидкости от самого дна Tank.
         var levelTank = LevelTankCalculator.Calculate(levelRaw, densityHmi, totalLengthMm, lowerDeadArea, upperDeadArea, calculateAbove100, liquidHeightMm =>
             {
-                // Type 3..8 пока ещё используют compatibility parameters.
+                // Type 4..8 пока ещё используют compatibility parameters.
                 // После перевода всех геометрий на новую точную модель distance* можно будет удалить полностью.
                 var volumeParameters = parameters.Values.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
 

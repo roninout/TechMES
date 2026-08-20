@@ -870,7 +870,15 @@
             .Where(input => !IsLinkedInput(input.Parameter.Key) && input.Parameter.Type == CalcParameterTypeDto.Number)
             .All(input => (!input.Parameter.Minimum.HasValue || input.NumberValue >= input.Parameter.Minimum.Value) && (!input.Parameter.Maximum.HasValue || input.NumberValue <= input.Parameter.Maximum.Value));
 
-    private bool IsSensorGeometryValid => CurrentTotalLengthMm > 0 && CurrentMeasurementAreaMm > 0 && AreEditorValuesWithinDefinitionRanges;
+    // Кроме Min/Max из Definition некоторые Tank Type имеют геометрические ограничения между несколькими размерами.
+    // Type 3: перегородка должна находиться внутри диаметра Tank.
+    private bool IsTypeSpecificGeometryValid => SelectedTypeNumber switch
+    {
+        3 => GetInputNumber("dimD") > 0.0 && GetInputNumber("dimD") <= GetInputNumber("dimB"),
+        _ => true
+    };
+
+    private bool IsSensorGeometryValid => CurrentTotalLengthMm > 0 && CurrentMeasurementAreaMm > 0 && AreEditorValuesWithinDefinitionRanges && IsTypeSpecificGeometryValid;
 
     private TankInputEditor? FindInputEditor(string key)
     {
@@ -1537,7 +1545,7 @@
         {
             1 => "Height of cylindrical part",
             2 => "Length of cylindrical part",
-            3 => "Height of main body",
+            3 => "Height of cylindrical part",
             4 => "Height of tank body",
             5 => "Height to bottom head start",
             6 => "Height of cylindrical part",
@@ -1553,7 +1561,7 @@
         {
             1 => "Tank diameter",
             2 => "Tank diameter",
-            3 => "Bottom section width",
+            3 => "Tank diameter",
             4 => "Tank width",
             5 => "Bottom head width",
             6 => "Tank diameter",
@@ -1569,7 +1577,7 @@
         {
             1 => "Elliptical head height",
             2 => "Elliptical end depth",
-            3 => "Bottom head height",
+            3 => "Lower elliptical head height",
             4 => "Bottom depth",
             5 => "Bottom head height",
             6 => "Conical head height",
@@ -1583,7 +1591,7 @@
     {
         return SelectedTypeNumber switch
         {
-            3 => "Internal partition width",
+            3 => "Partition distance from left wall",
             5 => "Tube bundle height",
             7 => "Right conical end width",
             8 => "Tube bundle height",
