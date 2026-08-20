@@ -515,14 +515,11 @@
         }
     }
 
-    private double FillY =>
-        TankBottomY - MmToTankY(PreviewLiquidHeightMm);
+    private double FillY => TankBottomY - MmToTankY(PreviewLiquidHeightMm);
 
-    private double UpperDeadBoundaryY =>
-        TankTopY + MmToTankY(UpperDeadArea);
+    private double UpperDeadBoundaryY => TankTopY + MmToTankY(UpperDeadArea);
 
-    private double LowerDeadBoundaryY =>
-        TankBottomY - MmToTankY(LowerDeadArea);
+    private double LowerDeadBoundaryY => TankBottomY - MmToTankY(LowerDeadArea);
 
     private double MmToTankY(double millimeters)
     {
