@@ -27,7 +27,7 @@ public sealed class TankType2VolumeDefinition : TankTypeVolumeDefinitionBase
 {
     private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions =
         CreateParameters(
-            Dimension("dimA", "dimA", 10),
+            Dimension("dimA", "dimA", 10, minimum: 1d),
             Dimension("dimB", "dimB", 11, minimum: 1d),
             Dimension("dimC", "dimC", 12));
 
