@@ -539,13 +539,44 @@
         return Math.Clamp(millimeters / TotalLengthMm, 0.0, 1.0) * TankHeight;
     }
 
-    // Горизонтальный Tank имеет эллиптические торцы.
-    // Визуальная форма строится симметрично относительно центра.
-    private string TankPath => string.Create(CultureInfo.InvariantCulture,
-            $"M {BodyLeftX:0.###} {TankTopY:0.###} " +
-            $"C {TankLeft:0.###} {TankTopY:0.###}, {TankLeft:0.###} {TankBottomY:0.###}, {BodyLeftX:0.###} {TankBottomY:0.###} " +
-            $"L {BodyRightX:0.###} {TankBottomY:0.###} " +
-            $"C {TankRight:0.###} {TankBottomY:0.###}, {TankRight:0.###} {TankTopY:0.###}, {BodyRightX:0.###} {TankTopY:0.###} Z");
+    // Горизонтальный Tank имеет два настоящих полуэллиптических торца.
+    //
+    // SVG Arc используется вместо приближённой Bezier-кривой.
+    // Благодаря этому TankLeft / TankRight являются реальными крайними точками эллипса на его центральной оси.
+    // При dimC = 0 HeadVisualDepth = 0, поэтому торцы вырождаются в прямые вертикальные линии.
+    private string TankPath
+    {
+        get
+        {
+            // Без эллиптических торцов получаем обычный горизонтальный цилиндр.
+            if (HeadVisualDepth <= 0.0)
+            {
+                return string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"M {BodyLeftX:0.###} {TankTopY:0.###} " +
+                    $"L {BodyRightX:0.###} {TankTopY:0.###} " +
+                    $"L {BodyRightX:0.###} {TankBottomY:0.###} " +
+                    $"L {BodyLeftX:0.###} {TankBottomY:0.###} Z");
+            }
+
+            var radiusY = TankHeight / 2.0;
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"M {BodyLeftX:0.###} {TankTopY:0.###} " +
+                $"L {BodyRightX:0.###} {TankTopY:0.###} " +
+
+                // Правый полуэллипс: сверху вниз.
+                $"A {HeadVisualDepth:0.###} {radiusY:0.###} 0 0 1 " +
+                $"{BodyRightX:0.###} {TankBottomY:0.###} " +
+
+                $"L {BodyLeftX:0.###} {TankBottomY:0.###} " +
+
+                // Левый полуэллипс: снизу вверх.
+                $"A {HeadVisualDepth:0.###} {radiusY:0.###} 0 0 1 " +
+                $"{BodyLeftX:0.###} {TankTopY:0.###} Z");
+        }
+    }
 
     private string ClipUrl => $"url(#{ClipId})";
 
