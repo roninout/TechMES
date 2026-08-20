@@ -134,13 +134,13 @@
 
             <line class="tank-guide-dim"
                   x1="@Svg(TankLeft)"
-                  y1="@Svg(TankBottomY)"
+                  y1="@Svg(TankCenterY)"
                   x2="@Svg(TankLeft)"
                   y2="@Svg(DimCScaleY)" />
 
             <line class="tank-guide-dim"
                   x1="@Svg(BodyLeftX)"
-                  y1="@Svg(TankBottomY)"
+                  y1="@Svg(TankCenterY)"
                   x2="@Svg(BodyLeftX)"
                   y2="@Svg(DimCScaleY)" />
 
@@ -463,13 +463,17 @@
     private double TankTopY => TankCenterY - TankHeight / 2.0;
     private double TankBottomY => TankCenterY + TankHeight / 2.0;
 
-    // Глубина днища визуально пропорциональна dimC.
+    // Визуальная глубина одного эллиптического торца.
+    // При dimC = 0 торец вырождается в прямую вертикальную линию, как и в физической геометрии Tank.
     private double HeadVisualDepth
     {
         get
         {
+            if (DimC <= 0.0)
+                return 0.0;
+
             var totalAxial = Math.Max(1.0, DimA + DimC * 2.0);
-            var value = TankWidth * Math.Max(0.0, DimC) / totalAxial;
+            var value = TankWidth * DimC / totalAxial;
 
             return Math.Clamp(value, 24.0, Math.Min(72.0, TankWidth * 0.24));
         }
@@ -483,8 +487,14 @@
 
     private double DimCScaleY => TankBottomY + ScaleGapFromTank;
 
+    // Зелёная шкала Measurement area.
     private double RightMeasurementScaleX => TankRight + ScaleGapFromTank;
-    private double RightDeadAreaScaleX => RightMeasurementScaleX + ScaleLaneGap;
+
+    // Upper/Lower dead area рисуем слева от зелёной шкалы.
+    private double RightDeadAreaScaleX => RightMeasurementScaleX - ScaleLaneGap;
+
+    // Поля справа оставляем справа от всех шкал.
+    private double RightFieldAnchorX => RightMeasurementScaleX + ScaleLaneGap;
 
     private double DimBCenterY => (TankTopY + TankBottomY) / 2.0;
 
@@ -568,8 +578,7 @@
 
     private string GetRightFieldStyle(double centerY)
     {
-        var scaleX = RightDeadAreaScaleX;
-        var left = scaleX + FieldGapFromScale;
+        var left = RightFieldAnchorX + FieldGapFromScale;
         var top = centerY - 19.0;
 
         return $"left:{PctX(left)}%; top:{PctY(top)}%;";
