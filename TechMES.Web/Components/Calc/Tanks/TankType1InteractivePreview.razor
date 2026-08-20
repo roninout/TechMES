@@ -368,6 +368,8 @@
     [Parameter]
     public bool Disabled { get; set; }
 
+    [Parameter]
+    public bool CalculateAbove100 { get; set; }
 
     [Parameter]
     public EventCallback<double> DimAChanged { get; set; }
@@ -509,7 +511,21 @@
     private double PreviewMeasuredLevelMm => HasLevel ? Math.Max(0.0, MeasurementAreaMm * LevelPercent!.Value / 100.0) : 0.0;
 
     // Физическая отметка уровня отсчитывается от нижней точки Tank и включает нижнюю мёртвую зону.
-    private double PreviewLiquidHeightMm => HasLevel ? Math.Clamp(LowerDeadArea + PreviewMeasuredLevelMm, 0.0, TotalLengthMm) : 0.0;
+    private double PreviewLiquidHeightMm
+    {
+        get
+        {
+            if (!HasLevel)
+                return 0.0;
+
+            var height = LowerDeadArea + PreviewMeasuredLevelMm;
+
+            if (!CalculateAbove100)
+                height = Math.Min(height, LowerDeadArea + MeasurementAreaMm);
+
+            return Math.Clamp(height, 0.0, TotalLengthMm);
+        }
+    }
 
     private double FillY => TotalLengthMm > 0 ? TankBottomY - TankVisualHeight * PreviewLiquidHeightMm / TotalLengthMm : TankBottomY;
 

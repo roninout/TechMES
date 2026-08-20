@@ -288,12 +288,37 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
             // Эти формулы одинаковы для всех Tank Type, поэтому они находятся в Base, а не копируются восемь раз.
             // ============================================================
 
-            trace.Add(new CalculationTraceItem("help.sensor.measurement.formula", "Measurement area formula", "Hmeas = Htotal - HupperDead - HlowerDead"));
-            trace.Add(new CalculationTraceItem("help.sensor.measurement.calculation", "Measurement area calculation", $"{F(totalLengthMm)} - {F(upperDeadArea)} - {F(lowerDeadArea)} = {F(measurementAreaMm)} mm"));
-            trace.Add(new CalculationTraceItem("help.sensor.level.formula", "Measured level formula", "Hlevel = Hmeas × Level / 100"));
-            trace.Add(new CalculationTraceItem("help.sensor.level.calculation", "Measured level calculation", $"{F(measurementAreaMm)} × {F(levelRaw)} / 100 = {F(levelTank.LevelMm)} mm"));
-            trace.Add(new CalculationTraceItem("help.sensor.liquid-height.formula", "Physical liquid height formula", "Hliquid = HlowerDead + Hlevel"));
-            trace.Add(new CalculationTraceItem("help.sensor.liquid-height.calculation", "Physical liquid height calculation", $"{F(lowerDeadArea)} + {F(levelTank.LevelMm)} = {F(levelTank.LiquidHeightMm)} mm"));
+            trace.Add(new CalculationTraceItem("help.sensor.measurement.formula",
+                "Measurement area formula",
+                "Hmeas = Htotal - HupperDead - HlowerDead"));
+            trace.Add(new CalculationTraceItem("help.sensor.measurement.calculation",
+                "Measurement area calculation",
+                $"{F(totalLengthMm)} - {F(upperDeadArea)} - {F(lowerDeadArea)} = {F(measurementAreaMm)} mm"));
+            trace.Add(new CalculationTraceItem("help.sensor.level.formula",
+                "Measured level formula",
+                "Hlevel = Hmeas × Level / 100"));
+            trace.Add(new CalculationTraceItem("help.sensor.level.calculation",
+                "Measured level calculation",
+                $"{F(measurementAreaMm)} × {F(levelRaw)} / 100 = {F(levelTank.LevelMm)} mm"));
+            
+            var rawLiquidHeightMm = lowerDeadArea + levelTank.LevelMm;
+            var volumeLimitMm = calculateAbove100 ? totalLengthMm : lowerDeadArea + measurementAreaMm;
+
+            trace.Add(new CalculationTraceItem("help.sensor.liquid-height.formula",
+                "Raw liquid height formula",
+                "Hraw = HlowerDead + Hlevel"));
+
+            trace.Add(new CalculationTraceItem("help.sensor.liquid-height.calculation",
+                "Raw liquid height calculation",
+                $"{F(lowerDeadArea)} + {F(levelTank.LevelMm)} = {F(rawLiquidHeightMm)} mm"));
+
+            trace.Add(new CalculationTraceItem("help.sensor.volume-height.formula",
+                "Volume calculation height",
+                "Hvolume = min(Hraw, Hlimit)"));
+
+            trace.Add(new CalculationTraceItem("help.sensor.volume-height.calculation",
+                "Volume calculation height",
+                $"min({F(rawLiquidHeightMm)}, {F(volumeLimitMm)}) = {F(levelTank.LiquidHeightMm)} mm"));
 
             if (!calculateAbove100)
             {

@@ -162,14 +162,12 @@
                      Tank calculation help
                      ======================================================== -->
                     <div class="tank-preview-help-row">
-
-                        <RadzenButton Icon="info_outline"
+                        <RadzenButton Icon="info"
                                       ButtonStyle="ButtonStyle.Light"
                                       Size="ButtonSize.Small"
                                       Disabled="@(_isOpeningHelp || SelectedDefinition is null)"
                                       title="Calculation help"
                                       Click="@OpenTankHelpAsync" />
-
                     </div>
 
 
@@ -1842,7 +1840,8 @@
             // Никаких формул в WEB нет.
             var response = await CalcApi.TestAsync( definition.Code, BuildCurrentTestParameters(definition), includeTrace: true);
 
-            await DialogService.OpenAsync<TankCalculationInfoDialog>("Tank volume calculation", new Dictionary<string, object>
+            await DialogService.OpenAsync<TankCalculationInfoDialog>("Tank volume calculation",
+                new Dictionary<string, object>
                 {
                     [nameof(TankCalculationInfoDialog.Definition)] = definition,
                     [nameof(TankCalculationInfoDialog.Result)] = response
