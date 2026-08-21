@@ -367,6 +367,19 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
 
         public string FallbackDescription { get; set; }
 
+
+        // Пока оставляем для обратной совместимости. После переключения всех потребителей удалим.
         public HashSet<string> TagNames { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+
+        // ============================================================
+        // Реальная структура Equipment:
+        //
+        // ITEM -> TAG.
+        //
+        // ITEM является частью фиксированного Equipment Type,
+        // поэтому именно его используем как идентификатор параметра.
+        // ============================================================
+        public Dictionary<string, string> ItemTags { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }
