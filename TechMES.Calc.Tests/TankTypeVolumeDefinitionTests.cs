@@ -33,16 +33,13 @@ public sealed class TankTypeVolumeDefinitionTests
     {
         var tankDefinitions = BuiltInCalculationCatalog.Create()
             .GetAll()
-            .Where(definition =>
-                string.Equals(
-                    definition.Category,
-                    "Tanks",
-                    StringComparison.OrdinalIgnoreCase))
+            .Where(definition => string.Equals(definition.Category, "Tanks", StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
         Assert.Equal(8, tankDefinitions.Length);
     }
 
+    #region TYPE 1
     // ============================================================
     // TYPE 1
     // ============================================================
@@ -319,7 +316,9 @@ public sealed class TankTypeVolumeDefinitionTests
             result.Trace,
             item => item.Key == "help.result.mass.calculation");
     }
+    #endregion
 
+    #region TYPE 2
     // ============================================================
     // TYPE 2
     // ============================================================
@@ -563,7 +562,9 @@ public sealed class TankTypeVolumeDefinitionTests
             result.Trace,
             item => item.Key == "help.result.mass.calculation");
     }
+    #endregion
 
+    #region TYPE 3
     // ============================================================
     // TYPE 3
     // ============================================================
@@ -826,7 +827,9 @@ public sealed class TankTypeVolumeDefinitionTests
         Assert.Contains(result.Trace, item => item.Key == "help.result.volume.calculation");
         Assert.Contains(result.Trace, item => item.Key == "help.result.mass.calculation");
     }
+    #endregion
 
+    #region TYPE 4
     // ============================================================
     // TYPE 4
     // ============================================================
@@ -1023,7 +1026,9 @@ public sealed class TankTypeVolumeDefinitionTests
         Assert.Contains(result.Trace, item => item.Key == "help.result.volume.calculation");
         Assert.Contains(result.Trace, item => item.Key == "help.result.mass.calculation");
     }
+    #endregion
 
+    #region TYPE 5
     // ============================================================
     // TYPE 5
     // ============================================================
@@ -1367,6 +1372,285 @@ public sealed class TankTypeVolumeDefinitionTests
         Assert.Equal(200d, Convert.ToDouble(parameters["dimE"].DefaultValue));
         Assert.Equal(100d, Convert.ToDouble(parameters["dimF"].DefaultValue));
     }
+    #endregion
+
+    #region TYPE 6
+    // ============================================================
+    // TYPE 6
+    // ============================================================
+
+    [Fact]
+    public void Type6CalculatesKnownWorkingPoint()
+    {
+        // Geometry:
+        //
+        // dimA = 2500 mm - cylindrical height
+        // dimB = 1600 mm - Tank diameter
+        // dimC = 400 mm  - height of each conical head
+        //
+        // Total height:
+        //
+        // 400 + 2500 + 400 = 3300 mm
+        //
+        // Sensor:
+        //
+        // upper dead = 150 mm
+        // lower dead = 150 mm
+        //
+        // Measurement area:
+        //
+        // 3300 - 150 - 150 = 3000 mm
+        //
+        // Level.R = 49.8 %
+        //
+        // Measured level:
+        //
+        // 3000 × 49.8% = 1494 mm
+        //
+        // Physical height:
+        //
+        // 150 + 1494 = 1644 mm
+        //
+        // Это цилиндрическая часть:
+        //
+        // hcyl = 1644 - 400 = 1244 mm.
+
+        var result = CalculateType6(
+            levelRaw: 49.8,
+            densityHmi: 1218.1,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(3000.0, GetOutput(result, "hMax"), precision: 10);
+        Assert.Equal(1494.0, GetOutput(result, "levelMm"), precision: 10);
+        Assert.Equal(2.7692929801883786, GetOutput(result, "volume"), precision: 10);
+        Assert.Equal(3.3732757791674635, GetOutput(result, "mass"), precision: 10);
+    }
+
+    [Theory]
+    [InlineData(0.0, 0.0)]
+    [InlineData(200.0, 0.03351032163829113)]
+    [InlineData(400.0, 0.26808257310632905)]
+    [InlineData(1000.0, 1.4744541520848096)]
+    [InlineData(2900.0, 5.294630818849998)]
+    [InlineData(3100.0, 5.529203070318037)]
+    [InlineData(3300.0, 5.562713391956327)]
+    public void Type6VolumeMatchesReferenceGeometry(double liquidHeightMm, double expectedVolumeM3)
+    {
+        const double totalHeightMm = 3300.0;
+
+        // Dead areas = 0.
+        //
+        // Поэтому Level.R напрямую задаёт
+        // физическую высоту жидкости от нижней вершины Tank.
+        var levelRaw = liquidHeightMm / totalHeightMm * 100.0;
+
+        var result = CalculateType6(
+            levelRaw: levelRaw,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(liquidHeightMm, GetOutput(result, "levelMm"), precision: 8);
+        Assert.Equal(expectedVolumeM3, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type6FullTankUsesExactConeGeometry()
+    {
+        var result = CalculateType6(
+            levelRaw: 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // R = 0.8 m
+        //
+        // One cone:
+        //
+        // Vcone = 1/3 × π × 0.8² × 0.4
+        //       = 0.26808257310632905 m³
+        //
+        // Cylinder:
+        //
+        // Vcyl = π × 0.8² × 2.5
+        //      = 5.026548245743669 m³
+        //
+        // Full Tank:
+        //
+        // 0.26808257310632905
+        // + 5.026548245743669
+        // + 0.26808257310632905
+        // = 5.562713391956327 m³.
+
+        Assert.Equal(5.562713391956327, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type6LowerConeHalfHeightHasOneEighthOfFullConeVolume()
+    {
+        const double totalHeightMm = 3300.0;
+        const double liquidHeightMm = 200.0;
+
+        var result = CalculateType6(
+            levelRaw: liquidHeightMm / totalHeightMm * 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // Для конуса подобные размеры изменяются линейно.
+        //
+        // При h = C / 2:
+        //
+        // V / Vfull = (h / C)³
+        //           = (1 / 2)³
+        //           = 1 / 8.
+        //
+        // Full cone = 0.26808257310632905 m³.
+        //
+        // Half-height volume:
+        //
+        // 0.26808257310632905 / 8
+        // = 0.03351032163829113 m³.
+
+        Assert.Equal(0.03351032163829113, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type6StopsVolumeAtMeasurementBoundaryWhenAbove100IsDisabled()
+    {
+        var result = CalculateType6(
+            levelRaw: 110.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // Level НЕ ограничиваем:
+        //
+        // 3000 × 110% = 3300 mm.
+        Assert.Equal(3300.0, GetOutput(result, "levelMm"), precision: 10);
+
+        // Volume при OFF останавливается на верхней границе
+        // Measurement area:
+        //
+        // 150 + 3000 = 3150 mm.
+        //
+        // Это 250 mm внутри верхнего конуса.
+
+        Assert.Equal(5.548576225015173, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type6ContinuesVolumeIntoUpperDeadAreaWhenAbove100IsEnabled()
+    {
+        var result = CalculateType6(
+            levelRaw: 110.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // Level остаётся 3300 mm.
+        Assert.Equal(3300.0, GetOutput(result, "levelMm"), precision: 10);
+
+        // Raw physical height:
+        //
+        // 150 + 3300 = 3450 mm.
+        //
+        // Но физическая высота Tank = 3300 mm.
+        //
+        // Поэтому Volume ограничивается полным Tank.
+
+        Assert.Equal(5.562713391956327, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type6ZeroHeadHeightBecomesPlainCylinder()
+    {
+        var result = CalculateType6(
+            levelRaw: 50.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 0,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // dimC = 0:
+        //
+        // Tank становится обычным цилиндром.
+        //
+        // 50% от 2500 mm = 1250 mm.
+        //
+        // V = π × 0.8² × 1.25
+        //   = 2.5132741228718345 m³.
+
+        Assert.Equal(1250.0, GetOutput(result, "levelMm"), precision: 10);
+        Assert.Equal(2.5132741228718345, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type6ReturnsCalculationHelpTrace()
+    {
+        var result = CalculateType6(
+            levelRaw: 49.8,
+            densityHmi: 1218.1,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false,
+            includeTrace: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Contains(result.Trace, item => item.Key == "help.geometry.total-height.formula");
+        Assert.Contains(result.Trace, item => item.Key == "help.volume.head.formula");
+        Assert.Contains(result.Trace, item => item.Key == "help.volume.lower.formula");
+        Assert.Contains(result.Trace, item => item.Key == "help.volume.upper.formula");
+        Assert.Contains(result.Trace, item => item.Key == "help.result.volume.calculation");
+        Assert.Contains(result.Trace, item => item.Key == "help.result.mass.calculation");
+    }
+    #endregion
 
 
     private static CalculationResult CalculateType1(double levelRaw, double densityHmi, double dimA, double dimB, double dimC, double upperDeadArea, double lowerDeadArea, bool calculateAbove100, bool includeTrace = false)
@@ -1466,6 +1750,24 @@ public sealed class TankTypeVolumeDefinitionTests
             });
 
         return new TankType5VolumeDefinition().Calculate(parameters, includeTrace);
+    }
+
+    private static CalculationResult CalculateType6(double levelRaw, double densityHmi, double dimA, double dimB, double dimC, double upperDeadArea, double lowerDeadArea, bool calculateAbove100, bool includeTrace = false)
+    {
+        var parameters = new CalculationParameterSet(
+            new Dictionary<string, object?>
+            {
+                ["levelRaw"] = levelRaw,
+                ["densityHmi"] = densityHmi,
+                ["dimA"] = dimA,
+                ["dimB"] = dimB,
+                ["dimC"] = dimC,
+                ["upperDeadArea"] = upperDeadArea,
+                ["lowerDeadArea"] = lowerDeadArea,
+                ["calculateAbove100"] = calculateAbove100
+            });
+
+        return new TankType6VolumeDefinition().Calculate(parameters, includeTrace);
     }
 
 
