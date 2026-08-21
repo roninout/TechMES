@@ -71,6 +71,43 @@
 
 
             @* ============================================================
+           dimD
+           Диаметр малого основания верхнего и нижнего днища.
+           Размер показываем сверху.
+           ============================================================ *@
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(SmallLeft)"
+                  y1="@Svg(TankTopY)"
+                  x2="@Svg(SmallLeft)"
+                  y2="@Svg(DimDScaleY)" />
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(SmallRight)"
+                  y1="@Svg(TankTopY)"
+                  x2="@Svg(SmallRight)"
+                  y2="@Svg(DimDScaleY)" />
+
+            <line class="tank-dimension"
+                  x1="@Svg(SmallLeft)"
+                  y1="@Svg(DimDScaleY)"
+                  x2="@Svg(SmallRight)"
+                  y2="@Svg(DimDScaleY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(SmallLeft)"
+                  y1="@Svg(DimDScaleY - ScaleCapHalfWidth)"
+                  x2="@Svg(SmallLeft)"
+                  y2="@Svg(DimDScaleY + ScaleCapHalfWidth)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(SmallRight)"
+                  y1="@Svg(DimDScaleY - ScaleCapHalfWidth)"
+                  x2="@Svg(SmallRight)"
+                  y2="@Svg(DimDScaleY + ScaleCapHalfWidth)" />
+
+
+            @* ============================================================
                dimC
                Высота верхнего конического днища.
                Нижнее днище имеет ту же высоту.
@@ -287,6 +324,24 @@
             </div>
         }
 
+        @* ============================================================
+           dimD
+           Диаметр малого основания обоих конических / усечённо-конических днищ.
+           ============================================================ *@
+
+        <div class="tank-top-field"
+             style="@DimDOverlayStyle">
+
+            <RadzenFormField Text="dimD" AllowFloatingLabel="false">
+                <RadzenNumeric TValue="double"
+                               Value="@DimD"
+                               Change="@((double value) => DimDChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+            </RadzenFormField>
+
+        </div>
 
         @* ============================================================
            dimC
@@ -386,6 +441,7 @@
     [Parameter] public double DimA { get; set; }
     [Parameter] public double DimB { get; set; }
     [Parameter] public double DimC { get; set; }
+    [Parameter] public double DimD { get; set; }
 
     [Parameter] public double UpperDeadArea { get; set; }
     [Parameter] public double LowerDeadArea { get; set; }
@@ -397,6 +453,7 @@
     [Parameter] public EventCallback<double> DimAChanged { get; set; }
     [Parameter] public EventCallback<double> DimBChanged { get; set; }
     [Parameter] public EventCallback<double> DimCChanged { get; set; }
+    [Parameter] public EventCallback<double> DimDChanged { get; set; }
     [Parameter] public EventCallback<double> UpperDeadAreaChanged { get; set; }
     [Parameter] public EventCallback<double> LowerDeadAreaChanged { get; set; }
 
@@ -417,6 +474,8 @@
     private const double ScaleCapHalfWidth = 9.0;
     private const double FieldGapFromScale = 35.0;
     private const double DimBScaleY = 470.0;
+    // dimD показываем отдельной горизонтальной шкалой над Tank.
+    private const double DimDScaleY = 78.0;
 
     private double TotalLengthMm => Math.Max(0.0, DimA + DimC * 2.0);
     private double MeasurementAreaMm => Math.Max(0.0, TotalLengthMm - UpperDeadArea - LowerDeadArea);
@@ -437,6 +496,26 @@
 
     private double TankLeft => TankCenterX - TankWidth / 2.0;
     private double TankRight => TankCenterX + TankWidth / 2.0;
+
+    // ============================================================
+    // Малое основание конических днищ.
+    // dimD = 0: линия схлопывается в точку и получаем настоящий конус.
+    // dimD = dimB: малое основание становится равно основному диаметру, наклонные стенки становятся вертикальными.
+    // ============================================================
+    private double SmallEndVisualWidth
+    {
+        get
+        {
+            if (DimB <= 0)
+                return 0.0;
+
+            var ratio = Math.Clamp(DimD / DimB, 0.0, 1.0);
+            return TankWidth * ratio;
+        }
+    }
+
+    private double SmallLeft => TankCenterX - SmallEndVisualWidth / 2.0;
+    private double SmallRight => TankCenterX + SmallEndVisualWidth / 2.0;
 
     // Оба конуса имеют одинаковую физическую высоту dimC.
     //
@@ -529,10 +608,16 @@
     // ============================================================
     // Контур Tank.
     //
-    // Верхняя точка = вершина верхнего конуса.
-    // Нижняя точка = вершина нижнего конуса.
+    // Верхнее и нижнее малые основания имеют ширину dimD.
     //
-    // Между ними находится обычный цилиндр.
+    // dimD = 0:
+    // SmallLeft == SmallRight == TankCenterX,
+    // то есть получаем старый Type 6 с острыми конусами.
+    //
+    // dimD = dimB:
+    // SmallLeft == TankLeft,
+    // SmallRight == TankRight,
+    // поэтому Tank становится цилиндром по всей высоте.
     // ============================================================
     private string TankPath
     {
@@ -540,10 +625,12 @@
         {
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"M {TankCenterX:0.###} {TankTopY:0.###} " +
+                $"M {SmallLeft:0.###} {TankTopY:0.###} " +
+                $"L {SmallRight:0.###} {TankTopY:0.###} " +
                 $"L {TankRight:0.###} {BodyTopY:0.###} " +
                 $"L {TankRight:0.###} {BodyBottomY:0.###} " +
-                $"L {TankCenterX:0.###} {TankBottomY:0.###} " +
+                $"L {SmallRight:0.###} {TankBottomY:0.###} " +
+                $"L {SmallLeft:0.###} {TankBottomY:0.###} " +
                 $"L {TankLeft:0.###} {BodyBottomY:0.###} " +
                 $"L {TankLeft:0.###} {BodyTopY:0.###} Z");
         }
@@ -558,17 +645,20 @@
         if (HeadVisualHeight <= 0.0)
             return TankLeft;
 
+        // Верхнее усечённое днище.
         if (y < BodyTopY)
         {
             var ratio = Math.Clamp((y - TankTopY) / HeadVisualHeight, 0.0, 1.0);
-            return TankCenterX - TankWidth / 2.0 * ratio;
+            return SmallLeft + (TankLeft - SmallLeft) * ratio;
         }
 
+        // Цилиндрическая часть.
         if (y <= BodyBottomY)
             return TankLeft;
 
-        var lowerRatio = Math.Clamp((TankBottomY - y) / HeadVisualHeight, 0.0, 1.0);
-        return TankCenterX - TankWidth / 2.0 * lowerRatio;
+        // Нижнее усечённое днище.
+        var lowerRatio = Math.Clamp((y - BodyBottomY) / HeadVisualHeight, 0.0, 1.0);
+        return TankLeft + (SmallLeft - TankLeft) * lowerRatio;
     }
 
     // Реальная правая граница Tank на произвольной высоте.
@@ -577,17 +667,20 @@
         if (HeadVisualHeight <= 0.0)
             return TankRight;
 
+        // Верхнее усечённое днище.
         if (y < BodyTopY)
         {
             var ratio = Math.Clamp((y - TankTopY) / HeadVisualHeight, 0.0, 1.0);
-            return TankCenterX + TankWidth / 2.0 * ratio;
+            return SmallRight + (TankRight - SmallRight) * ratio;
         }
 
+        // Цилиндрическая часть.
         if (y <= BodyBottomY)
             return TankRight;
 
-        var lowerRatio = Math.Clamp((TankBottomY - y) / HeadVisualHeight, 0.0, 1.0);
-        return TankCenterX + TankWidth / 2.0 * lowerRatio;
+        // Нижнее усечённое днище.
+        var lowerRatio = Math.Clamp((y - BodyBottomY) / HeadVisualHeight, 0.0, 1.0);
+        return TankRight + (SmallRight - TankRight) * lowerRatio;
     }
 
     // dimC и dimA располагаются в одной левой колонке,
@@ -620,6 +713,20 @@
             return string.Create(
                 CultureInfo.InvariantCulture,
                 $"left:{PctX(TankCenterX):0.###}%; top:{PctY(topY):0.###}%; transform:translateX(-50%);");
+        }
+    }
+
+    private string DimDOverlayStyle
+    {
+        get
+        {
+            const double fieldWidth = 142.0;
+
+            // Поле располагаем по центру над шкалой dimD.
+            var leftX = TankCenterX - fieldWidth / 2.0;
+            var topY = DimDScaleY - FieldGapFromScale - 38.0;
+
+            return string.Create(CultureInfo.InvariantCulture, $"left:{PctX(leftX):0.###}%; top:{PctY(topY):0.###}%;");
         }
     }
 

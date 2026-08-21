@@ -1650,6 +1650,184 @@ public sealed class TankTypeVolumeDefinitionTests
         Assert.Contains(result.Trace, item => item.Key == "help.result.volume.calculation");
         Assert.Contains(result.Trace, item => item.Key == "help.result.mass.calculation");
     }
+
+    [Fact]
+    public void Type6FrustumFullVolumeMatchesExactGeometry()
+    {
+        var result = CalculateType6(
+            levelRaw: 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true,
+            dimD: 500);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // Main radius:
+        //
+        // R = 0.8 m
+        //
+        // Small radius:
+        //
+        // r = 0.25 m
+        //
+        // One frustum:
+        //
+        // Vhead =
+        // π × 0.4 / 3 ×
+        // (0.8² + 0.8×0.25 + 0.25²)
+        //
+        // = 0.3780383159819718 m³.
+        //
+        // Cylinder:
+        //
+        // Vcyl =
+        // π × 0.8² × 2.5
+        //
+        // = 5.026548245743669 m³.
+        //
+        // Full Tank:
+        //
+        // = 5.782624877707613 m³.
+
+        Assert.Equal(
+            5.782624877707613,
+            GetOutput(result, "volume"),
+            precision: 10);
+    }
+
+    [Fact]
+    public void Type6FrustumCalculatesKnownWorkingPoint()
+    {
+        var result = CalculateType6(
+            levelRaw: 49.8,
+            densityHmi: 1218.1,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false,
+            dimD: 500);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // Total height:
+        //
+        // 2500 + 400 + 400 = 3300 mm.
+        //
+        // Measurement area:
+        //
+        // 3300 - 150 - 150 = 3000 mm.
+        //
+        // Level:
+        //
+        // 3000 × 49.8% = 1494 mm.
+        //
+        // Physical liquid height:
+        //
+        // 150 + 1494 = 1644 mm.
+
+        Assert.Equal(
+            3000.0,
+            GetOutput(result, "hMax"),
+            precision: 10);
+
+        Assert.Equal(
+            1494.0,
+            GetOutput(result, "levelMm"),
+            precision: 10);
+
+        Assert.Equal(
+            2.879248723064021,
+            GetOutput(result, "volume"),
+            precision: 10);
+
+        Assert.Equal(
+            3.507212869564284,
+            GetOutput(result, "mass"),
+            precision: 10);
+    }
+
+    [Fact]
+    public void Type6SmallDiameterEqualToMainDiameterBecomesCylinder()
+    {
+        var result = CalculateType6(
+            levelRaw: 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true,
+            dimD: 1600);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // dimD = dimB.
+        //
+        // Оба усечённых днища имеют одинаковый
+        // радиус сверху и снизу.
+        //
+        // То есть весь Tank эквивалентен цилиндру:
+        //
+        // H = 2500 + 400 + 400
+        //   = 3300 mm.
+        //
+        // V = π × 0.8² × 3.3
+        //   = 6.635043684381643 m³.
+
+        Assert.Equal(
+            6.635043684381643,
+            GetOutput(result, "volume"),
+            precision: 10);
+    }
+
+    [Fact]
+    public void Type6RejectsSmallDiameterGreaterThanMainDiameter()
+    {
+        var result = CalculateType6(
+            levelRaw: 50.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: false,
+            dimD: 1700);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public void Type6ZeroSmallDiameterPreservesOriginalConeGeometry()
+    {
+        var result = CalculateType6(
+            levelRaw: 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true,
+            dimD: 0);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // dimD = 0 должен в точности воспроизводить
+        // старую геометрию Type 6.
+        Assert.Equal(
+            5.562713391956327,
+            GetOutput(result, "volume"),
+            precision: 10);
+    }
     #endregion
 
     #region TYPE 7
@@ -2077,8 +2255,16 @@ public sealed class TankTypeVolumeDefinitionTests
         return new TankType5VolumeDefinition().Calculate(parameters, includeTrace);
     }
 
-    private static CalculationResult CalculateType6(double levelRaw, double densityHmi, double dimA, double dimB, double dimC, double upperDeadArea, double lowerDeadArea, bool calculateAbove100, bool includeTrace = false)
+    private static CalculationResult CalculateType6(double levelRaw, double densityHmi, double dimA, double dimB, double dimC, double upperDeadArea, double lowerDeadArea, bool calculateAbove100, bool includeTrace = false, double dimD = 0.0)
     {
+        // dimD имеет default = 0.
+        //
+        // Благодаря этому все существующие Type 6 tests
+        // автоматически продолжают проверять старую геометрию:
+        // два настоящих конуса.
+        //
+        // Новые tests могут явно передавать dimD
+        // и проверять усечённые конуса.
         var parameters = new CalculationParameterSet(
             new Dictionary<string, object?>
             {
@@ -2087,6 +2273,7 @@ public sealed class TankTypeVolumeDefinitionTests
                 ["dimA"] = dimA,
                 ["dimB"] = dimB,
                 ["dimC"] = dimC,
+                ["dimD"] = dimD,
                 ["upperDeadArea"] = upperDeadArea,
                 ["lowerDeadArea"] = lowerDeadArea,
                 ["calculateAbove100"] = calculateAbove100

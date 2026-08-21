@@ -88,6 +88,7 @@
 }
 
 .tank-side-field,
+.tank-top-field,
 .tank-bottom-field {
     position: absolute;
     width: 142px;
@@ -95,13 +96,16 @@
 }
 
     .tank-side-field ::deep .rz-form-field,
+    .tank-top-field ::deep .rz-form-field,
     .tank-bottom-field ::deep .rz-form-field,
     .tank-side-field ::deep .rz-numeric,
+    .tank-top-field ::deep .rz-numeric,
     .tank-bottom-field ::deep .rz-numeric {
         width: 100%;
     }
 
     .tank-side-field ::deep .rz-inputtext,
+    .tank-top-field ::deep .rz-inputtext,
     .tank-bottom-field ::deep .rz-inputtext {
         text-align: right;
     }

@@ -290,6 +290,7 @@
                             <TankType6InteractivePreview DimA="@CurrentDimA"
                                                          DimB="@CurrentDimB"
                                                          DimC="@CurrentDimC"
+                                                         DimD="@CurrentDimD"
                                                          UpperDeadArea="@CurrentUpperDeadArea"
                                                          LowerDeadArea="@CurrentLowerDeadArea"
                                                          CalculateAbove100="@CurrentCalculateAbove100"
@@ -298,6 +299,7 @@
                                                          DimAChanged="@((double value) => SetInputNumber("dimA", value))"
                                                          DimBChanged="@((double value) => SetInputNumber("dimB", value))"
                                                          DimCChanged="@((double value) => SetInputNumber("dimC", value))"
+                                                         DimDChanged="@((double value) => SetInputNumber("dimD", value))"
                                                          UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
                                                          LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
                         }
@@ -973,13 +975,16 @@
         3 => GetInputNumber("dimD") > 0.0 && GetInputNumber("dimD") <= GetInputNumber("dimB"),
         5 => IsType5GeometryValid(),
 
-        // Type 7:
-        // dimD является диаметром малого основания
-        // конического торца.
+        // Type 6:
         //
-        // 0      -> настоящий конус с вершиной;
-        // dimB   -> торец превращается в цилиндр;
-        // > dimB -> физически невозможная геометрия.
+        // dimD - диаметр малого основания
+        // верхнего и нижнего конического днища.
+        //
+        // 0      -> обычный конус;
+        // dimB   -> цилиндрическое продолжение;
+        // >dimB  -> невозможная геометрия.
+        6 => GetInputNumber("dimD") >= 0.0 && GetInputNumber("dimD") <= GetInputNumber("dimB"),
+
         7 => GetInputNumber("dimD") >= 0.0 && GetInputNumber("dimD") <= GetInputNumber("dimB"),
 
         _ => true
@@ -1719,6 +1724,7 @@
         {
             3 => "Partition distance from left wall",
             5 => "Tube bundle height",
+            6 => "Small end diameter",
             7 => "Small end diameter",
             8 => "Tube bundle height",
             _ => "Additional section dimension"
