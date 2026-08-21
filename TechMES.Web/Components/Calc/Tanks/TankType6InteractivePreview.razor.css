@@ -1,0 +1,118 @@
+.tank-type6-editor {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+}
+
+.tank-type6-canvas {
+    position: relative;
+    width: min(100%, 920px);
+    aspect-ratio: 760 / 620;
+    min-width: 0;
+}
+
+    .tank-type6-canvas svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+    }
+
+.tank-shape {
+    fill: none;
+    stroke: var(--rz-text-color);
+    stroke-width: 2.5;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+.tank-body-line {
+    stroke: var(--rz-text-color);
+    stroke-width: 2.2;
+}
+
+.tank-liquid-fill {
+    fill: var(--rz-info);
+    fill-opacity: 0.22;
+}
+
+.tank-live-level {
+    stroke: var(--rz-info);
+    stroke-width: 2.5;
+}
+
+.tank-dimension,
+.tank-dimension-cap {
+    stroke: var(--rz-text-secondary-color);
+    stroke-width: 1.8;
+}
+
+.tank-guide-dim {
+    stroke: var(--rz-text-secondary-color);
+    stroke-width: 1.3;
+    stroke-dasharray: 6 5;
+}
+
+.tank-zone-guide {
+    stroke: var(--rz-text-secondary-color);
+    stroke-width: 1.2;
+    stroke-dasharray: 6 5;
+}
+
+.tank-dead-zone,
+.tank-zone-cap {
+    stroke: var(--rz-text-secondary-color);
+    stroke-width: 1.8;
+}
+
+.tank-measure-zone,
+.tank-measure-cap {
+    stroke: var(--rz-success);
+    stroke-width: 2;
+}
+
+.tank-live-level-overlay {
+    position: absolute;
+    z-index: 3;
+    transform: translate(-50%, -100%);
+    padding: 2px 6px;
+    color: var(--rz-info);
+    background: var(--rz-base-background-color);
+    border-radius: 3px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.tank-side-field,
+.tank-bottom-field {
+    position: absolute;
+    width: 142px;
+    z-index: 2;
+}
+
+    .tank-side-field ::deep .rz-form-field,
+    .tank-bottom-field ::deep .rz-form-field,
+    .tank-side-field ::deep .rz-numeric,
+    .tank-bottom-field ::deep .rz-numeric {
+        width: 100%;
+    }
+
+    .tank-side-field ::deep .rz-inputtext,
+    .tank-bottom-field ::deep .rz-inputtext {
+        text-align: right;
+    }
+
+@media (max-width: 850px) {
+    .tank-type6-canvas {
+        width: 100%;
+    }
+
+    .tank-side-field,
+    .tank-bottom-field {
+        width: 124px;
+    }
+}
