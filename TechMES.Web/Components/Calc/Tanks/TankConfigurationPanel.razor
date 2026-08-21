@@ -954,6 +954,16 @@
     {
         3 => GetInputNumber("dimD") > 0.0 && GetInputNumber("dimD") <= GetInputNumber("dimB"),
         5 => IsType5GeometryValid(),
+
+        // Type 7:
+        // dimD является диаметром малого основания
+        // конического торца.
+        //
+        // 0      -> настоящий конус с вершиной;
+        // dimB   -> торец превращается в цилиндр;
+        // > dimB -> физически невозможная геометрия.
+        7 => GetInputNumber("dimD") >= 0.0 && GetInputNumber("dimD") <= GetInputNumber("dimB"),
+
         _ => true
     };
 
@@ -1691,7 +1701,7 @@
         {
             3 => "Partition distance from left wall",
             5 => "Tube bundle height",
-            7 => "Right conical end width",
+            7 => "Small end diameter",
             8 => "Tube bundle height",
             _ => "Additional section dimension"
         };
