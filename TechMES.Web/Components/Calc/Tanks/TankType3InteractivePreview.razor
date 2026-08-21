@@ -341,7 +341,8 @@
            ============================================================ *@
 
         <div class="tank-top-field"
-             style="@DimDFieldStyle">
+             style="@DimDFieldStyle"
+             title="@FieldTooltip("dimD")">
 
             <RadzenFormField Text="dimD"
                              AllowFloatingLabel="false">
@@ -363,7 +364,8 @@
            ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetLeftFieldStyle(DimACenterY)">
+             style="@GetLeftFieldStyle(DimACenterY)"
+             title="@FieldTooltip("dimA")">
 
             <RadzenFormField Text="dimA"
                              AllowFloatingLabel="false">
@@ -385,7 +387,8 @@
            ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetLeftFieldStyle(DimCCenterY)">
+             style="@GetLeftFieldStyle(DimCCenterY)"
+             title="@FieldTooltip("dimC")">
 
             <RadzenFormField Text="dimC"
                              AllowFloatingLabel="false">
@@ -407,7 +410,8 @@
            ============================================================ *@
 
         <div class="tank-bottom-field"
-             style="@DimBFieldStyle">
+             style="@DimBFieldStyle"
+             title="@FieldTooltip("dimB")">
 
             <RadzenFormField Text="dimB"
                              AllowFloatingLabel="false">
@@ -429,7 +433,8 @@
            ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetRightFieldStyle(UpperDeadAreaCenterY)">
+             style="@GetRightFieldStyle(UpperDeadAreaCenterY)"
+             title="@FieldTooltip("upperDeadArea")">
 
             <RadzenFormField Text="Upper dead area"
                              AllowFloatingLabel="false">
@@ -451,7 +456,8 @@
            ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetRightFieldStyle(MeasurementAreaCenterY)">
+             style="@GetRightFieldStyle(MeasurementAreaCenterY)"
+             title="@FieldTooltip("measurementArea")">
 
             <RadzenFormField Text="Measurement area"
                              AllowFloatingLabel="false">
@@ -473,7 +479,8 @@
            ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetRightFieldStyle(LowerDeadAreaCenterY)">
+             style="@GetRightFieldStyle(LowerDeadAreaCenterY)"
+             title="@FieldTooltip("lowerDeadArea")">
 
             <RadzenFormField Text="Lower dead area"
                              AllowFloatingLabel="false">
@@ -515,6 +522,7 @@
     [Parameter] public EventCallback<double> LowerDeadAreaChanged { get; set; }
 
     private readonly string ClipId = $"tankType3Clip_{Guid.NewGuid():N}";
+    private string FieldTooltip(string key) => TankFieldDescriptions.Get(3, key);
 
     private const double SvgWidth = 760.0;
     private const double SvgHeight = 620.0;

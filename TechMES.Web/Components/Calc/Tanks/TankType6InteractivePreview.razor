@@ -330,7 +330,8 @@
            ============================================================ *@
 
         <div class="tank-top-field"
-             style="@DimDOverlayStyle">
+             style="@DimDOverlayStyle"
+             title="@FieldTooltip("dimD")">
 
             <RadzenFormField Text="dimD" AllowFloatingLabel="false">
                 <RadzenNumeric TValue="double"
@@ -348,7 +349,8 @@
            ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetLeftFieldStyle(DimCCenterY)">
+             style="@GetLeftFieldStyle(DimCCenterY)"
+             title="@FieldTooltip("dimC")">
 
             <RadzenFormField Text="dimC" AllowFloatingLabel="false">
                 <RadzenNumeric TValue="double" Value="@DimC" Change="@((double value) => DimCChanged.InvokeAsync(value))"
@@ -363,7 +365,8 @@
            ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetLeftFieldStyle(DimACenterY)">
+             style="@GetLeftFieldStyle(DimACenterY)"
+             title="@FieldTooltip("dimA")">
 
             <RadzenFormField Text="dimA" AllowFloatingLabel="false">
                 <RadzenNumeric TValue="double" Value="@DimA" Change="@((double value) => DimAChanged.InvokeAsync(value))"
@@ -378,7 +381,8 @@
            ============================================================ *@
 
         <div class="tank-bottom-field"
-             style="@DimBOverlayStyle">
+             style="@DimBOverlayStyle"
+             title="@FieldTooltip("dimB")">
 
             <RadzenFormField Text="dimB" AllowFloatingLabel="false">
                 <RadzenNumeric TValue="double" Value="@DimB" Change="@((double value) => DimBChanged.InvokeAsync(value))"
@@ -393,7 +397,8 @@
            ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetRightFieldStyle(UpperDeadAreaCenterY)">
+             style="@GetRightFieldStyle(UpperDeadAreaCenterY)"
+             title="@FieldTooltip("upperDeadArea")">
 
             <RadzenFormField Text="Upper dead area" AllowFloatingLabel="false">
                 <RadzenNumeric TValue="double" Value="@UpperDeadArea" Change="@((double value) => UpperDeadAreaChanged.InvokeAsync(value))"
@@ -408,7 +413,8 @@
            ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetRightFieldStyle(MeasurementAreaCenterY)">
+             style="@GetRightFieldStyle(MeasurementAreaCenterY)"
+             title="@FieldTooltip("measurementArea")">
 
             <RadzenFormField Text="Measurement area" AllowFloatingLabel="false">
                 <RadzenNumeric TValue="double" Value="@MeasurementAreaMm" Format="0.### mm"
@@ -423,7 +429,8 @@
            ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetRightFieldStyle(LowerDeadAreaCenterY)">
+             style="@GetRightFieldStyle(LowerDeadAreaCenterY)"
+             title="@FieldTooltip("lowerDeadArea")">
 
             <RadzenFormField Text="Lower dead area" AllowFloatingLabel="false">
                 <RadzenNumeric TValue="double" Value="@LowerDeadArea" Change="@((double value) => LowerDeadAreaChanged.InvokeAsync(value))"
@@ -458,6 +465,7 @@
     [Parameter] public EventCallback<double> LowerDeadAreaChanged { get; set; }
 
     private readonly string ClipId = $"tankType6Clip_{Guid.NewGuid():N}";
+    private string FieldTooltip(string key) => TankFieldDescriptions.Get(6, key);
 
     private const double SvgWidth = 760.0;
     private const double SvgHeight = 620.0;

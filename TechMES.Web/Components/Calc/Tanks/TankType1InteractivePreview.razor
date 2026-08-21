@@ -237,7 +237,8 @@
         }
 
         <div class="tank-side-field"
-             style="@GetRightFieldStyle(MeasurementAreaCenterY)">
+             style="@GetRightFieldStyle(MeasurementAreaCenterY)"
+             title="@FieldTooltip("measurementArea")">
 
             <RadzenFormField Text="Measurement area"
                              AllowFloatingLabel="false">
@@ -257,7 +258,8 @@
         dimC
         ============================================================ -->
         <div class="tank-side-field"
-             style="@GetLeftFieldStyle(DimCCenterY)">
+             style="@GetLeftFieldStyle(DimCCenterY)"
+             title="@FieldTooltip("dimC")">
 
             <RadzenFormField Text="dimC"
                              AllowFloatingLabel="false">
@@ -274,7 +276,8 @@
         </div>
 
         <div class="tank-side-field"
-             style="@GetLeftFieldStyle(DimACenterY)">
+             style="@GetLeftFieldStyle(DimACenterY)"
+             title="@FieldTooltip("dimA")">
 
             <RadzenFormField Text="dimA"
                              AllowFloatingLabel="false">
@@ -291,7 +294,8 @@
         </div>
 
         <div class="tank-side-field"
-             style="@GetRightFieldStyle(UpperDeadAreaCenterY)">
+             style="@GetRightFieldStyle(UpperDeadAreaCenterY)"
+             title="@FieldTooltip("upperDeadArea")">
 
             <RadzenFormField Text="Upper dead area"
                              AllowFloatingLabel="false">
@@ -308,7 +312,8 @@
         </div>
 
         <div class="tank-side-field"
-             style="@GetRightFieldStyle(LowerDeadAreaCenterY)">
+             style="@GetRightFieldStyle(LowerDeadAreaCenterY)"
+             title="@FieldTooltip("lowerDeadArea")">
 
             <RadzenFormField Text="Lower dead area"
                              AllowFloatingLabel="false">
@@ -325,7 +330,8 @@
         </div>
 
         <div class="tank-bottom-field"
-             style="@DimBOverlayStyle">
+             style="@DimBOverlayStyle"
+             title="@FieldTooltip("dimB")">
 
             <RadzenFormField Text="dimB"
                              AllowFloatingLabel="false">
@@ -387,6 +393,7 @@
     public EventCallback<double> LowerDeadAreaChanged { get; set; }
 
     private readonly string ClipId = $"tankType1Clip_{Guid.NewGuid():N}";
+    private string FieldTooltip(string key) => TankFieldDescriptions.Get(1, key);
 
     private const double SvgWidth = 760.0;
     private const double SvgHeight = 620.0;

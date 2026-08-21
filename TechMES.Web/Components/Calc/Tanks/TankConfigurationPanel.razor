@@ -67,7 +67,8 @@
                  ======================================================== -->
                 <div class="tank-preview-toolbar">
 
-                    <div class="tank-preview-toolbar-type">
+                    <div class="tank-preview-toolbar-type"
+                             title="@GetInputDescription("tankType")">
 
                         <label class="tank-field-label">
                             Tank type
@@ -130,7 +131,8 @@
                         </div>
 
 
-                    <div class="tank-preview-toolbar-enabled">
+                    <div class="tank-preview-toolbar-enabled"
+                         title="@GetInputDescription("enabled")">
 
                         <span class="tank-switch-state @GetSwitchStateClass(_enabled)">
                             @GetSwitchStateText(_enabled)
@@ -351,7 +353,7 @@
                  ======================================================== -->
                 <div class="tank-preview-panel-footer">
 
-                    <div class="tank-preview-option">
+                    <div class="tank-preview-option" title="@GetInputDescription("calculateAbove100")">
 
                         <span class="tank-switch-state @GetSwitchStateClass(CurrentCalculateAbove100)">
                             @GetSwitchStateText(CurrentCalculateAbove100)
@@ -1664,93 +1666,7 @@
 
     private string GetInputDescription(string key)
     {
-        return key.ToLowerInvariant() switch
-        {
-            "dima" => GetDimADescription(),
-            "dimb" => GetDimBDescription(),
-            "dimc" => GetDimCDescription(),
-            "dimd" => GetDimDDescription(),
-            "dime" => GetDimEDescription(),
-            "dimf" => "Tube bundle displacement volume, l",
-            "dimg" => "Small bottom diameter",
-
-            "upperdeadarea" => "Unmeasured area above the working range",
-            "lowerdeadarea" => "Unmeasured area below the working range",
-            "calculateabove100" => "Continue volume calculation above 100% inside the upper dead area",
-
-            _ => key
-        };
-    }
-
-    private string GetDimADescription()
-    {
-        return SelectedTypeNumber switch
-        {
-            1 => "Height of cylindrical part",
-            2 => "Length of cylindrical part",
-            3 => "Height of cylindrical part",
-            4 => "Height of tank body",
-            5 => "Height of cylindrical part",
-            6 => "Height of cylindrical part",
-            7 => "Length of cylindrical part",
-            8 => "Height of cylindrical part",
-            _ => "Main tank dimension"
-        };
-    }
-
-    private string GetDimBDescription()
-    {
-        return SelectedTypeNumber switch
-        {
-            1 => "Tank diameter",
-            2 => "Tank diameter",
-            3 => "Tank diameter",
-            4 => "Tank width",
-            5 => "Tank diameter",
-            6 => "Tank diameter",
-            7 => "Tank diameter",
-            8 => "Tank diameter",
-            _ => "Tank width / diameter"
-        };
-    }
-
-    private string GetDimCDescription()
-    {
-        return SelectedTypeNumber switch
-        {
-            1 => "Elliptical head height",
-            2 => "Elliptical end depth",
-            3 => "Lower elliptical head height",
-            4 => "Bottom depth",
-            5 => "Lower elliptical head height",
-            6 => "Conical head height",
-            7 => "Conical head length",
-            8 => "Lower conical head height",
-            _ => "Additional tank dimension"
-        };
-    }
-
-    private string GetDimDDescription()
-    {
-        return SelectedTypeNumber switch
-        {
-            3 => "Partition distance from left wall",
-            5 => "Tube bundle height",
-            6 => "Small end diameter",
-            7 => "Small end diameter",
-            8 => "Tube bundle height",
-            _ => "Additional section dimension"
-        };
-    }
-
-    private string GetDimEDescription()
-    {
-        return SelectedTypeNumber switch
-        {
-            5 => "Distance from tank top to tube bundle",
-            8 => "Distance from tank top to tube bundle",
-            _ => "Upper section dimension"
-        };
+        return TankFieldDescriptions.Get(SelectedTypeNumber, key);
     }
 
     /// <summary>

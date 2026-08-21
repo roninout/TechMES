@@ -169,10 +169,30 @@
 
                                     <div class="calc-model-status-icons">
 
+                                        <!-- ============================================================
+                                         SCADA output write permission
+
+                                         Показываем только отрицательное состояние.
+
+                                         Если WriteEnabled = true, дополнительная иконка не нужна:
+                                         нормальное состояние не загромождает список.
+
+                                         Если Job ещё вообще не создан, иконку тоже не показываем:
+                                         состояние "Not configured" уже показывает settings.
+                                         ============================================================ -->
+                                        @if (job is not null && !job.WriteEnabled)
+                                        {
+                                            <RadzenIcon Icon="error_outline"
+                                                        class="calc-model-status-icon is-danger"
+                                                        title="SCADA output writing is disabled. Calculated values are not written to SCADA." />
+                                        }
+
+
                                         <!-- Job configuration state -->
                                         <RadzenIcon Icon="@GetJobStatusIcon(job)"
                                                     class="@GetJobStatusIconCss(job)"
                                                     title="@GetJobStatusTitle(job)" />
+
 
                                         <!-- Runtime state -->
                                         @if (state is not null)
