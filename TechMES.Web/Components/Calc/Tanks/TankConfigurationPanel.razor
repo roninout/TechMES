@@ -946,6 +946,7 @@
     private double CurrentDimD => GetInputNumber("dimD");
     private double CurrentDimE => GetInputNumber("dimE");
     private double CurrentDimF => GetInputNumber("dimF");
+    private double CurrentDimG => GetInputNumber("dimG");
 
     private double CurrentUpperDeadArea => GetInputNumber("upperDeadArea");
     private double CurrentLowerDeadArea => GetInputNumber("lowerDeadArea");
@@ -961,34 +962,55 @@
 
     // Кроме обычных Min/Max отдельные Tank Type имеют
     // ограничения между несколькими геометрическими размерами.
-    //
-    // Type 3:
-    // перегородка должна находиться внутри Tank.
-    //
-    // Type 5:
-    // трубный пучок должен полностью помещаться
-    // внутри цилиндрической части;
-    // объём труб не может превышать геометрический
-    // объём области трубного пучка.
     private bool IsTypeSpecificGeometryValid => SelectedTypeNumber switch
     {
         3 => GetInputNumber("dimD") > 0.0 && GetInputNumber("dimD") <= GetInputNumber("dimB"),
         5 => IsType5GeometryValid(),
 
         // Type 6:
-        //
-        // dimD - диаметр малого основания
-        // верхнего и нижнего конического днища.
-        //
-        // 0      -> обычный конус;
-        // dimB   -> цилиндрическое продолжение;
-        // >dimB  -> невозможная геометрия.
+        // dimD - диаметр малого основания верхнего и нижнего конического днища.
         6 => GetInputNumber("dimD") >= 0.0 && GetInputNumber("dimD") <= GetInputNumber("dimB"),
 
+        // Type 7:
+        // dimD - диаметр малого основания обоих горизонтальных конических торцов.
         7 => GetInputNumber("dimD") >= 0.0 && GetInputNumber("dimD") <= GetInputNumber("dimB"),
+
+        // Type 8:
+        // Повторяет ограничения Type 5 для трубного пучка и дополнительно проверяет малое основание нижнего усечённого конуса.
+        8 => IsType8GeometryValid(),
 
         _ => true
     };
+
+    private bool IsType8GeometryValid()
+    {
+        var dimA = GetInputNumber("dimA");
+        var dimB = GetInputNumber("dimB");
+        var dimD = GetInputNumber("dimD");
+        var dimE = GetInputNumber("dimE");
+        var dimF = GetInputNumber("dimF");
+        var dimG = GetInputNumber("dimG");
+
+        // Трубный пучок должен полностью находиться
+        // внутри цилиндрической части.
+        //
+        // Малое основание нижнего днища:
+        //
+        // 0      -> настоящий конус;
+        // dimB   -> цилиндрическая секция;
+        // >dimB  -> невозможная геометрия.
+        if (dimA <= 0 || dimB <= 0 || dimD <= 0 || dimE < 0 || dimF < 0 || dimG < 0 || dimG > dimB || dimD + dimE > dimA)
+            return false;
+
+        // Объём труб не может быть больше полного
+        // геометрического объёма области трубного пучка.
+        var radiusM = dimB * 0.001 / 2.0;
+        var bundleHeightM = dimD * 0.001;
+        var tubeVolumeM3 = dimF * 0.001;
+        var grossBundleRegionVolumeM3 = Math.PI * radiusM * radiusM * bundleHeightM;
+
+        return tubeVolumeM3 <= grossBundleRegionVolumeM3;
+    }
 
     private bool IsType5GeometryValid()
     {
@@ -1626,9 +1648,7 @@
 
     /// <summary>
     /// Безопасно читает числовое значение из LastInputs / LastOutputs.
-    ///
-    /// Сравнение ключей case-insensitive, потому что DTO не должен
-    /// зависеть от способа сериализации Dictionary.
+    /// Сравнение ключей case-insensitive, потому что DTO не должен зависеть от способа сериализации Dictionary.
     /// </summary>
     private static bool TryGetRuntimeNumber(JsonElement? source, string key, out double value)
     {
@@ -1661,6 +1681,7 @@
             "dimd" => GetDimDDescription(),
             "dime" => GetDimEDescription(),
             "dimf" => "Tube bundle displacement volume, l",
+            "dimg" => "Small bottom diameter",
 
             "upperdeadarea" => "Unmeasured area above the working range",
             "lowerdeadarea" => "Unmeasured area below the working range",
@@ -1681,7 +1702,7 @@
             5 => "Height of cylindrical part",
             6 => "Height of cylindrical part",
             7 => "Length of cylindrical part",
-            8 => "Height to bottom head start",
+            8 => "Height of cylindrical part",
             _ => "Main tank dimension"
         };
     }
@@ -1697,7 +1718,7 @@
             5 => "Tank diameter",
             6 => "Tank diameter",
             7 => "Tank diameter",
-            8 => "Bottom head width",
+            8 => "Tank diameter",
             _ => "Tank width / diameter"
         };
     }
@@ -1713,7 +1734,7 @@
             5 => "Lower elliptical head height",
             6 => "Conical head height",
             7 => "Conical head length",
-            8 => "Bottom head height",
+            8 => "Lower conical head height",
             _ => "Additional tank dimension"
         };
     }
@@ -1736,7 +1757,7 @@
         return SelectedTypeNumber switch
         {
             5 => "Distance from tank top to tube bundle",
-            8 => "Upper section height",
+            8 => "Distance from tank top to tube bundle",
             _ => "Upper section dimension"
         };
     }

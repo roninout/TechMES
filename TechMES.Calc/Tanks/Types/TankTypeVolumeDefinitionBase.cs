@@ -186,21 +186,14 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
             return CalculationResult.Failure("tank.sensor.invalid-measurement-area", "Lower dead area and upper dead area leave no valid sensor measurement area.");
 
 
-        // Общая LevelTank-логика находится здесь, потому что она одинакова для всех Tank Type.
-        // Конкретный Tank Type получает уже физическую высоту жидкости от самого дна Tank.
+        // Общая LevelTank-логика находится здесь, потому что она одинакова для всех Tank Type. Конкретный Tank Type получает уже физическую высоту жидкости от самого дна Tank.
         var levelTank = LevelTankCalculator.Calculate(levelRaw, densityHmi, totalLengthMm, lowerDeadArea, upperDeadArea, calculateAbove100, liquidHeightMm =>
-            {
-                // Type 8 пока ещё используют compatibility parameters.
-                // После перевода всех геометрий на новую точную модель distance можно будет удалить полностью.
-                var volumeParameters = parameters.Values.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
-
-                volumeParameters["levelMm"] = liquidHeightMm;
-                volumeParameters["distanceA"] = 0d;
-                volumeParameters["distanceB"] = totalLengthMm;
-                volumeParameters["distToDistanceA"] = 0d;
-
-                return CalculateVolume(new CalculationParameterSet(volumeParameters));
-            });
+        {
+            // Все Tank Type 1..8 уже используют новую точную geometry model. Конкретный Tank Type получает только рассчитанную физическую высоту жидкости от самого нижнего края Tank.
+            var volumeParameters = parameters.Values.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
+            volumeParameters["levelMm"] = liquidHeightMm;
+            return CalculateVolume(new CalculationParameterSet(volumeParameters));
+        });
 
         if (!double.IsFinite(levelTank.VolumeM3))
             return CalculationResult.Failure("tank.volume.not-finite", "Calculated tank volume is not a finite number.");
