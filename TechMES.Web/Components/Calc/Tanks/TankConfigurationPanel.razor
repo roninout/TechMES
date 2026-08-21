@@ -301,6 +301,24 @@
                                                          UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
                                                          LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
                         }
+                        else if (SelectedTypeNumber == 7)
+                        {
+                            <TankType7InteractivePreview DimA="@CurrentDimA"
+                                                         DimB="@CurrentDimB"
+                                                         DimC="@CurrentDimC"
+                                                         DimD="@CurrentDimD"
+                                                         UpperDeadArea="@CurrentUpperDeadArea"
+                                                         LowerDeadArea="@CurrentLowerDeadArea"
+                                                         CalculateAbove100="@CurrentCalculateAbove100"
+                                                         LevelPercent="@CurrentLevelPercent"
+                                                         Disabled="@_isSaving"
+                                                         DimAChanged="@((double value) => SetInputNumber("dimA", value))"
+                                                         DimBChanged="@((double value) => SetInputNumber("dimB", value))"
+                                                         DimCChanged="@((double value) => SetInputNumber("dimC", value))"
+                                                         DimDChanged="@((double value) => SetInputNumber("dimD", value))"
+                                                         UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
+                                                         LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
+                        }
                         else
                         {
                             <div class="tank-preview-figure">
