@@ -11,11 +11,8 @@
     @if (_isLoadingDefinitions || _isResolvingLevelTag)
     {
         @* ============================================================
-           Новый Tank ещё подготавливается.
-
-           Промежуточные данные не показываем:
-           Definition, Level.R и Input должны быть полностью готовы
-           до отображения новой конфигурации.
+           Новый Tank ещё подготавливается. Промежуточные данные не показываем:
+           Definition, Level.R и Input должны быть полностью готовы до отображения новой конфигурации.
            ============================================================ *@
         <div class="tank-configuration-loading">
 
@@ -41,8 +38,7 @@
     else
     {
         @* ============================================================
-           Полная конфигурация отображается только после того,
-           как все необходимые данные нового Tank готовы.
+           Полная конфигурация отображается только после того, как все необходимые данные нового Tank готовы.
            ============================================================ *@
         <div class="tank-configuration">
 
@@ -67,7 +63,6 @@
 
                 <!-- ========================================================
                  Верхняя строка
-
                  Tank type | Job state warning | Enabled
                  ======================================================== -->
                 <div class="tank-preview-toolbar">
@@ -152,7 +147,6 @@
 
                 </div>
 
-
                 <!-- ========================================================
                  Разделитель toolbar / Tank
                  ======================================================== -->
@@ -170,12 +164,10 @@
                                       Click="@OpenTankHelpAsync" />
                     </div>
 
-
                 <!-- ========================================================
                  SCADA output warning
 
-                 Job может быть Enabled и выполнять расчёт,
-                 но запись результатов в SCADA отключена.
+                 Job может быть Enabled и выполнять расчёт, но запись результатов в SCADA отключена.
                  ======================================================== -->
                     @if (Job?.Enabled == true && Job.WriteEnabled != true)
                     {
@@ -321,6 +313,30 @@
                                                          UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
                                                          LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
                         }
+                        else if (SelectedTypeNumber == 8)
+                        {
+                            <TankType8InteractivePreview DimA="@CurrentDimA"
+                                                         DimB="@CurrentDimB"
+                                                         DimC="@CurrentDimC"
+                                                         DimD="@CurrentDimD"
+                                                         DimE="@CurrentDimE"
+                                                         DimF="@CurrentDimF"
+                                                         DimG="@CurrentDimG"
+                                                         UpperDeadArea="@CurrentUpperDeadArea"
+                                                         LowerDeadArea="@CurrentLowerDeadArea"
+                                                         CalculateAbove100="@CurrentCalculateAbove100"
+                                                         LevelPercent="@CurrentLevelPercent"
+                                                         Disabled="@_isSaving"
+                                                         DimAChanged="@((double value) => SetInputNumber("dimA", value))"
+                                                         DimBChanged="@((double value) => SetInputNumber("dimB", value))"
+                                                         DimCChanged="@((double value) => SetInputNumber("dimC", value))"
+                                                         DimDChanged="@((double value) => SetInputNumber("dimD", value))"
+                                                         DimEChanged="@((double value) => SetInputNumber("dimE", value))"
+                                                         DimFChanged="@((double value) => SetInputNumber("dimF", value))"
+                                                         DimGChanged="@((double value) => SetInputNumber("dimG", value))"
+                                                         UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
+                                                         LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
+                        }
                         else
                         {
                             <div class="tank-preview-figure">
@@ -329,7 +345,6 @@
                         }
 
                 </div>
-
 
                 <!-- ========================================================
                  Параметры алгоритма Tank
@@ -794,9 +809,7 @@
     // ============================================================
 
     // Signature состояния, которое сейчас реально сохранено в Job.
-    //
-    // UI сравнивает с ним текущее состояние редактора.
-    // Поэтому отдельные SetDirty() во всех обработчиках не нужны.
+    // UI сравнивает с ним текущее состояние редактора. Поэтому отдельные SetDirty() во всех обработчиках не нужны.
     private string _savedEditorSignature = "";
 
     // Есть ли изменения, которые Runtime ещё не получил.
@@ -837,22 +850,14 @@
         _savedEditorSignature = BuildEditorSignature();
     }
 
-    // Множитель формата SCADA для Volume и Mass.
-    //
-    // Повторяет логику старого TechCalc:
-    //
+    // Множитель формата SCADA для Volume и Mass. Повторяет логику старого TechCalc:
     // dimB >= 2000 mm -> x100
     // dimB <  2000 mm -> x1000
-    //
-    // В отличие от старого TechCalc результат не приводится к short.
     private double TankWriteScale => ResolveTankWriteScale(GetInputNumber("dimB"));
 
     // ============================================================
     // Числовые runtime values для disabled RadzenNumeric.
-    //
-    // В отличие от старых Format... методов здесь возвращается
-    // настоящее число. Это позволяет использовать одинаковый
-    // визуальный стиль RadzenNumeric для всех read-only значений.
+    // В отличие от старых Format... методов здесь возвращается настоящее число. Это позволяет использовать одинаковый визуальный стиль RadzenNumeric для всех read-only значений.
     // ============================================================
 
     private double? GetLastInputNumber(string key)
@@ -912,11 +917,9 @@
 
     /// <summary>
     /// Реальный Density HMI tag уже содержится в Calc Catalog.
-    /// Сначала пробуем наиболее специфичный suffix,
-    /// затем обычный *_HMI.
+    /// Сначала пробуем наиболее специфичный suffix, затем обычный *_HMI.
     /// </summary>
-    private string? DensityHmiTag =>
-        FindTag(LinkedDensity?.TagNames, "_DENS_HMI", "_HMI");
+    private string? DensityHmiTag => FindTag(LinkedDensity?.TagNames, "_DENS_HMI", "_HMI");
 
     private bool IsLevelTankReady => LinkedLevel is not null && LinkedDensity is not null && !string.IsNullOrWhiteSpace(_levelRawTag) && !string.IsNullOrWhiteSpace(DensityHmiTag);
 
@@ -960,8 +963,7 @@
             .Where(input => !IsLinkedInput(input.Parameter.Key) && input.Parameter.Type == CalcParameterTypeDto.Number)
             .All(input => (!input.Parameter.Minimum.HasValue || input.NumberValue >= input.Parameter.Minimum.Value) && (!input.Parameter.Maximum.HasValue || input.NumberValue <= input.Parameter.Maximum.Value));
 
-    // Кроме обычных Min/Max отдельные Tank Type имеют
-    // ограничения между несколькими геометрическими размерами.
+    // Кроме обычных Min/Max отдельные Tank Type имеют ограничения между несколькими геометрическими размерами.
     private bool IsTypeSpecificGeometryValid => SelectedTypeNumber switch
     {
         3 => GetInputNumber("dimD") > 0.0 && GetInputNumber("dimD") <= GetInputNumber("dimB"),
@@ -1104,13 +1106,9 @@
         }
     }
 
-
     /// <summary>
     /// Level model уже находится в Runtime Equipment Catalog.
-    ///
-    /// Для выполнения Calculation Job нужен именно реальный SCADA tag
-    /// его item R. Используем уже существующий Param API.
-    ///
+    /// Для выполнения Calculation Job нужен именно реальный SCADA tag его item R. Используем уже существующий Param API.
     /// Никакого нового Equipment/CtApi discovery здесь нет.
     /// </summary>
     private async Task ResolveLinkedLevelTagAsync()
@@ -1166,7 +1164,6 @@
             _isResolvingLevelTag = false;
         }
     }
-
 
     /// <summary>
     /// Восстанавливает выбранный Tank Type, constants и Job options.
@@ -1247,12 +1244,10 @@
         BuildInputEditors(definition, storedJob);
     }
 
-
     /// <summary>
     /// Создаёт редакторы Job constants.
     ///
-    /// levelRaw/densityHmi тоже остаются в definition,
-    /// но в UI они не показываются: для них bindings создаются автоматически.
+    /// levelRaw/densityHmi тоже остаются в definition, но в UI они не показываются: для них bindings создаются автоматически.
     /// </summary>
     private void BuildInputEditors(CalcDefinitionDto? definition, CalcJobDto? job)
     {
@@ -1271,7 +1266,6 @@
             })
             .ToList();
     }
-
 
     private static TankInputEditor CreateInputEditor(CalcParameterDefinitionDto parameter, CalcJobInputDto? stored)
     {
@@ -1304,7 +1298,6 @@
             _ => false
         };
     }
-
 
     private void OnNumberValueChanged(TankInputEditor input, double value)
     {
@@ -1360,7 +1353,6 @@
         }
     }
 
-
     /// <summary>
     /// Сохраняет существующий Tank Job.
     /// </summary>
@@ -1409,7 +1401,6 @@
             _isSaving = false;
         }
     }
-
 
     /// <summary>
     /// Формирует окончательные inputs Tank Job.
@@ -1763,11 +1754,7 @@
     }
 
     /// <summary>
-    /// Единица измерения отображается непосредственно в поле,
-    /// как во вкладке PLC.
-    ///
-    /// Например:
-    /// 2500 mm
+    /// Единица измерения отображается непосредственно в поле, как во вкладке PLC. Например: 2500 mm
     /// </summary>
     private static string GetInputNumberFormat(TankInputEditor input)
     {
@@ -1797,10 +1784,7 @@
 
     private sealed record TankOutputRow(string Key, string Name, string Unit, string? TagName);
 
-    // ============================================================
     // Tank Help
-    // ============================================================
-
     private Dictionary<string, object?> BuildCurrentTestParameters(CalcDefinitionDto definition)
     {
         var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);

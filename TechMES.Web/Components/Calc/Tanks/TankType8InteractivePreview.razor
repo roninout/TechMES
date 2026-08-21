@@ -1,0 +1,921 @@
+﻿@using System.Globalization
+
+<div class="tank-type8-editor">
+
+    <div class="tank-type8-canvas">
+
+        <svg viewBox="0 0 760 620"
+             role="img"
+             aria-label="Tank Type 8 interactive geometry">
+
+            <defs>
+                <clipPath id="@ClipId">
+                    <path d="@TankPath" />
+                </clipPath>
+            </defs>
+
+
+            @* ============================================================
+               Liquid
+
+               Уровень жидкости определяется общей Sensor-моделью.
+
+               Трубный пучок уменьшает расчётный Volume,
+               но физический уровень жидкости остаётся единым.
+               Поэтому заливка Tank отображается обычным уровнем,
+               а трубы рисуются поверх жидкости.
+               ============================================================ *@
+
+            @if (HasLevel)
+            {
+                <g clip-path="@ClipUrl">
+
+                    <rect class="tank-liquid-fill"
+                          x="@Svg(TankLeft)"
+                          y="@Svg(FillY)"
+                          width="@Svg(TankWidth)"
+                          height="@Svg(Math.Max(0.0, TankBottomY - FillY))" />
+
+                    <line class="tank-live-level"
+                          x1="@Svg(TankLeft - 15.0)"
+                          y1="@Svg(FillY)"
+                          x2="@Svg(TankRight + 15.0)"
+                          y2="@Svg(FillY)" />
+
+                </g>
+            }
+
+
+            @* ============================================================
+               Tank body
+
+               Type 5:
+               - плоский верх;
+               - цилиндрическая часть dimA;
+               - нижнее эллиптическое днище dimC.
+               ============================================================ *@
+
+            <path class="tank-shape"
+                  d="@TankPath" />
+
+            <line class="tank-body-line"
+                  x1="@Svg(TankLeft)"
+                  y1="@Svg(BodyBottomY)"
+                  x2="@Svg(TankRight)"
+                  y2="@Svg(BodyBottomY)" />
+
+
+            @* ============================================================
+               Tube bundle
+
+               dimE задаёт расстояние от верхней границы
+               цилиндрической части до верха пучка.
+
+               dimD задаёт высоту пучка.
+
+               dimF не является геометрическим размером:
+               это полный вытесняемый трубами объём, L.
+               ============================================================ *@
+
+            @if (BundleVisualHeight > 0.0)
+            {
+                <rect class="tank-bundle"
+                      x="@Svg(BundleLeft)"
+                      y="@Svg(BundleTopY)"
+                      width="@Svg(BundleWidth)"
+                      height="@Svg(BundleVisualHeight)" />
+
+                @for (var i = 1; i <= BundleTubeCount; i++)
+                {
+                    <line class="tank-bundle-tube"
+                          x1="@Svg(GetBundleTubeX(i))"
+                          y1="@Svg(BundleTopY + 5.0)"
+                          x2="@Svg(GetBundleTubeX(i))"
+                          y2="@Svg(BundleBottomY - 5.0)" />
+                }
+            }
+
+
+            @* ============================================================
+               dimA
+               Высота всей цилиндрической части.
+               ============================================================ *@
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(DimAScaleX)"
+                  y1="@Svg(TankTopY)"
+                  x2="@Svg(TankLeft)"
+                  y2="@Svg(TankTopY)" />
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(DimAScaleX)"
+                  y1="@Svg(BodyBottomY)"
+                  x2="@Svg(TankLeft)"
+                  y2="@Svg(BodyBottomY)" />
+
+            <line class="tank-dimension"
+                  x1="@Svg(DimAScaleX)"
+                  y1="@Svg(TankTopY)"
+                  x2="@Svg(DimAScaleX)"
+                  y2="@Svg(BodyBottomY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(DimAScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(TankTopY)"
+                  x2="@Svg(DimAScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(TankTopY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(DimAScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(BodyBottomY)"
+                  x2="@Svg(DimAScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(BodyBottomY)" />
+
+
+            @* ============================================================
+               dimE
+               От верха цилиндрической части до верха пучка.
+               ============================================================ *@
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(BundleScaleX)"
+                  y1="@Svg(TankTopY)"
+                  x2="@Svg(BundleLeft)"
+                  y2="@Svg(TankTopY)" />
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(BundleScaleX)"
+                  y1="@Svg(BundleTopY)"
+                  x2="@Svg(BundleLeft)"
+                  y2="@Svg(BundleTopY)" />
+
+            <line class="tank-dimension"
+                  x1="@Svg(BundleScaleX)"
+                  y1="@Svg(TankTopY)"
+                  x2="@Svg(BundleScaleX)"
+                  y2="@Svg(BundleTopY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(BundleScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(TankTopY)"
+                  x2="@Svg(BundleScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(TankTopY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(BundleScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(BundleTopY)"
+                  x2="@Svg(BundleScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(BundleTopY)" />
+
+
+            @* ============================================================
+               dimD
+               Высота трубного пучка.
+               ============================================================ *@
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(BundleScaleX)"
+                  y1="@Svg(BundleTopY)"
+                  x2="@Svg(BundleLeft)"
+                  y2="@Svg(BundleTopY)" />
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(BundleScaleX)"
+                  y1="@Svg(BundleBottomY)"
+                  x2="@Svg(BundleLeft)"
+                  y2="@Svg(BundleBottomY)" />
+
+            <line class="tank-dimension"
+                  x1="@Svg(BundleScaleX)"
+                  y1="@Svg(BundleTopY)"
+                  x2="@Svg(BundleScaleX)"
+                  y2="@Svg(BundleBottomY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(BundleScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(BundleTopY)"
+                  x2="@Svg(BundleScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(BundleTopY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(BundleScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(BundleBottomY)"
+                  x2="@Svg(BundleScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(BundleBottomY)" />
+
+
+            @* ============================================================
+               dimC
+               Высота нижнего конического / усечённо-конического днища.
+               ============================================================ *@
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(BundleScaleX)"
+                  y1="@Svg(BodyBottomY)"
+                  x2="@Svg(TankLeft)"
+                  y2="@Svg(BodyBottomY)" />
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(BundleScaleX)"
+                  y1="@Svg(TankBottomY)"
+                  x2="@Svg(SmallBottomLeft)"
+                  y2="@Svg(TankBottomY)" />
+
+            <line class="tank-dimension"
+                  x1="@Svg(BundleScaleX)"
+                  y1="@Svg(BodyBottomY)"
+                  x2="@Svg(BundleScaleX)"
+                  y2="@Svg(TankBottomY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(BundleScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(BodyBottomY)"
+                  x2="@Svg(BundleScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(BodyBottomY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(BundleScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(TankBottomY)"
+                  x2="@Svg(BundleScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(TankBottomY)" />
+
+            @* ============================================================
+               dimG
+               Диаметр малого нижнего основания. Линия находится непосредственно под нижним основанием.
+               ============================================================ *@
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(SmallBottomLeft)"
+                  y1="@Svg(TankBottomY)"
+                  x2="@Svg(SmallBottomLeft)"
+                  y2="@Svg(DimGScaleY)" />
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(SmallBottomRight)"
+                  y1="@Svg(TankBottomY)"
+                  x2="@Svg(SmallBottomRight)"
+                  y2="@Svg(DimGScaleY)" />
+
+            <line class="tank-dimension"
+                  x1="@Svg(SmallBottomLeft)"
+                  y1="@Svg(DimGScaleY)"
+                  x2="@Svg(SmallBottomRight)"
+                  y2="@Svg(DimGScaleY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(SmallBottomLeft)"
+                  y1="@Svg(DimGScaleY - ScaleCapHalfWidth)"
+                  x2="@Svg(SmallBottomLeft)"
+                  y2="@Svg(DimGScaleY + ScaleCapHalfWidth)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(SmallBottomRight)"
+                  y1="@Svg(DimGScaleY - ScaleCapHalfWidth)"
+                  x2="@Svg(SmallBottomRight)"
+                  y2="@Svg(DimGScaleY + ScaleCapHalfWidth)" />
+
+            @* ============================================================
+               dimB
+               Диаметр Tank.
+               ============================================================ *@
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(TankLeft)"
+                  y1="@Svg(BodyBottomY)"
+                  x2="@Svg(TankLeft)"
+                  y2="@Svg(DimBScaleY)" />
+
+            <line class="tank-guide-dim"
+                  x1="@Svg(TankRight)"
+                  y1="@Svg(BodyBottomY)"
+                  x2="@Svg(TankRight)"
+                  y2="@Svg(DimBScaleY)" />
+
+            <line class="tank-dimension"
+                  x1="@Svg(TankLeft)"
+                  y1="@Svg(DimBScaleY)"
+                  x2="@Svg(TankRight)"
+                  y2="@Svg(DimBScaleY)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(TankLeft)"
+                  y1="@Svg(DimBScaleY - ScaleCapHalfWidth)"
+                  x2="@Svg(TankLeft)"
+                  y2="@Svg(DimBScaleY + ScaleCapHalfWidth)" />
+
+            <line class="tank-dimension-cap"
+                  x1="@Svg(TankRight)"
+                  y1="@Svg(DimBScaleY - ScaleCapHalfWidth)"
+                  x2="@Svg(TankRight)"
+                  y2="@Svg(DimBScaleY + ScaleCapHalfWidth)" />
+
+
+            @* ============================================================
+               Sensor zones
+               ============================================================ *@
+
+            <line class="tank-zone-guide"
+                  x1="@Svg(GetTankRightAtY(TankTopY))"
+                  y1="@Svg(TankTopY)"
+                  x2="@Svg(RightDeadAreaScaleX)"
+                  y2="@Svg(TankTopY)" />
+
+            <line class="tank-zone-guide"
+                  x1="@Svg(GetTankRightAtY(UpperDeadBoundaryY))"
+                  y1="@Svg(UpperDeadBoundaryY)"
+                  x2="@Svg(RightMeasurementScaleX)"
+                  y2="@Svg(UpperDeadBoundaryY)" />
+
+            <line class="tank-zone-guide"
+                  x1="@Svg(GetTankRightAtY(LowerDeadBoundaryY))"
+                  y1="@Svg(LowerDeadBoundaryY)"
+                  x2="@Svg(RightMeasurementScaleX)"
+                  y2="@Svg(LowerDeadBoundaryY)" />
+
+            <line class="tank-zone-guide"
+                  x1="@Svg(GetTankRightAtY(TankBottomY))"
+                  y1="@Svg(TankBottomY)"
+                  x2="@Svg(RightDeadAreaScaleX)"
+                  y2="@Svg(TankBottomY)" />
+
+
+            @* ============================================================
+               Upper dead area
+               ============================================================ *@
+
+            <line class="tank-dead-zone"
+                  x1="@Svg(RightDeadAreaScaleX)"
+                  y1="@Svg(TankTopY)"
+                  x2="@Svg(RightDeadAreaScaleX)"
+                  y2="@Svg(UpperDeadBoundaryY)" />
+
+            <line class="tank-zone-cap"
+                  x1="@Svg(RightDeadAreaScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(TankTopY)"
+                  x2="@Svg(RightDeadAreaScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(TankTopY)" />
+
+            <line class="tank-zone-cap"
+                  x1="@Svg(RightDeadAreaScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(UpperDeadBoundaryY)"
+                  x2="@Svg(RightDeadAreaScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(UpperDeadBoundaryY)" />
+
+
+            @* ============================================================
+               Measurement area
+               ============================================================ *@
+
+            <line class="tank-measure-zone"
+                  x1="@Svg(RightMeasurementScaleX)"
+                  y1="@Svg(UpperDeadBoundaryY)"
+                  x2="@Svg(RightMeasurementScaleX)"
+                  y2="@Svg(LowerDeadBoundaryY)" />
+
+            <line class="tank-measure-cap"
+                  x1="@Svg(RightMeasurementScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(UpperDeadBoundaryY)"
+                  x2="@Svg(RightMeasurementScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(UpperDeadBoundaryY)" />
+
+            <line class="tank-measure-cap"
+                  x1="@Svg(RightMeasurementScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(LowerDeadBoundaryY)"
+                  x2="@Svg(RightMeasurementScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(LowerDeadBoundaryY)" />
+
+
+            @* ============================================================
+               Lower dead area
+               ============================================================ *@
+
+            <line class="tank-dead-zone"
+                  x1="@Svg(RightDeadAreaScaleX)"
+                  y1="@Svg(LowerDeadBoundaryY)"
+                  x2="@Svg(RightDeadAreaScaleX)"
+                  y2="@Svg(TankBottomY)" />
+
+            <line class="tank-zone-cap"
+                  x1="@Svg(RightDeadAreaScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(LowerDeadBoundaryY)"
+                  x2="@Svg(RightDeadAreaScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(LowerDeadBoundaryY)" />
+
+            <line class="tank-zone-cap"
+                  x1="@Svg(RightDeadAreaScaleX - ScaleCapHalfWidth)"
+                  y1="@Svg(TankBottomY)"
+                  x2="@Svg(RightDeadAreaScaleX + ScaleCapHalfWidth)"
+                  y2="@Svg(TankBottomY)" />
+
+        </svg>
+
+
+        @if (HasLevel)
+        {
+            <div class="tank-live-level-overlay"
+                 style="@LevelLabelStyle">
+                @LevelLabel
+            </div>
+        }
+
+        @* ============================================================
+           dimE / dimA / dimD
+
+           Эти три поля намеренно находятся в одной колонке
+           с фиксированным вертикальным расстоянием.
+
+           Положение полей НЕ зависит от размеров dimE и dimD.
+           Благодаря этому при маленьких размерах пучка
+           поля никогда не накладываются друг на друга.
+
+           Размерные линии при этом остаются привязаны
+           к реальной геометрии Tank.
+        ============================================================ *@
+
+
+        @* ============================================================
+           dimE
+           Расстояние от верха цилиндрической части
+           до верхней границы трубного пучка.
+        ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetOuterLeftFieldStyle(DimEFieldCenterY)">
+
+            <RadzenFormField Text="dimE"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@DimE"
+                               Change="@((double value) => DimEChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           dimA
+           Высота цилиндрической части.
+        ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetOuterLeftFieldStyle(DimACenterY)">
+
+            <RadzenFormField Text="dimA"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@DimA"
+                               Change="@((double value) => DimAChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           dimD
+           Высота трубного пучка.
+        ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetOuterLeftFieldStyle(DimDFieldCenterY)">
+
+            <RadzenFormField Text="dimD"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@DimD"
+                               Change="@((double value) => DimDChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           dimC
+           ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetInnerLeftFieldStyle(DimCCenterY)">
+
+            <RadzenFormField Text="dimC" AllowFloatingLabel="false">
+                <RadzenNumeric TValue="double" Value="@DimC" Change="@((double value) => DimCChanged.InvokeAsync(value))"
+                               Format="0.### mm" Disabled="@Disabled" Style="width:100%;" />
+            </RadzenFormField>
+
+        </div>
+
+        @* ============================================================
+           dimG - Малый нижний диаметр.
+           ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetInnerLeftFieldStyle(DimGCenterY)">
+
+            <RadzenFormField Text="dimG"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@DimG"
+                               Change="@((double value) => DimGChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
+            </RadzenFormField>
+
+        </div>
+
+        @* ============================================================
+           dimB
+           ============================================================ *@
+
+        <div class="tank-bottom-field"
+             style="@DimBFieldStyle">
+
+            <RadzenFormField Text="dimB" AllowFloatingLabel="false">
+                <RadzenNumeric TValue="double" Value="@DimB" Change="@((double value) => DimBChanged.InvokeAsync(value))"
+                               Format="0.### mm" Disabled="@Disabled" Style="width:100%;" />
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           dimF
+
+           dimF не имеет размерной линии:
+           это объём труб, а не линейный размер.
+           ============================================================ *@
+
+        <div class="tank-volume-field"
+             style="@DimFFieldStyle">
+
+            <RadzenFormField Text="dimF" AllowFloatingLabel="false">
+                <RadzenNumeric TValue="double" Value="@DimF" Change="@((double value) => DimFChanged.InvokeAsync(value))"
+                               Format="0.### L" Disabled="@Disabled" Style="width:100%;" />
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           Upper dead area
+           ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetRightFieldStyle(UpperDeadAreaCenterY)">
+
+            <RadzenFormField Text="Upper dead area" AllowFloatingLabel="false">
+                <RadzenNumeric TValue="double" Value="@UpperDeadArea" Change="@((double value) => UpperDeadAreaChanged.InvokeAsync(value))"
+                               Format="0.### mm" Disabled="@Disabled" Style="width:100%;" />
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           Measurement area
+           ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetRightFieldStyle(MeasurementAreaCenterY)">
+
+            <RadzenFormField Text="Measurement area" AllowFloatingLabel="false">
+                <RadzenNumeric TValue="double" Value="@MeasurementAreaMm" Format="0.### mm"
+                               Disabled="true" ShowUpDown="false" Style="width:100%;" />
+            </RadzenFormField>
+
+        </div>
+
+
+        @* ============================================================
+           Lower dead area
+           ============================================================ *@
+
+        <div class="tank-side-field"
+             style="@GetRightFieldStyle(LowerDeadAreaCenterY)">
+
+            <RadzenFormField Text="Lower dead area" AllowFloatingLabel="false">
+                <RadzenNumeric TValue="double" Value="@LowerDeadArea" Change="@((double value) => LowerDeadAreaChanged.InvokeAsync(value))"
+                               Format="0.### mm" Disabled="@Disabled" Style="width:100%;" />
+            </RadzenFormField>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+@code {
+    [Parameter] public double DimA { get; set; }
+    [Parameter] public double DimB { get; set; }
+    [Parameter] public double DimC { get; set; }
+    [Parameter] public double DimD { get; set; }
+    [Parameter] public double DimE { get; set; }
+    [Parameter] public double DimF { get; set; }
+
+    // ============================================================
+    // dimG
+    //
+    // Диаметр малого нижнего основания конического / усечённо-конического днища.
+    // dimG = 0 -> настоящий конус.
+    // dimG = dimB -> нижняя секция становится цилиндрической.
+    // ============================================================
+    [Parameter] public double DimG { get; set; }
+
+    [Parameter] public double UpperDeadArea { get; set; }
+    [Parameter] public double LowerDeadArea { get; set; }
+
+    [Parameter] public double? LevelPercent { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool CalculateAbove100 { get; set; }
+
+    [Parameter] public EventCallback<double> DimAChanged { get; set; }
+    [Parameter] public EventCallback<double> DimBChanged { get; set; }
+    [Parameter] public EventCallback<double> DimCChanged { get; set; }
+    [Parameter] public EventCallback<double> DimDChanged { get; set; }
+    [Parameter] public EventCallback<double> DimEChanged { get; set; }
+    [Parameter] public EventCallback<double> DimFChanged { get; set; }
+    [Parameter] public EventCallback<double> DimGChanged { get; set; }
+
+    [Parameter] public EventCallback<double> UpperDeadAreaChanged { get; set; }
+    [Parameter] public EventCallback<double> LowerDeadAreaChanged { get; set; }
+
+    private readonly string ClipId = $"tankType8Clip_{Guid.NewGuid():N}";
+
+    private const double SvgWidth = 760.0;
+    private const double SvgHeight = 620.0;
+
+    private const double TankTopY = 105.0;
+    private const double TankBottomY = 450.0;
+    private const double TankCenterX = 345.0;
+    private const double TankVisualHeight = TankBottomY - TankTopY;
+
+    private const double ScaleCapHalfWidth = 9.0;
+    private const double FieldGapFromScale = 30.0;
+    // dimG рисуем ближе к самому нижнему основанию.
+    private const double DimGScaleY = 475.0;
+    // dimB остаётся внешним, более дальним размером.
+    private const double DimBScaleY = 515.0;
+    private const int BundleTubeCount = 7;
+
+    private double TotalHeightMm => Math.Max(0.0, DimA + DimC);
+    private double MeasurementAreaMm => Math.Max(0.0, TotalHeightMm - UpperDeadArea - LowerDeadArea);
+
+    private double TankWidth
+    {
+        get
+        {
+            if (TotalHeightMm <= 0)
+                return 190.0;
+
+            return Math.Clamp(TankVisualHeight * Math.Max(0.0, DimB) / TotalHeightMm, 180.0, 235.0);
+        }
+    }
+
+    private double TankLeft => TankCenterX - TankWidth / 2.0;
+    private double TankRight => TankCenterX + TankWidth / 2.0;
+
+    // ============================================================
+    // Малое нижнее основание усечённого конуса.
+    //
+    // Визуальная ширина пропорциональна:
+    // dimG / dimB.
+    //
+    // dimG = 0:
+    // SmallLeft == SmallRight == TankCenterX,
+    // получаем настоящий конус.
+    //
+    // dimG = dimB:
+    // SmallLeft == TankLeft,
+    // SmallRight == TankRight,
+    // получаем цилиндрическую нижнюю секцию.
+    // ============================================================
+
+    private double SmallBottomWidth
+    {
+        get
+        {
+            if (DimB <= 0)
+                return 0.0;
+
+            var ratio = Math.Clamp(DimG / DimB, 0.0, 1.0);
+
+            return TankWidth * ratio;
+        }
+    }
+
+    private double SmallBottomLeft => TankCenterX - SmallBottomWidth / 2.0;
+    private double SmallBottomRight => TankCenterX + SmallBottomWidth / 2.0;
+
+    private double HeadVisualHeight
+    {
+        get
+        {
+            if (TotalHeightMm <= 0 || DimC <= 0)
+                return 0.0;
+
+            return Math.Clamp(TankVisualHeight * DimC / TotalHeightMm, 0.0, 100.0);
+        }
+    }
+
+    private double BodyBottomY => TankBottomY - HeadVisualHeight;
+    private double BodyVisualHeight => BodyBottomY - TankTopY;
+
+    // Для Preview ограничиваем геометрию пучка цилиндрической частью.
+    // Настоящее невалидное введённое значение при этом не изменяется:
+    // его блокирует IsType5GeometryValid().
+    private double PreviewDimE => DimA > 0 ? Math.Clamp(DimE, 0.0, DimA) : 0.0;
+    private double PreviewDimD => DimA > 0 ? Math.Clamp(DimD, 0.0, Math.Max(0.0, DimA - PreviewDimE)) : 0.0;
+
+    private double BundleTopY => DimA > 0 ? TankTopY + BodyVisualHeight * PreviewDimE / DimA : TankTopY;
+    private double BundleBottomY => DimA > 0 ? BundleTopY + BodyVisualHeight * PreviewDimD / DimA : BundleTopY;
+    private double BundleVisualHeight => Math.Max(0.0, BundleBottomY - BundleTopY);
+
+    // Ширина пучка условная: dimF задаёт объём труб,
+    // но не наружный диаметр самого пучка.
+    private double BundleWidth => TankWidth * 0.62;
+    private double BundleLeft => TankCenterX - BundleWidth / 2.0;
+    private double BundleRight => TankCenterX + BundleWidth / 2.0;
+
+    // Левая размерная система.
+    private double DimAScaleX => TankLeft - 90.0;
+    private double BundleScaleX => TankLeft - 50.0;
+
+    // Правая Sensor-система.
+    private double RightDeadAreaScaleX => TankRight + 65.0;
+    private double RightMeasurementScaleX => RightDeadAreaScaleX + 25.0;
+
+    // ============================================================
+    // Положение полей слева.
+    //
+    // dimA является центральным полем.
+    // dimE всегда находится выше dimA,
+    // dimD всегда находится ниже dimA.
+    //
+    // Расстояние фиксированное и никак не зависит от реальных значений dimE / dimD.
+    // Поэтому даже при очень маленьком пучке поля никогда не смогут наложиться друг на друга.
+    //
+    // Если позже захочешь увеличить или уменьшить расстояние между этими тремя полями, меняется только одна константа: LeftFieldVerticalGap.
+    // ============================================================
+
+    private const double LeftFieldVerticalGap = 85.0;
+
+    private double DimACenterY => (TankTopY + BodyBottomY) / 2.0;
+
+    private double DimEFieldCenterY => DimACenterY - LeftFieldVerticalGap;
+
+    private double DimDFieldCenterY => DimACenterY + LeftFieldVerticalGap;
+
+    // dimC привязан к центру нижнего днища.
+    private double DimCCenterY => (BodyBottomY + TankBottomY) / 2.0;
+    // dimG находится ниже него с фиксированным расстоянием, чтобы поля не могли наложиться при маленьком dimC.
+    private double DimGCenterY => TankBottomY + 38.0;
+
+    private double UpperDeadBoundaryY => TotalHeightMm > 0 ? TankTopY + TankVisualHeight * Math.Clamp(UpperDeadArea, 0.0, TotalHeightMm) / TotalHeightMm : TankTopY;
+    private double LowerDeadBoundaryY => TotalHeightMm > 0 ? TankBottomY - TankVisualHeight * Math.Clamp(LowerDeadArea, 0.0, TotalHeightMm) / TotalHeightMm : TankBottomY;
+
+    private double UpperDeadAreaCenterY => (TankTopY + UpperDeadBoundaryY) / 2.0;
+    private double MeasurementAreaCenterY => (UpperDeadBoundaryY + LowerDeadBoundaryY) / 2.0;
+    private double LowerDeadAreaCenterY => (LowerDeadBoundaryY + TankBottomY) / 2.0;
+
+    private bool HasLevel => LevelPercent.HasValue && double.IsFinite(LevelPercent.Value) && TotalHeightMm > 0 && MeasurementAreaMm > 0;
+    private double PreviewMeasuredLevelMm => HasLevel ? Math.Max(0.0, MeasurementAreaMm * LevelPercent!.Value / 100.0) : 0.0;
+
+    private double PreviewLiquidHeightMm
+    {
+        get
+        {
+            if (!HasLevel)
+                return 0.0;
+
+            var height = LowerDeadArea + PreviewMeasuredLevelMm;
+
+            if (!CalculateAbove100)
+                height = Math.Min(height, LowerDeadArea + MeasurementAreaMm);
+
+            return Math.Clamp(height, 0.0, TotalHeightMm);
+        }
+    }
+
+    private double FillY => TotalHeightMm > 0 ? TankBottomY - TankVisualHeight * PreviewLiquidHeightMm / TotalHeightMm : TankBottomY;
+
+    // ============================================================
+    // Контур Type 8.
+    // Верх и цилиндрическая часть полностью такие же, как у Type 5.
+    //
+    // Отличается только нижнее днище:
+    // BodyBottomY -> большое основание dimB.
+    // TankBottomY -> малое основание dimG.
+    // ============================================================
+
+    private string TankPath
+    {
+        get
+        {
+            // dimC = 0:
+            //
+            // нижнее днище отсутствует,
+            // получаем обычный цилиндр с плоским дном.
+            if (HeadVisualHeight <= 0.0)
+            {
+                return string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"M {TankLeft:0.###} {TankTopY:0.###} " +
+                    $"L {TankRight:0.###} {TankTopY:0.###} " +
+                    $"L {TankRight:0.###} {TankBottomY:0.###} " +
+                    $"L {TankLeft:0.###} {TankBottomY:0.###} Z");
+            }
+
+            // Нижнее коническое / усечённо-коническое днище.
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"M {TankLeft:0.###} {TankTopY:0.###} " +
+                $"L {TankRight:0.###} {TankTopY:0.###} " +
+                $"L {TankRight:0.###} {BodyBottomY:0.###} " +
+                $"L {SmallBottomRight:0.###} {TankBottomY:0.###} " +
+                $"L {SmallBottomLeft:0.###} {TankBottomY:0.###} " +
+                $"L {TankLeft:0.###} {BodyBottomY:0.###} Z");
+        }
+    }
+
+    private string ClipUrl => $"url(#{ClipId})";
+
+    // ============================================================
+    // Правая граница Tank на заданной вертикальной координате.
+    // В цилиндре всегда TankRight.
+    // В нижнем усечённом конусе правая стенка линейно идёт от TankRight до SmallBottomRight.
+    // ============================================================
+
+    private double GetTankRightAtY(double y)
+    {
+        if (HeadVisualHeight <= 0.0 || y <= BodyBottomY)
+            return TankRight;
+
+        var ratio = Math.Clamp((y - BodyBottomY) / HeadVisualHeight, 0.0, 1.0);
+
+        return TankRight + (SmallBottomRight - TankRight) * ratio;
+    }
+
+    private double GetBundleTubeX(int index)
+    {
+        return BundleLeft + BundleWidth * index / (BundleTubeCount + 1.0);
+    }
+
+    private string GetOuterLeftFieldStyle(double centerY)
+    {
+        var fieldRightX = DimAScaleX - FieldGapFromScale;
+        return string.Create(CultureInfo.InvariantCulture,
+            $"left:{PctX(fieldRightX):0.###}%; top:{PctY(centerY):0.###}%; transform:translate(-100%, -50%);");
+    }
+
+    private string GetInnerLeftFieldStyle(double centerY)
+    {
+        var fieldRightX = BundleScaleX - FieldGapFromScale;
+        return string.Create(CultureInfo.InvariantCulture,
+            $"left:{PctX(fieldRightX):0.###}%; top:{PctY(centerY):0.###}%; transform:translate(-100%, -50%);");
+    }
+
+    private string DimBFieldStyle => string.Create(CultureInfo.InvariantCulture,
+        $"left:{PctX(TankCenterX):0.###}%; top:{PctY(DimBScaleY + FieldGapFromScale):0.###}%; transform:translateX(-50%);");
+
+    private string DimFFieldStyle => string.Create(CultureInfo.InvariantCulture,
+        $"left:{PctX(TankCenterX):0.###}%; top:{PctY(42.0):0.###}%; transform:translateX(-50%);");
+
+    private string GetRightFieldStyle(double centerY)
+    {
+        var fieldLeftX = RightMeasurementScaleX + FieldGapFromScale;
+        return string.Create(CultureInfo.InvariantCulture,
+            $"left:{PctX(fieldLeftX):0.###}%; top:{PctY(centerY):0.###}%; transform:translateY(-50%);");
+    }
+
+    private string LevelLabelStyle
+    {
+        get
+        {
+            var labelY = Math.Max(TankTopY + 18.0, FillY - 10.0);
+            return string.Create(CultureInfo.InvariantCulture,
+                $"left:{PctX(TankCenterX):0.###}%; top:{PctY(labelY):0.###}%;");
+        }
+    }
+
+    private string LevelLabel => HasLevel ? $"{LevelPercent!.Value:0.###}% / {PreviewMeasuredLevelMm:0} mm" : "";
+
+    private double PctX(double x) => x / SvgWidth * 100.0;
+    private double PctY(double y) => y / SvgHeight * 100.0;
+    private static string Svg(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+}
