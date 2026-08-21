@@ -530,20 +530,19 @@
                         </RadzenAlert>
                     }
 
-
-                    @if (!IsOutputBindingReady)
+                    @if (MissingTankOutputItems.Count > 0)
                     {
                         <RadzenAlert AlertStyle="AlertStyle.Danger"
-                                     AllowClose="false"
-                                     ShowIcon="true"
-                                     class="tank-warning">
+                                        Variant="Variant.Filled"
+                                        Shade="Shade.Default"
+                                        AllowClose="false">
 
-                            One or more Tank output tags were not found.
+                            Tank structure does not contain required output ITEM(s):
+                            <strong>@string.Join(", ", MissingTankOutputItems)</strong>.
                             Output writes cannot be enabled.
 
                         </RadzenAlert>
                     }
-
 
                     <!-- Calculated values -->
                     <section class="tank-value-section">
@@ -882,7 +881,6 @@
 
     private int SelectedTypeNumber => GetTypeNumber(_selectedDefinitionCode);
 
-
     /// <summary>
     /// S02.R02.LC01.Tank -> S02.R02.LC01
     /// </summary>
@@ -902,7 +900,6 @@
 
     private string ExpectedDensityName => TankRoot + ".Density";
 
-
     private EquipmentDto? LinkedLevel =>
         EquipmentCatalog.FirstOrDefault(item =>
             !item.IsGroup
@@ -910,18 +907,10 @@
             && item.TypeGroup == EquipmentTypeGroup.AI
             && string.Equals(item.Name, ExpectedLevelName, StringComparison.OrdinalIgnoreCase));
 
-
     private CalcModelDto? LinkedDensity =>
         CalcModels.FirstOrDefault(item =>
             item.Type == CalcModelTypeDto.Density
             && string.Equals(item.Name, ExpectedDensityName, StringComparison.OrdinalIgnoreCase));
-
-
-    /// <summary>
-    /// Реальный Density HMI tag уже содержится в Calc Catalog.
-    /// Сначала пробуем наиболее специфичный suffix, затем обычный *_HMI.
-    /// </summary>
-    private string? DensityHmiTag => FindTag(LinkedDensity?.TagNames, "_DENS_HMI", "_HMI");
 
     private bool IsLevelTankReady => LinkedLevel is not null && LinkedDensity is not null && !string.IsNullOrWhiteSpace(_levelRawTag) && !string.IsNullOrWhiteSpace(DensityHmiTag);
 
@@ -1057,6 +1046,29 @@
     private bool IsOutputBindingReady =>
         OutputRows.Count > 0
         && OutputRows.All(output => !string.IsNullOrWhiteSpace(output.TagName));
+
+    // ============================================================
+    // Проверка фиксированной структуры Tank.
+    //
+    // Plant SCADA Tank должен содержать:
+    //
+    // HMax -> H max
+    // HHmi -> calculated Level
+    // VHmi -> Volume
+    // MHmi -> Mass
+    //
+    // Здесь мы больше не проверяем suffix реального TAG.
+    // Проверяем именно наличие ITEM в структуре Equipment.
+    // ============================================================
+    private static readonly string[] RequiredTankOutputItems =
+    [
+        "HMax",
+        "HHmi",
+        "VHmi",
+        "MHmi"
+    ];
+
+    private IReadOnlyList<string> MissingTankOutputItems => RequiredTankOutputItems.Where(item => GetItemTag(Model, item) is null).ToList();
 
     protected override async Task OnInitializedAsync()
     {
@@ -1520,38 +1532,73 @@
             .ToList();
     }
 
+    // ============================================================
+    // Density
+    //
+    // Реальная структура Density, которую вернула Plant SCADA:
+    //
+    // CompN
+    // DeltaD
+    // Perc0
+    // Perc1
+    // Perc2
+    // Perc3
+    // Perc4
+    // Sel
+    // ValCalc
+    // ValHmi
+    //
+    // Для Tank calculation используется именно ValHmi.
+    // ============================================================
+    private string? DensityHmiTag => GetItemTag(LinkedDensity, "ValHmi");
+
+
+    // ============================================================
+    // Tank outputs
+    //
+    // Реальная структура Tank:
+    //
+    // HMax -> calculated H max
+    // HHmi -> calculated Level
+    // VHmi -> calculated Volume
+    // MHmi -> calculated Mass
+    //
+    // Слева остаются логические имена TechMES.Calc,
+    // справа — фиксированные ITEM Plant SCADA.
+    //
+    // Calc-проект при этом не зависит от SCADA naming convention.
+    // ============================================================
     private string? ResolveTankOutputTag(string outputKey)
     {
         return outputKey.ToLowerInvariant() switch
         {
-            "hmax" => FindTag(Model.TagNames, "_H_MAX"),
-            "levelmm" => FindTag(Model.TagNames, "_H_HMI"),
-            "volume" => FindTag(Model.TagNames, "_V_HMI"),
-            "mass" => FindTag(Model.TagNames, "_M_HMI"),
+            "hmax" => GetItemTag(Model, "HMax"),
+            "levelmm" => GetItemTag(Model, "HHmi"),
+            "volume" => GetItemTag(Model, "VHmi"),
+            "mass" => GetItemTag(Model, "MHmi"),
             _ => null
         };
     }
 
-    private static string? FindTag(IEnumerable<string>? tags, params string[] suffixes)
+
+    // ============================================================
+    // Получение реального Variable Tag по ITEM Equipment.
+    //
+    // Вторая проверка OrdinalIgnoreCase нужна только как защита
+    // на случай изменения регистра ITEM при JSON round-trip.
+    // Назначение параметра по имени TAG здесь не определяется.
+    // ============================================================
+    private static string? GetItemTag(CalcModelDto? model, string itemName)
     {
-        if (tags is null)
+        if (model?.ItemTags is null || model.ItemTags.Count == 0 || string.IsNullOrWhiteSpace(itemName))
             return null;
 
-        var source = tags
-            .Where(tag => !string.IsNullOrWhiteSpace(tag))
-            .Select(tag => tag.Trim())
-            .ToList();
+        if (model.ItemTags.TryGetValue(itemName, out var tagName) && !string.IsNullOrWhiteSpace(tagName))
+            return tagName.Trim();
 
-        foreach (var suffix in suffixes)
-        {
-            var tag = source.FirstOrDefault(candidate =>
-                candidate.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+        var item = model.ItemTags.FirstOrDefault(pair => string.Equals(pair.Key, itemName, StringComparison.OrdinalIgnoreCase));
 
-            if (!string.IsNullOrWhiteSpace(tag))
-                return tag;
-        }
-
-        return null;
+        return !string.IsNullOrWhiteSpace(item.Value) ? item.Value.Trim() : null;
     }
 
     private double GetInputNumber(string key)

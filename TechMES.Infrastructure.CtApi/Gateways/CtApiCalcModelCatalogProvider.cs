@@ -22,7 +22,9 @@ namespace TechMES.Infrastructure.CtApi.Gateways;
 public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClient, IOptions<EquipmentCatalogOptions> equipmentOptions, ILogger<CtApiCalcModelCatalogProvider> logger) : ICalcModelCatalogProvider
 {
     private const string TagTableName = "Tag";
+
     private const string EquipmentField = "EQUIPMENT";
+    private const string ItemField = "ITEM";
     private const string TagField = "TAG";
     private const string CommentField = "COMMENT";
 
@@ -66,11 +68,7 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
         try
         {
             var candidates = await FindCandidatesAsync(ct);
-
-            logger.LogInformation(
-                "Calc SCADA catalog refresh started. CandidateEquipmentCount={CandidateCount}.",
-                candidates.Count);
-
+            logger.LogInformation("Calc SCADA catalog refresh started. CandidateEquipmentCount={CandidateCount}.", candidates.Count);
             var result = new List<CalcModelDto>();
 
             foreach (var candidate in candidates.Values.OrderBy(item => item.Equipment, StringComparer.OrdinalIgnoreCase))
@@ -82,10 +80,7 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
                 if (!TryMapType(scadaType, out var type))
                     continue;
 
-                var description = await GetEquipmentCommentAsync(
-                    candidate.Equipment,
-                    candidate.FallbackDescription,
-                    ct);
+                var description = await GetEquipmentCommentAsync(candidate.Equipment, candidate.FallbackDescription, ct);
 
                 result.Add(new CalcModelDto
                 {
@@ -93,7 +88,10 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
                     Description = description,
                     Station = ExtractStation(candidate.Equipment),
                     Type = type,
-                    TagNames = candidate.TagNames.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase).ToList()
+
+                    // Старое представление пока сохраняем.
+                    TagNames = candidate.TagNames.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase).ToList(),
+                    ItemTags = new Dictionary<string, string>(candidate.ItemTags, StringComparer.OrdinalIgnoreCase)
                 });
             }
 
@@ -127,24 +125,37 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
     /// <summary>
     /// Ищет Equipment-кандидатов по известным tag naming conventions.
     ///
-    /// Помимо Equipment сохраняем все реальные TAG-и найденной модели.
-    /// Они уже получены текущим CtApi scan, поэтому отдельный lookup
-    /// для Tank/Density bindings потом не требуется.
+    /// Во время этого же CtApi scan сохраняем две формы данных:
+    ///
+    /// 1. TagNames
+    ///    Старое представление, временно оставленное для совместимости.
+    ///
+    /// 2. ItemTags
+    ///    Новое структурированное представление: ITEM -> TAG
+    ///
+    /// Именно ItemTags дальше будет использовать WEB. Поэтому определять назначение тега по suffix его имени больше не потребуется.
     /// </summary>
     private async Task<Dictionary<string, CalcModelCandidate>> FindCandidatesAsync(CancellationToken ct)
     {
         var result = new Dictionary<string, CalcModelCandidate>(StringComparer.OrdinalIgnoreCase);
-        var cluster = string.IsNullOrWhiteSpace(equipmentOptions.Value.CtApiCluster) ? null : equipmentOptions.Value.CtApiCluster;
+
+        var cluster = string.IsNullOrWhiteSpace(equipmentOptions.Value.CtApiCluster)
+            ? null
+            : equipmentOptions.Value.CtApiCluster;
 
         foreach (var filter in DiscoveryFilters)
         {
             ct.ThrowIfCancellationRequested();
 
-            var rows = await nativeClient.FindAsync(TagTableName, filter, cluster, [EquipmentField, TagField, CommentField], ct);
+            // Теперь вместе с Equipment и реальным TAG читаем также ITEM.
+            // Tank: HmiH, HMax, MHmi, VHmi
+            // Density: CompN, DeltaD, Perc0..Perc4, Sel, ValCalc, ValHmi.
+            var rows = await nativeClient.FindAsync(TagTableName, filter, cluster, [EquipmentField, ItemField, TagField, CommentField], ct);
 
             foreach (var row in rows)
             {
                 var equipment = GetValue(row, EquipmentField).Trim();
+                var item = GetValue(row, ItemField).Trim();
                 var tag = GetValue(row, TagField).Trim();
 
                 if (equipment.Length == 0)
@@ -162,8 +173,13 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
                     candidate.FallbackDescription = comment;
                 }
 
-                if (tag.Length > 0)
-                    candidate.TagNames.Add(tag);
+                if (tag.Length == 0)
+                    continue;
+
+                candidate.TagNames.Add(tag);
+
+                if (item.Length > 0)
+                    candidate.ItemTags[item] = tag;
             }
         }
 
@@ -254,7 +270,9 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
             Description = source.Description,
             Station = source.Station,
             Type = source.Type,
-            TagNames = source.TagNames.ToList()
+
+            TagNames = source.TagNames.ToList(),
+            ItemTags = new Dictionary<string, string>(source.ItemTags, StringComparer.OrdinalIgnoreCase)
         };
     }
 
@@ -367,18 +385,13 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
 
         public string FallbackDescription { get; set; }
 
-
         // Пока оставляем для обратной совместимости. После переключения всех потребителей удалим.
         public HashSet<string> TagNames { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-
         // ============================================================
         // Реальная структура Equipment:
-        //
         // ITEM -> TAG.
-        //
-        // ITEM является частью фиксированного Equipment Type,
-        // поэтому именно его используем как идентификатор параметра.
+        // ITEM является частью фиксированного Equipment Type, поэтому именно его используем как идентификатор параметра.
         // ============================================================
         public Dictionary<string, string> ItemTags { get; } = new(StringComparer.OrdinalIgnoreCase);
     }

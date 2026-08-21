@@ -38,13 +38,6 @@ public sealed class ScadaTagBatchReadRequest
     /// Имена тегов. Runtime удалит дубликаты без учёта регистра.
     /// </summary>
     public List<string> TagNames { get; set; } = [];
-
-    // ============================================================
-    // Реальная структура Equipment из Plant SCADA.
-    // Key   = ITEM Equipment Type.
-    // Value = реальный Variable Tag.
-    // ============================================================
-    public Dictionary<string, string> ItemTags { get; set; } = [];
 }
 
 /// <summary>

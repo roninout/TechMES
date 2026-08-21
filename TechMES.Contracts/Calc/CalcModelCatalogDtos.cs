@@ -61,6 +61,14 @@ public sealed class CalcModelDto
     /// Для Density здесь же находится его *_HMI tag.
     /// </summary>
     public IReadOnlyList<string> TagNames { get; set; } = [];
+
+    /// <summary>
+    /// Реальная структура Equipment из Plant SCADA.
+    ///
+    /// Key   = ITEM Equipment Type.
+    /// Value = реальный Variable Tag.
+    /// </summary>
+    public Dictionary<string, string> ItemTags { get; set; } = [];
 }
 
 /// <summary>
