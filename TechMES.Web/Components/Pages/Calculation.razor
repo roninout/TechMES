@@ -172,19 +172,32 @@
                                         <!-- ============================================================
                                          SCADA output write permission
 
-                                         Показываем только отрицательное состояние.
+                                         Предупреждение имеет смысл только для работающего Job.
 
-                                         Если WriteEnabled = true, дополнительная иконка не нужна:
-                                         нормальное состояние не загромождает список.
+                                         Job.Enabled = false
+                                         -> расчёт не выполняется;
+                                         -> независимо от WriteEnabled отдельное предупреждение
+                                            о записи в SCADA не показываем.
 
-                                         Если Job ещё вообще не создан, иконку тоже не показываем:
-                                         состояние "Not configured" уже показывает settings.
+                                         Job.Enabled = true && Job.WriteEnabled = false
+                                         -> расчёт выполняется;
+                                         -> результаты считаются;
+                                         -> запись результатов в SCADA запрещена;
+                                         -> показываем красную warning-иконку.
+
+                                         Job.Enabled = true && Job.WriteEnabled = true
+                                         -> нормальное рабочее состояние;
+                                         -> дополнительную иконку не показываем.
+
+                                         Используем сохранённое состояние Job, а не несохранённые
+                                         значения текущего редактора. Поэтому список отражает именно
+                                         ту конфигурацию, с которой сейчас работает Runtime.
                                          ============================================================ -->
-                                        @if (job is not null && !job.WriteEnabled)
+                                        @if (job?.Enabled == true && job.WriteEnabled != true)
                                         {
                                             <RadzenIcon Icon="error_outline"
                                                         class="calc-model-status-icon is-danger"
-                                                        title="SCADA output writing is disabled. Calculated values are not written to SCADA." />
+                                                        title="SCADA output writing is disabled. Calculated values are not written to SCADA." />                                        
                                         }
 
 
