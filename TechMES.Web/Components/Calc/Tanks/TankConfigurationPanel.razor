@@ -1043,21 +1043,16 @@
             .ToList()
         ?? [];
 
-    private bool IsOutputBindingReady =>
-        OutputRows.Count > 0
-        && OutputRows.All(output => !string.IsNullOrWhiteSpace(output.TagName));
+    private bool IsOutputBindingReady => OutputRows.Count > 0 && OutputRows.All(output => !string.IsNullOrWhiteSpace(output.TagName));
 
     // ============================================================
     // Проверка фиксированной структуры Tank.
-    //
-    // Plant SCADA Tank должен содержать:
     //
     // HMax -> H max
     // HHmi -> calculated Level
     // VHmi -> Volume
     // MHmi -> Mass
     //
-    // Здесь мы больше не проверяем suffix реального TAG.
     // Проверяем именно наличие ITEM в структуре Equipment.
     // ============================================================
     private static readonly string[] RequiredTankOutputItems =
@@ -1534,20 +1529,6 @@
 
     // ============================================================
     // Density
-    //
-    // Реальная структура Density, которую вернула Plant SCADA:
-    //
-    // CompN
-    // DeltaD
-    // Perc0
-    // Perc1
-    // Perc2
-    // Perc3
-    // Perc4
-    // Sel
-    // ValCalc
-    // ValHmi
-    //
     // Для Tank calculation используется именно ValHmi.
     // ============================================================
     private string? DensityHmiTag => GetItemTag(LinkedDensity, "ValHmi");
@@ -1562,11 +1543,6 @@
     // HHmi -> calculated Level
     // VHmi -> calculated Volume
     // MHmi -> calculated Mass
-    //
-    // Слева остаются логические имена TechMES.Calc,
-    // справа — фиксированные ITEM Plant SCADA.
-    //
-    // Calc-проект при этом не зависит от SCADA naming convention.
     // ============================================================
     private string? ResolveTankOutputTag(string outputKey)
     {

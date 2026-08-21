@@ -126,14 +126,8 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
     /// Ищет Equipment-кандидатов по известным tag naming conventions.
     ///
     /// Во время этого же CtApi scan сохраняем две формы данных:
-    ///
-    /// 1. TagNames
-    ///    Старое представление, временно оставленное для совместимости.
-    ///
-    /// 2. ItemTags
-    ///    Новое структурированное представление: ITEM -> TAG
-    ///
-    /// Именно ItemTags дальше будет использовать WEB. Поэтому определять назначение тега по suffix его имени больше не потребуется.
+    /// 1. TagNames. Старое представление, временно оставленное для совместимости.
+    /// 2. ItemTags. Новое структурированное представление: ITEM -> TAG
     /// </summary>
     private async Task<Dictionary<string, CalcModelCandidate>> FindCandidatesAsync(CancellationToken ct)
     {

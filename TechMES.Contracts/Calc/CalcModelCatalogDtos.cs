@@ -49,16 +49,7 @@ public sealed class CalcModelDto
     public CalcModelTypeDto Type { get; set; }
 
     /// <summary>
-    /// Реальные variable tags данного Calc Equipment,
-    /// найденные во время Calc Catalog scan.
-    ///
-    /// Например для Tank:
-    /// *_H_MAX
-    /// *_H_HMI
-    /// *_V_HMI
-    /// *_M_HMI
-    ///
-    /// Для Density здесь же находится его *_HMI tag.
+    /// Реальные variable tags данного Calc Equipment, найденные во время Calc Catalog scan.
     /// </summary>
     public IReadOnlyList<string> TagNames { get; set; } = [];
 
