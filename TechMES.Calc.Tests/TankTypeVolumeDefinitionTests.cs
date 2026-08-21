@@ -1828,6 +1828,90 @@ public sealed class TankTypeVolumeDefinitionTests
             GetOutput(result, "volume"),
             precision: 10);
     }
+
+    [Fact]
+    public void Type6FrustumLowerHeadHalfHeightMatchesExactGeometry()
+    {
+        var result = CalculateType6(
+            levelRaw: 200.0 / 3300.0 * 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true,
+            dimD: 500);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // R = 0.8 m
+        // r = 0.25 m
+        // h = 0.2 m
+        //
+        // Радиус на половине высоты:
+        //
+        // rh = 0.25 + (0.8 - 0.25) × 0.2 / 0.4
+        //    = 0.525 m
+        //
+        // V =
+        // π × 0.2 / 3 ×
+        // (0.25² + 0.25×0.525 + 0.525²)
+        //
+        // = 0.0983056701185806 m³.
+
+        Assert.Equal(
+            0.0983056701185806,
+            GetOutput(result, "volume"),
+            precision: 10);
+    }
+
+    [Fact]
+    public void Type6FrustumUpperHeadHalfHeightMatchesExactGeometry()
+    {
+        const double liquidHeightMm = 3100.0;
+
+        var result = CalculateType6(
+            levelRaw: liquidHeightMm / 3300.0 * 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true,
+            dimD: 500);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // Нижнее днище заполнено полностью.
+        // Цилиндр заполнен полностью.
+        //
+        // Верхнее днище заполнено на:
+        //
+        // 3100 - 400 - 2500
+        // = 200 mm.
+        //
+        // rx = 0.525 m.
+        //
+        // Vupper =
+        // π × 0.2 / 3 ×
+        // (0.8² + 0.8×0.525 + 0.525²)
+        //
+        // = 0.279732645863391 m³.
+        //
+        // Vtotal =
+        // 0.378038315981972
+        // + 5.026548245743669
+        // + 0.279732645863391
+        //
+        // = 5.684319207589032 m³.
+
+        Assert.Equal(
+            5.684319207589032,
+            GetOutput(result, "volume"),
+            precision: 10);
+    }
     #endregion
 
     #region TYPE 7
