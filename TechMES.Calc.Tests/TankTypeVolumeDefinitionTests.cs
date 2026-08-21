@@ -2240,6 +2240,552 @@ public sealed class TankTypeVolumeDefinitionTests
     }
     #endregion
 
+    #region TYPE 8
+    // ============================================================
+    // TYPE 8
+    //
+    // Type 5 geometry with:
+    // lower conical / frustum head instead of elliptical head.
+    // ============================================================
+
+    [Fact]
+    public void Type8CalculatesKnownWorkingPoint()
+    {
+        // Geometry:
+        //
+        // dimA = 2500 mm - cylindrical height
+        // dimB = 1600 mm - main diameter
+        // dimC = 400 mm  - lower frustum height
+        //
+        // dimD = 1000 mm - tube bundle height
+        // dimE = 500 mm  - distance from cylinder top to bundle
+        // dimF = 120 L   - tube displacement volume
+        //
+        // dimG = 500 mm - small bottom diameter
+        //
+        // Main radius:
+        //
+        // R = 0.8 m
+        //
+        // Small radius:
+        //
+        // r = 0.25 m
+        //
+        // Total height:
+        //
+        // 2500 + 400 = 2900 mm.
+        //
+        // Measurement area:
+        //
+        // 2900 - 150 - 150 = 2600 mm.
+        //
+        // Level.R = 49.8%.
+        //
+        // Measured Level:
+        //
+        // 2600 × 49.8% = 1294.8 mm.
+        //
+        // Physical liquid height:
+        //
+        // 150 + 1294.8 = 1444.8 mm.
+        //
+        // Tube bundle:
+        //
+        // bottom = 400 + 2500 - 500 - 1000
+        //        = 1400 mm.
+        //
+        // Liquid is 44.8 mm inside the tube bundle.
+
+        var result = CalculateType8(
+            levelRaw: 49.8,
+            densityHmi: 1218.1,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 120,
+            dimG: 500,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(2600.0, GetOutput(result, "hMax"), precision: 10);
+        Assert.Equal(1294.8, GetOutput(result, "levelMm"), precision: 10);
+
+        Assert.Equal(2.473357358843166, GetOutput(result, "volume"), precision: 10);
+        Assert.Equal(3.012796598806860, GetOutput(result, "mass"), precision: 10);
+    }
+
+    [Theory]
+    [InlineData(0.0, 0.0)]
+    [InlineData(100.0, 0.03241403670188219)]
+    [InlineData(200.0, 0.09830567011858060)]
+    [InlineData(300.0, 0.20955404747148165)]
+    [InlineData(400.0, 0.37803831598197180)]
+    [InlineData(1000.0, 1.58440989496045240)]
+    [InlineData(1400.0, 2.38865761427943900)]
+    [InlineData(1900.0, 3.33396726342817340)]
+    [InlineData(2400.0, 4.27927691257690700)]
+    [InlineData(2900.0, 5.28458656172564000)]
+    public void Type8VolumeMatchesReferenceGeometry(double liquidHeightMm, double expectedVolumeM3)
+    {
+        const double totalHeightMm = 2900.0;
+
+        // Dead areas = 0.
+        //
+        // Поэтому Level.R напрямую задаёт
+        // физическую высоту жидкости от нижнего основания Tank.
+        var levelRaw = liquidHeightMm / totalHeightMm * 100.0;
+
+        var result = CalculateType8(
+            levelRaw: levelRaw,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 120,
+            dimG: 500,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(liquidHeightMm, GetOutput(result, "levelMm"), precision: 8);
+        Assert.Equal(expectedVolumeM3, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type8LowerFrustumHalfHeightMatchesExactGeometry()
+    {
+        const double totalHeightMm = 2900.0;
+        const double liquidHeightMm = 200.0;
+
+        var result = CalculateType8(
+            levelRaw: liquidHeightMm / totalHeightMm * 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 120,
+            dimG: 500,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // R = 0.8 m
+        // r = 0.25 m
+        // C = 0.4 m
+        // h = 0.2 m
+        //
+        // Current radius:
+        //
+        // rh =
+        // 0.25 + (0.8 - 0.25) × 0.2 / 0.4
+        //
+        // = 0.525 m.
+        //
+        // Current head volume:
+        //
+        // V =
+        // π × 0.2 / 3 ×
+        // (0.25² + 0.25×0.525 + 0.525²)
+        //
+        // = 0.0983056701185806 m³.
+
+        Assert.Equal(0.0983056701185806, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type8FullVolumeSubtractsTubeDisplacement()
+    {
+        var withoutTubes = CalculateType8(
+            levelRaw: 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 0,
+            dimG: 500,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        var withTubes = CalculateType8(
+            levelRaw: 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 120,
+            dimG: 500,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(withoutTubes.IsSuccess, withoutTubes.ErrorMessage);
+        Assert.True(withTubes.IsSuccess, withTubes.ErrorMessage);
+
+        // One full lower frustum:
+        //
+        // π × 0.4 / 3 ×
+        // (0.25² + 0.25×0.8 + 0.8²)
+        //
+        // = 0.3780383159819718 m³.
+        //
+        // Cylinder:
+        //
+        // π × 0.8² × 2.5
+        //
+        // = 5.026548245743669 m³.
+        //
+        // Gross Tank:
+        //
+        // = 5.404586561725640 m³.
+        //
+        // Tubes:
+        //
+        // 120 L = 0.120 m³.
+        //
+        // Net Tank:
+        //
+        // = 5.284586561725640 m³.
+
+        Assert.Equal(5.404586561725640, GetOutput(withoutTubes, "volume"), precision: 10);
+        Assert.Equal(5.284586561725640, GetOutput(withTubes, "volume"), precision: 10);
+        Assert.Equal(0.120, GetOutput(withoutTubes, "volume") - GetOutput(withTubes, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type8TubeDisplacementGrowsLinearlyInsideBundle()
+    {
+        // Bundle:
+        //
+        // bottom = 1400 mm
+        // top    = 2400 mm.
+        //
+        // At liquid height 1900 mm:
+        //
+        // bundle fill = 500 / 1000 = 50%.
+        //
+        // Tube displacement:
+        //
+        // 120 L × 50%
+        // = 60 L
+        // = 0.060 m³.
+
+        var result = CalculateType8(
+            levelRaw: 1900.0 / 2900.0 * 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 120,
+            dimG: 500,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(3.3339672634281734, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type8ZeroSmallDiameterBecomesTrueCone()
+    {
+        var result = CalculateType8(
+            levelRaw: 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 120,
+            dimG: 0,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // dimG = 0.
+        //
+        // Bottom head becomes a true cone:
+        //
+        // Vhead =
+        // 1/3 × π × 0.8² × 0.4
+        //
+        // = 0.26808257310632905 m³.
+        //
+        // Full net Tank:
+        //
+        // 0.26808257310632905
+        // + 5.026548245743669
+        // - 0.120
+        //
+        // = 5.174630818849998 m³.
+
+        Assert.Equal(5.174630818849998, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type8SmallDiameterEqualToMainDiameterBecomesCylinderSection()
+    {
+        var result = CalculateType8(
+            levelRaw: 100.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 120,
+            dimG: 1600,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // dimG = dimB.
+        //
+        // Bottom head has the same radius at both ends.
+        //
+        // Therefore the whole gross Tank is equivalent
+        // to a cylinder with height:
+        //
+        // 2500 + 400 = 2900 mm.
+        //
+        // Net volume:
+        //
+        // π × 0.8² × 2.9 - 0.120
+        //
+        // = 5.710795965062657 m³.
+
+        Assert.Equal(5.710795965062657, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type8RejectsSmallDiameterGreaterThanMainDiameter()
+    {
+        var result = CalculateType8(
+            levelRaw: 50.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 120,
+            dimG: 1700,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: false);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public void Type8RejectsTubeBundleOutsideCylindricalPart()
+    {
+        var result = CalculateType8(
+            levelRaw: 50.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 2200,
+            dimE: 500,
+            dimF: 120,
+            dimG: 500,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: false);
+
+        // dimD + dimE:
+        //
+        // 2200 + 500 = 2700 > dimA = 2500.
+        //
+        // Bundle does not fit inside the cylindrical part.
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public void Type8RejectsTubeVolumeGreaterThanBundleRegion()
+    {
+        var result = CalculateType8(
+            levelRaw: 50.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 2500,
+            dimG: 500,
+            upperDeadArea: 0,
+            lowerDeadArea: 0,
+            calculateAbove100: false);
+
+        // Bundle gross region:
+        //
+        // π × 0.8² × 1.0
+        //
+        // ≈ 2.0106 m³
+        // ≈ 2010.6 L.
+        //
+        // dimF = 2500 L cannot fit inside this region.
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public void Type8StopsVolumeAtMeasurementBoundaryWhenAbove100IsDisabled()
+    {
+        var result = CalculateType8(
+            levelRaw: 110.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 120,
+            dimG: 500,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        // Measurement area:
+        //
+        // 2900 - 150 - 150
+        // = 2600 mm.
+        //
+        // Measured Level:
+        //
+        // 2600 × 110%
+        // = 2860 mm.
+        //
+        // Level itself is not clamped to 100%.
+
+        Assert.Equal(2860.0, GetOutput(result, "levelMm"), precision: 10);
+
+        // Calculate above 100% = OFF.
+        //
+        // Volume stops at the upper measurement boundary:
+        //
+        // 150 + 2600
+        // = 2750 mm.
+
+        Assert.Equal(4.982993666981021, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type8ContinuesVolumeIntoUpperDeadAreaWhenAbove100IsEnabled()
+    {
+        var result = CalculateType8(
+            levelRaw: 110.0,
+            densityHmi: 1000.0,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 120,
+            dimG: 500,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Equal(2860.0, GetOutput(result, "levelMm"), precision: 10);
+
+        // Raw physical height:
+        //
+        // 150 + 2860
+        // = 3010 mm.
+        //
+        // Tank physical height:
+        //
+        // 2900 mm.
+        //
+        // Volume therefore reaches the full net Tank volume.
+
+        Assert.Equal(5.284586561725640, GetOutput(result, "volume"), precision: 10);
+    }
+
+    [Fact]
+    public void Type8ReturnsCalculationHelpTrace()
+    {
+        var result = CalculateType8(
+            levelRaw: 49.8,
+            densityHmi: 1218.1,
+            dimA: 2500,
+            dimB: 1600,
+            dimC: 400,
+            dimD: 1000,
+            dimE: 500,
+            dimF: 120,
+            dimG: 500,
+            upperDeadArea: 150,
+            lowerDeadArea: 150,
+            calculateAbove100: false,
+            includeTrace: true);
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        Assert.Contains(result.Trace, item => item.Key == "help.geometry.small-radius.formula");
+        Assert.Contains(result.Trace, item => item.Key == "help.volume.head-radius.formula");
+        Assert.Contains(result.Trace, item => item.Key == "help.volume.head.formula");
+        Assert.Contains(result.Trace, item => item.Key == "help.geometry.bundle-bottom.formula");
+        Assert.Contains(result.Trace, item => item.Key == "help.volume.tube-displacement.formula");
+        Assert.Contains(result.Trace, item => item.Key == "help.result.volume.calculation");
+        Assert.Contains(result.Trace, item => item.Key == "help.result.mass.calculation");
+    }
+
+    [Fact]
+    public void Type8HasExpectedInitialGeometryDefaults()
+    {
+        var definition = new TankType8VolumeDefinition();
+
+        var parameters = definition.Parameters.ToDictionary(
+            parameter => parameter.Key,
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(2500d, Convert.ToDouble(parameters["dimA"].DefaultValue));
+        Assert.Equal(1600d, Convert.ToDouble(parameters["dimB"].DefaultValue));
+        Assert.Equal(400d, Convert.ToDouble(parameters["dimC"].DefaultValue));
+
+        Assert.Equal(2000d, Convert.ToDouble(parameters["dimD"].DefaultValue));
+        Assert.Equal(200d, Convert.ToDouble(parameters["dimE"].DefaultValue));
+        Assert.Equal(100d, Convert.ToDouble(parameters["dimF"].DefaultValue));
+
+        Assert.Equal(0d, Convert.ToDouble(parameters["dimG"].DefaultValue));
+    }
+
+    #endregion
+
     private static CalculationResult CalculateType1(double levelRaw, double densityHmi, double dimA, double dimB, double dimC, double upperDeadArea, double lowerDeadArea, bool calculateAbove100, bool includeTrace = false)
     {
         var parameters = new CalculationParameterSet(
@@ -2383,6 +2929,31 @@ public sealed class TankTypeVolumeDefinitionTests
             });
 
         return new TankType7VolumeDefinition().Calculate(parameters, includeTrace);
+    }
+
+    private static CalculationResult CalculateType8(double levelRaw, double densityHmi, double dimA, double dimB, double dimC, double dimD, double dimE, double dimF, double dimG, double upperDeadArea, double lowerDeadArea, bool calculateAbove100, bool includeTrace = false)
+    {
+        var parameters = new CalculationParameterSet(
+            new Dictionary<string, object?>
+            {
+                ["levelRaw"] = levelRaw,
+                ["densityHmi"] = densityHmi,
+
+                ["dimA"] = dimA,
+                ["dimB"] = dimB,
+                ["dimC"] = dimC,
+
+                ["dimD"] = dimD,
+                ["dimE"] = dimE,
+                ["dimF"] = dimF,
+                ["dimG"] = dimG,
+
+                ["upperDeadArea"] = upperDeadArea,
+                ["lowerDeadArea"] = lowerDeadArea,
+                ["calculateAbove100"] = calculateAbove100
+            });
+
+        return new TankType8VolumeDefinition().Calculate(parameters, includeTrace);
     }
 
 
