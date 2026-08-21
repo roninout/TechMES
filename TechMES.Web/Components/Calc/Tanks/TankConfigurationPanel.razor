@@ -263,6 +263,28 @@
                                                          UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
                                                          LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
                         }
+                        else if (SelectedTypeNumber == 5)
+                        {
+                            <TankType5InteractivePreview DimA="@CurrentDimA"
+                                                         DimB="@CurrentDimB"
+                                                         DimC="@CurrentDimC"
+                                                         DimD="@CurrentDimD"
+                                                         DimE="@CurrentDimE"
+                                                         DimF="@CurrentDimF"
+                                                         UpperDeadArea="@CurrentUpperDeadArea"
+                                                         LowerDeadArea="@CurrentLowerDeadArea"
+                                                         CalculateAbove100="@CurrentCalculateAbove100"
+                                                         LevelPercent="@CurrentLevelPercent"
+                                                         Disabled="@_isSaving"
+                                                         DimAChanged="@((double value) => SetInputNumber("dimA", value))"
+                                                         DimBChanged="@((double value) => SetInputNumber("dimB", value))"
+                                                         DimCChanged="@((double value) => SetInputNumber("dimC", value))"
+                                                         DimDChanged="@((double value) => SetInputNumber("dimD", value))"
+                                                         DimEChanged="@((double value) => SetInputNumber("dimE", value))"
+                                                         DimFChanged="@((double value) => SetInputNumber("dimF", value))"
+                                                         UpperDeadAreaChanged="@((double value) => SetInputNumber("upperDeadArea", value))"
+                                                         LowerDeadAreaChanged="@((double value) => SetInputNumber("lowerDeadArea", value))" />
+                        }
                         else
                         {
                             <div class="tank-preview-figure">
@@ -886,6 +908,8 @@
     private double CurrentDimB => GetInputNumber("dimB");
     private double CurrentDimC => GetInputNumber("dimC");
     private double CurrentDimD => GetInputNumber("dimD");
+    private double CurrentDimE => GetInputNumber("dimE");
+    private double CurrentDimF => GetInputNumber("dimF");
 
     private double CurrentUpperDeadArea => GetInputNumber("upperDeadArea");
     private double CurrentLowerDeadArea => GetInputNumber("lowerDeadArea");
