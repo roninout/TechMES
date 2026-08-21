@@ -1344,6 +1344,30 @@ public sealed class TankTypeVolumeDefinitionTests
         Assert.Contains(result.Trace, item => item.Key == "help.result.mass.calculation");
     }
 
+    [Fact]
+    public void Type5HasExpectedInitialGeometryDefaults()
+    {
+        // Type 5 имеет собственные defaults для параметров,
+        // смысл которых отличается от других Tank Type.
+        //
+        // Поэтому эти значения задаются непосредственно
+        // в TankType5VolumeDefinition, а не в общей Base.
+
+        var definition = new TankType5VolumeDefinition();
+
+        var parameters = definition.Parameters.ToDictionary(
+            parameter => parameter.Key,
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(2500d, Convert.ToDouble(parameters["dimA"].DefaultValue));
+        Assert.Equal(1600d, Convert.ToDouble(parameters["dimB"].DefaultValue));
+        Assert.Equal(400d, Convert.ToDouble(parameters["dimC"].DefaultValue));
+
+        Assert.Equal(2000d, Convert.ToDouble(parameters["dimD"].DefaultValue));
+        Assert.Equal(200d, Convert.ToDouble(parameters["dimE"].DefaultValue));
+        Assert.Equal(100d, Convert.ToDouble(parameters["dimF"].DefaultValue));
+    }
+
 
     private static CalculationResult CalculateType1(double levelRaw, double densityHmi, double dimA, double dimB, double dimC, double upperDeadArea, double lowerDeadArea, bool calculateAbove100, bool includeTrace = false)
     {

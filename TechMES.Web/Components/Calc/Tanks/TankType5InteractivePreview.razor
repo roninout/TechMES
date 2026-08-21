@@ -384,32 +384,63 @@
             </div>
         }
 
+        @* ============================================================
+           dimE / dimA / dimD
+
+           Эти три поля намеренно находятся в одной колонке
+           с фиксированным вертикальным расстоянием.
+
+           Положение полей НЕ зависит от размеров dimE и dimD.
+           Благодаря этому при маленьких размерах пучка
+           поля никогда не накладываются друг на друга.
+
+           Размерные линии при этом остаются привязаны
+           к реальной геометрии Tank.
+        ============================================================ *@
+
 
         @* ============================================================
-           dimA
-           ============================================================ *@
+           dimE
+           Расстояние от верха цилиндрической части
+           до верхней границы трубного пучка.
+        ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetOuterLeftFieldStyle(DimACenterY)">
+             style="@GetOuterLeftFieldStyle(DimEFieldCenterY)">
 
-            <RadzenFormField Text="dimA" AllowFloatingLabel="false">
-                <RadzenNumeric TValue="double" Value="@DimA" Change="@((double value) => DimAChanged.InvokeAsync(value))"
-                               Format="0.### mm" Disabled="@Disabled" Style="width:100%;" />
+            <RadzenFormField Text="dimE"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@DimE"
+                               Change="@((double value) => DimEChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
             </RadzenFormField>
 
         </div>
 
 
         @* ============================================================
-           dimE
-           ============================================================ *@
+           dimA
+           Высота цилиндрической части.
+        ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetInnerLeftFieldStyle(DimECenterY)">
+             style="@GetOuterLeftFieldStyle(DimACenterY)">
 
-            <RadzenFormField Text="dimE" AllowFloatingLabel="false">
-                <RadzenNumeric TValue="double" Value="@DimE" Change="@((double value) => DimEChanged.InvokeAsync(value))"
-                               Format="0.### mm" Disabled="@Disabled" Style="width:100%;" />
+            <RadzenFormField Text="dimA"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@DimA"
+                               Change="@((double value) => DimAChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
             </RadzenFormField>
 
         </div>
@@ -417,14 +448,22 @@
 
         @* ============================================================
            dimD
-           ============================================================ *@
+           Высота трубного пучка.
+        ============================================================ *@
 
         <div class="tank-side-field"
-             style="@GetInnerLeftFieldStyle(DimDCenterY)">
+             style="@GetOuterLeftFieldStyle(DimDFieldCenterY)">
 
-            <RadzenFormField Text="dimD" AllowFloatingLabel="false">
-                <RadzenNumeric TValue="double" Value="@DimD" Change="@((double value) => DimDChanged.InvokeAsync(value))"
-                               Format="0.### mm" Disabled="@Disabled" Style="width:100%;" />
+            <RadzenFormField Text="dimD"
+                             AllowFloatingLabel="false">
+
+                <RadzenNumeric TValue="double"
+                               Value="@DimD"
+                               Change="@((double value) => DimDChanged.InvokeAsync(value))"
+                               Format="0.### mm"
+                               Disabled="@Disabled"
+                               Style="width:100%;" />
+
             </RadzenFormField>
 
         </div>
@@ -621,9 +660,28 @@
     private double RightDeadAreaScaleX => TankRight + 65.0;
     private double RightMeasurementScaleX => RightDeadAreaScaleX + 25.0;
 
+    // ============================================================
+    // Положение полей слева.
+    //
+    // dimA является центральным полем.
+    // dimE всегда находится выше dimA,
+    // dimD всегда находится ниже dimA.
+    //
+    // Расстояние фиксированное и никак не зависит от реальных значений dimE / dimD.
+    // Поэтому даже при очень маленьком пучке поля никогда не смогут наложиться друг на друга.
+    //
+    // Если позже захочешь увеличить или уменьшить расстояние между этими тремя полями, меняется только одна константа: LeftFieldVerticalGap.
+    // ============================================================
+
+    private const double LeftFieldVerticalGap = 85.0;
+
     private double DimACenterY => (TankTopY + BodyBottomY) / 2.0;
-    private double DimECenterY => (TankTopY + BundleTopY) / 2.0;
-    private double DimDCenterY => (BundleTopY + BundleBottomY) / 2.0;
+
+    private double DimEFieldCenterY => DimACenterY - LeftFieldVerticalGap;
+
+    private double DimDFieldCenterY => DimACenterY + LeftFieldVerticalGap;
+
+    // dimC по-прежнему привязан к своей нижней геометрической зоне.
     private double DimCCenterY => (BodyBottomY + TankBottomY) / 2.0;
 
     private double UpperDeadBoundaryY => TotalHeightMm > 0 ? TankTopY + TankVisualHeight * Math.Clamp(UpperDeadArea, 0.0, TotalHeightMm) / TotalHeightMm : TankTopY;

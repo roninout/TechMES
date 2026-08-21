@@ -42,13 +42,17 @@ namespace TechMES.Calc.Tanks.Types;
 // ============================================================
 public sealed class TankType5VolumeDefinition : TankTypeVolumeDefinitionBase
 {
+    // ============================================================
+    // Type 5 имеет собственные начальные значения.
+    // Не переносим dimD / dimE / dimF в глобальные defaults, потому что эти размеры имеют разный физический смысл у разных Tank Type.
+    // ============================================================
     private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions = CreateParameters(
         Dimension("dimA", "dimA", 10, minimum: 1d),
         Dimension("dimB", "dimB", 11, minimum: 1d),
         Dimension("dimC", "dimC", 12),
-        Dimension("dimD", "dimD", 13, minimum: 1d),
-        Dimension("dimE", "dimE", 14),
-        Dimension("dimF", "dimF — reboiler tube volume", 15, unit: "L", minimum: 0d, step: 0.1, decimals: 1));
+        Dimension("dimD", "dimD", 13, defaultValue: 2000d, minimum: 1d),
+        Dimension("dimE", "dimE", 14, defaultValue: 200d),
+        Dimension("dimF", "dimF — reboiler tube volume", 15, unit: "L", defaultValue: 100d, minimum: 0d, step: 0.1, decimals: 1));
 
     public override string Code => "tank.volume.type5";
     public override string Name => "Type 5 — column with internal reboiler";
