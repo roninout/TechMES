@@ -88,9 +88,7 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
                     Description = description,
                     Station = ExtractStation(candidate.Equipment),
                     Type = type,
-
-                    // Старое представление пока сохраняем.
-                    TagNames = candidate.TagNames.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase).ToList(),
+                    // Сохраняем реальную структуру Equipment.
                     ItemTags = new Dictionary<string, string>(candidate.ItemTags, StringComparer.OrdinalIgnoreCase)
                 });
             }
@@ -125,9 +123,15 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
     /// <summary>
     /// Ищет Equipment-кандидатов по известным tag naming conventions.
     ///
-    /// Во время этого же CtApi scan сохраняем две формы данных:
-    /// 1. TagNames. Старое представление, временно оставленное для совместимости.
-    /// 2. ItemTags. Новое структурированное представление: ITEM -> TAG
+    /// Naming convention используется ТОЛЬКО для первичного discovery
+    /// подходящих Equipment в большой Tag table.
+    ///
+    /// После обнаружения Equipment назначение его параметров
+    /// определяется исключительно структурой:
+    ///
+    /// ITEM -> TAG
+    ///
+    /// Поэтому Tank/Density UI больше не анализирует suffix Variable Tag.
     /// </summary>
     private async Task<Dictionary<string, CalcModelCandidate>> FindCandidatesAsync(CancellationToken ct)
     {
@@ -141,10 +145,15 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
         {
             ct.ThrowIfCancellationRequested();
 
-            // Теперь вместе с Equipment и реальным TAG читаем также ITEM.
-            // Tank: HmiH, HMax, MHmi, VHmi
+            // Вместе с Equipment и реальным TAG обязательно читаем ITEM.
+            // Tank: HHmi, HMax, MHmi, VHmi
             // Density: CompN, DeltaD, Perc0..Perc4, Sel, ValCalc, ValHmi.
-            var rows = await nativeClient.FindAsync(TagTableName, filter, cluster, [EquipmentField, ItemField, TagField, CommentField], ct);
+            var rows = await nativeClient.FindAsync(
+                TagTableName,
+                filter,
+                cluster,
+                [EquipmentField, ItemField, TagField, CommentField],
+                ct);
 
             foreach (var row in rows)
             {
@@ -169,8 +178,6 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
 
                 if (tag.Length == 0)
                     continue;
-
-                candidate.TagNames.Add(tag);
 
                 if (item.Length > 0)
                     candidate.ItemTags[item] = tag;
@@ -264,8 +271,6 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
             Description = source.Description,
             Station = source.Station,
             Type = source.Type,
-
-            TagNames = source.TagNames.ToList(),
             ItemTags = new Dictionary<string, string>(source.ItemTags, StringComparer.OrdinalIgnoreCase)
         };
     }
@@ -378,9 +383,6 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
         public string Equipment { get; }
 
         public string FallbackDescription { get; set; }
-
-        // Пока оставляем для обратной совместимости. После переключения всех потребителей удалим.
-        public HashSet<string> TagNames { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         // ============================================================
         // Реальная структура Equipment:

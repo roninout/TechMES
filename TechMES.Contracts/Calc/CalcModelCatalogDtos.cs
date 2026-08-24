@@ -49,15 +49,12 @@ public sealed class CalcModelDto
     public CalcModelTypeDto Type { get; set; }
 
     /// <summary>
-    /// Реальные variable tags данного Calc Equipment, найденные во время Calc Catalog scan.
-    /// </summary>
-    public IReadOnlyList<string> TagNames { get; set; } = [];
-
-    /// <summary>
     /// Реальная структура Equipment из Plant SCADA.
     ///
     /// Key   = ITEM Equipment Type.
     /// Value = реальный Variable Tag.
+    ///
+    /// Назначение параметра определяется ITEM Equipment Type, а не именем или suffix Variable Tag.
     /// </summary>
     public Dictionary<string, string> ItemTags { get; set; } = [];
 }

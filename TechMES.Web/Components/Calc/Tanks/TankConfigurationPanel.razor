@@ -1045,26 +1045,6 @@
 
     private bool IsOutputBindingReady => OutputRows.Count > 0 && OutputRows.All(output => !string.IsNullOrWhiteSpace(output.TagName));
 
-    // ============================================================
-    // Проверка фиксированной структуры Tank.
-    //
-    // HMax -> H max
-    // HHmi -> calculated Level
-    // VHmi -> Volume
-    // MHmi -> Mass
-    //
-    // Проверяем именно наличие ITEM в структуре Equipment.
-    // ============================================================
-    private static readonly string[] RequiredTankOutputItems =
-    [
-        "HMax",
-        "HHmi",
-        "VHmi",
-        "MHmi"
-    ];
-
-    private IReadOnlyList<string> MissingTankOutputItems => RequiredTankOutputItems.Where(item => GetItemTag(Model, item) is null).ToList();
-
     protected override async Task OnInitializedAsync()
     {
         await LoadDefinitionsAsync();
@@ -1179,12 +1159,32 @@
     /// </summary>
     private void SynchronizeSelection(bool force = false)
     {
-        var tankTagSignature = string.Join("|", Model.TagNames.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase));
-        var densityTagSignature = LinkedDensity is null
-            ? ""
-            : string.Join("|", LinkedDensity.TagNames.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase));
+        // ============================================================
+        // Calc model structure signature
+        //
+        // Context зависит от реальной структуры Equipment ITEM -> TAG.
+        //
+        // Если после Refresh SCADA structure изменилась, например:
+        //
+        // HHmi -> другой Variable Tag
+        //
+        // contextKey тоже изменится и Tank panel корректно
+        // перечитает bindings.
+        // ============================================================
 
-        var newContextKey = $"{Model.Name}|{Job?.Id}|{Job?.Revision}|{_levelRawTag}|{DensityHmiTag}|{tankTagSignature}|{densityTagSignature}";
+        var tankStructureSignature = string.Join("|", Model.ItemTags
+                .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+                .Select(pair => $"{pair.Key}={pair.Value}"));
+
+        var densityStructureSignature = LinkedDensity is null
+            ? ""
+            : string.Join("|", LinkedDensity.ItemTags
+                    .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+                    .Select(pair => $"{pair.Key}={pair.Value}"));
+
+        var newContextKey = $"{Model.Name}|{Job?.Id}|{Job?.Revision}|{_levelRawTag}|{DensityHmiTag}|{tankStructureSignature}|{densityStructureSignature}";
 
         if (!force && string.Equals(_contextKey, newContextKey, StringComparison.Ordinal))
             return;
@@ -1202,8 +1202,15 @@
             BuildInputEditors(SelectedDefinition, null);
         }
 
-        _enabled = Job?.Enabled == true && IsLevelTankReady && IsSensorGeometryValid;
-        _allowOutputWrites = Job?.WriteEnabled == true && IsLevelTankReady && IsOutputBindingReady;
+        _enabled =
+            Job?.Enabled == true
+            && IsLevelTankReady
+            && IsSensorGeometryValid;
+
+        _allowOutputWrites =
+            Job?.WriteEnabled == true
+            && IsLevelTankReady
+            && IsOutputBindingReady;
 
         // Всё, что сейчас загрузили в редактор, является последней сохранённой конфигурацией.
         CaptureSavedEditorState();
@@ -1533,28 +1540,60 @@
     // ============================================================
     private string? DensityHmiTag => GetItemTag(LinkedDensity, "ValHmi");
 
-
     // ============================================================
-    // Tank outputs
+    // Fixed Tank output structure
+    //
+    // Это ЕДИНСТВЕННОЕ место в WEB, где связываются:
+    //
+    // Calculation output -> Tank Equipment ITEM.
     //
     // Реальная структура Tank:
     //
-    // HMax -> calculated H max
-    // HHmi -> calculated Level
-    // VHmi -> calculated Volume
-    // MHmi -> calculated Mass
+    // hMax    -> HMax -> *_H_MAX
+    // levelMm -> HHmi -> *_H_HMI
+    // volume  -> VHmi -> *_V_HMI
+    // mass    -> MHmi -> *_M_HMI
+    //
+    // Variable Tag name здесь не анализируется.
+    // Реальный Tag получаем через ITEM -> TAG из Calc Catalog.
+    // ============================================================
+    private static readonly IReadOnlyDictionary<string, string> TankOutputItems =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["hMax"] = "HMax",
+            ["levelMm"] = "HHmi",
+            ["volume"] = "VHmi",
+            ["mass"] = "MHmi"
+        };
+
+
+    // ============================================================
+    // Проверка полноты структуры Tank.
+    //
+    // Если хотя бы одного обязательного ITEM нет, Output writes включить нельзя.
+    // ============================================================
+    private IReadOnlyList<string> MissingTankOutputItems =>
+        TankOutputItems.Values
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(itemName => GetItemTag(Model, itemName) is null)
+            .ToList();
+
+
+    // ============================================================
+    // Возвращает реальный SCADA Variable Tag
+    // для одного calculation output.
+    //
+    // Назначение output определяется только ITEM,
+    // а не suffix имени Variable Tag.
     // ============================================================
     private string? ResolveTankOutputTag(string outputKey)
     {
-        return outputKey.ToLowerInvariant() switch
-        {
-            "hmax" => GetItemTag(Model, "HMax"),
-            "levelmm" => GetItemTag(Model, "HHmi"),
-            "volume" => GetItemTag(Model, "VHmi"),
-            "mass" => GetItemTag(Model, "MHmi"),
-            _ => null
-        };
+        if (!TankOutputItems.TryGetValue(outputKey, out var itemName))
+            return null;
+
+        return GetItemTag(Model, itemName);
     }
+
 
 
     // ============================================================

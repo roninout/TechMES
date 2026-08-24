@@ -24,7 +24,7 @@ public sealed class TankTypeVolumeDefinitionTests
             var definition = catalog.GetRequired($"tank.volume.type{type}");
 
             Assert.Equal("Tanks", definition.Category);
-            Assert.Equal("3", definition.Version);
+            Assert.Equal("4", definition.Version);
         }
     }
 

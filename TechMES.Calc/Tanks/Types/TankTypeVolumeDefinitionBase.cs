@@ -54,11 +54,22 @@ public abstract class TankTypeVolumeDefinitionBase : CalculationDefinitionBase
 
     public override string Category => "Tanks";
 
-     // Меняем версию, потому что контракт алгоритма теперь другой:
-     //
-     // раньше: levelMm -> volume
-     // теперь: levelRaw + densityHmi -> hMax + levelMm + volume + mass
-    public override string Version => "3";
+    // ============================================================
+    // Tank Definition Version
+    //
+    // Version 4 фиксирует окончательный контракт новой Tank-модели:
+    //
+    // - levelRaw + densityHmi;
+    // - sensor dead areas;
+    // - calculateAbove100;
+    // - точная геометрия Type 1..8;
+    // - итоговые hMax / levelMm / volume / mass;
+    // - окончательные дополнительные размеры Type 6..8.
+    //
+    // Старый Job с другой версией не должен незаметно выполняться
+    // по уже изменённой геометрической модели.
+    // ============================================================
+    public override string Version => "4";
 
     public override IReadOnlyList<CalculationOutputDefinition> Outputs => OutputDefinitions;
 
