@@ -47,54 +47,60 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
     /// </summary>
     private static readonly IReadOnlyList<CalculationParameterDefinition> PropertyParameterDefinitions =
     [
+        // Temperature является настоящим процессным входом.
+        // Specialized Density UI не будет искать параметр по ключу "temperatureC".
+        // 
+        // Он увидит Role = ProcessInput и автоматически создаст:
+        // - строку SCADA binding в Settings;
+        // - поле текущего значения в верхней панели.
+        // 
+        // Поэтому при добавлении новых ProcessInput механизм WEB менять уже не потребуется.
         new CalculationParameterDefinition(
-            Key: TemperatureKey,
-            Name: "Temperature",
-            Type: CalculationParameterType.Number,
-            Unit: "°C",
-            IsRequired: true,
-            Minimum: -273.15,
-            Step: 0.1,
-            Decimals: 2,
-            Order: 1,
-            Description: "Mixture temperature used by the substance density correlations."),
+        Key: TemperatureKey,
+        Name: "Temperature",
+        Type: CalculationParameterType.Number,
+        Unit: "°C",
+        IsRequired: true,
+        Minimum: -273.15,
+        Step: 0.1,
+        Decimals: 2,
+        Order: 1,
+        Description: "Mixture temperature used by the substance density correlations.",
+        Role: CalculationParameterRole.ProcessInput),
 
-        new CalculationParameterDefinition(
-            Key: PressureKey,
-            Name: "Absolute pressure",
-            Type: CalculationParameterType.Number,
-            Unit: "bar(abs)",
-            IsRequired: true,
-            Minimum: 0.000001,
-            Step: 0.01,
-            Decimals: 4,
-            Order: 2,
-            Description: "Absolute mixture pressure. Gauge pressure must not be passed here without atmospheric-pressure compensation."),
+    // Pressure также является процессным входом.
+    // 
+    // Контракт использует именно абсолютное давление bar(abs).
+    // Если SCADA содержит gauge pressure, преобразование в absolute
+    // должно выполняться явно, а не скрыто внутри Density formula.
+    new CalculationParameterDefinition(
+        Key: PressureKey,
+        Name: "Absolute pressure",
+        Type: CalculationParameterType.Number,
+        Unit: "bar(abs)",
+        IsRequired: true,
+        Minimum: 0.000001,
+        Step: 0.01,
+        Decimals: 4,
+        Order: 2,
+        Description: "Absolute mixture pressure. Gauge pressure must not be passed here without atmospheric-pressure compensation.",
+        Role: CalculationParameterRole.ProcessInput),
 
-        /*
-         * В старом TechParamsCalc Density рассчитывалась так:
-         *
-         * Mix.GetDensity() -> физическая Density * 10
-         * DELTA_D из OPC -> * 100
-         * ValCalc = DensityRaw + DeltaD * 0.1
-         *
-         * После удаления SCADA scaling это эквивалентно:
-         *
-         * DensityEngineering = Density + DELTA_D
-         *
-         * Поэтому в новой модели correction сразу хранится в kg/m³.
-         */
-        new CalculationParameterDefinition(
-            Key: CorrectionKey,
-            Name: "Density correction",
-            Type: CalculationParameterType.Number,
-            Unit: "kg/m³",
-            IsRequired: false,
-            DefaultValue: 0d,
-            Step: 0.1,
-            Decimals: 3,
-            Order: 3,
-            Description: "Engineering correction added to the calculated density. Corresponds to legacy DELTA_D without SCADA scaling.")
+    // Density correction не является самостоятельным внешним ProcessInput.
+    // В специализированной Density panel мы автоматически свяжем этот параметр с ITEM DeltaD самого Density Equipment.
+    // Если DeltaD в конкретном Equipment Type отсутствует, Settings позволит использовать Constant correction.
+    new CalculationParameterDefinition(
+        Key: CorrectionKey,
+        Name: "Density correction",
+        Type: CalculationParameterType.Number,
+        Unit: "kg/m³",
+        IsRequired: false,
+        DefaultValue: 0d,
+        Step: 0.1,
+        Decimals: 3,
+        Order: 3,
+        Description: "Engineering correction added to the calculated density. Corresponds to legacy DELTA_D without SCADA scaling.",
+        Role: CalculationParameterRole.Configuration)
     ];
 
     private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions = CreateMixtureParameters(PropertyParameterDefinitions);

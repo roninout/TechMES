@@ -295,6 +295,15 @@
                                                 EquipmentCatalog="@_equipmentCatalog"
                                                 JobChanged="@ReloadAfterTankJobChangedAsync" />
                     }
+                    else if (_selectedModel.Type == CalcModelTypeDto.Density)
+                    {
+                        <DensityConfigurationPanel @ref="_densityConfigurationPanel"
+                                                   @key="_selectedModel.Name"
+                                                   Model="@_selectedModel"
+                                                   Job="@selectedJob"
+                                                   State="@selectedState"
+                                                   JobChanged="@ReloadAfterDensityJobChangedAsync" />
+                    }
                     else
                     {
                         <div class="calc-model-placeholder">
@@ -305,7 +314,7 @@
                             <RadzenText Text="@($"{_selectedModel.Type} calculation")"
                                         TextStyle="TextStyle.H6" />
 
-                            <RadzenText Text="Specialized UI will be implemented after Tank."
+                            <RadzenText Text="Specialized UI is not implemented yet."
                                         TextStyle="TextStyle.Body2" />
 
                         </div>
@@ -345,6 +354,7 @@
 
     private CalcModelDto? _selectedModel;
     private TankConfigurationPanel? _tankConfigurationPanel;
+    private DensityConfigurationPanel? _densityConfigurationPanel;
 
     /// <summary>
     /// true, если левая панель списка Calc models скрыта.
@@ -487,6 +497,19 @@
     /// поэтому повторно загружать их и заново resolve Level.R не нужно.
     /// </summary>
     private Task ReloadAfterTankJobChangedAsync()
+    {
+        return ReloadJobsAndStatesAsync();
+    }
+
+    /// <summary>
+    /// После создания или сохранения Density Job повторно читаем
+    /// только Jobs и Runtime States.
+    ///
+    /// Calc Model Catalog не изменился:
+    /// ITEM -> TAG структура Density остаётся той же.
+    /// Поэтому выполнять новый CtApi catalog scan здесь не требуется.
+    /// </summary>
+    private Task ReloadAfterDensityJobChangedAsync()
     {
         return ReloadJobsAndStatesAsync();
     }
@@ -698,12 +721,16 @@
 
     private async Task SelectModelAsync(CalcModelDto model)
     {
-        if (_selectedModel is not null && string.Equals(_selectedModel.Name, model.Name, StringComparison.OrdinalIgnoreCase))
+        if (_selectedModel is not null && string.Equals(_selectedModel.Name, model.Name,StringComparison.OrdinalIgnoreCase))
             return;
 
-        if (_tankConfigurationPanel?.HasPendingChanges == true)
+        // Каждая специализированная Calculation panel сообщает, есть ли в ней несохранённая конфигурация.
+        // При добавлении Density нельзя оставлять проверку, жёстко привязанную только к Tank.
+        var hasPendingChanges = _tankConfigurationPanel?.HasPendingChanges == true || _densityConfigurationPanel?.HasPendingChanges == true;
+
+        if (hasPendingChanges)
         {
-            var confirmed = await DialogService.Confirm("The current Tank configuration contains unsaved changes. Discard them and open another calculation?", "Unsaved changes",
+            var confirmed = await DialogService.Confirm("The current calculation configuration contains unsaved changes. Discard them and open another calculation?", "Unsaved changes",
                 new ConfirmOptions
                 {
                     OkButtonText = "Discard",
@@ -714,7 +741,6 @@
                 return;
         }
 
-        _tankConfigurationPanel = null;
         _selectedModel = model;
     }
 

@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
+using static TechMES.Contracts.Calc.CalcParameterDefinitionDto;
 
 namespace TechMES.Contracts.Calc;
 
@@ -17,6 +18,19 @@ public enum CalcParameterTypeDto
     Boolean,
     Selection,
     Text
+}
+
+/// <summary>
+/// Назначение входного параметра Calculation Definition.
+/// Configuration: настройка алгоритма, обычно сохраняемая как Constant.
+/// ProcessInput:
+/// фактическое процессное значение, которое специализированный UI должен позволять связать с SCADA Tag или другим Runtime source.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum CalcParameterRoleDto
+{
+    Configuration,
+    ProcessInput
 }
 
 /// <summary>
@@ -57,6 +71,15 @@ public sealed class CalcParameterDefinitionDto
     /// Тип редактора и передаваемого значения.
     /// </summary>
     public CalcParameterTypeDto Type { get; set; }
+
+
+    /// <summary>
+    /// Назначение параметра внутри алгоритма.
+    ///
+    /// Специализированные панели Density/Capacity используют это поле,
+    /// чтобы автоматически отделить процессные bindings от постоянных настроек расчёта.
+    /// </summary>
+    public CalcParameterRoleDto Role { get; set; }
 
     /// <summary>
     /// Единица измерения, если она применима.

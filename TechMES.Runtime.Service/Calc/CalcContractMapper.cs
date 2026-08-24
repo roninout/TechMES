@@ -154,7 +154,14 @@ internal static class CalcContractMapper
     }
 
     /// <summary>
-    /// Преобразует описание входного параметра.
+    /// Преобразует внутреннее описание одного Calculation Parameter в DTO, передаваемый WEB и Maintenance.
+    ///
+    /// Важно передавать не только Type, но и Role.
+    /// Type отвечает на вопрос: "какого типа это значение?"
+    /// Role отвечает на вопрос: "что это за значение с точки зрения алгоритма?"
+    ///
+    /// Благодаря Role специализированный WEB UI Density/Capacity не должен знать конкретные имена temperatureC/pressureBarAbsolute.
+    /// Он просто отображает все параметры Role == ProcessInput.
     /// </summary>
     private static CalcParameterDefinitionDto ToParameterDefinitionDto(CalculationParameterDefinition parameter)
     {
@@ -165,9 +172,12 @@ internal static class CalcContractMapper
             Key = parameter.Key,
             Name = parameter.Name,
             Type = ToParameterTypeDto(parameter.Type),
+            Role = ToParameterRoleDto(parameter.Role),
+
             Unit = parameter.Unit,
             IsRequired = parameter.IsRequired,
             DefaultValue = ToJsonElement(parameter.DefaultValue),
+
             Minimum = parameter.Minimum,
             Maximum = parameter.Maximum,
             Step = parameter.Step,
@@ -175,13 +185,28 @@ internal static class CalcContractMapper
             Order = parameter.Order,
             Description = parameter.Description,
 
-            Options = options
-                .Select(option => new CalcParameterOptionDto
-                {
-                    Value = option.Value,
-                    Name = option.Name
-                })
-                .ToList()
+            Options = options.Select(option => new CalcParameterOptionDto
+                        {
+                            Value = option.Value,
+                            Name = option.Name
+                        })
+                        .ToList()
+        };
+    }
+
+    /// <summary>
+    /// Преобразует внутреннюю роль Calculation Parameter в транспортную модель Contracts.
+    ///
+    /// Отдельный switch используется намеренно:
+    /// TechMES.Contracts не должен зависеть от TechMES.Calc, даже если enum сейчас содержит одинаковые значения.
+    /// </summary>
+    private static CalcParameterRoleDto ToParameterRoleDto(CalculationParameterRole role)
+    {
+        return role switch
+        {
+            CalculationParameterRole.Configuration => CalcParameterRoleDto.Configuration,
+            CalculationParameterRole.ProcessInput => CalcParameterRoleDto.ProcessInput,
+            _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unsupported calculation parameter role.")
         };
     }
 

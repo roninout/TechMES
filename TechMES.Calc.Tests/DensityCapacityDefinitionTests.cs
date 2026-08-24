@@ -207,6 +207,34 @@ public sealed class DensityCapacityDefinitionTests
         Assert.Equal("parameter.above-maximum", result.ErrorCode);
     }
 
+    [Fact]
+    public void DensityExposesTemperatureAndPressureAsProcessInputs()
+    {
+        var definition = new DensityCalculationDefinition();
+
+        var processInputs = definition.Parameters
+            .Where(parameter => parameter.Role == CalculationParameterRole.ProcessInput)
+            .OrderBy(parameter => parameter.Order)
+            .Select(parameter => parameter.Key)
+            .ToArray();
+
+        Assert.Equal(["temperatureC", "pressureBarAbsolute"], processInputs);
+    }
+
+    [Fact]
+    public void CapacityExposesTemperatureAndPressureAsProcessInputs()
+    {
+        var definition = new CapacityCalculationDefinition();
+
+        var processInputs = definition.Parameters
+            .Where(parameter => parameter.Role == CalculationParameterRole.ProcessInput)
+            .OrderBy(parameter => parameter.Order)
+            .Select(parameter => parameter.Key)
+            .ToArray();
+
+        Assert.Equal(["temperatureC", "pressureBarAbsolute"], processInputs);
+    }
+
     private static double GetOutput(TechMES.Calc.Results.CalculationResult result, string key)
     {
         return result.Outputs.Single(item => string.Equals(item.Key, key, StringComparison.OrdinalIgnoreCase)).Value;
