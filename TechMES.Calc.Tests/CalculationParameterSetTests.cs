@@ -43,11 +43,8 @@ public sealed class CalculationParameterSetTests
     [Fact]
     public void ThrowsForMissingRequiredParameter()
     {
-        var parameters = new CalculationParameterSet(
-            new Dictionary<string, object?>());
-
-        var exception = Assert.Throws<CalculationException>(
-            () => parameters.GetRequiredDouble("pressure"));
+        var parameters = new CalculationParameterSet(new Dictionary<string, object?>());
+        var exception = Assert.Throws<CalculationException>(() => parameters.GetRequiredDouble("pressure"));
 
         Assert.Equal("parameter.missing", exception.Code);
     }
@@ -61,8 +58,7 @@ public sealed class CalculationParameterSetTests
                 ["temperature"] = double.NaN
             });
 
-        var exception = Assert.Throws<CalculationException>(
-            () => parameters.GetRequiredDouble("temperature"));
+        var exception = Assert.Throws<CalculationException>(() => parameters.GetRequiredDouble("temperature"));
 
         Assert.Equal("parameter.not-finite", exception.Code);
     }
