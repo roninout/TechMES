@@ -41,6 +41,25 @@ public sealed class SubstancePropertyTests
     }
 
     [Fact]
+    public void ZeroPercentComponentDoesNotParticipateInDensityCalculation()
+    {
+        var densityWithoutZeroComponent = MixturePropertyCalculator.CalculateDensityKgPerM3(
+            [new MixtureComponent("ACN", 100d)],
+            temperatureC: 20d,
+            pressureBarAbsolute: 1d);
+
+        var densityWithZeroComponent = MixturePropertyCalculator.CalculateDensityKgPerM3(
+            [
+                new MixtureComponent("ACN", 100d),
+                new MixtureComponent("Fusel", 0d)
+            ],
+            temperatureC: 20d,
+            pressureBarAbsolute: 1d);
+
+        Assert.Equal(densityWithoutZeroComponent, densityWithZeroComponent, precision: 12);
+    }
+
+    [Fact]
     public void PureAcetonitrileCapacityIsExplicitlyConvertedToJPerKgK()
     {
         var capacity = MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
@@ -62,11 +81,27 @@ public sealed class SubstancePropertyTests
         Assert.Equal("mixture.percent-total-invalid", exception.Code);
     }
 
+    [Fact]
+    public void AbsolutePressureMustBeGreaterThanZero()
+    {
+        var exception = Assert.Throws<CalculationException>(() =>
+            MixturePropertyCalculator.CalculateDensityKgPerM3(
+                [new MixtureComponent("Water", 100d)],
+                temperatureC: 20d,
+                pressureBarAbsolute: 0d));
+
+        Assert.Equal("mixture.pressure.invalid", exception.Code);
+    }
+
     [Theory]
     [InlineData("Freezium")]
     [InlineData("Methan")]
     [InlineData("Fusel")]
-    public void DensityDoesNotUseKnownLegacyNativeUnitModels(string code)
+    [InlineData("HCL")]
+    [InlineData("HCLS")]
+    [InlineData("NaOH")]
+    [InlineData("NaOHS")]
+    public void DensityDoesNotUseUnverifiedLegacyModels(string code)
     {
         var exception = Assert.Throws<CalculationException>(() =>
             MixturePropertyCalculator.CalculateDensityKgPerM3(
@@ -75,6 +110,24 @@ public sealed class SubstancePropertyTests
                 pressureBarAbsolute: 1d));
 
         Assert.Equal("substance.density.units-not-normalized", exception.Code);
+    }
+
+    [Theory]
+    [InlineData("Methan")]
+    [InlineData("Fusel")]
+    [InlineData("Diesel")]
+    [InlineData("HCL")]
+    [InlineData("HCLS")]
+    [InlineData("NaOH")]
+    [InlineData("NaOHS")]
+    public void CapacityDoesNotUseUnverifiedLegacyModels(string code)
+    {
+        var exception = Assert.Throws<CalculationException>(() =>
+            MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
+                [new MixtureComponent(code, 100d)],
+                temperatureC: 20d));
+
+        Assert.Equal("substance.capacity.units-not-normalized", exception.Code);
     }
 
     [Fact]
@@ -90,6 +143,34 @@ public sealed class SubstancePropertyTests
         Assert.Equal(2, values.Count);
         Assert.All(values, value => Assert.InRange(value, 0d, 100d));
         Assert.Equal(100d, values.Sum(), precision: 8);
+    }
+
+    [Fact]
+    public void EmptyContentComponentIsNotSilentlyRemoved()
+    {
+        var exception = Assert.Throws<CalculationException>(() =>
+            ContentPropertyCalculator.CalculatePercent(
+                new ContentCalculationRequest(
+                    Components: ["PO", "", "Water"],
+                    TemperatureC: 50d,
+                    PressureBarAbsolute: 1d,
+                    ConfigurationCode: 10)));
+
+        Assert.Equal("content.component.code-empty", exception.Code);
+    }
+
+    [Fact]
+    public void DuplicateContentComponentIsRejected()
+    {
+        var exception = Assert.Throws<CalculationException>(() =>
+            ContentPropertyCalculator.CalculatePercent(
+                new ContentCalculationRequest(
+                    Components: ["Water", "Water"],
+                    TemperatureC: 50d,
+                    PressureBarAbsolute: 1d,
+                    ConfigurationCode: 10)));
+
+        Assert.Equal("content.component.duplicate", exception.Code);
     }
 
     [Fact]
