@@ -165,59 +165,31 @@ public sealed class ParamApiClient
     }
 
     /// <summary>
-    /// Проверяет один PID Tune-тег.
+    /// Проверяет произвольный числовой Plant SCADA Variable Tag через Runtime.Service.
     ///
-    /// request.RequireTrend=true:
-    ///     PV/SP -> numeric TagRead + trend-reference.
+    /// request.RequireTrend = false:
+    /// выполняется обычная online-проверка числового тега.
     ///
-    /// request.RequireTrend=false:
-    ///     Test Kp -> только numeric online TagRead.
+    /// request.RequireTrend = true:
+    /// кроме текущего числового значения требуется trend-reference.
+    ///
+    /// Метод общий и не требует equipmentName.
     /// </summary>
-    public async Task<ParamTuneCheckResponse> CheckTuneTagAsync(string equipmentName, ParamTuneCheckRequest request, CancellationToken ct = default)
+    public async Task<ParamTagCheckResponse> CheckNumericTagAsync(ParamTagCheckRequest request, CancellationToken ct = default)
     {
-        var client =
-            CreateClient();
+        var client = CreateClient();
 
-        var encodedName =
-            Uri.EscapeDataString(
-                equipmentName);
+        using var response = await client.PostAsJsonAsync("api/param/tags/check", request, ct);
+        var result = await response.Content.ReadFromJsonAsync<ParamTagCheckResponse>(cancellationToken: ct);
 
-        using var response =
-            await client.PostAsJsonAsync(
-                $"api/param/{encodedName}/tune/check",
-                request,
-                ct);
-
-        var result =
-            await response.Content
-                .ReadFromJsonAsync<ParamTuneCheckResponse>(
-                    cancellationToken: ct);
-
-        return result
-            ?? new ParamTuneCheckResponse
-            {
-                TagName =
-                    request.TagName,
-
-                Found =
-                    false,
-
-                /*
-                 * Важно для fallback:
-                 * Test Kp не должен внезапно превратиться
-                 * в "trend required" из-за default=true DTO.
-                 */
-                TrendRequired =
-                    request.RequireTrend,
-
-                TrendFound =
-                    false,
-
-                Message =
-                    response.IsSuccessStatusCode
-                        ? "Runtime Service returned empty PID Tune check response."
-                        : $"Runtime Service rejected PID Tune check: {(int)response.StatusCode} {response.ReasonPhrase}"
-            };
+        return result ?? new ParamTagCheckResponse
+        {
+            TagName = request.TagName,
+            Found = false,
+            TrendRequired = request.RequireTrend,
+            TrendFound = false,
+            Message = response.IsSuccessStatusCode ? "Runtime Service returned empty numeric tag check response." : $"Runtime Service rejected numeric tag check: {(int)response.StatusCode} {response.ReasonPhrase}"
+        };
     }
 
     /// <summary>
@@ -228,10 +200,7 @@ public sealed class ParamApiClient
         var client = CreateClient();
         var encodedName = Uri.EscapeDataString(equipmentName);
 
-        using var response = await client.PostAsJsonAsync(
-            $"api/param/{encodedName}/tune",
-            request,
-            ct);
+        using var response = await client.PostAsJsonAsync($"api/param/{encodedName}/tune", request, ct);
 
         response.EnsureSuccessStatusCode();
 
@@ -262,16 +231,12 @@ public sealed class ParamApiClient
     /// <summary>
     /// Читает DI/DO reference page.
     /// </summary>
-    public async Task<ParamDiDoRefsResponse> GetDiDoRefsAsync(
-        string equipmentName,
-        CancellationToken ct = default)
+    public async Task<ParamDiDoRefsResponse> GetDiDoRefsAsync(string equipmentName, CancellationToken ct = default)
     {
         var client = CreateClient();
         var encodedName = Uri.EscapeDataString(equipmentName);
 
-        var result = await client.GetFromJsonAsync<ParamDiDoRefsResponse>(
-            $"api/param/{encodedName}/refs/dido",
-            ct);
+        var result = await client.GetFromJsonAsync<ParamDiDoRefsResponse>($"api/param/{encodedName}/refs/dido", ct);
 
         return result ?? new ParamDiDoRefsResponse
         {

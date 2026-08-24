@@ -33,15 +33,12 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
     }
 
     /// <summary>
-    /// Возвращает отрицательный результат как для trend-тега,
-    /// так и для online Test Kp.
+    /// Возвращает отрицательный результат общей проверки числового тега, когда CtApi/Param provider недоступен.
+    /// Контракт остаётся тем же для всех потребителей: Tune, Density и других будущих модулей.
     /// </summary>
-    public Task<ParamTuneCheckResponse> CheckTuneTagAsync(
-        string tagName,
-        bool requireTrend,
-        CancellationToken ct = default)
+    public Task<ParamTagCheckResponse> CheckNumericTagAsync(string tagName, bool requireTrend, CancellationToken ct = default)
     {
-        return Task.FromResult(new ParamTuneCheckResponse
+        return Task.FromResult(new ParamTagCheckResponse
         {
             TagName = (tagName ?? "").Trim(),
             Found = false,

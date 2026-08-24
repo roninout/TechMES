@@ -30,17 +30,22 @@ public interface IEquipmentParamProvider
         CancellationToken ct = default);
 
     /// <summary>
-    /// Проверяет Tune-тег.
-    /// requireTrend=true используется для PV/SP:
-    /// тег должен читаться как число и иметь trend-reference.
+    /// Проверяет произвольный числовой Plant SCADA тег.
     ///
-    /// requireTrend=false используется для Test Kp:
-    /// достаточно текущего числового TagRead, trend-reference не запрашивается.
+    /// Всегда выполняется numeric TagRead.
+    ///
+    /// Если requireTrend = true, дополнительно проверяется наличие
+    /// trend-reference для этого Variable Tag.
+    ///
+    /// Метод намеренно не принимает EquipmentDto:
+    /// проверяется уже разрешённое имя Variable Tag.
+    ///
+    /// Это общий Runtime-механизм, который используется:
+    /// - PID Tune для PV/SP/Test Kp;
+    /// - Density для прямых Temperature/Pressure tags;
+    /// - в будущем другими модулями, которым нужна такая же проверка.
     /// </summary>
-    Task<ParamTuneCheckResponse> CheckTuneTagAsync(
-        string tagName,
-        bool requireTrend,
-        CancellationToken ct = default);
+    Task<ParamTagCheckResponse> CheckNumericTagAsync(string tagName, bool requireTrend, CancellationToken ct = default);
 
     /// <summary>
     /// Читает Runtime-данные вкладки PID Tune для VGA:

@@ -21,8 +21,8 @@ public static class ParamEndpoints
     {
         app.MapGet("/api/param/{equipmentName}/snapshot", GetSnapshotAsync);
         app.MapGet("/api/param/{equipmentName}/trend", GetTrendAsync);
+        app.MapPost("/api/param/tags/check", CheckNumericTagAsync); // Общая проверка уже разрешённого числового Variable Tag. Она не принадлежит конкретному Equipment и используется разными модулями.
         app.MapGet("/api/param/{equipmentName}/tune", GetTuneAsync);
-        app.MapPost("/api/param/{equipmentName}/tune/check", CheckTuneAsync);
         app.MapPost("/api/param/{equipmentName}/tune", SaveTuneAsync);
         app.MapGet("/api/param/{equipmentName}/refs/plc", GetPlcRefsAsync);
         app.MapGet("/api/param/{equipmentName}/refs/dido", GetDiDoRefsAsync);
@@ -37,11 +37,7 @@ public static class ParamEndpoints
     /// Возвращает текущие Param-значения и список доступных вкладок.
     /// Этот endpoint вызывается периодически, пока пользователь находится в Param-зоне.
     /// </summary>
-    private static async Task<IResult> GetSnapshotAsync(
-        string equipmentName,
-        IEquipmentCatalogProvider equipmentCatalog,
-        IEquipmentParamProvider paramProvider,
-        CancellationToken ct)
+    private static async Task<IResult> GetSnapshotAsync(string equipmentName, IEquipmentCatalogProvider equipmentCatalog, IEquipmentParamProvider paramProvider, CancellationToken ct)
     {
         var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
 
@@ -114,35 +110,21 @@ public static class ParamEndpoints
     }
 
     /// <summary>
-    /// Проверяет один Tune-тег.
+    /// Проверяет произвольный числовой Plant SCADA Variable Tag.
     ///
-    /// PV/SP приходят с RequireTrend=true:
-    /// требуется числовой TagRead и trend-reference.
+    /// Endpoint намеренно не принимает equipmentName.
     ///
-    /// Test Kp приходит с RequireTrend=false:
-    /// требуется только числовой online TagRead.
+    /// На этом уровне тег уже должен быть разрешён:
+    /// - PID Tune передаёт PV/SP/Test Kp;
+    /// - Density после fallback передаст Temperature/Pressure Variable Tag.
+    ///
+    /// Проверка конкретного Equipment здесь не нужна.
+    /// Если вызывающему коду требуется сначала разрешить Equipment + ITEM,
+    /// он использует существующий Param snapshot endpoint.
     /// </summary>
-    private static async Task<IResult> CheckTuneAsync(string equipmentName, ParamTuneCheckRequest request, IEquipmentCatalogProvider equipmentCatalog, IEquipmentParamProvider paramProvider, CancellationToken ct)
+    private static async Task<IResult> CheckNumericTagAsync(ParamTagCheckRequest request, IEquipmentParamProvider paramProvider, CancellationToken ct)
     {
-        var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
-
-        if (equipment is null)
-            return Results.NotFound();
-
-        if (equipment.TypeGroup != EquipmentTypeGroup.VGA)
-        {
-            return Results.Ok(new ParamTuneCheckResponse
-            {
-                TagName = request.TagName,
-                Found = false,
-                TrendRequired = request.RequireTrend,
-                TrendFound = false,
-                Message = "PID Tune is supported only for VGA equipment."
-            });
-        }
-
-        var result = await paramProvider.CheckTuneTagAsync(request.TagName, request.RequireTrend, ct);
-
+        var result = await paramProvider.CheckNumericTagAsync(request.TagName, request.RequireTrend, ct);
         return Results.Ok(result);
     }
 
@@ -150,12 +132,7 @@ public static class ParamEndpoints
     /// <summary>
     /// Сохраняет PV/SP теги и их диапазоны для конкретного VGA.
     /// </summary>
-    private static async Task<IResult> SaveTuneAsync(
-        string equipmentName,
-        ParamTuneSaveRequest request,
-        IEquipmentCatalogProvider equipmentCatalog,
-        IParamTuneStore tuneStore,
-        CancellationToken ct)
+    private static async Task<IResult> SaveTuneAsync(string equipmentName, ParamTuneSaveRequest request, IEquipmentCatalogProvider equipmentCatalog, IParamTuneStore tuneStore, CancellationToken ct)
     {
         var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
 

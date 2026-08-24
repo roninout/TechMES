@@ -3662,186 +3662,122 @@
     /// Проверяет PID Tune-теги одной операцией.
     ///
     /// PV/SP:
-    ///     numeric TagRead + trend-reference.
+    /// выполняется общая numeric tag проверка с RequireTrend = true.
     ///
     /// Test Kp:
-    ///     только numeric TagRead.
+    /// выполняется та же общая проверка с RequireTrend = false.
     ///
-    /// Для FOPDT/Integrating пустой Test Kp допустим.
-    /// Для ClosedLoop Test Kp обязателен.
-    /// Если Test Kp введён в любой модели, он всегда должен пройти Check.
+    /// То есть Tune больше не имеет собственного механизма TagRead.
+    /// Он является только потребителем общего Param Runtime API.
     /// </summary>
     private async Task CheckTuneTagsAsync()
     {
         if (Equipment is null)
             return;
 
-        var settings =
-            EnsureTuneSettings();
+        var settings = EnsureTuneSettings();
 
-        var pvTag =
-            (settings.Pv ?? "").Trim();
+        var pvTag = (settings.Pv ?? "").Trim();
+        var spTag = (settings.Sp ?? "").Trim();
+        var testKpTag = (settings.TestKpTag ?? "").Trim();
 
-        var spTag =
-            (settings.Sp ?? "").Trim();
-
-        var testKpTag =
-            (settings.TestKpTag ?? "").Trim();
-
-        if (string.IsNullOrWhiteSpace(pvTag)
-            || string.IsNullOrWhiteSpace(spTag))
+        if (string.IsNullOrWhiteSpace(pvTag) || string.IsNullOrWhiteSpace(spTag))
         {
-            _tuneSettingsStatusText =
-                string.IsNullOrWhiteSpace(pvTag)
-                && string.IsNullOrWhiteSpace(spTag)
-                    ? "Enter PV and SP trend tags."
-                    : string.IsNullOrWhiteSpace(pvTag)
-                        ? "Enter PV trend tag."
-                        : "Enter SP trend tag.";
+            _tuneSettingsStatusText = string.IsNullOrWhiteSpace(pvTag) && string.IsNullOrWhiteSpace(spTag)
+                ? "Enter PV and SP trend tags."
+                : string.IsNullOrWhiteSpace(pvTag)
+                    ? "Enter PV trend tag."
+                    : "Enter SP trend tag.";
 
             return;
         }
 
-        var testKpRequired =
-            _tuneCalculationModel == TuneModelClosedLoop
-            || !string.IsNullOrWhiteSpace(testKpTag);
+        var testKpRequired = _tuneCalculationModel == TuneModelClosedLoop || !string.IsNullOrWhiteSpace(testKpTag);
 
-        if (_tuneCalculationModel == TuneModelClosedLoop
-            && string.IsNullOrWhiteSpace(testKpTag))
+        if (_tuneCalculationModel == TuneModelClosedLoop && string.IsNullOrWhiteSpace(testKpTag))
         {
             settings.TestKpFound = false;
 
             if (_tune is not null)
                 _tune.TestKpValue = null;
 
-            _tuneSettingsStatusText =
-                "Enter Test Kp online tag for ClosedLoop.";
-
+            _tuneSettingsStatusText = "Enter Test Kp online tag for ClosedLoop.";
             return;
         }
 
         _isTuneChecking = true;
-
-        _tuneSettingsStatusText =
-            testKpRequired
-                ? "Checking PV/SP trends and Test Kp online tag..."
-                : "Checking PV and SP trend tags...";
+        _tuneSettingsStatusText = testKpRequired
+            ? "Checking PV/SP trends and Test Kp online tag..."
+            : "Checking PV and SP trend tags...";
 
         try
         {
-            var pvResult =
-                await ParamApi.CheckTuneTagAsync(
-                    Equipment.Name,
-                    new ParamTuneCheckRequest
-                    {
-                        TagName = pvTag,
-                        RequireTrend = true
-                    },
-                    GetActiveLoadToken());
+            var pvResult = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest
+            {
+                TagName = pvTag,
+                RequireTrend = true
+            }, GetActiveLoadToken());
 
-            var spResult =
-                await ParamApi.CheckTuneTagAsync(
-                    Equipment.Name,
-                    new ParamTuneCheckRequest
-                    {
-                        TagName = spTag,
-                        RequireTrend = true
-                    },
-                    GetActiveLoadToken());
+            var spResult = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest
+            {
+                TagName = spTag,
+                RequireTrend = true
+            }, GetActiveLoadToken());
 
-            ParamTuneCheckResponse? testKpResult = null;
+            ParamTagCheckResponse? testKpResult = null;
 
             if (testKpRequired)
             {
-                testKpResult =
-                    await ParamApi.CheckTuneTagAsync(
-                        Equipment.Name,
-                        new ParamTuneCheckRequest
-                        {
-                            TagName = testKpTag,
-                            RequireTrend = false
-                        },
-                        GetActiveLoadToken());
+                testKpResult = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest
+                {
+                    TagName = testKpTag,
+                    RequireTrend = false
+                }, GetActiveLoadToken());
             }
 
-            settings.Pv =
-                pvResult.TagName;
+            settings.Pv = pvResult.TagName;
+            settings.PvTrendFound = pvResult.Found;
 
-            settings.PvTrendFound =
-                pvResult.Found;
-
-            settings.Sp =
-                spResult.TagName;
-
-            settings.SpTrendFound =
-                spResult.Found;
+            settings.Sp = spResult.TagName;
+            settings.SpTrendFound = spResult.Found;
 
             if (testKpResult is not null)
             {
-                settings.TestKpTag =
-                    testKpResult.TagName;
-
-                settings.TestKpFound =
-                    testKpResult.Found;
+                settings.TestKpTag = testKpResult.TagName;
+                settings.TestKpFound = testKpResult.Found;
 
                 if (_tune is not null)
-                {
-                    _tune.TestKpValue =
-                        testKpResult.CurrentValue;
-                }
+                    _tune.TestKpValue = testKpResult.CurrentValue;
             }
             else
             {
                 settings.TestKpFound = false;
 
-                if (string.IsNullOrWhiteSpace(
-                        settings.TestKpTag)
-                    && _tune is not null)
-                {
+                if (string.IsNullOrWhiteSpace(settings.TestKpTag) && _tune is not null)
                     _tune.TestKpValue = null;
-                }
             }
 
-            _tuneSettingsStatusText =
-                BuildTuneTagCheckStatus(
-                    pvResult,
-                    spResult,
-                    testKpResult);
+            _tuneSettingsStatusText = BuildTuneTagCheckStatus(pvResult, spResult, testKpResult);
 
-            /*
-             * Перечитываем Runtime один раз:
-             * график получает проверенные PV/SP,
-             * а Test Kp - свежее online-значение.
-             */
-            await LoadTuneAsync(
-                Equipment.Name,
-                GetActiveLoadToken());
+            // После Check перечитываем Runtime один раз.
+            // График получает проверенные PV/SP,
+            // а Test Kp получает актуальное online-значение.
+            await LoadTuneAsync(Equipment.Name, GetActiveLoadToken());
         }
-        catch (OperationCanceledException)
-            when (_isDisposed || !IsActive)
+        catch (OperationCanceledException) when (_isDisposed || !IsActive)
         {
         }
         catch (Exception ex)
         {
-            _tuneSettingsStatusText =
-                "Cannot check PID Tune tags: "
-                + ex.Message;
+            _tuneSettingsStatusText = "Cannot check PID Tune tags: " + ex.Message;
 
-            NotificationService.Notify(
-                new NotificationMessage
-                {
-                    Severity =
-                        NotificationSeverity.Error,
-
-                    Summary =
-                        "PID Tune",
-
-                    Detail =
-                        "Cannot check PID Tune tags.",
-
-                    Duration =
-                        3500
-                });
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "PID Tune",
+                Detail = "Cannot check PID Tune tags.",
+                Duration = 3500
+            });
         }
         finally
         {
@@ -3855,7 +3791,7 @@
     /// <summary>
     /// Формирует единый статус PV/SP/Test Kp Check.
     /// </summary>
-    private static string BuildTuneTagCheckStatus(ParamTuneCheckResponse pvResult, ParamTuneCheckResponse spResult, ParamTuneCheckResponse? testKpResult)
+    private static string BuildTuneTagCheckStatus(ParamTagCheckResponse pvResult, ParamTagCheckResponse spResult, ParamTagCheckResponse? testKpResult)
     {
         var allFound = pvResult.Found && spResult.Found && (testKpResult is null || testKpResult.Found);
 
@@ -3867,53 +3803,47 @@
         }
 
         var problems = new List<string>();
+
         AddTuneTagProblem(problems, "PV", pvResult);
         AddTuneTagProblem(problems, "SP", spResult);
 
         if (testKpResult is not null)
-        {
             AddTuneTagProblem(problems, "Test Kp", testKpResult);
-        }
 
         return string.Join(" ", problems);
     }
 
     /// <summary>
     /// Добавляет причину ошибки одного Tune-тега.
-    /// Для online Test Kp отсутствие trend-reference не является ошибкой.
+    ///
+    /// Метод получает уже общий ParamTagCheckResponse.
+    /// Tune здесь только интерпретирует общий результат для своего UI.
     /// </summary>
-    private static void AddTuneTagProblem(ICollection<string> problems, string role, ParamTuneCheckResponse result)
+    private static void AddTuneTagProblem(ICollection<string> problems, string role, ParamTagCheckResponse result)
     {
         if (result.Found)
             return;
 
-        var tagName =
-            string.IsNullOrWhiteSpace(
-                result.TagName)
-                ? "(empty)"
-                : result.TagName;
+        var tagName = string.IsNullOrWhiteSpace(result.TagName) ? "(empty)" : result.TagName;
 
         string reason;
 
         if (!result.TrendRequired)
         {
-            reason =
-                result.CurrentValue.HasValue
-                    ? "online validation failed"
-                    : "numeric online value was not read";
+            reason = result.CurrentValue.HasValue
+                ? "online validation failed"
+                : "numeric online value was not read";
         }
         else
         {
-            reason =
-                result.TrendFound
-                    ? "numeric value was not read"
-                    : result.CurrentValue.HasValue
-                        ? "trend reference was not found"
-                        : "tag was not read and trend reference was not found";
+            reason = result.TrendFound
+                ? "numeric value was not read"
+                : result.CurrentValue.HasValue
+                    ? "trend reference was not found"
+                    : "tag was not read and trend reference was not found";
         }
 
-        problems.Add(
-            $"{role} tag '{tagName}': {reason}.");
+        problems.Add($"{role} tag '{tagName}': {reason}.");
     }
 
     /// <summary>

@@ -260,69 +260,63 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
     }
 
     /// <summary>
-    /// Проверяет Tune-тег.
+    /// Проверяет произвольный числовой Plant SCADA Variable Tag.
     ///
-    /// Для PV/SP requireTrend=true:
-    /// - TagRead должен вернуть число;
-    /// - должен разрешиться trend-reference.
+    /// Никакой логики конкретного WEB-модуля здесь нет.
     ///
-    /// Для Test Kp requireTrend=false:
-    /// - выполняется только TagRead;
-    /// - ResolveRawTrendRefAsync вообще не вызывается.
+    /// requireTrend = false:
+    /// достаточно успешного numeric TagRead.
+    ///
+    /// requireTrend = true:
+    /// кроме numeric TagRead обязательно должен разрешиться trend-reference.
+    ///
+    /// Внутри используются уже существующие общие CtApi-механизмы:
+    /// TryReadNumericTagAsync и ResolveRawTrendRefAsync.
+    /// Поэтому PID Tune, Density и будущие расчёты используют один
+    /// и тот же способ проверки Plant SCADA tags.
     /// </summary>
-    public async Task<ParamTuneCheckResponse> CheckTuneTagAsync(string tagName, bool requireTrend, CancellationToken ct = default)
+    public async Task<ParamTagCheckResponse> CheckNumericTagAsync(string tagName, bool requireTrend, CancellationToken ct = default)
     {
         var normalized = (tagName ?? "").Trim();
 
         if (string.IsNullOrWhiteSpace(normalized))
         {
-            return new ParamTuneCheckResponse
+            return new ParamTagCheckResponse
             {
                 TagName = "",
                 Found = false,
                 TrendRequired = requireTrend,
                 TrendFound = false,
-                Message = requireTrend
-                    ? "Trend tag name is empty."
-                    : "Online tag name is empty."
+                Message = requireTrend ? "Trend tag name is empty." : "Numeric tag name is empty."
             };
         }
 
+        // Читаем текущее значение тем же низкоуровневым методом
         var currentValue = await TryReadNumericTagAsync(normalized, ct);
 
-        /*
-         * Для Test Kp trend lookup намеренно не выполняем.
-         * Это обычный online коэффициент, архив ему не нужен.
-         */
-        var trendRef = requireTrend
-            ? await ResolveRawTrendRefAsync(
-                normalized,
-                ct)
-            : null;
+        // Trend lookup выполняем только по явному запросу вызывающего кода.
+        // Для Test Kp и будущих Density Temperature/Pressure он не нужен.
+        var trendRef = requireTrend ? await ResolveRawTrendRefAsync(normalized, ct) : null;
+        var trendFound = trendRef is not null;
+        var found = currentValue.HasValue && (!requireTrend || trendFound);
 
-        var trendFound =
-            trendRef is not null;
+        string message;
 
-        var found =
-            currentValue.HasValue
-            && (!requireTrend || trendFound);
+        if (found)
+            message = requireTrend ? "Numeric tag and trend reference found." : "Online numeric tag found.";
+        else if (!currentValue.HasValue)
+            message = "Tag was not read as numeric value.";
+        else
+            message = "Tag was read as numeric value, but trend reference was not resolved.";
 
-        return new ParamTuneCheckResponse
+        return new ParamTagCheckResponse
         {
             TagName = normalized,
             Found = found,
             TrendRequired = requireTrend,
             TrendFound = trendFound,
             CurrentValue = currentValue,
-            Message = found
-                ? requireTrend
-                    ? "Trend tag found."
-                    : "Online numeric tag found."
-                : !currentValue.HasValue
-                    ? "Tag was not read as numeric value."
-                    : requireTrend
-                        ? "Tag was read, but trend reference was not resolved."
-                        : "Online tag was not validated."
+            Message = message
         };
     }
 

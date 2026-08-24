@@ -79,47 +79,6 @@ public sealed class ParamTuneSaveRequest
 }
 
 /// <summary>
-/// Запрос проверки одного тега PID Tune.
-/// PV/SP требуют trend-reference.
-/// Test Kp проверяется только как online numeric tag.
-/// </summary>
-public sealed class ParamTuneCheckRequest
-{
-    public string TagName { get; set; } = "";
-
-    /// <summary>
-    /// true для PV/SP, false для Test Kp.
-    /// </summary>
-    public bool RequireTrend { get; set; } = true;
-}
-
-/// <summary>
-/// Результат проверки тега и текущего TagRead-значения.
-/// </summary>
-public sealed class ParamTuneCheckResponse
-{
-    public string TagName { get; set; } = "";
-
-    /// <summary>
-    /// Итог проверки.
-    /// Для trend-тега: numeric TagRead + trend-reference.
-    /// Для online-тега: только numeric TagRead.
-    /// </summary>
-    public bool Found { get; set; }
-
-    /// <summary>
-    /// Требовался ли trend-reference для этой проверки.
-    /// </summary>
-    public bool TrendRequired { get; set; } = true;
-
-    public bool TrendFound { get; set; }
-
-    public double? CurrentValue { get; set; }
-
-    public string? Message { get; set; }
-}
-
-/// <summary>
 /// Runtime-данные вкладки Tune: сохраненные настройки, текущие значения и line-тренды.
 /// </summary>
 public sealed class ParamTuneRuntimeResponse
