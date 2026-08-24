@@ -50,7 +50,7 @@ public abstract class MixtureCalculationDefinitionBase : CalculationDefinitionBa
     ///
     /// propertyParameters содержит параметры конкретного физического свойства.
     ///
-    /// Для Density сегодня это, например:
+    /// Для Density сегодня это:
     /// - temperatureC;
     /// - pressureBarAbsolute;
     /// - densityCorrection.
@@ -60,13 +60,14 @@ public abstract class MixtureCalculationDefinitionBase : CalculationDefinitionBa
     /// - pressureBarAbsolute;
     /// - capacityCorrection.
     ///
-    /// Метод принципиально принимает IReadOnlyList, а не фиксированный набор полей.
-    /// Поэтому для будущего алгоритма можно добавить третий, четвёртый,
-    /// пятый или любое другое количество параметров без изменения этого класса,
-    /// CalcJob, PostgreSQL или Calc.Service.
+    /// Метод принимает обычный список параметров, поэтому количество
+    /// ProcessInput не ограничено двумя, пятью или любым другим числом.
     ///
     /// После физических параметров автоматически добавляется конфигурация смеси:
     /// componentCount и пять возможных componentNCode/componentNPercent.
+    ///
+    /// Ограничение в пять относится исключительно к текущей структуре
+    /// компонентов смеси в Plant SCADA и не относится к ProcessInput.
     /// </summary>
     protected static IReadOnlyList<CalculationParameterDefinition> CreateMixtureParameters(IReadOnlyList<CalculationParameterDefinition> propertyParameters)
     {
@@ -87,29 +88,29 @@ public abstract class MixtureCalculationDefinitionBase : CalculationDefinitionBa
             Order: 100,
             Description: "Number of active mixture components. Current SCADA structure supports from 1 to 5 components."));
 
-        /*
-         * Коды веществ не читаются непосредственно из SCADA.
-         * В старом TechParamsCalc они хранились в PostgreSQL как perc0..perc4.
-         *
-         * В новой архитектуре это обычные Constant inputs Calc Job.
-         * Поэтому пользователь сможет выбирать вещество из каталога,
-         * а выбранный стабильный code будет храниться вместе с Job.
-         */
-        var substanceOptions = SubstanceCatalog.Items.Select(item => new CalculationParameterOption(item.Code, $"{item.Code} — {item.Name} ({GetPhaseName(item.Phase)})")).ToArray();
+        // Коды веществ не читаются непосредственно из SCADA.
+        //
+        // В старом TechParamsCalc состав смеси хранился собственной логикой.
+        // В новой архитектуре выбранный SubstanceCode является обычным
+        // Constant input конкретного Calc Job.
+        //
+        // Поэтому пользователь выбирает вещество из общего Substance Catalog,
+        // а в Job сохраняется его стабильный Code.
+        var substanceOptions = SubstanceCatalog.Items
+            .Select(item => new CalculationParameterOption(item.Code, $"{item.Code} — {item.Name} ({GetPhaseName(item.Phase)})"))
+            .ToArray();
 
-        /*
-         * Внутренние ключи оставляем 0-based:
-         *
-         * component0Percent -> PERC_0
-         * component1Percent -> PERC_1
-         * ...
-         * component4Percent -> PERC_4
-         *
-         * Это значительно упростит последующий автоматический binding
-         * к ITEM существующего Plant SCADA Equipment Type.
-         *
-         * В пользовательском Name при этом показываем привычные номера 1..5.
-         */
+        // Внутренние ключи компонентов оставляем 0-based:
+        //
+        // component0Percent -> PERC_0
+        // component1Percent -> PERC_1
+        // ...
+        // component4Percent -> PERC_4
+        //
+        // Это совпадает с существующей нумерацией SCADA Equipment Type
+        // и впоследствии упростит автоматические bindings.
+        //
+        // Пользователю при этом показываются обычные номера 1..5.
         for (var index = 0; index < MaxComponentCount; index++)
         {
             var displayIndex = index + 1;
