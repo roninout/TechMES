@@ -208,7 +208,7 @@ public sealed class DensityCapacityDefinitionTests
     }
 
     [Fact]
-    public void DensityExposesTemperatureAndPressureAsProcessInputs()
+    public void DensityExposesFiveProcessInputs()
     {
         var definition = new DensityCalculationDefinition();
 
@@ -218,7 +218,15 @@ public sealed class DensityCapacityDefinitionTests
             .Select(parameter => parameter.Key)
             .ToArray();
 
-        Assert.Equal(["temperatureC", "pressureBarAbsolute"], processInputs);
+        Assert.Equal(
+        [
+            "temperatureC",
+            "pressureBarAbsolute",
+            "additionalParameter1",
+            "additionalParameter2",
+            "additionalParameter3"
+        ],
+        processInputs);
     }
 
     [Fact]

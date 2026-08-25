@@ -304,10 +304,8 @@
 }
 
 .density-mixture-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 130px;
+    display: flex;
     align-items: center;
-    gap: 12px;
     min-height: 48px;
 }
 
@@ -321,11 +319,6 @@
 
 ::deep .density-mixture-title .rz-icon {
     font-size: 20px;
-}
-
-::deep .density-mixture-count {
-    width: 92px;
-    justify-self: end;
 }
 
 .density-mixture-row {
@@ -380,6 +373,16 @@
     margin-top: 8px;
 }
 
+/* ============================================================
+   Actions
+   ============================================================ */
+
+.density-actions {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    margin-top: 2px;
+}
 
 /* ============================================================
    Responsive

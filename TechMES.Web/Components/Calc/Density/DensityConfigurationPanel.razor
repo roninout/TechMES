@@ -200,7 +200,7 @@
                                        class="density-live-value" />
                     </div>
 
-                    @foreach (var binding in _processBindings.OrderBy(item => item.Parameter.Order))
+                    @foreach (var binding in ActiveProcessBindings)
                     {
                         <div class="density-live-card">
 
@@ -340,12 +340,6 @@
                                     <span>Mixture</span>
                                 </div>
 
-                                <RadzenNumeric TValue="int?"
-                                               Value="@CurrentComponentCount"
-                                               Disabled="true"
-                                               ShowUpDown="false"
-                                               class="density-mixture-count" />
-
                             </div>
 
                             @if (CurrentComponentCount is { } componentCount)
@@ -365,7 +359,6 @@
                                                         TextProperty="@nameof(CalcParameterOptionDto.Name)"
                                                         ValueProperty="@nameof(CalcParameterOptionDto.Value)"
                                                         @bind-Value="component.SubstanceCode"
-                                                        AllowClear="true"
                                                         Placeholder="Select component..."
                                                         Disabled="@_isSaving"
                                                         class="density-mixture-component" />
@@ -768,15 +761,15 @@
     // ============================================================
 
     /// <summary>
-    /// Строит редакторы всех ProcessInput динамически.
+    /// Строит редакторы всех доступных ProcessInput.
     ///
-    /// В SourceText восстанавливается именно пользовательская SourceReference.
+    /// SourceText восстанавливается из SourceReference — то есть пользователь
+    /// снова видит, например, S03.R02.TT01.R.
     ///
-    /// Если Job был создан до появления SourceReference,
-    /// используем старый TagName как backward-compatible fallback.
+    /// ResolvedTagName содержит реальный Variable Tag, который читает Calc.Service.
     ///
-    /// ResolvedTagName всегда содержит реальный Variable Tag,
-    /// который непосредственно читает Calc.Service.
+    /// Для старых Job, созданных до SourceReference, используем TagName
+    /// как backward-compatible отображаемое значение.
     /// </summary>
     private void BuildProcessBindings()
     {
@@ -791,8 +784,8 @@
             var storedTag = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.TagName?.Trim() ?? "" : "";
             var storedSourceReference = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.SourceReference?.Trim() ?? "" : "";
 
-            // Для старых Job SourceReference отсутствует.
-            // В этом случае продолжаем показывать реальный TagName.
+            // Старые Job ещё не имеют SourceReference.
+            // Для них в поле продолжаем показывать сохранённый Variable Tag.
             var sourceText = storedSourceReference.Length > 0 ? storedSourceReference : storedTag;
 
             var currentValue = 0d;
@@ -805,26 +798,23 @@
                 ResolvedTagName = storedTag,
                 ValidatedSourceText = hasRuntimeValue ? sourceText : "",
                 CurrentValue = hasRuntimeValue ? currentValue : null,
-                Resolution = hasRuntimeValue
-                    ? storedSourceReference.Length > 0
-                        ? $"Saved {storedSourceReference}"
-                        : "Saved Runtime tag"
-                    : "",
+                Resolution = hasRuntimeValue ? storedSourceReference.Length > 0 ? $"Saved {storedSourceReference}" : "Saved Runtime tag" : "",
                 MaxAgeSeconds = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.MaxAgeSeconds : null,
                 CheckState = hasRuntimeValue ? DensityBindingCheckState.Linked : DensityBindingCheckState.NotChecked
             });
-
-            // Для нового Job всегда показываем два штатных параметра.
-            // Для существующего Job количество восстанавливаем по числу сохранённых ProcessInput Tag bindings.
-            // Поэтому отдельное поле ProcessParameterCount в PostgreSQL не требуется.
-            var configuredProcessInputs = _processBindings.Count(binding =>
-            {
-                var stored = FindJobInput(binding.Parameter.Key);
-                return stored?.SourceType == CalcInputSourceTypeDto.Tag && !string.IsNullOrWhiteSpace(stored.TagName);
-            });
-
-            _processParameterCount = Math.Clamp(configuredProcessInputs, MinProcessParameterCount, MaxProcessParameterCount);
         }
+
+        // Для нового Job активны два штатных входа: Temperature и Pressure.
+        //
+        // Для сохранённого Job число восстанавливается по реально сохранённым
+        // ProcessInput Tag bindings, поэтому отдельное поле в PostgreSQL не требуется.
+        var configuredProcessInputs = _processBindings.Count(binding =>
+        {
+            var stored = FindJobInput(binding.Parameter.Key);
+            return stored?.SourceType == CalcInputSourceTypeDto.Tag && !string.IsNullOrWhiteSpace(stored.TagName);
+        });
+
+        _processParameterCount = Math.Clamp(configuredProcessInputs, MinProcessParameterCount, MaxProcessParameterCount);
     }
 
     /// <summary>
@@ -1254,7 +1244,7 @@
         // они не участвуют в формуле, пока CompN их не включает.
         for (var index = 0; index < MaxComponentCount; index++)
         {
-            var code = _components[index].SubstanceCode.Trim();
+            var code = (_components[index].SubstanceCode ?? "").Trim();
             var parameter = GetParameter(GetComponentCodeKey(index));
 
             if (parameter is not null && code.Length > 0)
@@ -1329,25 +1319,28 @@
     // ============================================================
 
     /// <summary>
-    /// В signature входят только редактируемые пользователем настройки.
+    /// Формирует снимок только редактируемой пользователем конфигурации.
     ///
-    /// SCADA CompN/Perc/DeltaD/ValHmi сюда не входят,
-    /// поэтому изменение процесса не создаёт ложный Unsaved state.
+    /// Текущие SCADA CompN, PercN, DeltaD и ValHmi сюда не входят,
+    /// поэтому изменение технологического процесса не создаёт Unsaved state.
     /// </summary>
     private string BuildEditorSignature()
     {
         var parts = new List<string>
-        {
-            $"enabled={_enabled}",
-            $"writes={_allowOutputWrites}",
-            $"processParameterCount={_processParameterCount}"
-        };
+    {
+        $"enabled={_enabled}",
+        $"writes={_allowOutputWrites}",
+        $"processParameterCount={_processParameterCount}"
+    };
 
         foreach (var binding in ActiveProcessBindings)
             parts.Add($"{binding.Parameter.Key}={binding.SourceText.Trim()}");
 
         for (var index = 0; index < MaxComponentCount; index++)
-            parts.Add($"component{index}={_components.ElementAtOrDefault(index)?.SubstanceCode.Trim() ?? ""}");
+        {
+            var code = (_components.ElementAtOrDefault(index)?.SubstanceCode ?? "").Trim();
+            parts.Add($"component{index}={code}");
+        }
 
         return string.Join("|", parts);
     }
