@@ -303,9 +303,15 @@ public sealed class DensityCapacityDefinitionTests
         const double gasConstant = 8.3144598d;
         const double molarMass = 28.0134d;
 
-        return pressureBarAbsolute * 100d
+        // Оригинальный TechDotNetLib.GetDensity принимает float.
+        // Expected обязан использовать тот же входной precision,
+        // иначе тест проверяет уже другую, double-версию формулы.
+        var legacyTemperature = (float)temperatureC;
+        var legacyPressure = (float)pressureBarAbsolute;
+
+        return legacyPressure * Math.Pow(10, 2)
             / (gasConstant / molarMass)
-            / (temperatureC + 273.15d);
+            / (legacyTemperature + 273.15);
     }
 
     private static double GetOutput(TechMES.Calc.Results.CalculationResult result, string key)

@@ -1,5 +1,5 @@
 using TechMES.Calc.Exceptions;
-using TechMES.Calc.Substances.Components;
+using TechMES.Calc.Substances.Legacy;
 
 namespace TechMES.Calc.Substances;
 

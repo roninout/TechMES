@@ -1,21 +1,13 @@
-﻿using TechMES.Calc.Abstractions;
+using TechMES.Calc.Abstractions;
 using TechMES.Calc.Capacity;
+using TechMES.Calc.Constants;
 using TechMES.Calc.Density;
 using TechMES.Calc.Parameters;
 
 namespace TechMES.Calc.Tests;
 
 /// <summary>
-/// Проверяет уже не отдельные формулы Substance,
-/// а полноценные Calculation Definitions Density и Capacity.
-///
-/// То есть здесь тестируется весь новый контракт:
-/// - параметры CalculationDefinition;
-/// - состав смеси;
-/// - correction;
-/// - DefaultValue;
-/// - выходные инженерные единицы;
-/// - регистрация в BuiltInCalculationCatalog.
+/// Проверяет полноценные Calculation Definitions Density и Capacity.
 /// </summary>
 public sealed class DensityCapacityDefinitionTests
 {
@@ -37,7 +29,7 @@ public sealed class DensityCapacityDefinitionTests
             new Dictionary<string, object?>
             {
                 ["temperatureC"] = 20d,
-                ["pressureBarAbsolute"] = 1d,
+                ["pressureBarGauge"] = 0d,
                 ["componentCount"] = 1,
                 ["component0Code"] = "ACN",
                 ["component0Percent"] = 100d
@@ -50,20 +42,21 @@ public sealed class DensityCapacityDefinitionTests
     }
 
     [Fact]
-    public void DensityPressureIsOptionalAndHasAtmosphericDefault()
+    public void DensityPressureIsOptionalAndDefaultsToZeroGauge()
     {
         var definition = new DensityCalculationDefinition();
 
         var pressure = definition.Parameters.Single(parameter =>
-            string.Equals(parameter.Key, "pressureBarAbsolute", StringComparison.OrdinalIgnoreCase));
+            string.Equals(parameter.Key, "pressureBarGauge", StringComparison.OrdinalIgnoreCase));
 
         Assert.False(pressure.IsRequired);
-        Assert.Equal(1.01325d, Convert.ToDouble(pressure.DefaultValue));
+        Assert.Equal(0d, Convert.ToDouble(pressure.DefaultValue));
+        Assert.Equal("bar(g)", pressure.Unit);
         Assert.Equal(CalculationParameterRole.ProcessInput, pressure.Role);
     }
 
     [Fact]
-    public void DensityCanUseDefaultPressureWhenPressureInputIsNotConfigured()
+    public void DensityCanUseAtmosphericPressureWhenPressureInputIsNotConfigured()
     {
         var definition = new DensityCalculationDefinition();
 
@@ -72,12 +65,46 @@ public sealed class DensityCapacityDefinitionTests
             {
                 ["temperatureC"] = 20d,
                 ["componentCount"] = 1,
-                ["component0Code"] = "ACN",
+                ["component0Code"] = "N",
                 ["component0Percent"] = 100d
             }));
 
         Assert.True(result.IsSuccess, result.ErrorMessage);
-        Assert.Equal(781.986d, GetOutput(result, "density"), precision: 6);
+
+        var expected = NitrogenDensity(
+            temperatureC: 20d,
+            pressureBarAbsolute: CalculationPhysicalConstants.AtmosphericPressureBarAbsolute);
+
+        Assert.Equal(expected, GetOutput(result, "density"), precision: 10);
+    }
+
+    [Fact]
+    public void DensityAddsGaugePressureToAtmosphericPressureBeforeCallingSubstanceFormula()
+    {
+        var definition = new DensityCalculationDefinition();
+
+        const double pressureBarGauge = 1.7d;
+
+        var result = definition.Calculate(new CalculationParameterSet(
+            new Dictionary<string, object?>
+            {
+                ["temperatureC"] = 20d,
+                ["pressureBarGauge"] = pressureBarGauge,
+                ["componentCount"] = 1,
+                ["component0Code"] = "N",
+                ["component0Percent"] = 100d
+            }));
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        var expectedAbsolutePressure =
+            pressureBarGauge + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute;
+
+        var expected = NitrogenDensity(
+            temperatureC: 20d,
+            pressureBarAbsolute: expectedAbsolutePressure);
+
+        Assert.Equal(expected, GetOutput(result, "density"), precision: 10);
     }
 
     [Fact]
@@ -89,7 +116,7 @@ public sealed class DensityCapacityDefinitionTests
             new Dictionary<string, object?>
             {
                 ["temperatureC"] = 20d,
-                ["pressureBarAbsolute"] = 1d,
+                ["pressureBarGauge"] = 0d,
                 ["densityCorrection"] = 2.5d,
                 ["componentCount"] = 1,
                 ["component0Code"] = "ACN",
@@ -109,7 +136,7 @@ public sealed class DensityCapacityDefinitionTests
             new Dictionary<string, object?>
             {
                 ["temperatureC"] = 20d,
-                ["pressureBarAbsolute"] = 1d,
+                ["pressureBarGauge"] = 0d,
                 ["componentCount"] = 2,
 
                 ["component0Code"] = "ACN",
@@ -190,7 +217,6 @@ public sealed class DensityCapacityDefinitionTests
             new Dictionary<string, object?>
             {
                 ["temperatureC"] = 20d,
-                ["pressureBarAbsolute"] = 1d,
                 ["componentCount"] = 2,
 
                 ["component0Code"] = "ACN",
@@ -212,7 +238,6 @@ public sealed class DensityCapacityDefinitionTests
             new Dictionary<string, object?>
             {
                 ["temperatureC"] = 20d,
-                ["pressureBarAbsolute"] = 1d,
                 ["componentCount"] = 1,
                 ["component0Code"] = "ACN"
             }));
@@ -230,7 +255,6 @@ public sealed class DensityCapacityDefinitionTests
             new Dictionary<string, object?>
             {
                 ["temperatureC"] = 20d,
-                ["pressureBarAbsolute"] = 1d,
                 ["componentCount"] = 6
             }));
 
@@ -252,7 +276,7 @@ public sealed class DensityCapacityDefinitionTests
         Assert.Equal(
         [
             "temperatureC",
-            "pressureBarAbsolute",
+            "pressureBarGauge",
             "additionalParameter1",
             "additionalParameter2",
             "additionalParameter3"
@@ -274,8 +298,19 @@ public sealed class DensityCapacityDefinitionTests
         Assert.Equal(["temperatureC", "pressureBarAbsolute"], processInputs);
     }
 
+    private static double NitrogenDensity(double temperatureC, double pressureBarAbsolute)
+    {
+        const double gasConstant = 8.3144598d;
+        const double molarMass = 28.0134d;
+
+        return pressureBarAbsolute * 100d
+            / (gasConstant / molarMass)
+            / (temperatureC + 273.15d);
+    }
+
     private static double GetOutput(TechMES.Calc.Results.CalculationResult result, string key)
     {
-        return result.Outputs.Single(item => string.Equals(item.Key, key, StringComparison.OrdinalIgnoreCase)).Value;
+        return result.Outputs.Single(item =>
+            string.Equals(item.Key, key, StringComparison.OrdinalIgnoreCase)).Value;
     }
 }

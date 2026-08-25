@@ -6,7 +6,7 @@ namespace TechMES.Calc.Substances;
 /// Выполняет расчёт физических свойств смеси по массовым долям компонентов.
 ///
 /// Формулы отдельных веществ находятся в отдельных файлах
-/// TechMES.Calc/Substances/Components и перенесены из TechDotNetLib.
+/// TechMES.Calc/Substances/Legacy и перенесены из TechDotNetLib.
 ///
 /// Этот класс отвечает только за формулу смеси и единицы нового Calc-контракта:
 /// - Density возвращается в kg/m³ без старого SCADA scaling ×10;
