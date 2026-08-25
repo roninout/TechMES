@@ -1,6 +1,10 @@
 ﻿@using System.Globalization
 @using System.Text.Json
+@using TechMES.Contracts.Equipment
+@using TechMES.Contracts.Param
 @inject CalcApiClient CalcApi
+@inject ParamApiClient ParamApi
+@inject CalcProcessInputResolver ProcessInputResolver
 @inject NotificationService NotificationService
 
 <div class="density-configuration-host">
@@ -170,14 +174,8 @@
                 <div class="density-live-grid">
 
                     <div class="density-live-card density-live-card-result">
-
-                        <div class="density-live-card-title">
-                            Density
-                        </div>
-
-                        <div class="density-live-card-description">
-                            Calculated value
-                        </div>
+                        <div class="density-live-card-title">Density</div>
+                        <div class="density-live-card-description">TechMES calculated value</div>
 
                         <RadzenNumeric TValue="double?"
                                        Value="@GetLastOutputNumber("density")"
@@ -185,9 +183,22 @@
                                        Disabled="true"
                                        ShowUpDown="false"
                                        class="density-live-value" />
-
                     </div>
 
+                    <div class="density-live-card">
+                        <div class="density-live-card-title">SCADA ValHmi</div>
+
+                        <div class="density-live-card-description" title="@DensityHmiTag">
+                            @(DensityHmiTag ?? "ITEM ValHmi not found")
+                        </div>
+
+                        <RadzenNumeric TValue="double?"
+                                       Value="@CurrentDensityHmi"
+                                       Format="0.###"
+                                       Disabled="true"
+                                       ShowUpDown="false"
+                                       class="density-live-value" />
+                    </div>
 
                     @foreach (var binding in _processBindings.OrderBy(item => item.Parameter.Order))
                     {
@@ -197,44 +208,32 @@
                                 @binding.Parameter.Name
                             </div>
 
-                            <div class="density-live-card-description"
-                                 title="@GetRuntimeBindingTag(binding.Parameter.Key)">
-
-                                @GetRuntimeBindingTag(binding.Parameter.Key)
-
+                            <div class="density-live-card-description" title="@GetProcessRuntimeTag(binding)">
+                                @GetProcessRuntimeTag(binding)
                             </div>
 
                             <RadzenNumeric TValue="double?"
-                                           Value="@GetLastInputNumber(binding.Parameter.Key)"
+                                           Value="@GetProcessCurrentValue(binding)"
                                            Format="@GetNumberFormat(binding.Parameter)"
                                            Disabled="true"
                                            ShowUpDown="false"
                                            class="density-live-value" />
-
                         </div>
                     }
 
-
                     <div class="density-live-card">
+                        <div class="density-live-card-title">DeltaD</div>
 
-                        <div class="density-live-card-title">
-                            Density correction
-                        </div>
-
-                        <div class="density-live-card-description"
-                             title="@GetCorrectionSourceText()">
-
-                            @GetCorrectionSourceText()
-
+                        <div class="density-live-card-description" title="@DeltaDTag">
+                            @(DeltaDTag ?? "ITEM DeltaD not found")
                         </div>
 
                         <RadzenNumeric TValue="double?"
-                                       Value="@GetLastInputNumber(CorrectionKey)"
-                                       Format="0.###' kg/m³'"
+                                       Value="@CurrentDeltaD"
+                                       Format="0.###"
                                        Disabled="true"
                                        ShowUpDown="false"
                                        class="density-live-value" />
-
                     </div>
 
                 </div>
@@ -276,12 +275,19 @@
                                     </div>
 
                                     <div class="density-section-description">
-                                        SCADA tags used as calculation inputs
+                                        Runtime AI or direct SCADA Variable Tag
                                     </div>
                                 </div>
 
-                            </div>
+                                <div class="density-section-action">
+                                    <RadzenButton Text="Check"
+                                                  Icon="manage_search"
+                                                  ButtonStyle="ButtonStyle.Light"
+                                                  Disabled="@(_isSaving || _isCheckingBindings)"
+                                                  Click="@CheckProcessBindingsAsync" />
+                                </div>
 
+                            </div>
 
                             @foreach (var binding in _processBindings.OrderBy(item => item.Parameter.Order))
                             {
@@ -293,34 +299,22 @@
                                             @binding.Parameter.Name
                                         </div>
 
-                                        <div class="density-row-description">
-                                            @binding.Parameter.Unit
+                                        <div class="density-row-description" title="@GetBindingDescription(binding)">
+                                            @GetBindingDescription(binding)
                                         </div>
 
                                     </div>
 
-
                                     <div class="density-binding-status">
-
-                                        @if (string.IsNullOrWhiteSpace(binding.TagName))
-                                        {
-                                            <RadzenBadge Text="NOT LINKED"
-                                                         BadgeStyle="BadgeStyle.Danger" />
-                                        }
-                                        else
-                                        {
-                                            <RadzenBadge Text="LINKED"
-                                                         BadgeStyle="BadgeStyle.Success" />
-                                        }
-
+                                        <RadzenBadge Text="@GetBindingBadgeText(binding)"
+                                                     BadgeStyle="@GetBindingBadgeStyle(binding)" />
                                     </div>
 
-
-                                    <RadzenTextBox @bind-Value="binding.TagName"
-                                                   Placeholder="SCADA tag"
-                                                   Disabled="@_isSaving"
+                                    <RadzenTextBox Value="@binding.SourceText"
+                                                   Change="@((string value) => OnProcessSourceChanged(binding, value))"
+                                                   Placeholder="AI Equipment or SCADA tag"
+                                                   Disabled="@(_isSaving || _isCheckingBindings)"
                                                    class="density-tag-editor" />
-
 
                                     <RadzenNumeric TValue="int?"
                                                    @bind-Value="binding.MaxAgeSeconds"
@@ -332,7 +326,6 @@
                                 </div>
                             }
 
-
                             @if (!IsProcessBindingsReady)
                             {
                                 <RadzenAlert AlertStyle="AlertStyle.Warning"
@@ -340,7 +333,7 @@
                                              ShowIcon="true"
                                              class="density-settings-warning">
 
-                                    Required process inputs must be linked before the Density Job can be saved and enabled.
+                                    Required process inputs must pass Check before the Density Job can be saved and enabled.
 
                                 </RadzenAlert>
                             }
@@ -366,12 +359,11 @@
                                     </div>
 
                                     <div class="density-section-description">
-                                        Components and their mass percentages
+                                        Component count and percentages are read from SCADA
                                     </div>
                                 </div>
 
                             </div>
-
 
                             <div class="density-component-count-row">
 
@@ -381,62 +373,57 @@
                                         Component count
                                     </div>
 
-                                    <div class="density-row-description">
-                                        Current SCADA model supports up to 5 components
+                                    <div class="density-row-description" title="@ComponentCountTag">
+                                        CompN · @(ComponentCountTag ?? "ITEM not found")
                                     </div>
 
                                 </div>
 
-                                <RadzenNumeric TValue="int"
-                                               Value="@_componentCount"
-                                               Change="@OnComponentCountChanged"
-                                               Min="1"
-                                               Max="5"
-                                               Step="1"
-                                               Disabled="@_isSaving"
+                                <RadzenNumeric TValue="int?"
+                                               Value="@CurrentComponentCount"
+                                               Disabled="true"
+                                               ShowUpDown="false"
                                                class="density-count-editor" />
 
                             </div>
 
-
                             <div class="density-components">
 
-                                @for (var index = 0; index < _componentCount; index++)
+                                @if (CurrentComponentCount is { } componentCount)
                                 {
-                                    var component = _components[index];
+                                    @for (var index = 0; index < componentCount; index++)
+                                    {
+                                        var component = _components[index];
 
-                                    <div class="density-component-row">
+                                        <div class="density-component-row">
 
-                                        <div class="density-component-number">
-                                            @(index + 1)
+                                            <div class="density-component-number">
+                                                @(index + 1)
+                                            </div>
+
+                                            <RadzenDropDown TValue="string"
+                                                            Data="@SubstanceOptions"
+                                                            TextProperty="@nameof(CalcParameterOptionDto.Name)"
+                                                            ValueProperty="@nameof(CalcParameterOptionDto.Value)"
+                                                            @bind-Value="component.SubstanceCode"
+                                                            AllowClear="true"
+                                                            Placeholder="Select component..."
+                                                            Disabled="@_isSaving"
+                                                            class="density-component-selector" />
+
+                                            <RadzenNumeric TValue="double?"
+                                                           Value="@GetCurrentPercent(index)"
+                                                           Format="0.###' %'"
+                                                           Disabled="true"
+                                                           ShowUpDown="false"
+                                                           title="@GetPercTag(index)"
+                                                           class="density-percent-editor" />
+
                                         </div>
-
-
-                                        <RadzenDropDown TValue="string"
-                                                        Data="@SubstanceOptions"
-                                                        TextProperty="@nameof(CalcParameterOptionDto.Name)"
-                                                        ValueProperty="@nameof(CalcParameterOptionDto.Value)"
-                                                        @bind-Value="component.SubstanceCode"
-                                                        AllowClear="true"
-                                                        Placeholder="Select component..."
-                                                        Disabled="@_isSaving"
-                                                        class="density-component-selector" />
-
-
-                                        <RadzenNumeric TValue="double"
-                                                       @bind-Value="component.MassPercent"
-                                                       Min="0"
-                                                       Max="100"
-                                                       Step="0.1"
-                                                       Format="0.###' %'"
-                                                       Disabled="@_isSaving"
-                                                       class="density-percent-editor" />
-
-                                    </div>
+                                    }
                                 }
 
                             </div>
-
 
                             @if (!string.IsNullOrWhiteSpace(MixtureValidationError))
                             {
@@ -458,15 +445,6 @@
 
                         @* ==================================================
                            DENSITY CORRECTION
-                           
-                           Если ITEM DeltaD присутствует в Density Equipment,
-                           используем его автоматически.
-                           
-                           Это сохраняет существующую SCADA возможность
-                           корректировать Density с HMI.
-                           
-                           Если Equipment Type не содержит DeltaD,
-                           остаётся обычный Constant fallback.
                            ================================================== *@
                         <section class="density-settings-section">
 
@@ -476,67 +454,54 @@
 
                                 <div>
                                     <div class="density-section-name">
-                                        Density correction
+                                        DeltaD
                                     </div>
 
                                     <div class="density-section-description">
-                                        Correction added to calculated Density
+                                        Density correction configured in SCADA
                                     </div>
                                 </div>
 
                             </div>
 
+                            <div class="density-fixed-binding-row">
 
-                            @if (!string.IsNullOrWhiteSpace(DensityCorrectionTag))
-                            {
-                                <div class="density-fixed-binding-row">
+                                <div class="density-row-title">
 
-                                    <div class="density-row-title">
-
-                                        <div class="density-row-name">
-                                            DeltaD
-                                        </div>
-
-                                        <div class="density-row-description">
-                                            Automatically linked from Density Equipment ITEM
-                                        </div>
-
+                                    <div class="density-row-name">
+                                        DeltaD
                                     </div>
 
-                                    <RadzenBadge Text="AUTO"
-                                                 BadgeStyle="BadgeStyle.Success" />
-
-                                    <code class="density-tag-text">
-                                        @DensityCorrectionTag
-                                    </code>
-
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="density-constant-row">
-
-                                    <div class="density-row-title">
-
-                                        <div class="density-row-name">
-                                            Correction
-                                        </div>
-
-                                        <div class="density-row-description">
-                                            DeltaD ITEM was not found. Constant fallback is used.
-                                        </div>
-
+                                    <div class="density-row-description" title="@DeltaDTag">
+                                        @(DeltaDTag ?? "ITEM DeltaD not found")
                                     </div>
 
-                                    <RadzenNumeric TValue="double"
-                                                   @bind-Value="_densityCorrection"
-                                                   Step="0.1"
-                                                   Format="0.###' kg/m³'"
-                                                   Disabled="@_isSaving"
-                                                   class="density-correction-editor" />
-
                                 </div>
-                            }
+
+                                @if (string.IsNullOrWhiteSpace(DeltaDTag))
+                                {
+                                    <RadzenBadge Text="NOT FOUND"
+                                                 BadgeStyle="BadgeStyle.Danger" />
+                                }
+                                else if (CurrentDeltaD.HasValue)
+                                {
+                                    <RadzenBadge Text="READ ONLY"
+                                                 BadgeStyle="BadgeStyle.Info" />
+                                }
+                                else
+                                {
+                                    <RadzenBadge Text="NO VALUE"
+                                                 BadgeStyle="BadgeStyle.Warning" />
+                                }
+
+                                <RadzenNumeric TValue="double?"
+                                               Value="@CurrentDeltaD"
+                                               Format="0.###"
+                                               Disabled="true"
+                                               ShowUpDown="false"
+                                               class="density-correction-editor" />
+
+                            </div>
 
                         </section>
 
@@ -687,13 +652,7 @@
 
 
 @code {
-
-    // ============================================================
-    // Definition contract
-    // ============================================================
-
     private const string DensityDefinitionCode = "mixture.density";
-
     private const string ComponentCountKey = "componentCount";
     private const string CorrectionKey = "densityCorrection";
 
@@ -710,91 +669,160 @@
     public CalcJobStateDto? State { get; set; }
 
     [Parameter]
+    public IReadOnlyList<EquipmentDto> EquipmentCatalog { get; set; } = [];
+
+    [Parameter]
     public EventCallback JobChanged { get; set; }
 
     private CalcDefinitionDto? _definition;
 
     private readonly List<DensityProcessBindingEditor> _processBindings = [];
     private readonly List<DensityComponentEditor> _components = [];
+    private readonly Dictionary<string, double?> _liveScadaValues = new(StringComparer.OrdinalIgnoreCase);
 
     private string _contextKey = "";
     private string _savedEditorSignature = "";
     private string _loadError = "";
+    private string _scadaReadError = "";
+    private string _scadaRefreshModelName = "";
 
-    private int _componentCount = 1;
-    private double _densityCorrection;
+    private DateTimeOffset _nextScadaRefreshUtc = DateTimeOffset.MinValue;
 
     private bool _enabled;
     private bool _allowOutputWrites;
-
     private bool _isLoadingDefinition;
     private bool _isSaving;
+    private bool _isCheckingBindings;
+    private bool _isReadingScada;
 
     private CalcDefinitionDto? Definition => _definition;
-
-    // ============================================================
-    // Runtime / readiness
-    // ============================================================
-
-    /// <summary>
-    /// ProcessInput определяется только метаданными Definition.
-    ///
-    /// Здесь отсутствуют проверки конкретных ключей
-    /// temperatureC / pressureBarAbsolute.
-    ///
-    /// Поэтому при добавлении нового ProcessInput в Density Definition
-    /// эта панель автоматически потребует его SCADA binding.
-    /// </summary>
-    private bool IsProcessBindingsReady => _processBindings
-        .Where(binding => binding.Parameter.IsRequired)
-        .All(binding => !string.IsNullOrWhiteSpace(binding.TagName));
-
-    private bool IsOutputBindingReady => !string.IsNullOrWhiteSpace(DensityOutputTag);
-
-    private bool IsConfigurationReady => Definition is not null && IsProcessBindingsReady && string.IsNullOrWhiteSpace(MixtureValidationError);
-
-    /// <summary>
-    /// Проверяем unsaved state через полную сигнатуру редактора.
-    ///
-    /// Runtime State сюда не входит.
-    /// Поэтому периодическое обновление текущих Temperature,
-    /// Pressure или Density не создаёт ложное состояние Unsaved.
-    /// </summary>
-    private bool HasUnsavedChanges => !string.Equals(_savedEditorSignature, BuildEditorSignature(), StringComparison.Ordinal);
-
-    public bool HasPendingChanges => HasUnsavedChanges;
 
     // ============================================================
     // SCADA ITEM mapping
     // ============================================================
 
-    /// <summary>
-    /// DeltaD является внутренним параметром самого Density Equipment.
-    ///
-    /// Назначение определяется ITEM, а не именем Variable Tag.
-    /// </summary>
-    private string? DensityCorrectionTag => GetItemTag(Model, "DeltaD");
-
-    /// <summary>
-    /// Результат нового Density calculation записывается в ValCalc.
-    ///
-    /// ValHmi намеренно не используется как output:
-    /// это итоговое SCADA/HMI значение, которое затем использует Tank.
-    /// </summary>
+    private string? ComponentCountTag => GetItemTag(Model, "CompN");
+    private string? DeltaDTag => GetItemTag(Model, "DeltaD");
+    private string? DensityHmiTag => GetItemTag(Model, "ValHmi");
     private string? DensityOutputTag => GetItemTag(Model, "ValCalc");
 
+    private string? GetPercTag(int index)
+    {
+        return GetItemTag(Model, $"Perc{index}");
+    }
+
     // ============================================================
-    // Component options
+    // Current values
     // ============================================================
 
     /// <summary>
-    /// Все componentNCode используют один и тот же Substance Catalog.
+    /// Возвращает текущее количество компонентов.
     ///
-    /// Берём Options из первого component parameter,
-    /// потому что они были сформированы непосредственно
-    /// MixtureCalculationDefinitionBase.
+    /// Для работающего Job первым источником является LastInputs,
+    /// но только если componentCount действительно сохранён как Tag binding.
+    ///
+    /// До создания Job значение читается непосредственно из SCADA CompN
+    /// через общий Param numeric tag check.
     /// </summary>
+    private int? CurrentComponentCount
+    {
+        get
+        {
+            var rawValue = GetRuntimeTagInputNumber(ComponentCountKey) ?? GetLiveScadaValue("CompN");
+
+            if (!rawValue.HasValue || !double.IsFinite(rawValue.Value))
+                return null;
+
+            var value = (int)Math.Round(rawValue.Value);
+
+            if (Math.Abs(rawValue.Value - value) > 1e-6 || value < 1 || value > MaxComponentCount)
+                return null;
+
+            return value;
+        }
+    }
+
+    private double? GetCurrentPercent(int index)
+    {
+        return GetRuntimeTagInputNumber(GetComponentPercentKey(index)) ?? GetLiveScadaValue($"Perc{index}");
+    }
+
+    private double? CurrentDeltaD => GetRuntimeTagInputNumber(CorrectionKey) ?? GetLiveScadaValue("DeltaD");
+
+    // ValHmi не является Calculation input.
+    // Поэтому его значение всегда читается только для UI.
+    private double? CurrentDensityHmi => GetLiveScadaValue("ValHmi");
+
     private IReadOnlyList<CalcParameterOptionDto> SubstanceOptions => GetParameter("component0Code")?.Options ?? [];
+
+    // ============================================================
+    // Readiness
+    // ============================================================
+
+    /// <summary>
+    /// Required ProcessInput считается готовым только после реальной проверки.
+    ///
+    /// Непустая строка сама по себе больше никогда не означает LINKED.
+    /// </summary>
+    private bool IsProcessBindingsReady => _processBindings
+        .Where(binding => binding.Parameter.IsRequired)
+        .All(binding => binding.IsLinked);
+
+    /// <summary>
+    /// Проверяем полную SCADA-структуру Density Equipment.
+    ///
+    /// Perc0...Perc4 должны существовать независимо от текущего CompN,
+    /// потому что это фиксированный контракт Density Equipment Type.
+    /// </summary>
+    private bool IsDensityScadaStructureReady =>
+        !string.IsNullOrWhiteSpace(ComponentCountTag)
+        && !string.IsNullOrWhiteSpace(DeltaDTag)
+        && Enumerable.Range(0, MaxComponentCount).All(index => !string.IsNullOrWhiteSpace(GetPercTag(index)));
+
+    private bool IsDensityScadaValuesReady
+    {
+        get
+        {
+            if (!CurrentComponentCount.HasValue || !CurrentDeltaD.HasValue)
+                return false;
+
+            for (var index = 0; index < CurrentComponentCount.Value; index++)
+            {
+                if (!GetCurrentPercent(index).HasValue)
+                    return false;
+            }
+
+            return true;
+        }
+    }
+
+    private bool IsOutputBindingReady => !string.IsNullOrWhiteSpace(DensityOutputTag);
+
+    private bool IsConfigurationReady =>
+        Definition is not null
+        && IsProcessBindingsReady
+        && IsDensityScadaStructureReady
+        && IsDensityScadaValuesReady
+        && IsOutputBindingReady
+        && string.IsNullOrWhiteSpace(MixtureValidationError);
+
+    /// <summary>
+    /// Старый Job Version 1 использовал Constants для CompN/Perc.
+    ///
+    /// После установки Definition Version 2 такой Job должен быть явно
+    /// пересохранён, чтобы получить новые SCADA bindings.
+    /// Поэтому version mismatch также считается изменением конфигурации.
+    /// </summary>
+    private bool HasDefinitionVersionChange =>
+        Job is not null
+        && Definition is not null
+        && !string.Equals(Job.DefinitionVersion, Definition.Version, StringComparison.Ordinal);
+
+    private bool HasUnsavedChanges =>
+        HasDefinitionVersionChange
+        || !string.Equals(_savedEditorSignature, BuildEditorSignature(), StringComparison.Ordinal);
+
+    public bool HasPendingChanges => HasUnsavedChanges;
 
     // ============================================================
     // Lifecycle
@@ -803,23 +831,38 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadDefinitionAsync();
+
+        if (Definition is null)
+            return;
+
         SynchronizeConfiguration(force: true);
+        await RefreshDensityScadaValuesAsync(force: true);
+        await ValidateStoredProcessBindingsAsync();
+
+        CaptureSavedEditorState();
     }
 
-    protected override Task OnParametersSetAsync()
+    protected override async Task OnParametersSetAsync()
     {
-        if (Definition is not null)
-            SynchronizeConfiguration();
+        if (Definition is null)
+            return;
 
-        return Task.CompletedTask;
+        var contextChanged = SynchronizeConfiguration();
+
+        await RefreshDensityScadaValuesAsync();
+
+        if (contextChanged)
+        {
+            await ValidateStoredProcessBindingsAsync();
+            CaptureSavedEditorState();
+        }
     }
 
     /// <summary>
-    /// Загружает единственный Density Definition из Runtime.
+    /// Загружает установленный Runtime Density Definition.
     ///
-    /// WEB не создаёт собственную копию описания параметров:
-    /// именно установленный Runtime является источником Definition Version,
-    /// ProcessInput Role, Units, Options и диапазонов.
+    /// WEB не хранит собственную копию списка ProcessInput:
+    /// Temperature, Pressure и будущие параметры приходят из Definition.
     /// </summary>
     private async Task LoadDefinitionAsync()
     {
@@ -829,12 +872,7 @@
         try
         {
             var definitions = await CalcApi.GetDefinitionsAsync();
-
-            _definition = definitions.FirstOrDefault(definition =>
-                string.Equals(
-                    definition.Code,
-                    DensityDefinitionCode,
-                    StringComparison.OrdinalIgnoreCase));
+            _definition = definitions.FirstOrDefault(definition => string.Equals(definition.Code, DensityDefinitionCode, StringComparison.OrdinalIgnoreCase));
 
             if (_definition is null)
                 _loadError = "Density calculation definition is not available in Runtime.";
@@ -851,61 +889,51 @@
     }
 
     /// <summary>
-    /// Восстанавливает весь редактор из сохранённого Job.
+    /// Восстанавливает редактируемую конфигурацию из Calc Job.
     ///
-    /// Context включает:
-    /// - Equipment Name;
-    /// - Job Id/Revision;
-    /// - Definition Version;
-    /// - реальную структуру ITEM -> TAG.
-    ///
-    /// Поэтому после изменения Job или Refresh SCADA Catalog
-    /// панель автоматически перечитает нужную конфигурацию.
+    /// Live SCADA CompN/Perc/DeltaD сюда не копируются.
+    /// Они существуют независимо от WEB-конфигурации и читаются отдельно.
     /// </summary>
-    private void SynchronizeConfiguration(bool force = false)
+    private bool SynchronizeConfiguration(bool force = false)
     {
         if (Definition is null)
-            return;
+            return false;
 
         var structureSignature = string.Join("|", Model.ItemTags
-                .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase)
-                .Select(pair => $"{pair.Key}={pair.Value}"));
+            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+            .Select(pair => $"{pair.Key}={pair.Value}"));
 
         var newContextKey = $"{Model.Name}|{Job?.Id}|{Job?.Revision}|{Definition.Version}|{structureSignature}";
 
         if (!force && string.Equals(_contextKey, newContextKey, StringComparison.Ordinal))
-            return;
+            return false;
 
         _contextKey = newContextKey;
 
         BuildProcessBindings();
-        BuildMixtureConfiguration();
-        BuildCorrectionConfiguration();
+        BuildComponentConfiguration();
 
-        _enabled = Job?.Enabled == true && IsConfigurationReady;
-        _allowOutputWrites = Job?.WriteEnabled == true && IsConfigurationReady && IsOutputBindingReady;
+        // Сохранённое Enabled/WriteEnabled не должны автоматически выключаться
+        // только потому, что в момент открытия страницы SCADA ещё не успела прочитаться.
+        _enabled = Job?.Enabled == true;
+        _allowOutputWrites = Job?.WriteEnabled == true;
 
-        CaptureSavedEditorState();
+        _nextScadaRefreshUtc = DateTimeOffset.MinValue;
+
+        return true;
     }
 
     // ============================================================
-    // Process bindings
+    // ProcessInput resolving
     // ============================================================
 
     /// <summary>
     /// Строит редакторы всех ProcessInput динамически.
     ///
-    /// Сегодня это Temperature + Pressure.
-    ///
-    /// Если Definition завтра получит ещё:
-    ///
-    /// concentration
-    /// humidity
-    /// compressibility
-    ///
-    /// и эти параметры будут иметь Role = ProcessInput,
-    /// здесь ничего менять не потребуется.
+    /// Сегодня это Temperature и Pressure.
+    /// Будущий третий, четвёртый или пятый ProcessInput автоматически
+    /// попадёт сюда по Role = ProcessInput.
     /// </summary>
     private void BuildProcessBindings()
     {
@@ -917,13 +945,226 @@
         foreach (var parameter in Definition.Parameters.Where(parameter => parameter.Role == CalcParameterRoleDto.ProcessInput).OrderBy(parameter => parameter.Order))
         {
             var stored = FindJobInput(parameter.Key);
+            var storedTag = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.TagName?.Trim() ?? "" : "";
+            var currentValue = 0d;
+            var hasRuntimeValue = storedTag.Length > 0 && TryGetRuntimeNumber(State?.LastInputs, parameter.Key, out currentValue);
 
             _processBindings.Add(new DensityProcessBindingEditor
             {
                 Parameter = parameter,
-                TagName = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.TagName ?? "" : "",
-                MaxAgeSeconds = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.MaxAgeSeconds : null
+                SourceText = storedTag,
+                ResolvedTagName = storedTag,
+                ValidatedSourceText = hasRuntimeValue ? storedTag : "",
+                CurrentValue = hasRuntimeValue ? currentValue : null,
+                Resolution = hasRuntimeValue ? "Saved Runtime tag" : "",
+                MaxAgeSeconds = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.MaxAgeSeconds : null,
+                CheckState = hasRuntimeValue ? DensityBindingCheckState.Linked : DensityBindingCheckState.NotChecked
             });
+        }
+    }
+
+    /// <summary>
+    /// После загрузки сохранённого Job проверяет те bindings,
+    /// для которых Runtime State ещё не дал подтверждённого значения.
+    ///
+    /// Это позволяет открыть выключенный Job и всё равно увидеть
+    /// реальный статус Temperature/Pressure.
+    /// </summary>
+    private async Task ValidateStoredProcessBindingsAsync()
+    {
+        foreach (var binding in _processBindings.Where(binding => !binding.IsLinked && !string.IsNullOrWhiteSpace(binding.SourceText)))
+            await ResolveProcessBindingAsync(binding);
+    }
+
+    /// <summary>
+    /// Выполняет Check всех ProcessInput.
+    ///
+    /// Для каждого параметра используется CalcProcessInputResolver:
+    /// сначала Runtime AI.R, затем direct numeric Variable Tag.
+    /// </summary>
+    private async Task CheckProcessBindingsAsync()
+    {
+        if (_isCheckingBindings)
+            return;
+
+        _isCheckingBindings = true;
+
+        try
+        {
+            foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
+                await ResolveProcessBindingAsync(binding);
+
+            NotificationService.Notify(
+                IsProcessBindingsReady ? NotificationSeverity.Success : NotificationSeverity.Warning,
+                "Density",
+                IsProcessBindingsReady ? "Required process bindings are valid." : "Some required process bindings were not resolved.",
+                4000);
+        }
+        finally
+        {
+            _isCheckingBindings = false;
+        }
+    }
+
+    private async Task ResolveProcessBindingAsync(DensityProcessBindingEditor binding)
+    {
+        var source = binding.SourceText.Trim();
+
+        binding.ResolvedTagName = "";
+        binding.ValidatedSourceText = "";
+        binding.CurrentValue = null;
+        binding.Resolution = "";
+        binding.Message = "";
+
+        if (source.Length == 0)
+        {
+            binding.CheckState = binding.Parameter.IsRequired
+                ? DensityBindingCheckState.NotFound
+                : DensityBindingCheckState.NotChecked;
+
+            binding.Message = binding.Parameter.IsRequired ? "Source is required." : "";
+            return;
+        }
+
+        binding.CheckState = DensityBindingCheckState.Checking;
+
+        var resolution = await ProcessInputResolver.ResolveAsync(source, EquipmentCatalog);
+
+        if (!resolution.Success || string.IsNullOrWhiteSpace(resolution.ResolvedTagName) || !resolution.CurrentValue.HasValue)
+        {
+            binding.CheckState = DensityBindingCheckState.NotFound;
+            binding.Message = resolution.Message ?? "Process input was not resolved.";
+            return;
+        }
+
+        binding.ResolvedTagName = resolution.ResolvedTagName;
+        binding.ValidatedSourceText = source;
+        binding.CurrentValue = resolution.CurrentValue;
+        binding.Resolution = resolution.Resolution ?? "";
+        binding.CheckState = DensityBindingCheckState.Linked;
+    }
+
+    /// <summary>
+    /// Любое изменение пользовательской ссылки сбрасывает предыдущий Check.
+    ///
+    /// То есть после изменения даже одного символа прежний LINKED
+    /// больше не считается действительным.
+    /// </summary>
+    private void OnProcessSourceChanged(DensityProcessBindingEditor binding, string? value)
+    {
+        var normalized = (value ?? "").Trim();
+
+        if (string.Equals(binding.SourceText, normalized, StringComparison.Ordinal))
+            return;
+
+        binding.SourceText = normalized;
+        binding.ResolvedTagName = "";
+        binding.ValidatedSourceText = "";
+        binding.CurrentValue = null;
+        binding.Resolution = "";
+        binding.Message = "";
+        binding.CheckState = DensityBindingCheckState.NotChecked;
+    }
+
+    // ============================================================
+    // Density own SCADA values
+    // ============================================================
+
+    /// <summary>
+    /// Читает read-only SCADA-параметры Density.
+    ///
+    /// Если работающий Job уже содержит Tag input и LastInputs,
+    /// повторный HTTP/CtApi read для этого параметра не нужен.
+    ///
+    /// ValHmi всегда читается отдельно, потому что он намеренно
+    /// не входит в Calculation Job.
+    /// </summary>
+    private async Task RefreshDensityScadaValuesAsync(bool force = false)
+    {
+        if (_isReadingScada)
+            return;
+
+        var modelChanged = !string.Equals(_scadaRefreshModelName, Model.Name, StringComparison.OrdinalIgnoreCase);
+        var now = DateTimeOffset.UtcNow;
+
+        if (modelChanged)
+        {
+            _scadaRefreshModelName = Model.Name;
+            _liveScadaValues.Clear();
+            force = true;
+        }
+
+        if (!force && now < _nextScadaRefreshUtc)
+            return;
+
+        _nextScadaRefreshUtc = now.AddSeconds(5);
+        _isReadingScada = true;
+        _scadaReadError = "";
+
+        try
+        {
+            var itemsToRead = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "ValHmi"
+            };
+
+            if (!GetRuntimeTagInputNumber(ComponentCountKey).HasValue)
+                itemsToRead.Add("CompN");
+
+            if (!GetRuntimeTagInputNumber(CorrectionKey).HasValue)
+                itemsToRead.Add("DeltaD");
+
+            for (var index = 0; index < MaxComponentCount; index++)
+            {
+                if (!GetRuntimeTagInputNumber(GetComponentPercentKey(index)).HasValue)
+                    itemsToRead.Add($"Perc{index}");
+            }
+
+            var reads = await Task.WhenAll(itemsToRead.Select(ReadDensityScadaItemAsync));
+
+            foreach (var read in reads)
+                _liveScadaValues[read.ItemName] = read.Success ? read.Value : null;
+
+            var failed = reads.Where(read => !read.Success && !string.IsNullOrWhiteSpace(read.Message)).ToList();
+
+            if (failed.Count > 0)
+                _scadaReadError = string.Join(" ", failed.Select(read => $"{read.ItemName}: {read.Message}"));
+        }
+        finally
+        {
+            _isReadingScada = false;
+        }
+    }
+
+    /// <summary>
+    /// Читает один уже известный ITEM Density через его реальный Variable Tag.
+    ///
+    /// Используется тот же общий ParamApi.CheckNumericTagAsync,
+    /// который сейчас обслуживает Test Kp.
+    /// </summary>
+    private async Task<DensityScadaReadResult> ReadDensityScadaItemAsync(string itemName)
+    {
+        var tagName = GetItemTag(Model, itemName);
+
+        if (string.IsNullOrWhiteSpace(tagName))
+            return DensityScadaReadResult.Failed(itemName, $"ITEM {itemName} was not found in Calc Model.");
+
+        try
+        {
+            var response = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest
+            {
+                TagName = tagName,
+                RequireTrend = false
+            });
+
+            if (response.Found && response.CurrentValue.HasValue)
+                return DensityScadaReadResult.Successful(itemName, response.CurrentValue.Value);
+
+            return DensityScadaReadResult.Failed(itemName, response.Message ?? "Numeric value was not read.");
+        }
+        catch (Exception ex)
+        {
+            return DensityScadaReadResult.Failed(itemName, ex.Message);
         }
     }
 
@@ -932,101 +1173,73 @@
     // ============================================================
 
     /// <summary>
-    /// Восстанавливает componentCount и до пяти component slots.
+    /// Из Job восстанавливаем только соответствие Perc-slot -> Substance.
     ///
-    /// Компоненты являются Calculation Configuration,
-    /// а не SCADA ProcessInput.
-    ///
-    /// Поэтому они сохраняются непосредственно в Calc Job
-    /// как ConstantValue.
+    /// CompN и проценты из Job больше не читаются как Constants.
     /// </summary>
-    private void BuildMixtureConfiguration()
+    private void BuildComponentConfiguration()
     {
-        _componentCount = Math.Clamp(ReadStoredInt(ComponentCountKey, 1), 1, MaxComponentCount);
         _components.Clear();
 
         for (var index = 0; index < MaxComponentCount; index++)
         {
-            var defaultPercent = Job is null && index == 0 ? 100d : 0d;
-
             _components.Add(new DensityComponentEditor
             {
                 Index = index,
-                SubstanceCode = ReadStoredString(GetComponentCodeKey(index), ""),
-                MassPercent = ReadStoredNumber(GetComponentPercentKey(index), defaultPercent)
+                SubstanceCode = ReadStoredString(GetComponentCodeKey(index), "")
             });
         }
     }
 
     /// <summary>
-    /// Выполняет WEB-проверку состава смеси до Save.
+    /// Проверяет текущую SCADA-смесь и нашу настройку SubstanceCode.
     ///
-    /// Расчётное ядро всё равно повторно проверит эти правила,
-    /// поэтому WEB validation является только удобством для пользователя,
-    /// а не единственной защитой.
+    /// Математическое ядро повторит эту проверку во время выполнения Job.
+    /// Здесь она нужна для понятного UI ещё до Save.
     /// </summary>
     private string MixtureValidationError
     {
         get
         {
-            if (_componentCount < 1 || _componentCount > MaxComponentCount)
-                return $"Component count must be between 1 and {MaxComponentCount}.";
+            if (!CurrentComponentCount.HasValue)
+                return "SCADA CompN was not read as an integer value from 1 to 5.";
 
+            var componentCount = CurrentComponentCount.Value;
             var usedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var totalPercent = 0d;
 
-            for (var index = 0; index < _componentCount; index++)
+            for (var index = 0; index < componentCount; index++)
             {
-                var component = _components.ElementAtOrDefault(index);
+                var component = _components[index];
 
-                if (component is null || string.IsNullOrWhiteSpace(component.SubstanceCode))
-                    return $"Component {index + 1} is not selected.";
+                if (string.IsNullOrWhiteSpace(component.SubstanceCode))
+                    return $"Substance for component {index + 1} is not selected.";
 
                 if (!usedCodes.Add(component.SubstanceCode.Trim()))
-                    return $"Component '{component.SubstanceCode}' is specified more than once.";
+                    return $"Substance '{component.SubstanceCode}' is specified more than once.";
 
-                if (!double.IsFinite(component.MassPercent) || component.MassPercent < 0d || component.MassPercent > 100d)
-                    return $"Component {index + 1} mass percent must be between 0 and 100%.";
+                var percent = GetCurrentPercent(index);
 
-                totalPercent += component.MassPercent;
+                if (!percent.HasValue)
+                    return $"SCADA Perc{index} value is not available.";
+
+                if (!double.IsFinite(percent.Value) || percent.Value < 0d || percent.Value > 100d)
+                    return $"SCADA Perc{index} must be between 0 and 100%.";
+
+                totalPercent += percent.Value;
             }
 
             if (Math.Abs(totalPercent - 100d) > PercentageTolerance)
-                return $"Mixture mass percentages must total 100%. " + $"Current total: {totalPercent:0.###}%.";
+                return $"SCADA mixture percentages must total 100%. Current total: {totalPercent:0.###}%.";
 
             return "";
         }
-    }
-
-    private void OnComponentCountChanged(int value)
-    {
-        _componentCount = Math.Clamp(value, 1, MaxComponentCount);
-    }
-
-    // ============================================================
-    // Correction
-    // ============================================================
-
-    /// <summary>
-    /// Если Density Equipment имеет ITEM DeltaD,
-    /// Calc Job будет автоматически читать его как Tag input.
-    ///
-    /// Constant используется только как fallback для Equipment Type,
-    /// где DeltaD отсутствует.
-    /// </summary>
-    private void BuildCorrectionConfiguration()
-    {
-        var parameter = GetParameter(CorrectionKey);
-        _densityCorrection = ReadStoredNumber(CorrectionKey, ReadDefaultNumber(parameter?.DefaultValue));
     }
 
     // ============================================================
     // Save
     // ============================================================
 
-    /// <summary>
-    /// Создаёт новый Density Job.
-    /// </summary>
     private async Task CreateJobAsync()
     {
         if (Definition is null || !IsConfigurationReady)
@@ -1036,35 +1249,27 @@
 
         try
         {
-            var allowWrites = _allowOutputWrites && IsOutputBindingReady && IsConfigurationReady;
+            var allowWrites = _allowOutputWrites && IsOutputBindingReady;
 
             var request = new CalcJobSaveRequest
             {
                 EquipmentName = Model.Name,
                 Name = $"{Model.Name} Density",
                 Description = Model.Description,
-
                 DefinitionCode = Definition.Code,
                 DefinitionVersion = Definition.Version,
-
-                Enabled = _enabled && IsConfigurationReady,
-
+                Enabled = _enabled,
                 PeriodMs = 5000,
-
                 WriteEnabled = allowWrites,
-
                 SortOrder = 0,
                 ExpectedRevision = null,
-
                 Inputs = BuildDensityInputs(),
                 Outputs = BuildDensityOutputs(allowWrites)
             };
 
             await CalcApi.CreateJobAsync(request);
 
-            CaptureSavedEditorState();
             NotificationService.Notify(NotificationSeverity.Success, "Calculations", $"Density Job created for {Model.Name}.", 4000);
-
             await JobChanged.InvokeAsync();
         }
         catch (Exception ex)
@@ -1077,9 +1282,6 @@
         }
     }
 
-    /// <summary>
-    /// Сохраняет существующий Density Job.
-    /// </summary>
     private async Task SaveJobAsync()
     {
         if (Job is null || Definition is null || !IsConfigurationReady)
@@ -1089,35 +1291,27 @@
 
         try
         {
-            var allowWrites = _allowOutputWrites && IsOutputBindingReady && IsConfigurationReady;
+            var allowWrites = _allowOutputWrites && IsOutputBindingReady;
 
             var request = new CalcJobSaveRequest
             {
                 EquipmentName = Job.EquipmentName,
                 Name = Job.Name,
                 Description = Job.Description,
-
                 DefinitionCode = Definition.Code,
                 DefinitionVersion = Definition.Version,
-
-                Enabled = _enabled && IsConfigurationReady,
-
+                Enabled = _enabled,
                 PeriodMs = Job.PeriodMs,
-
                 WriteEnabled = allowWrites,
-
                 SortOrder = Job.SortOrder,
                 ExpectedRevision = Job.Revision,
-
                 Inputs = BuildDensityInputs(),
                 Outputs = BuildDensityOutputs(allowWrites)
             };
 
             await CalcApi.UpdateJobAsync(Job.Id, request);
 
-            CaptureSavedEditorState();
             NotificationService.Notify(NotificationSeverity.Success, "Calculations", $"Density configuration saved for {Model.Name}.", 4000);
-
             await JobChanged.InvokeAsync();
         }
         catch (Exception ex)
@@ -1131,135 +1325,116 @@
     }
 
     /// <summary>
-    /// Формирует полный набор Density Job Inputs.
+    /// Формирует окончательный Density Job.
     ///
     /// ProcessInput:
-    ///     сохраняются как Tag bindings.
+    /// сохраняются только после успешного Resolve/Check.
     ///
-    /// densityCorrection:
-    ///     DeltaD Tag, если ITEM существует;
-    ///     иначе Constant fallback.
+    /// CompN:
+    /// всегда Density ITEM CompN.
     ///
-    /// componentCount/componentNCode/componentNPercent:
-    ///     сохраняются как Constants.
+    /// Perc0...Perc4:
+    /// всегда соответствующие Density SCADA ITEM.
     ///
-    /// Неактивные component slots не сохраняются.
+    /// DeltaD:
+    /// всегда Density ITEM DeltaD.
+    ///
+    /// componentNCode:
+    /// единственная постоянная настройка состава.
+    ///
+    /// ValHmi здесь отсутствует.
     /// </summary>
     private List<CalcJobInputSaveDto> BuildDensityInputs()
     {
         var result = new List<CalcJobInputSaveDto>();
 
-        // ------------------------------------------------------------
-        // ProcessInput
-        // ------------------------------------------------------------
         foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
         {
-            if (string.IsNullOrWhiteSpace(binding.TagName))
+            if (!binding.IsLinked)
                 continue;
 
             result.Add(new CalcJobInputSaveDto
             {
                 ParameterKey = binding.Parameter.Key,
                 SourceType = CalcInputSourceTypeDto.Tag,
-
-                TagName = binding.TagName.Trim(),
+                TagName = binding.ResolvedTagName,
                 MaxAgeSeconds = binding.MaxAgeSeconds,
-
                 SortOrder = binding.Parameter.Order
             });
         }
 
-        // ------------------------------------------------------------
-        // Density correction
-        // ------------------------------------------------------------
-        var correctionParameter = GetParameter(CorrectionKey);
+        AddFixedTagInput(result, ComponentCountKey, ComponentCountTag);
+        AddFixedTagInput(result, CorrectionKey, DeltaDTag);
 
-        if (correctionParameter is not null)
+        // Все Perc0...Perc4 являются SCADA inputs.
+        // Даже если CompN сейчас меньше пяти, структура Equipment фиксированная.
+        for (var index = 0; index < MaxComponentCount; index++)
+            AddFixedTagInput(result, GetComponentPercentKey(index), GetPercTag(index));
+
+        // SubstanceCode сохраняем как Constants.
+        // Неактивные уже настроенные слоты тоже можно сохранить:
+        // они не участвуют в формуле, пока CompN их не включает.
+        for (var index = 0; index < MaxComponentCount; index++)
         {
-            if (!string.IsNullOrWhiteSpace(DensityCorrectionTag))
-            {
-                result.Add(new CalcJobInputSaveDto
-                {
-                    ParameterKey = CorrectionKey,
-                    SourceType = CalcInputSourceTypeDto.Tag,
-                    TagName = DensityCorrectionTag,
-                    SortOrder = correctionParameter.Order
-                });
-            }
-            else
-            {
-                result.Add(CreateConstantInput(correctionParameter, _densityCorrection));
-            }
-        }
+            var code = _components[index].SubstanceCode.Trim();
+            var parameter = GetParameter(GetComponentCodeKey(index));
 
-        // ------------------------------------------------------------
-        // Component count
-        // ------------------------------------------------------------
-        var componentCountParameter = GetParameter(ComponentCountKey);
-
-        if (componentCountParameter is not null)
-            result.Add(CreateConstantInput(componentCountParameter, _componentCount));
-
-        // ------------------------------------------------------------
-        // Active components
-        // ------------------------------------------------------------
-        for (var index = 0; index < _componentCount; index++)
-        {
-            var component = _components[index];
-            var codeParameter = GetParameter(GetComponentCodeKey(index));
-            var percentParameter = GetParameter(GetComponentPercentKey(index));
-
-            if (codeParameter is not null)
-                result.Add(CreateConstantInput(codeParameter, component.SubstanceCode.Trim()));
-
-            if (percentParameter is not null)
-                result.Add(CreateConstantInput(percentParameter, component.MassPercent));
+            if (parameter is not null && code.Length > 0)
+                result.Add(CreateConstantInput(parameter, code));
         }
 
         return result.OrderBy(input => input.SortOrder).ToList();
     }
 
+    private void AddFixedTagInput(List<CalcJobInputSaveDto> target, string parameterKey, string? tagName)
+    {
+        if (string.IsNullOrWhiteSpace(tagName))
+            return;
+
+        var parameter = GetParameter(parameterKey);
+
+        if (parameter is null)
+            return;
+
+        target.Add(new CalcJobInputSaveDto
+        {
+            ParameterKey = parameter.Key,
+            SourceType = CalcInputSourceTypeDto.Tag,
+            TagName = tagName,
+            SortOrder = parameter.Order
+        });
+    }
+
     /// <summary>
-    /// Формирует output binding Density.
+    /// Density имеет ровно один output: ValCalc.
     ///
-    /// Calculation Definition возвращает инженерное значение kg/m³.
+    /// Scale = 10 пока сохраняем из уже перенесённого legacy-контракта.
+    /// Это не пользовательская настройка UI.
     ///
-    /// Существующий Plant SCADA ValCalc использует legacy scale x10,
-    /// поэтому преобразование выполняется исключительно на границе
-    /// SCADA output binding:
-    ///
-    /// Engineering Density 781.9 kg/m³
-    ///              ↓ x10
-    /// SCADA ValCalc        7819
-    ///
-    /// State.LastOutputs при этом продолжает хранить 781.9,
-    /// то есть математическое ядро остаётся в инженерных единицах.
+    /// Offset всегда 0.
+    /// Реальная коррекция приходит отдельным SCADA input DeltaD.
     /// </summary>
     private List<CalcJobOutputSaveDto> BuildDensityOutputs(bool allowWrites)
     {
         if (Definition is null)
             return [];
 
-        return Definition.Outputs.OrderBy(output => output.Order).Select(output =>
-            {
-                var isDensity = string.Equals(output.Key, "density", StringComparison.OrdinalIgnoreCase);
+        var output = Definition.Outputs.Single(item => string.Equals(item.Key, "density", StringComparison.OrdinalIgnoreCase));
 
-                return new CalcJobOutputSaveDto
-                {
-                    OutputKey = output.Key,
-                    TagName = isDensity ? DensityOutputTag : null,
-                    WriteEnabled = allowWrites && isDensity,
-                    Scale = isDensity ? 10d : 1d,
-                    Offset = 0d,
-                    SortOrder = output.Order
-                };
-            })
-            .ToList();
+        return
+        [
+            new CalcJobOutputSaveDto
+            {
+                OutputKey = output.Key,
+                TagName = DensityOutputTag,
+                WriteEnabled = allowWrites,
+                Scale = 10d,
+                Offset = 0d,
+                SortOrder = output.Order
+            }
+        ];
     }
 
-    /// <summary>
-    /// Создаёт Constant binding в одном месте, чтобы Number/Integer/Selection использовали одинаковый JSON contract.
-    /// </summary>
     private static CalcJobInputSaveDto CreateConstantInput(CalcParameterDefinitionDto parameter, object value)
     {
         return new CalcJobInputSaveDto
@@ -1272,38 +1447,28 @@
     }
 
     // ============================================================
-    // Unsaved signature
+    // Unsaved state
     // ============================================================
 
+    /// <summary>
+    /// В signature входят только редактируемые пользователем настройки.
+    ///
+    /// SCADA CompN/Perc/DeltaD/ValHmi сюда не входят,
+    /// поэтому изменение процесса не создаёт ложный Unsaved state.
+    /// </summary>
     private string BuildEditorSignature()
     {
         var parts = new List<string>
         {
             $"enabled={_enabled}",
-            $"writes={_allowOutputWrites}",
-            $"componentCount={_componentCount}"
+            $"writes={_allowOutputWrites}"
         };
 
         foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
-        {
-            parts.Add(
-                $"{binding.Parameter.Key}=tag:" +
-                $"{binding.TagName.Trim()}:" +
-                $"{binding.MaxAgeSeconds?.ToString(CultureInfo.InvariantCulture) ?? ""}");
-        }
+            parts.Add($"{binding.Parameter.Key}={binding.SourceText.Trim()}:{binding.MaxAgeSeconds?.ToString(CultureInfo.InvariantCulture) ?? ""}");
 
-        for (var index = 0; index < _componentCount; index++)
-        {
-            var component = _components[index];
-
-            parts.Add(
-                $"component{index}=" +
-                $"{component.SubstanceCode.Trim()}:" +
-                $"{component.MassPercent.ToString("R", CultureInfo.InvariantCulture)}");
-        }
-
-        if (string.IsNullOrWhiteSpace(DensityCorrectionTag))
-            parts.Add($"correction=" + _densityCorrection.ToString("R", CultureInfo.InvariantCulture));
+        for (var index = 0; index < MaxComponentCount; index++)
+            parts.Add($"component{index}={_components.ElementAtOrDefault(index)?.SubstanceCode.Trim() ?? ""}");
 
         return string.Join("|", parts);
     }
@@ -1317,43 +1482,90 @@
     // Runtime values
     // ============================================================
 
-    private double? GetLastInputNumber(string key)
-    {
-        return TryGetRuntimeNumber(State?.LastInputs, key, out var value) ? value : null;
-    }
-
     private double? GetLastOutputNumber(string key)
     {
         return TryGetRuntimeNumber(State?.LastOutputs, key, out var value) ? value : null;
     }
 
     /// <summary>
-    /// Верхняя панель показывает именно binding сохранённого Job,
-    /// потому что LastInputs также относятся к сохранённой конфигурации Runtime.
+    /// Возвращает значение только если конкретный сохранённый Job input
+    /// действительно является Tag binding.
     ///
-    /// Несохранённый новый Tag пользователь видит в Settings,
-    /// а наверху до Save остаётся старый Runtime binding.
+    /// Это важно для миграции Version 1:
+    /// старые Constant CompN/Perc нельзя принимать за текущие SCADA значения.
     /// </summary>
-    private string GetRuntimeBindingTag(string parameterKey)
+    private double? GetRuntimeTagInputNumber(string key)
     {
-        var stored = FindJobInput(parameterKey);
+        var input = FindJobInput(key);
+
+        if (input?.SourceType != CalcInputSourceTypeDto.Tag)
+            return null;
+
+        return TryGetRuntimeNumber(State?.LastInputs, key, out var value) ? value : null;
+    }
+
+    private double? GetProcessCurrentValue(DensityProcessBindingEditor binding)
+    {
+        return GetRuntimeTagInputNumber(binding.Parameter.Key) ?? binding.CurrentValue;
+    }
+
+    private string GetProcessRuntimeTag(DensityProcessBindingEditor binding)
+    {
+        var stored = FindJobInput(binding.Parameter.Key);
 
         if (stored?.SourceType == CalcInputSourceTypeDto.Tag && !string.IsNullOrWhiteSpace(stored.TagName))
             return stored.TagName;
 
-        return Job is null ? "Not configured" : "Not linked";
+        if (binding.IsLinked)
+            return binding.ResolvedTagName;
+
+        return "Not linked";
     }
 
-    private string GetCorrectionSourceText()
+    private double? GetLiveScadaValue(string itemName)
     {
-        if (!string.IsNullOrWhiteSpace(DensityCorrectionTag))
-            return DensityCorrectionTag;
-
-        return "Constant";
+        return _liveScadaValues.TryGetValue(itemName, out var value) ? value : null;
     }
 
     // ============================================================
-    // Definition helpers
+    // Binding UI
+    // ============================================================
+
+    private static string GetBindingBadgeText(DensityProcessBindingEditor binding)
+    {
+        return binding.CheckState switch
+        {
+            DensityBindingCheckState.Checking => "CHECKING",
+            DensityBindingCheckState.Linked => "LINKED",
+            DensityBindingCheckState.NotFound => "NOT FOUND",
+            _ => "NOT CHECKED"
+        };
+    }
+
+    private static BadgeStyle GetBindingBadgeStyle(DensityProcessBindingEditor binding)
+    {
+        return binding.CheckState switch
+        {
+            DensityBindingCheckState.Checking => BadgeStyle.Info,
+            DensityBindingCheckState.Linked => BadgeStyle.Success,
+            DensityBindingCheckState.NotFound => BadgeStyle.Danger,
+            _ => BadgeStyle.Light
+        };
+    }
+
+    private static string GetBindingDescription(DensityProcessBindingEditor binding)
+    {
+        if (binding.IsLinked)
+            return $"{binding.Resolution}: {binding.ResolvedTagName}";
+
+        if (!string.IsNullOrWhiteSpace(binding.Message))
+            return binding.Message;
+
+        return binding.Parameter.Unit ?? "";
+    }
+
+    // ============================================================
+    // Definition / Job helpers
     // ============================================================
 
     private CalcParameterDefinitionDto? GetParameter(string key)
@@ -1376,63 +1588,24 @@
         return $"component{index}Percent";
     }
 
-    // ============================================================
-    // Stored constants
-    // ============================================================
-
-    private int ReadStoredInt(string key, int defaultValue)
-    {
-        var input = FindJobInput(key);
-
-        if (input?.SourceType == CalcInputSourceTypeDto.Constant && input.ConstantValue.HasValue && input.ConstantValue.Value.ValueKind == JsonValueKind.Number && input.ConstantValue.Value.TryGetInt32(out var value))
-            return value;
-
-        return defaultValue;
-    }
-
-    private double ReadStoredNumber(string key, double defaultValue)
-    {
-        var input = FindJobInput(key);
-
-        if (input?.SourceType == CalcInputSourceTypeDto.Constant &&
-            input.ConstantValue.HasValue &&
-            input.ConstantValue.Value.ValueKind == JsonValueKind.Number &&
-            input.ConstantValue.Value.TryGetDouble(out var value) &&
-            double.IsFinite(value))
-        {
-            return value;
-        }
-
-        return defaultValue;
-    }
-
     private string ReadStoredString(string key, string defaultValue)
     {
         var input = FindJobInput(key);
 
-        if (input?.SourceType == CalcInputSourceTypeDto.Constant && input.ConstantValue.HasValue && input.ConstantValue.Value.ValueKind == JsonValueKind.String)
+        if (input?.SourceType == CalcInputSourceTypeDto.Constant
+            && input.ConstantValue.HasValue
+            && input.ConstantValue.Value.ValueKind == JsonValueKind.String)
+        {
             return input.ConstantValue.Value.GetString()?.Trim() ?? defaultValue;
+        }
 
         return defaultValue;
-    }
-
-    private static double ReadDefaultNumber(JsonElement? value)
-    {
-        if (value.HasValue && value.Value.ValueKind == JsonValueKind.Number && value.Value.TryGetDouble(out var number) && double.IsFinite(number))
-            return number;
-
-        return 0d;
     }
 
     // ============================================================
     // SCADA ITEM helper
     // ============================================================
 
-    /// <summary>
-    /// Возвращает реальный Variable Tag по ITEM Equipment.
-    ///
-    /// Никакого определения назначения по имени Variable Tag в специализированной Density panel нет.
-    /// </summary>
     private static string? GetItemTag(CalcModelDto? model, string itemName)
     {
         if (model?.ItemTags is null || model.ItemTags.Count == 0 || string.IsNullOrWhiteSpace(itemName))
@@ -1462,21 +1635,18 @@
             if (!string.Equals(property.Name, key, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            return property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetDouble(out value) && double.IsFinite(value);
+            return property.Value.ValueKind == JsonValueKind.Number
+                && property.Value.TryGetDouble(out value)
+                && double.IsFinite(value);
         }
 
         return false;
     }
 
     // ============================================================
-    // UI formatting
+    // Formatting
     // ============================================================
 
-    /// <summary>
-    /// Формат строится из Definition Decimals и Unit.
-    ///
-    /// Благодаря этому будущий ProcessInput автоматически отображается с собственной единицей измерения.
-    /// </summary>
     private static string GetNumberFormat(CalcParameterDefinitionDto parameter)
     {
         var decimals = Math.Clamp(parameter.Decimals, 0, 6);
@@ -1496,20 +1666,62 @@
     }
 
     // ============================================================
-    // Editor models
+    // Local models
     // ============================================================
+
+    private enum DensityBindingCheckState
+    {
+        NotChecked,
+        Checking,
+        Linked,
+        NotFound
+    }
 
     private sealed class DensityProcessBindingEditor
     {
         public CalcParameterDefinitionDto Parameter { get; set; } = new();
-        public string TagName { get; set; } = "";
+
+        // То, что пользователь ввёл в Settings.
+        public string SourceText { get; set; } = "";
+
+        // Реальный Variable Tag, который после успешного Check
+        // будет сохранён в Calc Job.
+        public string ResolvedTagName { get; set; } = "";
+
+        // SourceText, для которого последний Check был успешным.
+        // Если пользователь меняет SourceText, IsLinked сразу становится false.
+        public string ValidatedSourceText { get; set; } = "";
+
+        public string Resolution { get; set; } = "";
+        public string Message { get; set; } = "";
+
         public int? MaxAgeSeconds { get; set; }
+        public double? CurrentValue { get; set; }
+
+        public DensityBindingCheckState CheckState { get; set; }
+
+        public bool IsLinked =>
+            CheckState == DensityBindingCheckState.Linked
+            && !string.IsNullOrWhiteSpace(ResolvedTagName)
+            && string.Equals(SourceText.Trim(), ValidatedSourceText, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class DensityComponentEditor
     {
         public int Index { get; set; }
         public string SubstanceCode { get; set; } = "";
-        public double MassPercent { get; set; }
+    }
+
+    private sealed record DensityScadaReadResult(string ItemName, bool Success, double? Value, string? Message)
+    {
+        public static DensityScadaReadResult Successful(string itemName, double value)
+        {
+            return new DensityScadaReadResult(itemName, true, value, null);
+        }
+
+        public static DensityScadaReadResult Failed(string itemName, string? message)
+        {
+            return new DensityScadaReadResult(itemName, false, null, message);
+        }
     }
 }

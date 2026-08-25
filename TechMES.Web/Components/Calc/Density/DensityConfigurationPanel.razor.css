@@ -499,3 +499,8 @@
         gap: 10px;
     }
 }
+
+.density-section-action {
+    margin-left: auto;
+    flex: 0 0 auto;
+}
