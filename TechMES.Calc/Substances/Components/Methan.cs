@@ -1,4 +1,4 @@
-using TechMES.Calc.Substances.Thermodynamics;
+using TechMES.Calc.Thermodynamics;
 using TechMES.Calc.Substances;
 using System;
 using System.Collections.Generic;

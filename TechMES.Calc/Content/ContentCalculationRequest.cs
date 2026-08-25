@@ -1,4 +1,4 @@
-namespace TechMES.Calc.Substances.Content;
+namespace TechMES.Calc.Content;
 
 /// <summary>
 /// Input for the legacy-compatible thermodynamic content correlations.

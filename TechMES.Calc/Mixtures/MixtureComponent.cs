@@ -1,4 +1,4 @@
-namespace TechMES.Calc.Substances;
+namespace TechMES.Calc.Mixtures;
 
 /// <summary>
 /// One component of a mass-based mixture.

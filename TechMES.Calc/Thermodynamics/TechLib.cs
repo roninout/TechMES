@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TechMES.Calc.Substances.Thermodynamics
+namespace TechMES.Calc.Thermodynamics
 {
     /// <summary>
     /// Перенесені з розрахунки з PLC.

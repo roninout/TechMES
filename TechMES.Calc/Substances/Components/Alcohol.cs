@@ -1,10 +1,10 @@
-using TechMES.Calc.Substances.Thermodynamics;
 using TechMES.Calc.Substances;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TechMES.Calc.Thermodynamics;
 
 namespace TechMES.Calc.Substances.Components
 {

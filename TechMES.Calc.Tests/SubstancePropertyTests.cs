@@ -1,6 +1,7 @@
+using TechMES.Calc.Content;
 using TechMES.Calc.Exceptions;
+using TechMES.Calc.Mixtures;
 using TechMES.Calc.Substances;
-using TechMES.Calc.Substances.Content;
 
 namespace TechMES.Calc.Tests;
 

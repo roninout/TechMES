@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using TechMES.Calc.Substances.Thermodynamics;
+using TechMES.Calc.Thermodynamics;
 
 
-namespace TechMES.Calc.Substances.Content
+namespace TechMES.Calc.Content
 {
     //Структура для сохранения коэффициентов полинома для расчета содержаний
     internal struct CoefSet

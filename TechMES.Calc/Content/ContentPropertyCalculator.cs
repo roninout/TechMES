@@ -1,6 +1,7 @@
 using TechMES.Calc.Exceptions;
+using TechMES.Calc.Substances;
 
-namespace TechMES.Calc.Substances.Content;
+namespace TechMES.Calc.Content;
 
 /// <summary>
 /// Новая безопасная оболочка над legacy-корреляциями Content из TechDotNetLib.
