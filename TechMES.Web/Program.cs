@@ -94,7 +94,7 @@ builder.Services.AddScoped<InfoApiClient>();
 // Клиент Param-модуля. WEB вызывает Runtime.Service, а детали CtApi остаются за границей backend-а.
 builder.Services.AddScoped<ParamApiClient>();
 
-// Общий WEB-resolver ProcessInput: Runtime AI.R -> fallback на прямой numeric Variable Tag.
+// Общий WEB-resolver ProcessInput: Runtime Equipment.ITEM -> fallback на прямой numeric Variable Tag.
 builder.Services.AddScoped<CalcProcessInputResolver>();
 builder.Services.AddScoped<EventLogApiClient>();
 builder.Services.AddScoped<SoeApiClient>();

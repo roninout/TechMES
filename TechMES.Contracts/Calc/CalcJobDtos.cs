@@ -137,6 +137,12 @@ public sealed class CalcJobInputDto
     public string? TagName { get; set; }
 
     /// <summary>
+    /// Исходная пользовательская ссылка, из которой был разрешён TagName.
+    /// Поле используется только для отображения и повторного редактирования конфигурации. Calc.Service всегда работает с уже разрешённым TagName.
+    /// </summary>
+    public string? SourceReference { get; set; }
+
+    /// <summary>
     /// JSON-значение для SourceType.Constant.
     /// Поддерживает number, integer, boolean и string.
     /// </summary>
@@ -281,12 +287,27 @@ public sealed class CalcJobSaveRequest
 public sealed class CalcJobInputSaveDto
 {
     public string ParameterKey { get; set; } = "";
+
     public CalcInputSourceTypeDto SourceType { get; set; }
+
+    /// <summary>
+    /// Реальный Plant SCADA Variable Tag, который будет читать Calc.Service.
+    /// </summary>
     public string? TagName { get; set; }
+
+    /// <summary>
+    /// Исходная ссылка, которую пользователь настроил в WEB.
+    /// </summary>
+    public string? SourceReference { get; set; }
+
     public JsonElement? ConstantValue { get; set; }
+
     public long? SourceJobId { get; set; }
+
     public string? SourceOutputKey { get; set; }
+
     public int? MaxAgeSeconds { get; set; }
+
     public int SortOrder { get; set; }
 }
 

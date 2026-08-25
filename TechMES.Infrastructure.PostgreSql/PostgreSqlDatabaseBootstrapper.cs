@@ -170,6 +170,10 @@ public sealed class PostgreSqlDatabaseBootstrapper
             await ExecuteSchemaAsync(connection, transaction, MainSchemaSql, cancellationToken);
             await ExecuteSchemaAsync(connection, transaction, CalcSchemaSql, cancellationToken);
 
+            // SourceReference хранит исходную пользовательскую ссылку
+            // отдельно от реально разрешённого Plant SCADA TagName.
+            await EnsureCalcInputSourceReferenceSchemaAsync(connection, transaction, cancellationToken);
+
             // Идемпотентно обновляем существующие Calc БД новыми диагностическими полями.
             await EnsureCalcStateDiagnosticsSchemaAsync(connection, transaction, cancellationToken);
 
@@ -185,6 +189,34 @@ public sealed class PostgreSqlDatabaseBootstrapper
         }
 
         _logger.LogInformation("PostgreSQL main TechMES and Calc schemas are ready.");
+    }
+
+    /// <summary>
+    /// Добавляет исходную пользовательскую ссылку для Calc Tag input.
+    ///
+    /// В TagName хранится уже разрешённый реальный Plant SCADA Variable Tag,
+    /// который непосредственно читает Calc.Service.
+    ///
+    /// В SourceReference хранится то, что настроил пользователь.
+    ///
+    /// Например:
+    /// SourceReference = S03.R02.TT01.R
+    /// TagName         = S03_R02_TT01_R
+    ///
+    /// Колонка nullable, поэтому существующие Jobs продолжают работать
+    /// без какой-либо обязательной миграции их содержимого.
+    /// </summary>
+    private static async Task EnsureCalcInputSourceReferenceSchemaAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        const string sql = """
+        ALTER TABLE public.calc_job_input
+            ADD COLUMN IF NOT EXISTS source_reference text NULL;
+
+        COMMENT ON COLUMN public.calc_job_input.source_reference
+        IS 'Original user-facing input reference. TagName contains the resolved Plant SCADA Variable Tag used by Calc.Service.';
+        """;
+
+        await ExecuteSchemaAsync(connection, transaction, sql, cancellationToken);
     }
 
     /// <summary>

@@ -275,7 +275,7 @@
                                     </div>
 
                                     <div class="density-section-description">
-                                        Runtime AI or direct SCADA Variable Tag
+                                        Runtime Equipment.ITEM or direct SCADA Variable Tag
                                     </div>
                                 </div>
 
@@ -312,7 +312,7 @@
 
                                     <RadzenTextBox Value="@binding.SourceText"
                                                    Change="@((string value) => OnProcessSourceChanged(binding, value))"
-                                                   Placeholder="AI Equipment or SCADA tag"
+                                                   Placeholder="Equipment.ITEM or SCADA tag"
                                                    Disabled="@(_isSaving || _isCheckingBindings)"
                                                    class="density-tag-editor" />
 
@@ -931,9 +931,13 @@
     /// <summary>
     /// Строит редакторы всех ProcessInput динамически.
     ///
-    /// Сегодня это Temperature и Pressure.
-    /// Будущий третий, четвёртый или пятый ProcessInput автоматически
-    /// попадёт сюда по Role = ProcessInput.
+    /// В SourceText восстанавливается именно пользовательская SourceReference.
+    ///
+    /// Если Job был создан до появления SourceReference,
+    /// используем старый TagName как backward-compatible fallback.
+    ///
+    /// ResolvedTagName всегда содержит реальный Variable Tag,
+    /// который непосредственно читает Calc.Service.
     /// </summary>
     private void BuildProcessBindings()
     {
@@ -946,17 +950,27 @@
         {
             var stored = FindJobInput(parameter.Key);
             var storedTag = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.TagName?.Trim() ?? "" : "";
+            var storedSourceReference = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.SourceReference?.Trim() ?? "" : "";
+
+            // Для старых Job SourceReference отсутствует.
+            // В этом случае продолжаем показывать реальный TagName.
+            var sourceText = storedSourceReference.Length > 0 ? storedSourceReference : storedTag;
+
             var currentValue = 0d;
             var hasRuntimeValue = storedTag.Length > 0 && TryGetRuntimeNumber(State?.LastInputs, parameter.Key, out currentValue);
 
             _processBindings.Add(new DensityProcessBindingEditor
             {
                 Parameter = parameter,
-                SourceText = storedTag,
+                SourceText = sourceText,
                 ResolvedTagName = storedTag,
-                ValidatedSourceText = hasRuntimeValue ? storedTag : "",
+                ValidatedSourceText = hasRuntimeValue ? sourceText : "",
                 CurrentValue = hasRuntimeValue ? currentValue : null,
-                Resolution = hasRuntimeValue ? "Saved Runtime tag" : "",
+                Resolution = hasRuntimeValue
+                    ? storedSourceReference.Length > 0
+                        ? $"Saved {storedSourceReference}"
+                        : "Saved Runtime tag"
+                    : "",
                 MaxAgeSeconds = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.MaxAgeSeconds : null,
                 CheckState = hasRuntimeValue ? DensityBindingCheckState.Linked : DensityBindingCheckState.NotChecked
             });
@@ -1348,6 +1362,9 @@
     {
         var result = new List<CalcJobInputSaveDto>();
 
+        // ProcessInput сохраняет два представления одной связи:
+        // SourceReference: то, что настроил пользователь.
+        // TagName: реальный Variable Tag, который был подтверждён Runtime и который непосредственно будет читать Calc.Service.
         foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
         {
             if (!binding.IsLinked)
@@ -1358,6 +1375,7 @@
                 ParameterKey = binding.Parameter.Key,
                 SourceType = CalcInputSourceTypeDto.Tag,
                 TagName = binding.ResolvedTagName,
+                SourceReference = binding.SourceText.Trim(),
                 MaxAgeSeconds = binding.MaxAgeSeconds,
                 SortOrder = binding.Parameter.Order
             });

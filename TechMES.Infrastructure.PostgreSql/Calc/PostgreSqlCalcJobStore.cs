@@ -298,11 +298,14 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
 
     /// <summary>
     /// Загружает входы сразу для всех выбранных заданий.
+    ///
+    /// SourceReference является только пользовательским представлением
+    /// настроенной ссылки и не влияет на выполнение Calc Job.
     /// </summary>
     private static async Task ReadInputsAsync(NpgsqlConnection connection, IReadOnlyDictionary<long, CalcJobDto> jobsById, long[] jobIds, CancellationToken ct)
     {
         const string sql = """
-        SELECT id, job_id, parameter_key, source_type, tag_name,
+        SELECT id, job_id, parameter_key, source_type, tag_name, source_reference,
                constant_value::text AS constant_value,
                source_job_id, source_output_key, max_age_seconds, sort_order
         FROM public.calc_job_input
@@ -328,6 +331,7 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
                 ParameterKey = reader.GetString(reader.GetOrdinal("parameter_key")),
                 SourceType = ParseSourceType(reader.GetString(reader.GetOrdinal("source_type"))),
                 TagName = ReadNullableString(reader, "tag_name"),
+                SourceReference = ReadNullableString(reader, "source_reference"),
                 ConstantValue = ReadNullableJson(reader, "constant_value"),
                 SourceJobId = ReadNullableInt64(reader, "source_job_id"),
                 SourceOutputKey = ReadNullableString(reader, "source_output_key"),
@@ -376,29 +380,40 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
 
     /// <summary>
     /// Вставляет полный набор входных привязок.
+    ///
+    /// Для Tag input:
+    /// TagName хранит реальный Variable Tag для Runtime.
+    ///
+    /// SourceReference при наличии хранит пользовательскую ссылку,
+    /// из которой этот TagName был получен.
     /// </summary>
     private static async Task InsertInputsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long jobId, IReadOnlyList<CalcJobInputSaveDto> inputs, CancellationToken ct)
     {
         const string sql = """
         INSERT INTO public.calc_job_input
-            (job_id, parameter_key, source_type, tag_name, constant_value,
+            (job_id, parameter_key, source_type, tag_name, source_reference, constant_value,
              source_job_id, source_output_key, max_age_seconds, sort_order)
         VALUES
-            (@job_id, @parameter_key, @source_type, @tag_name, @constant_value,
+            (@job_id, @parameter_key, @source_type, @tag_name, @source_reference, @constant_value,
              @source_job_id, @source_output_key, @max_age_seconds, @sort_order);
         """;
 
         foreach (var input in inputs)
         {
             await using var command = new NpgsqlCommand(sql, connection, transaction);
+
             command.Parameters.AddWithValue("job_id", jobId);
             command.Parameters.AddWithValue("parameter_key", input.ParameterKey);
             command.Parameters.AddWithValue("source_type", input.SourceType.ToString());
+
             AddNullable(command, "tag_name", NpgsqlDbType.Text, input.TagName);
+            AddNullable(command, "source_reference", NpgsqlDbType.Text, input.SourceReference);
             AddJson(command, "constant_value", input.ConstantValue);
+
             AddNullable(command, "source_job_id", NpgsqlDbType.Bigint, input.SourceJobId);
             AddNullable(command, "source_output_key", NpgsqlDbType.Text, input.SourceOutputKey);
             AddNullable(command, "max_age_seconds", NpgsqlDbType.Integer, input.MaxAgeSeconds);
+
             command.Parameters.AddWithValue("sort_order", input.SortOrder);
 
             await command.ExecuteNonQueryAsync(ct);
@@ -553,6 +568,9 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
 
     /// <summary>
     /// Нормализует и проверяет входные привязки.
+    ///
+    /// SourceReference разрешён только для Tag input.
+    /// Он является необязательным UI metadata и не заменяет обязательный TagName.
     /// </summary>
     private static List<CalcJobInputSaveDto> NormalizeInputs(IEnumerable<CalcJobInputSaveDto> source)
     {
@@ -575,6 +593,7 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
                 throw new ArgumentException($"Calculation input '{parameterKey}' MaxAgeSeconds must be greater than zero.");
 
             var tagName = NormalizeOptionalText(input.TagName);
+            var sourceReference = NormalizeOptionalText(input.SourceReference);
             var sourceOutputKey = NormalizeOptionalText(input.SourceOutputKey);
             var constantValue = NormalizeConstant(input.ConstantValue, parameterKey);
 
@@ -582,20 +601,19 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
             {
                 case CalcInputSourceTypeDto.Tag:
                     if (tagName is null || constantValue.HasValue || input.SourceJobId.HasValue || sourceOutputKey is not null)
-                        throw new ArgumentException($"Tag input '{parameterKey}' must contain only TagName.");
+                        throw new ArgumentException($"Tag input '{parameterKey}' must contain TagName and may contain SourceReference.");
                     break;
 
                 case CalcInputSourceTypeDto.Constant:
-                    if (!constantValue.HasValue || tagName is not null || input.SourceJobId.HasValue || sourceOutputKey is not null)
+                    if (!constantValue.HasValue || tagName is not null || sourceReference is not null || input.SourceJobId.HasValue || sourceOutputKey is not null)
                         throw new ArgumentException($"Constant input '{parameterKey}' must contain only ConstantValue.");
                     break;
 
                 case CalcInputSourceTypeDto.CalculationOutput:
                     if (!input.SourceJobId.HasValue || input.SourceJobId.Value <= 0 || sourceOutputKey is null
-                        || tagName is not null || constantValue.HasValue)
+                        || tagName is not null || sourceReference is not null || constantValue.HasValue)
                     {
-                        throw new ArgumentException(
-                            $"CalculationOutput input '{parameterKey}' must contain SourceJobId and SourceOutputKey only.");
+                        throw new ArgumentException($"CalculationOutput input '{parameterKey}' must contain SourceJobId and SourceOutputKey only.");
                     }
                     break;
             }
@@ -605,6 +623,7 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
                 ParameterKey = parameterKey,
                 SourceType = input.SourceType,
                 TagName = tagName,
+                SourceReference = sourceReference,
                 ConstantValue = constantValue,
                 SourceJobId = input.SourceJobId,
                 SourceOutputKey = sourceOutputKey,
