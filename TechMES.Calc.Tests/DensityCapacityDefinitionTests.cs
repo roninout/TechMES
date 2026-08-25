@@ -50,6 +50,37 @@ public sealed class DensityCapacityDefinitionTests
     }
 
     [Fact]
+    public void DensityPressureIsOptionalAndHasAtmosphericDefault()
+    {
+        var definition = new DensityCalculationDefinition();
+
+        var pressure = definition.Parameters.Single(parameter =>
+            string.Equals(parameter.Key, "pressureBarAbsolute", StringComparison.OrdinalIgnoreCase));
+
+        Assert.False(pressure.IsRequired);
+        Assert.Equal(1.01325d, Convert.ToDouble(pressure.DefaultValue));
+        Assert.Equal(CalculationParameterRole.ProcessInput, pressure.Role);
+    }
+
+    [Fact]
+    public void DensityCanUseDefaultPressureWhenPressureInputIsNotConfigured()
+    {
+        var definition = new DensityCalculationDefinition();
+
+        var result = definition.Calculate(new CalculationParameterSet(
+            new Dictionary<string, object?>
+            {
+                ["temperatureC"] = 20d,
+                ["componentCount"] = 1,
+                ["component0Code"] = "ACN",
+                ["component0Percent"] = 100d
+            }));
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        Assert.Equal(781.986d, GetOutput(result, "density"), precision: 6);
+    }
+
+    [Fact]
     public void DensityAppliesEngineeringCorrectionWithoutLegacyScaling()
     {
         var definition = new DensityCalculationDefinition();

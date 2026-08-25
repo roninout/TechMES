@@ -61,13 +61,20 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
 
     // Второй штатный процессный параметр.
     //
-    // В UI показываем просто Pressure.
-    // Внутренний ключ pressureBarAbsolute пока оставляем,
-    // потому что он описывает физический контракт текущей формулы.
+    // Для жидких продуктов Density может рассчитываться без отдельного
+    // технологического тега давления, потому что соответствующие legacy-модели
+    // плотности от Pressure фактически не зависят.
+    //
+    // Поэтому Pressure является необязательным ProcessInput.
+    // Если SCADA binding отсутствует, Calculation Definition использует
+    // нормальное атмосферное абсолютное давление 1.01325 bar(abs).
+    //
+    // Если Pressure tag настроен, Runtime передаёт реальное измеренное значение,
+    // и оно имеет приоритет над DefaultValue.
     new CalculationParameterDefinition(
         Key: PressureKey, Name: "Pressure", Type: CalculationParameterType.Number, Unit: "bar(abs)",
-        IsRequired: true, Minimum: 0.000001, Step: 0.01, Decimals: 4, Order: 2,
-        Description: "Absolute mixture pressure.",
+        IsRequired: false, DefaultValue: 1.01325d, Minimum: 0.000001, Step: 0.01, Decimals: 4, Order: 2,
+        Description: "Optional absolute mixture pressure. Atmospheric pressure 1.01325 bar(abs) is used when no pressure input is configured.",
         Role: CalculationParameterRole.ProcessInput),
 
     // Три резервных ProcessInput закладываем уже сейчас.

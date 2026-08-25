@@ -595,10 +595,46 @@
     // ============================================================
 
     /// <summary>
-    /// Все отображаемые Process parameters должны быть реально проверены.
-    /// Даже optional Additional parameter становится обязательным для конкретного Job, если пользователь увеличил количество активных параметров и тем самым включил эту строку.
+    /// Проверяет готовность всех активных ProcessInput.
+    ///
+    /// Возможны три ситуации.
+    ///
+    /// 1. Binding успешно проверен:
+    ///    параметр готов независимо от наличия DefaultValue.
+    ///
+    /// 2. Поле пустое, но Calculation Definition имеет DefaultValue:
+    ///    параметр также готов.
+    ///    Именно так работает optional Pressure.
+    ///
+    /// 3. Поле пустое и DefaultValue отсутствует либо пользователь
+    ///    ввёл значение, которое не удалось разрешить:
+    ///    параметр не готов.
+    ///
+    /// Благодаря этому Additional parameter остаётся обязательным
+    /// после его включения пользователем, потому что у резервных
+    /// дополнительных параметров DefaultValue отсутствует.
     /// </summary>
-    private bool IsProcessBindingsReady => ActiveProcessBindings.All(binding => binding.IsLinked);
+    private bool IsProcessBindingsReady => ActiveProcessBindings.All(IsProcessBindingReady);
+
+    private static bool IsProcessBindingReady(DensityProcessBindingEditor binding)
+    {
+        if (binding.IsLinked)
+            return true;
+
+        // Если пользователь что-то ввёл, это значение обязательно должно пройти реальный Runtime Check.
+        if (!string.IsNullOrWhiteSpace(binding.SourceText))
+            return false;
+
+        // Пустой ProcessInput разрешён только тогда, когда сам Definition явно определяет значение по умолчанию.
+        return HasProcessDefaultValue(binding.Parameter);
+    }
+
+    private static bool HasProcessDefaultValue(CalcParameterDefinitionDto parameter)
+    {
+        return parameter.DefaultValue.HasValue
+            && parameter.DefaultValue.Value.ValueKind != JsonValueKind.Null
+            && parameter.DefaultValue.Value.ValueKind != JsonValueKind.Undefined;
+    }
 
     /// <summary>
     /// Проверяем полную SCADA-структуру Density Equipment.
@@ -872,11 +908,25 @@
 
         if (source.Length == 0)
         {
+            // Пустое поле допустимо только для параметра,
+            // которому Calculation Definition явно задал DefaultValue.
+            //
+            // Для Density Pressure это 1.01325 bar(abs).
+            if (HasProcessDefaultValue(binding.Parameter))
+            {
+                binding.CheckState = DensityBindingCheckState.NotChecked;
+                binding.Message = "Default value will be used.";
+                return;
+            }
+
             binding.CheckState = binding.Parameter.IsRequired
                 ? DensityBindingCheckState.NotFound
                 : DensityBindingCheckState.NotChecked;
 
-            binding.Message = binding.Parameter.IsRequired ? "Source is required." : "";
+            binding.Message = binding.Parameter.IsRequired
+                ? "Source is required."
+                : "Process input must be configured when it is enabled.";
+
             return;
         }
 
@@ -1405,6 +1455,9 @@
 
     private static string GetBindingBadgeText(DensityProcessBindingEditor binding)
     {
+        if (string.IsNullOrWhiteSpace(binding.SourceText) && HasProcessDefaultValue(binding.Parameter))
+            return "DEFAULT";
+
         return binding.CheckState switch
         {
             DensityBindingCheckState.Checking => "CHECKING",
@@ -1416,6 +1469,9 @@
 
     private static BadgeStyle GetBindingBadgeStyle(DensityProcessBindingEditor binding)
     {
+        if (string.IsNullOrWhiteSpace(binding.SourceText) && HasProcessDefaultValue(binding.Parameter))
+            return BadgeStyle.Info;
+
         return binding.CheckState switch
         {
             DensityBindingCheckState.Checking => BadgeStyle.Info,
