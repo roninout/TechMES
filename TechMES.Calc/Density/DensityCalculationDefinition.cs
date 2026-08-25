@@ -1,4 +1,5 @@
-﻿using TechMES.Calc.Mixtures;
+using TechMES.Calc.Constants;
+using TechMES.Calc.Mixtures;
 using TechMES.Calc.Parameters;
 using TechMES.Calc.Results;
 using TechMES.Calc.Substances;
@@ -8,29 +9,24 @@ namespace TechMES.Calc.Density;
 /// <summary>
 /// Расчёт плотности многокомпонентной смеси.
 ///
-/// Физические ProcessInput:
-/// - Temperature;
-/// - absolute Pressure;
-/// - в будущем могут быть добавлены другие параметры.
+/// Логика Pressure повторяет старый TechParamsCalc:
 ///
-/// Количество ProcessInput Calculation Engine не ограничивает.
+///     P(abs) = P(g) + Patm
 ///
-/// Состав смеси в рабочем Density Job формируется из двух источников:
+/// где:
+/// P(g)  - значение связанного SCADA Pressure.R;
+/// Patm  - CalculationPhysicalConstants.AtmosphericPressureBarAbsolute.
 ///
-/// SCADA:
-/// - CompN;
-/// - Perc0...Perc4.
+/// Если Pressure tag не настроен, P(g) = 0,
+/// поэтому расчёт выполняется при атмосферном абсолютном давлении.
 ///
-/// Конфигурация TechMES:
-/// - component0Code...component4Code.
+/// Состав смеси:
+/// - CompN и Perc0...Perc4 читаются из SCADA;
+/// - component0Code...component4Code хранятся в конфигурации TechMES.
 ///
-/// Таким образом SCADA определяет количество компонентов и их текущие
-/// массовые проценты, а TechMES определяет, какое вещество соответствует
-/// каждому Perc-слоту.
+/// DeltaD читается из SCADA и прибавляется к инженерному результату Density.
 ///
-/// DeltaD также является read-only SCADA input.
-///
-/// Единственный расчётный output:
+/// Единственный output:
 /// density -> Density.ValCalc.
 /// </summary>
 public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionBase
@@ -38,76 +34,69 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
     public const string DefinitionCode = "mixture.density";
 
     private const string TemperatureKey = "temperatureC";
-    private const string PressureKey = "pressureBarAbsolute";
+    private const string PressureKey = "pressureBarGauge";
     private const string CorrectionKey = "densityCorrection";
+
+    private static readonly string[] AdditionalParameterKeys =
+    [
+        "additionalParameter1",
+        "additionalParameter2",
+        "additionalParameter3"
+    ];
 
     /// <summary>
     /// Параметры физической модели Density.
     ///
-    /// Role = ProcessInput используется только для внешних процессных
-    /// параметров, которые пользователь связывает через WEB.
-    ///
-    /// CompN/Perc являются другой частью контракта смеси и создаются
-    /// MixtureCalculationDefinitionBase.
+    /// Temperature и Pressure повторяют контракт старого TechParamsCalc.
+    /// Три Additional parameter зарезервированы для будущих веществ,
+    /// которым понадобятся дополнительные технологические параметры.
     /// </summary>
     private static readonly IReadOnlyList<CalculationParameterDefinition> PropertyParameterDefinitions =
     [
-        // Первый штатный процессный параметр Density.
         new CalculationParameterDefinition(
-        Key: TemperatureKey, Name: "Temperature", Type: CalculationParameterType.Number, Unit: "°C",
-        IsRequired: true, Minimum: -273.15, Step: 0.1, Decimals: 2, Order: 1,
-        Description: "Mixture temperature used by the substance density correlations.",
-        Role: CalculationParameterRole.ProcessInput),
+            Key: TemperatureKey, Name: "Temperature", Type: CalculationParameterType.Number, Unit: "°C",
+            IsRequired: true, Minimum: -273.15, Step: 0.1, Decimals: 2, Order: 1,
+            Description: "Mixture temperature used by the substance density correlations.",
+            Role: CalculationParameterRole.ProcessInput),
 
-    // Второй штатный процессный параметр.
-    //
-    // Для жидких продуктов Density может рассчитываться без отдельного
-    // технологического тега давления, потому что соответствующие legacy-модели
-    // плотности от Pressure фактически не зависят.
-    //
-    // Поэтому Pressure является необязательным ProcessInput.
-    // Если SCADA binding отсутствует, Calculation Definition использует
-    // нормальное атмосферное абсолютное давление 1.01325 bar(abs).
-    //
-    // Если Pressure tag настроен, Runtime передаёт реальное измеренное значение,
-    // и оно имеет приоритет над DefaultValue.
-    new CalculationParameterDefinition(
-        Key: PressureKey, Name: "Pressure", Type: CalculationParameterType.Number, Unit: "bar(abs)",
-        IsRequired: false, DefaultValue: 1.01325d, Minimum: 0.000001, Step: 0.01, Decimals: 4, Order: 2,
-        Description: "Optional absolute mixture pressure. Atmospheric pressure 1.01325 bar(abs) is used when no pressure input is configured.",
-        Role: CalculationParameterRole.ProcessInput),
+        // В старом TechParamsCalc Pressure.Val_R передавал измеренное
+        // избыточное давление, а абсолютное давление формировалось
+        // непосредственно перед вызовом TechDotNetLib.Mix:
+        //
+        // Pressure.Val_R + AtmoPressure.
+        //
+        // Поэтому и здесь ProcessInput хранит именно gauge pressure.
+        // Если binding отсутствует, используется 0 bar(g).
+        new CalculationParameterDefinition(
+            Key: PressureKey, Name: "Pressure", Type: CalculationParameterType.Number, Unit: "bar(g)",
+            IsRequired: false, DefaultValue: 0d, Step: 0.01, Decimals: 4, Order: 2,
+            Description: "Optional gauge pressure. Absolute pressure is calculated by adding the configured atmospheric pressure.",
+            Role: CalculationParameterRole.ProcessInput),
 
-    // Три резервных ProcessInput закладываем уже сейчас.
-    //
-    // Текущая формула Density их не использует.
-    // Они нужны для того, чтобы специализированный UI и Calc Job
-    // уже поддерживали расширение физической модели до пяти параметров
-    // без изменения Runtime, PostgreSQL и структуры Job.
-    new CalculationParameterDefinition(
-        Key: "additionalParameter1", Name: "Additional parameter", Type: CalculationParameterType.Number,
-        IsRequired: false, Order: 3,
-        Description: "Reserved additional process parameter.",
-        Role: CalculationParameterRole.ProcessInput),
+        new CalculationParameterDefinition(
+            Key: "additionalParameter1", Name: "Additional parameter", Type: CalculationParameterType.Number,
+            IsRequired: false, Order: 3,
+            Description: "Reserved additional process parameter.",
+            Role: CalculationParameterRole.ProcessInput),
 
-    new CalculationParameterDefinition(
-        Key: "additionalParameter2", Name: "Additional parameter", Type: CalculationParameterType.Number,
-        IsRequired: false, Order: 4,
-        Description: "Reserved additional process parameter.",
-        Role: CalculationParameterRole.ProcessInput),
+        new CalculationParameterDefinition(
+            Key: "additionalParameter2", Name: "Additional parameter", Type: CalculationParameterType.Number,
+            IsRequired: false, Order: 4,
+            Description: "Reserved additional process parameter.",
+            Role: CalculationParameterRole.ProcessInput),
 
-    new CalculationParameterDefinition(
-        Key: "additionalParameter3", Name: "Additional parameter", Type: CalculationParameterType.Number,
-        IsRequired: false, Order: 5,
-        Description: "Reserved additional process parameter.",
-        Role: CalculationParameterRole.ProcessInput),
+        new CalculationParameterDefinition(
+            Key: "additionalParameter3", Name: "Additional parameter", Type: CalculationParameterType.Number,
+            IsRequired: false, Order: 5,
+            Description: "Reserved additional process parameter.",
+            Role: CalculationParameterRole.ProcessInput),
 
-    // DeltaD оператор в TechMES не редактирует.
-    // В рабочем Job он автоматически связан с ITEM DeltaD самого Density Equipment.
-    new CalculationParameterDefinition(
-        Key: CorrectionKey, Name: "DeltaD", Type: CalculationParameterType.Number, Unit: "kg/m³",
-        IsRequired: false, DefaultValue: 0d, Step: 0.1, Decimals: 3, Order: 10,
-        Description: "Density correction read from the Density Equipment DeltaD SCADA item.",
-        Role: CalculationParameterRole.Configuration)
+        // DeltaD остаётся read-only SCADA input.
+        new CalculationParameterDefinition(
+            Key: CorrectionKey, Name: "DeltaD", Type: CalculationParameterType.Number, Unit: "kg/m³",
+            IsRequired: false, DefaultValue: 0d, Step: 0.1, Decimals: 3, Order: 10,
+            Description: "Density correction read from the Density Equipment DeltaD SCADA item.",
+            Role: CalculationParameterRole.Configuration)
     ];
 
     private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions = CreateMixtureParameters(PropertyParameterDefinitions);
@@ -123,8 +112,12 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
     public override string Name => "Mixture density";
     public override string Category => "Density";
 
-    // Version 2 фиксирует новый runtime-контракт: CompN/Perc/DeltaD теперь поступают из SCADA, а не задаются оператором как Constants.
-    public override string Version => "2";
+    // Version 3:
+    // - CompN/Perc/DeltaD поступают из SCADA;
+    // - Pressure ProcessInput хранит gauge pressure;
+    // - absolute pressure формируется внутри Density так же, как в TechParamsCalc;
+    // - отсутствующий Pressure означает 0 bar(g).
+    public override string Version => "3";
 
     public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
     public override IReadOnlyList<CalculationOutputDefinition> Outputs => OutputDefinitions;
@@ -132,26 +125,29 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
     /// <summary>
     /// Выполняет физический расчёт Density.
     ///
-    /// К этому моменту Calc Service уже прочитал:
-    /// - Temperature;
-    /// - Pressure;
-    /// - CompN;
-    /// - Perc0...Perc4;
-    /// - DeltaD;
+    /// Последовательность соответствует старому TechParamsCalc:
     ///
-    /// А componentNCode были получены из сохранённой конфигурации Job.
+    /// 1. Получаем Temperature.
+    /// 2. Получаем Pressure.R как gauge pressure или 0, если binding отсутствует.
+    /// 3. Формируем absolute pressure:
+    ///        P(abs) = P(g) + Patm.
+    /// 4. Формируем смесь из CompN/PercN/componentNCode.
+    /// 5. Передаём Temperature и absolute pressure в формулы компонентов.
+    /// 6. Считаем смесь по 1 / Σ(w_i / rho_i).
+    /// 7. Прибавляем инженерный DeltaD.
     ///
-    /// ReadMixtureComponents() использует CompN и только первые активные
-    /// componentNCode/componentNPercent.
+    /// Старое ×10 здесь отсутствует. Оно относится только к SCADA ValCalc
+    /// и применяется Runtime output binding непосредственно перед TagWrite.
     /// </summary>
     protected override CalculationResult CalculateCore(CalculationParameterSet parameters, bool includeTrace)
     {
         var temperatureC = parameters.GetRequiredDouble(TemperatureKey);
-        var pressureBarAbsolute = parameters.GetRequiredDouble(PressureKey);
+        var pressureBarGauge = parameters.GetDouble(PressureKey, 0d);
+        var pressureBarAbsolute = pressureBarGauge + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute;
         var deltaD = parameters.GetDouble(CorrectionKey, 0d);
         var components = ReadMixtureComponents(parameters);
-
-        var baseDensityKgPerM3 = MixturePropertyCalculator.CalculateDensityKgPerM3(components, temperatureC, pressureBarAbsolute);
+        var additionalParameters = ReadAdditionalParameters(parameters);
+        var baseDensityKgPerM3 = MixturePropertyCalculator.CalculateDensityKgPerM3(components, temperatureC, pressureBarAbsolute, additionalParameters);
         var densityKgPerM3 = baseDensityKgPerM3 + deltaD;
 
         if (!double.IsFinite(densityKgPerM3) || densityKgPerM3 <= 0d)
@@ -162,7 +158,13 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
         if (includeTrace)
         {
             trace.Add(new CalculationTraceItem("temperatureC", "Temperature", Format(temperatureC), "°C"));
+            trace.Add(new CalculationTraceItem("pressureBarGauge", "Pressure", Format(pressureBarGauge), "bar(g)"));
             trace.Add(new CalculationTraceItem("pressureBarAbsolute", "Absolute pressure", Format(pressureBarAbsolute), "bar(abs)"));
+
+            foreach (var parameter in additionalParameters.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                trace.Add(new CalculationTraceItem(parameter.Key, "Additional parameter", Format(parameter.Value), null));
+            }
 
             AddMixtureTrace(trace, components);
 
@@ -173,8 +175,35 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
 
         return CalculationResult.Success(
         [
-            new CalculationOutput(Key: "density", Name: "Density", Value: densityKgPerM3, Unit: "kg/m³")
+            new CalculationOutput(
+                Key: "density",
+                Name: "Density",
+                Value: densityKgPerM3,
+                Unit: "kg/m³")
         ],
         trace: trace);
+    }
+
+    /// <summary>
+    /// Собирает только фактически переданные дополнительные ProcessInput.
+    ///
+    /// Старые компоненты этот словарь игнорируют:
+    /// базовая перегрузка LegacySubstance автоматически вызывает
+    /// исходный GetDensity(float temperature, float pressure).
+    ///
+    /// Новый компонент может переопределить расширенную перегрузку
+    /// GetDensity(..., additionalParameters) и использовать нужные ключи.
+    /// </summary>
+    private static IReadOnlyDictionary<string, double> ReadAdditionalParameters(CalculationParameterSet parameters)
+    {
+        var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var key in AdditionalParameterKeys)
+        {
+            if (parameters.TryGetValue(key, out var rawValue) && rawValue is not null)
+                result[key] = parameters.GetRequiredDouble(key);
+        }
+
+        return result;
     }
 }

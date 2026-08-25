@@ -94,64 +94,40 @@ public sealed class SubstancePropertyTests
     }
 
     [Theory]
-    [InlineData("Freezium", 20d, 1d)]
-    [InlineData("Methan", 298.15d, 3050000d)]
-    [InlineData("Fusel", 293.15d, 101325d)]
-    [InlineData("HCL", 20d, 1d)]
-    [InlineData("HCLS", 20d, 1d)]
-    [InlineData("NaOH", 20d, 1d)]
-    [InlineData("NaOHS", 20d, 1d)]
-    public void LegacyDensityModelsAreExecutedWithoutArtificialBlockList(string code, double temperature, double pressure)
+    [InlineData("Freezium")]
+    [InlineData("Methan")]
+    [InlineData("Fusel")]
+    [InlineData("HCL")]
+    [InlineData("HCLS")]
+    [InlineData("NaOH")]
+    [InlineData("NaOHS")]
+    public void DensityDoesNotUseUnverifiedLegacyModels(string code)
     {
-        var density = MixturePropertyCalculator.CalculateDensityKgPerM3(
-            [new MixtureComponent(code, 100d)],
-            temperatureC: temperature,
-            pressureBarAbsolute: pressure);
+        var exception = Assert.Throws<CalculationException>(() =>
+            MixturePropertyCalculator.CalculateDensityKgPerM3(
+                [new MixtureComponent(code, 100d)],
+                temperatureC: 20d,
+                pressureBarAbsolute: 1d));
 
-        Assert.True(double.IsFinite(density));
-        Assert.True(density > 0d);
-    }
-
-    [Fact]
-    public void FreeziumKeepsOriginalTechDotNetDensityScale()
-    {
-        var density = MixturePropertyCalculator.CalculateDensityKgPerM3(
-            [new MixtureComponent("Freezium", 100d)],
-            temperatureC: 20d,
-            pressureBarAbsolute: 1d);
-
-        // Формула намеренно проверяется в том масштабе,
-        // в котором она находилась в оригинальном TechDotNetLib.
-        // Здесь ничего не "нормализуем" и не исправляем скрыто.
-        Assert.Equal(0.835804514d, density, precision: 9);
+        Assert.Equal("substance.density.units-not-normalized", exception.Code);
     }
 
     [Theory]
-    [InlineData("Methan", 298.15d)]
-    [InlineData("Diesel", 20d)]
-    [InlineData("HCL", 20d)]
-    [InlineData("HCLS", 20d)]
-    [InlineData("NaOH", 20d)]
-    [InlineData("NaOHS", 20d)]
-    public void LegacyCapacityModelsAreExecutedWithoutArtificialBlockList(string code, double temperature)
-    {
-        var capacity = MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
-            [new MixtureComponent(code, 100d)],
-            temperatureC: temperature);
-
-        Assert.True(double.IsFinite(capacity));
-        Assert.True(capacity > 0d);
-    }
-
-    [Fact]
-    public void FuselCapacityReturnsOriginalInvalidLegacyValueInsteadOfBeingArtificiallyBlocked()
+    [InlineData("Methan")]
+    [InlineData("Fusel")]
+    [InlineData("Diesel")]
+    [InlineData("HCL")]
+    [InlineData("HCLS")]
+    [InlineData("NaOH")]
+    [InlineData("NaOHS")]
+    public void CapacityDoesNotUseUnverifiedLegacyModels(string code)
     {
         var exception = Assert.Throws<CalculationException>(() =>
             MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
-                [new MixtureComponent("Fusel", 100d)],
+                [new MixtureComponent(code, 100d)],
                 temperatureC: 20d));
 
-        Assert.Equal("substance.capacity.invalid", exception.Code);
+        Assert.Equal("substance.capacity.units-not-normalized", exception.Code);
     }
 
     [Fact]

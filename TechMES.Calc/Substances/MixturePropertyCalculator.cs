@@ -5,83 +5,23 @@ namespace TechMES.Calc.Substances;
 /// <summary>
 /// Выполняет расчёт физических свойств смеси по массовым долям компонентов.
 ///
-/// Этот класс является уже нашей новой оболочкой над перенесёнными формулами TechDotNetLib.
+/// Формулы отдельных веществ находятся в отдельных файлах
+/// TechMES.Calc/Substances/Legacy и перенесены из TechDotNetLib.
 ///
-/// Важное отличие от старого Mix:
-/// - здесь нет SCADA scaling;
-/// - Density возвращается непосредственно в kg/m³;
-/// - Capacity возвращается непосредственно в J/(kg·K);
-/// - ошибки старых моделей не маскируются значениями -1;
-/// - модели с пока не подтверждёнными единицами измерения явно запрещены.
-///
-/// Класс ничего не знает о:
-/// - CtApi;
-/// - Plant SCADA Equipment;
-/// - ITEM/TAG;
-/// - PostgreSQL;
-/// - Calc Job.
-///
-/// Его задача исключительно математическая.
+/// Этот класс отвечает только за формулу смеси и единицы нового Calc-контракта:
+/// - Density возвращается в kg/m³ без старого SCADA scaling ×10;
+/// - Capacity возвращается в J/(kg·K);
+/// - дополнительные ProcessInput передаются компонентам без изменения
+///   старых GetDensity/GetCapacity/GetContent.
 /// </summary>
 public static class MixturePropertyCalculator
 {
     private const double PercentageTolerance = 1e-6;
 
     /// <summary>
-    /// Legacy-модели, которые пока нельзя использовать для нормализованного расчёта Density.
-    ///
-    /// Freezium:
-    /// старая формула возвращает величину порядка 1.0, то есть фактически использует
-    /// другую единицу плотности, а не ожидаемые kg/m³.
-    ///
-    /// Methan:
-    /// новая формула внутри старого проекта ожидает Pressure в Pa и Temperature в K,
-    /// тогда как старый общий Mix передавал bar(abs) и °C.
-    ///
-    /// Fusel:
-    /// имеет ту же проблему K/Pa.
-    ///
-    /// HCL и NaOH:
-    /// в старом проекте фактически содержат скопированную реализацию Diesel.
-    /// До отдельного восстановления правильных формул использовать их нельзя.
-    /// </summary>
-    private static readonly HashSet<string> DensityModelsBlockedUntilVerified = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Freezium",
-        "Methan",
-        "Fusel",
-        "HCL",
-        "HCLS",
-        "NaOH",
-        "NaOHS"
-    };
-
-    /// <summary>
-    /// Legacy-модели, которые пока нельзя использовать для нормализованного расчёта Capacity.
-    ///
-    /// Methan использует собственный температурный контракт.
-    /// Fusel вообще не имеет реализованного расчёта Capacity.
-    ///
-    /// Diesel/HCL/NaOH возвращают значения другого масштаба относительно общего
-    /// legacy-контракта kJ/(kg·K), поэтому автоматическое умножение на 1000
-    /// для них сейчас было бы ошибочным.
-    /// </summary>
-    private static readonly HashSet<string> CapacityModelsBlockedUntilVerified = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Methan",
-        "Fusel",
-        "Diesel",
-        "HCL",
-        "HCLS",
-        "NaOH",
-        "NaOHS"
-    };
-
-    /// <summary>
     /// Рассчитывает плотность смеси в kg/m³.
     ///
-    /// Используется тот же закон идеальной аддитивности объёмов,
-    /// который применялся в TechDotNetLib.Mix:
+    /// Формула полностью соответствует старому TechDotNetLib.Mix:
     ///
     ///     rho = 1 / Σ(w_i / rho_i)
     ///
@@ -89,10 +29,16 @@ public static class MixturePropertyCalculator
     /// w_i   - массовая доля компонента от 0 до 1;
     /// rho_i - плотность чистого компонента в kg/m³.
     ///
-    /// Старое умножение результата на 10 здесь принципиально отсутствует,
-    /// потому что оно относилось к SCADA raw scaling, а не к физической формуле.
+    /// Единственное намеренное отличие от старого Mix:
+    /// старое финальное умножение ×10 здесь отсутствует,
+    /// потому что это SCADA scaling, а не физическая формула.
+    /// Scale=10 применяется Runtime непосредственно перед записью ValCalc.
     /// </summary>
-    public static double CalculateDensityKgPerM3(IReadOnlyList<MixtureComponent> components, double temperatureC, double pressureBarAbsolute)
+    public static double CalculateDensityKgPerM3(
+        IReadOnlyList<MixtureComponent> components,
+        double temperatureC,
+        double pressureBarAbsolute,
+        IReadOnlyDictionary<string, double>? additionalParameters = null)
     {
         ValidateInputs(components, temperatureC, pressureBarAbsolute);
 
@@ -100,15 +46,21 @@ public static class MixturePropertyCalculator
 
         foreach (var component in components)
         {
-            // Компонент с нулевой массовой долей физически не влияет на смесь.
-            // Его код уже был проверен в ValidateInputs, поэтому здесь просто пропускаем расчёт модели.
+            // Нулевая массовая доля не влияет на смесь.
             if (component.MassPercent == 0d)
                 continue;
 
-            EnsureDensityModelCanBeUsed(component.SubstanceCode);
-
             var model = SubstanceCatalog.CreateRequiredModel(component.SubstanceCode);
-            var pureDensity = model.GetDensity((float)temperatureC, (float)pressureBarAbsolute);
+
+            // Все старые вещества по умолчанию попадают в исходный
+            // GetDensity(float temperature, float pressure).
+            //
+            // Если новый компонент переопределит расширенную перегрузку,
+            // он дополнительно получит additionalParameters.
+            var pureDensity = model.GetDensity(
+                (float)temperatureC,
+                (float)pressureBarAbsolute,
+                additionalParameters);
 
             if (!double.IsFinite(pureDensity) || pureDensity <= 0d)
             {
@@ -121,12 +73,20 @@ public static class MixturePropertyCalculator
         }
 
         if (!double.IsFinite(denominator) || denominator <= 0d)
-            throw new CalculationException("mixture.density.invalid-denominator", "Mixture density denominator must be greater than zero.");
+        {
+            throw new CalculationException(
+                "mixture.density.invalid-denominator",
+                "Mixture density denominator must be greater than zero.");
+        }
 
         var density = 1d / denominator;
 
         if (!double.IsFinite(density) || density <= 0d)
-            throw new CalculationException("mixture.density.invalid-result", "Calculated mixture density is invalid.");
+        {
+            throw new CalculationException(
+                "mixture.density.invalid-result",
+                "Calculated mixture density is invalid.");
+        }
 
         return density;
     }
@@ -134,20 +94,23 @@ public static class MixturePropertyCalculator
     /// <summary>
     /// Рассчитывает удельную теплоёмкость смеси в J/(kg·K).
     ///
-    /// Для обычных перенесённых legacy-моделей GetCapacity() возвращает kJ/(kg·K).
-    /// Теплоёмкость смеси рассчитывается как массово-взвешенная сумма:
+    /// Формула соответствует старому TechDotNetLib.Mix:
     ///
     ///     Cp = Σ(w_i × Cp_i)
     ///
-    /// После расчёта значение явно переводится из kJ/(kg·K) в J/(kg·K).
+    /// Старые GetCapacity() возвращают kJ/(kg·K),
+    /// поэтому после смешения выполняется исходное ×1000.
     ///
-    /// Такой перевод находится здесь намеренно, чтобы единица результата
-    /// была частью нового контракта Calc, а не скрытым поведением старого Mix.
+    /// additionalParameters предназначены для будущих компонентов,
+    /// которым стандартного Temperature недостаточно.
     /// </summary>
-    public static double CalculateSpecificHeatCapacityJPerKgK(IReadOnlyList<MixtureComponent> components, double temperatureC)
+    public static double CalculateSpecificHeatCapacityJPerKgK(
+        IReadOnlyList<MixtureComponent> components,
+        double temperatureC,
+        IReadOnlyDictionary<string, double>? additionalParameters = null)
     {
-        // Capacity не зависит от Pressure в текущих legacy-моделях.
-        // Для общей проверки входных данных передаём физически допустимое абсолютное давление 1 bar(abs).
+        // Capacity в исходном Mix не использовал Pressure.
+        // Для общей валидации передаём допустимое абсолютное давление.
         ValidateInputs(components, temperatureC, pressureBarAbsolute: 1d);
 
         var capacityKjPerKgK = 0d;
@@ -157,10 +120,8 @@ public static class MixturePropertyCalculator
             if (component.MassPercent == 0d)
                 continue;
 
-            EnsureCapacityModelCanBeUsed(component.SubstanceCode);
-
             var model = SubstanceCatalog.CreateRequiredModel(component.SubstanceCode);
-            var pureCapacity = model.GetCapacity((float)temperatureC);
+            var pureCapacity = model.GetCapacity((float)temperatureC, additionalParameters);
 
             if (!double.IsFinite(pureCapacity) || pureCapacity <= 0d)
             {
@@ -175,7 +136,11 @@ public static class MixturePropertyCalculator
         var capacityJPerKgK = capacityKjPerKgK * 1000d;
 
         if (!double.IsFinite(capacityJPerKgK) || capacityJPerKgK <= 0d)
-            throw new CalculationException("mixture.capacity.invalid-result", "Calculated mixture heat capacity is invalid.");
+        {
+            throw new CalculationException(
+                "substance.capacity.invalid-result",
+                "Calculated mixture heat capacity is invalid.");
+        }
 
         return capacityJPerKgK;
     }
@@ -183,31 +148,39 @@ public static class MixturePropertyCalculator
     /// <summary>
     /// Выполняет общую проверку смеси перед запуском конкретной физической формулы.
     ///
-    /// Здесь проверяется только общий контракт:
-    /// - смесь содержит хотя бы один компонент;
-    /// - Temperature является конечным числом;
-    /// - абсолютное Pressure больше нуля;
-    /// - каждый SubstanceCode существует в нашем каталоге;
-    /// - массовая доля каждого компонента находится в диапазоне 0..100%;
-    /// - один и тот же SubstanceCode не указан дважды;
-    /// - сумма массовых долей равна 100%.
+    /// Здесь намеренно нет списка "разрешённых" или "запрещённых" legacy-моделей:
+    /// если формула присутствовала в TechDotNetLib, она остаётся доступной.
     ///
-    /// Проверка пригодности конкретной модели для Density или Capacity выполняется
-    /// отдельно, потому что один и тот же Substance может иметь рабочую Density-модель
-    /// и одновременно неподтверждённую Capacity-модель.
+    /// Отдельная формула компонента сама определяет своё поведение.
+    /// Некорректный конечный результат по-прежнему не пропускается дальше.
     /// </summary>
-    private static void ValidateInputs(IReadOnlyList<MixtureComponent> components, double temperatureC, double pressureBarAbsolute)
+    private static void ValidateInputs(
+        IReadOnlyList<MixtureComponent> components,
+        double temperatureC,
+        double pressureBarAbsolute)
     {
         ArgumentNullException.ThrowIfNull(components);
 
         if (components.Count == 0)
-            throw new CalculationException("mixture.components.empty", "At least one mixture component is required.");
+        {
+            throw new CalculationException(
+                "mixture.components.empty",
+                "At least one mixture component is required.");
+        }
 
         if (!double.IsFinite(temperatureC))
-            throw new CalculationException("mixture.temperature.invalid", "Mixture temperature must be a finite number.");
+        {
+            throw new CalculationException(
+                "mixture.temperature.invalid",
+                "Mixture temperature must be a finite number.");
+        }
 
         if (!double.IsFinite(pressureBarAbsolute) || pressureBarAbsolute <= 0d)
-            throw new CalculationException("mixture.pressure.invalid", "Absolute pressure must be a finite number greater than zero.");
+        {
+            throw new CalculationException(
+                "mixture.pressure.invalid",
+                "Absolute pressure must be a finite number greater than zero.");
+        }
 
         var totalPercent = 0d;
         var usedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -215,55 +188,41 @@ public static class MixturePropertyCalculator
         foreach (var component in components)
         {
             if (string.IsNullOrWhiteSpace(component.SubstanceCode))
-                throw new CalculationException("mixture.component.code-empty", "Mixture component substance code cannot be empty.");
+            {
+                throw new CalculationException(
+                    "mixture.component.code-empty",
+                    "Mixture component substance code cannot be empty.");
+            }
 
             var code = component.SubstanceCode.Trim();
 
             if (!usedCodes.Add(code))
-                throw new CalculationException("mixture.component.duplicate", $"Substance '{code}' is specified more than once.");
+            {
+                throw new CalculationException(
+                    "mixture.component.duplicate",
+                    $"Substance '{code}' is specified more than once.");
+            }
 
             // Проверяем существование кода даже при MassPercent = 0.
-            // Благодаря этому сохранённая конфигурация не сможет содержать неизвестный SubstanceCode.
             SubstanceCatalog.GetRequired(code);
 
-            if (!double.IsFinite(component.MassPercent) || component.MassPercent < 0d || component.MassPercent > 100d)
-                throw new CalculationException("mixture.component.percent-invalid", $"Mass percent for '{code}' must be between 0 and 100.");
+            if (!double.IsFinite(component.MassPercent)
+                || component.MassPercent < 0d
+                || component.MassPercent > 100d)
+            {
+                throw new CalculationException(
+                    "mixture.component.percent-invalid",
+                    $"Mass percent for '{code}' must be between 0 and 100.");
+            }
 
             totalPercent += component.MassPercent;
         }
 
         if (Math.Abs(totalPercent - 100d) > PercentageTolerance)
-            throw new CalculationException("mixture.percent-total-invalid", $"Mixture mass percentages must total 100%. Actual total: {totalPercent:0.######}%.");
-    }
-
-    /// <summary>
-    /// Не позволяет использовать Density-модель, если мы уже знаем,
-    /// что её единицы или сама формула требуют отдельной проверки.
-    ///
-    /// Это лучше, чем получить математически корректное double-значение,
-    /// которое физически находится в другой системе единиц.
-    /// </summary>
-    private static void EnsureDensityModelCanBeUsed(string substanceCode)
-    {
-        if (DensityModelsBlockedUntilVerified.Contains(substanceCode))
         {
             throw new CalculationException(
-                "substance.density.units-not-normalized",
-                $"Density model '{substanceCode}' still uses an unverified legacy unit/formula contract and is not enabled for normalized Density calculation.");
-        }
-    }
-
-    /// <summary>
-    /// Не позволяет использовать Capacity-модель с неподтверждённым масштабом
-    /// или температурным контрактом.
-    /// </summary>
-    private static void EnsureCapacityModelCanBeUsed(string substanceCode)
-    {
-        if (CapacityModelsBlockedUntilVerified.Contains(substanceCode))
-        {
-            throw new CalculationException(
-                "substance.capacity.units-not-normalized",
-                $"Heat-capacity model '{substanceCode}' still uses an unverified legacy unit/formula contract and is not enabled for normalized Capacity calculation.");
+                "mixture.percent-total-invalid",
+                $"Mixture mass percentages must total 100%. Actual total: {totalPercent:0.######}%.");
         }
     }
 }
