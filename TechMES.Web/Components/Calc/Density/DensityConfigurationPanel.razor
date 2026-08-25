@@ -263,79 +263,63 @@
                         @* ==================================================
                            PROCESS INPUT BINDINGS
                            ================================================== *@
-                        <section class="density-settings-section">
+                        <section class="density-process-settings">
 
-                            <div class="density-section-title">
+                            @{
+                                var visibleBindings = ActiveProcessBindings;
+                            }
 
-                                <RadzenIcon Icon="link" />
-
-                                <div>
-                                    <div class="density-section-name">
-                                        Process bindings
-                                    </div>
-
-                                    <div class="density-section-description">
-                                        Runtime Equipment.ITEM or direct SCADA Variable Tag
-                                    </div>
-                                </div>
-
-                                <div class="density-section-action">
-                                    <RadzenButton Text="Check"
-                                                  Icon="manage_search"
-                                                  ButtonStyle="ButtonStyle.Light"
-                                                  Disabled="@(_isSaving || _isCheckingBindings)"
-                                                  Click="@CheckProcessBindingsAsync" />
-                                </div>
-
-                            </div>
-
-                            @foreach (var binding in _processBindings.OrderBy(item => item.Parameter.Order))
+                            @for (var index = 0; index < visibleBindings.Count; index++)
                             {
-                                <div class="density-binding-row">
+                                var binding = visibleBindings[index];
 
-                                    <div class="density-row-title">
+                                <div class="density-process-row">
 
-                                        <div class="density-row-name">
-                                            @binding.Parameter.Name
-                                        </div>
-
-                                        <div class="density-row-description" title="@GetBindingDescription(binding)">
-                                            @GetBindingDescription(binding)
-                                        </div>
-
-                                    </div>
-
-                                    <div class="density-binding-status">
-                                        <RadzenBadge Text="@GetBindingBadgeText(binding)"
-                                                     BadgeStyle="@GetBindingBadgeStyle(binding)" />
+                                    <div class="density-settings-index">
+                                        @(index + 1)
                                     </div>
 
                                     <RadzenTextBox Value="@binding.SourceText"
                                                    Change="@((string value) => OnProcessSourceChanged(binding, value))"
                                                    Placeholder="Equipment.ITEM or SCADA tag"
                                                    Disabled="@(_isSaving || _isCheckingBindings)"
-                                                   class="density-tag-editor" />
+                                                   class="density-process-tag" />
 
-                                    <RadzenNumeric TValue="int?"
-                                                   @bind-Value="binding.MaxAgeSeconds"
-                                                   Min="1"
-                                                   Placeholder="Default"
-                                                   Disabled="@_isSaving"
-                                                   class="density-age-editor" />
+                                    <div class="density-process-status">
+                                        <RadzenBadge Text="@GetBindingBadgeText(binding)"
+                                                     BadgeStyle="@GetBindingBadgeStyle(binding)" />
+                                    </div>
+
+                                    <div class="density-process-name">
+                                        @binding.Parameter.Name
+                                    </div>
+
+                                    <div class="density-process-action">
+
+                                        @if (index == 0)
+                                        {
+                                            <RadzenNumeric TValue="int"
+                                                           Value="@_processParameterCount"
+                                                           Change="@OnProcessParameterCountChanged"
+                                                           Min="2"
+                                                           Max="5"
+                                                           Step="1"
+                                                           Disabled="@(_isSaving || _isCheckingBindings)"
+                                                           class="density-process-count" />
+                                        }
+                                        else if (index == 1)
+                                        {
+                                            <RadzenButton Text="Check"
+                                                          Icon="manage_search"
+                                                          ButtonStyle="ButtonStyle.Light"
+                                                          Disabled="@(_isSaving || _isCheckingBindings)"
+                                                          Click="@CheckProcessBindingsAsync"
+                                                          class="density-process-check" />
+                                        }
+
+                                    </div>
 
                                 </div>
-                            }
-
-                            @if (!IsProcessBindingsReady)
-                            {
-                                <RadzenAlert AlertStyle="AlertStyle.Warning"
-                                             AllowClose="false"
-                                             ShowIcon="true"
-                                             class="density-settings-warning">
-
-                                    Required process inputs must pass Check before the Density Job can be saved and enabled.
-
-                                </RadzenAlert>
                             }
 
                         </section>
@@ -347,83 +331,59 @@
                         @* ==================================================
                            MIXTURE
                            ================================================== *@
-                        <section class="density-settings-section">
+                        <section class="density-mixture-settings">
 
-                            <div class="density-section-title">
+                            <div class="density-mixture-header">
 
-                                <RadzenIcon Icon="science" />
-
-                                <div>
-                                    <div class="density-section-name">
-                                        Mixture
-                                    </div>
-
-                                    <div class="density-section-description">
-                                        Component count and percentages are read from SCADA
-                                    </div>
-                                </div>
-
-                            </div>
-
-                            <div class="density-component-count-row">
-
-                                <div class="density-row-title">
-
-                                    <div class="density-row-name">
-                                        Component count
-                                    </div>
-
-                                    <div class="density-row-description" title="@ComponentCountTag">
-                                        CompN · @(ComponentCountTag ?? "ITEM not found")
-                                    </div>
-
+                                <div class="density-mixture-title">
+                                    <RadzenIcon Icon="science" />
+                                    <span>Mixture</span>
                                 </div>
 
                                 <RadzenNumeric TValue="int?"
                                                Value="@CurrentComponentCount"
                                                Disabled="true"
                                                ShowUpDown="false"
-                                               class="density-count-editor" />
+                                               class="density-mixture-count" />
 
                             </div>
 
-                            <div class="density-components">
-
-                                @if (CurrentComponentCount is { } componentCount)
+                            @if (CurrentComponentCount is { } componentCount)
+                            {
+                                @for (var index = 0; index < componentCount; index++)
                                 {
-                                    @for (var index = 0; index < componentCount; index++)
-                                    {
-                                        var component = _components[index];
+                                    var component = _components[index];
 
-                                        <div class="density-component-row">
+                                    <div class="density-mixture-row">
 
-                                            <div class="density-component-number">
-                                                @(index + 1)
-                                            </div>
-
-                                            <RadzenDropDown TValue="string"
-                                                            Data="@SubstanceOptions"
-                                                            TextProperty="@nameof(CalcParameterOptionDto.Name)"
-                                                            ValueProperty="@nameof(CalcParameterOptionDto.Value)"
-                                                            @bind-Value="component.SubstanceCode"
-                                                            AllowClear="true"
-                                                            Placeholder="Select component..."
-                                                            Disabled="@_isSaving"
-                                                            class="density-component-selector" />
-
-                                            <RadzenNumeric TValue="double?"
-                                                           Value="@GetCurrentPercent(index)"
-                                                           Format="0.###' %'"
-                                                           Disabled="true"
-                                                           ShowUpDown="false"
-                                                           title="@GetPercTag(index)"
-                                                           class="density-percent-editor" />
-
+                                        <div class="density-settings-index">
+                                            @(index + 1)
                                         </div>
-                                    }
-                                }
 
-                            </div>
+                                        <RadzenDropDown TValue="string"
+                                                        Data="@SubstanceOptions"
+                                                        TextProperty="@nameof(CalcParameterOptionDto.Name)"
+                                                        ValueProperty="@nameof(CalcParameterOptionDto.Value)"
+                                                        @bind-Value="component.SubstanceCode"
+                                                        AllowClear="true"
+                                                        Placeholder="Select component..."
+                                                        Disabled="@_isSaving"
+                                                        class="density-mixture-component" />
+
+                                        <div></div>
+
+                                        <div></div>
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetCurrentPercent(index)"
+                                                       Format="0.###' %'"
+                                                       Disabled="true"
+                                                       ShowUpDown="false"
+                                                       class="density-mixture-percent" />
+
+                                    </div>
+                                }
+                            }
 
                             @if (!string.IsNullOrWhiteSpace(MixtureValidationError))
                             {
@@ -443,179 +403,47 @@
                         <div class="density-settings-separator"></div>
 
 
-                        @* ==================================================
-                           DENSITY CORRECTION
-                           ================================================== *@
-                        <section class="density-settings-section">
+                        <div class="density-write-settings">
 
-                            <div class="density-section-title">
+                            <div>
 
-                                <RadzenIcon Icon="tune" />
+                                <div class="density-write-title">
+                                    Allow output writes
+                                </div>
 
-                                <div>
-                                    <div class="density-section-name">
-                                        DeltaD
-                                    </div>
-
-                                    <div class="density-section-description">
-                                        Density correction configured in SCADA
-                                    </div>
+                                <div class="density-write-description">
+                                    Write calculated Density to SCADA ValCalc
                                 </div>
 
                             </div>
 
-                            <div class="density-fixed-binding-row">
+                            <div class="density-write-switch">
 
-                                <div class="density-row-title">
+                                <span class="density-switch-state @GetSwitchStateClass(_allowOutputWrites)">
+                                    @GetSwitchStateText(_allowOutputWrites)
+                                </span>
 
-                                    <div class="density-row-name">
-                                        DeltaD
-                                    </div>
-
-                                    <div class="density-row-description" title="@DeltaDTag">
-                                        @(DeltaDTag ?? "ITEM DeltaD not found")
-                                    </div>
-
-                                </div>
-
-                                @if (string.IsNullOrWhiteSpace(DeltaDTag))
-                                {
-                                    <RadzenBadge Text="NOT FOUND"
-                                                 BadgeStyle="BadgeStyle.Danger" />
-                                }
-                                else if (CurrentDeltaD.HasValue)
-                                {
-                                    <RadzenBadge Text="READ ONLY"
-                                                 BadgeStyle="BadgeStyle.Info" />
-                                }
-                                else
-                                {
-                                    <RadzenBadge Text="NO VALUE"
-                                                 BadgeStyle="BadgeStyle.Warning" />
-                                }
-
-                                <RadzenNumeric TValue="double?"
-                                               Value="@CurrentDeltaD"
-                                               Format="0.###"
-                                               Disabled="true"
-                                               ShowUpDown="false"
-                                               class="density-correction-editor" />
+                                <RadzenSwitch @bind-Value="_allowOutputWrites"
+                                                Disabled="@(_isSaving || (!_allowOutputWrites && (!IsConfigurationReady || !IsOutputBindingReady)))" />
 
                             </div>
 
-                        </section>
+                        </div>
 
 
-                        <div class="density-settings-separator"></div>
+                        @if (!IsOutputBindingReady)
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Danger"
+                                            AllowClose="false"
+                                            ShowIcon="true"
+                                            class="density-settings-warning">
 
+                                Density Equipment does not contain ITEM ValCalc.
+                                Output writes cannot be enabled.
 
-                        @* ==================================================
-                           OUTPUT
-                           
-                           Новый расчёт возвращает инженерную Density kg/m³.
-                           
-                           В существующий Plant SCADA Equipment результат
-                           записываем в ITEM ValCalc.
-                           
-                           ValHmi не трогаем: он остаётся итоговым SCADA/HMI
-                           значением и именно его использует Tank.
-                           ================================================== *@
-                        <section class="density-settings-section">
+                            </RadzenAlert>
+                        }
 
-                            <div class="density-section-title">
-
-                                <RadzenIcon Icon="output" />
-
-                                <div>
-                                    <div class="density-section-name">
-                                        Output
-                                    </div>
-
-                                    <div class="density-section-description">
-                                        Calculated Density output to SCADA
-                                    </div>
-                                </div>
-
-                            </div>
-
-
-                            <div class="density-output-row">
-
-                                <div class="density-row-title">
-
-                                    <div class="density-row-name">
-                                        ValCalc
-                                    </div>
-
-                                    <div class="density-row-description">
-                                        Calculated Density target
-                                    </div>
-
-                                </div>
-
-
-                                @if (string.IsNullOrWhiteSpace(DensityOutputTag))
-                                {
-                                    <RadzenBadge Text="NOT FOUND"
-                                                 BadgeStyle="BadgeStyle.Danger" />
-                                }
-                                else
-                                {
-                                    <RadzenBadge Text="LINKED"
-                                                 BadgeStyle="BadgeStyle.Success" />
-                                }
-
-
-                                <code class="density-tag-text">
-                                    @(DensityOutputTag ?? "—")
-                                </code>
-
-                            </div>
-
-
-                            <div class="density-output-write-row">
-
-                                <div class="density-row-title">
-
-                                    <div class="density-row-name">
-                                        Allow output writes
-                                    </div>
-
-                                    <div class="density-row-description">
-                                        Write calculated Density to SCADA ValCalc
-                                    </div>
-
-                                </div>
-
-
-                                <div class="density-output-write-switch">
-
-                                    <span class="density-switch-state @GetSwitchStateClass(_allowOutputWrites)">
-                                        @GetSwitchStateText(_allowOutputWrites)
-                                    </span>
-
-                                    <RadzenSwitch @bind-Value="_allowOutputWrites"
-                                                  Disabled="@(_isSaving || (!_allowOutputWrites && (!IsConfigurationReady || !IsOutputBindingReady)))" />
-
-                                </div>
-
-                            </div>
-
-
-                            @if (!IsOutputBindingReady)
-                            {
-                                <RadzenAlert AlertStyle="AlertStyle.Danger"
-                                             AllowClose="false"
-                                             ShowIcon="true"
-                                             class="density-settings-warning">
-
-                                    Density Equipment does not contain ITEM ValCalc.
-                                    Output writes cannot be enabled.
-
-                                </RadzenAlert>
-                            }
-
-                        </section>
 
                     </div>
 
@@ -655,6 +483,10 @@
     private const string DensityDefinitionCode = "mixture.density";
     private const string ComponentCountKey = "componentCount";
     private const string CorrectionKey = "densityCorrection";
+
+    private const int MinProcessParameterCount = 2;
+    private const int MaxProcessParameterCount = 5;
+    private int _processParameterCount = MinProcessParameterCount;
 
     private const int MaxComponentCount = 5;
     private const double PercentageTolerance = 1e-6;
@@ -755,18 +587,25 @@
 
     private IReadOnlyList<CalcParameterOptionDto> SubstanceOptions => GetParameter("component0Code")?.Options ?? [];
 
+    /// <summary>
+    /// Возвращает только те ProcessInput, которые сейчас включены пользователем.
+    /// Первые два параметра всегда активны: Temperature и Pressure.
+    /// Дополнительные ProcessInput появляются последовательно при увеличении количества параметров от 3 до 5.
+    /// </summary>
+    private IReadOnlyList<DensityProcessBindingEditor> ActiveProcessBindings => _processBindings
+        .OrderBy(binding => binding.Parameter.Order)
+        .Take(_processParameterCount)
+        .ToList();
+
     // ============================================================
     // Readiness
     // ============================================================
 
     /// <summary>
-    /// Required ProcessInput считается готовым только после реальной проверки.
-    ///
-    /// Непустая строка сама по себе больше никогда не означает LINKED.
+    /// Все отображаемые Process parameters должны быть реально проверены.
+    /// Даже optional Additional parameter становится обязательным для конкретного Job, если пользователь увеличил количество активных параметров и тем самым включил эту строку.
     /// </summary>
-    private bool IsProcessBindingsReady => _processBindings
-        .Where(binding => binding.Parameter.IsRequired)
-        .All(binding => binding.IsLinked);
+    private bool IsProcessBindingsReady => ActiveProcessBindings.All(binding => binding.IsLinked);
 
     /// <summary>
     /// Проверяем полную SCADA-структуру Density Equipment.
@@ -974,6 +813,17 @@
                 MaxAgeSeconds = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.MaxAgeSeconds : null,
                 CheckState = hasRuntimeValue ? DensityBindingCheckState.Linked : DensityBindingCheckState.NotChecked
             });
+
+            // Для нового Job всегда показываем два штатных параметра.
+            // Для существующего Job количество восстанавливаем по числу сохранённых ProcessInput Tag bindings.
+            // Поэтому отдельное поле ProcessParameterCount в PostgreSQL не требуется.
+            var configuredProcessInputs = _processBindings.Count(binding =>
+            {
+                var stored = FindJobInput(binding.Parameter.Key);
+                return stored?.SourceType == CalcInputSourceTypeDto.Tag && !string.IsNullOrWhiteSpace(stored.TagName);
+            });
+
+            _processParameterCount = Math.Clamp(configuredProcessInputs, MinProcessParameterCount, MaxProcessParameterCount);
         }
     }
 
@@ -1005,7 +855,7 @@
 
         try
         {
-            foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
+            foreach (var binding in ActiveProcessBindings)
                 await ResolveProcessBindingAsync(binding);
 
             NotificationService.Notify(
@@ -1078,6 +928,17 @@
         binding.Resolution = "";
         binding.Message = "";
         binding.CheckState = DensityBindingCheckState.NotChecked;
+    }
+
+    /// <summary>
+    /// Изменяет количество активных Process parameters.
+    ///
+    /// При уменьшении количества дополнительные строки скрываются, но их текущее содержимое в редакторе сразу не уничтожается.
+    /// При следующем Save в Job попадут только активные строки.
+    /// </summary>
+    private void OnProcessParameterCountChanged(int value)
+    {
+        _processParameterCount = Math.Clamp(value, MinProcessParameterCount, MaxProcessParameterCount);
     }
 
     // ============================================================
@@ -1362,10 +1223,9 @@
     {
         var result = new List<CalcJobInputSaveDto>();
 
-        // ProcessInput сохраняет два представления одной связи:
-        // SourceReference: то, что настроил пользователь.
-        // TagName: реальный Variable Tag, который был подтверждён Runtime и который непосредственно будет читать Calc.Service.
-        foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
+        // В Job сохраняются только ProcessInput, которые пользователь
+        // включил текущим значением Process parameter count.
+        foreach (var binding in ActiveProcessBindings)
         {
             if (!binding.IsLinked)
                 continue;
@@ -1479,11 +1339,12 @@
         var parts = new List<string>
         {
             $"enabled={_enabled}",
-            $"writes={_allowOutputWrites}"
+            $"writes={_allowOutputWrites}",
+            $"processParameterCount={_processParameterCount}"
         };
 
-        foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
-            parts.Add($"{binding.Parameter.Key}={binding.SourceText.Trim()}:{binding.MaxAgeSeconds?.ToString(CultureInfo.InvariantCulture) ?? ""}");
+        foreach (var binding in ActiveProcessBindings)
+            parts.Add($"{binding.Parameter.Key}={binding.SourceText.Trim()}");
 
         for (var index = 0; index < MaxComponentCount; index++)
             parts.Add($"component{index}={_components.ElementAtOrDefault(index)?.SubstanceCode.Trim() ?? ""}");

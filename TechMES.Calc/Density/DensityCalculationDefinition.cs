@@ -52,33 +52,55 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
     /// </summary>
     private static readonly IReadOnlyList<CalculationParameterDefinition> PropertyParameterDefinitions =
     [
-        // Temperature пользователь может связать с Runtime AI Equipment
-        // либо непосредственно с числовым Plant SCADA Variable Tag.
+        // Первый штатный процессный параметр Density.
         new CalculationParameterDefinition(
-            Key: TemperatureKey, Name: "Temperature", Type: CalculationParameterType.Number, Unit: "°C",
-            IsRequired: true, Minimum: -273.15, Step: 0.1, Decimals: 2, Order: 1,
-            Description: "Mixture temperature used by the substance density correlations.",
-            Role: CalculationParameterRole.ProcessInput),
+        Key: TemperatureKey, Name: "Temperature", Type: CalculationParameterType.Number, Unit: "°C",
+        IsRequired: true, Minimum: -273.15, Step: 0.1, Decimals: 2, Order: 1,
+        Description: "Mixture temperature used by the substance density correlations.",
+        Role: CalculationParameterRole.ProcessInput),
 
-        // Pressure разрешается тем же универсальным ProcessInput-механизмом.
-        new CalculationParameterDefinition(
-            Key: PressureKey, Name: "Absolute pressure", Type: CalculationParameterType.Number, Unit: "bar(abs)",
-            IsRequired: true, Minimum: 0.000001, Step: 0.01, Decimals: 4, Order: 2,
-            Description: "Absolute mixture pressure.",
-            Role: CalculationParameterRole.ProcessInput),
+    // Второй штатный процессный параметр.
+    //
+    // В UI показываем просто Pressure.
+    // Внутренний ключ pressureBarAbsolute пока оставляем,
+    // потому что он описывает физический контракт текущей формулы.
+    new CalculationParameterDefinition(
+        Key: PressureKey, Name: "Pressure", Type: CalculationParameterType.Number, Unit: "bar(abs)",
+        IsRequired: true, Minimum: 0.000001, Step: 0.01, Decimals: 4, Order: 2,
+        Description: "Absolute mixture pressure.",
+        Role: CalculationParameterRole.ProcessInput),
 
-        // Это не редактируемый Offset TechMES.
-        //
-        // В рабочем Density Job параметр всегда связывается
-        // с ITEM DeltaD самого Density Equipment.
-        //
-        // DefaultValue = 0 сохраняем для ручного Calculation test,
-        // где SCADA binding отсутствует.
-        new CalculationParameterDefinition(
-            Key: CorrectionKey, Name: "DeltaD", Type: CalculationParameterType.Number, Unit: "kg/m³",
-            IsRequired: false, DefaultValue: 0d, Step: 0.1, Decimals: 3, Order: 3,
-            Description: "Density correction read from the Density Equipment DeltaD SCADA item.",
-            Role: CalculationParameterRole.Configuration)
+    // Три резервных ProcessInput закладываем уже сейчас.
+    //
+    // Текущая формула Density их не использует.
+    // Они нужны для того, чтобы специализированный UI и Calc Job
+    // уже поддерживали расширение физической модели до пяти параметров
+    // без изменения Runtime, PostgreSQL и структуры Job.
+    new CalculationParameterDefinition(
+        Key: "additionalParameter1", Name: "Additional parameter", Type: CalculationParameterType.Number,
+        IsRequired: false, Order: 3,
+        Description: "Reserved additional process parameter.",
+        Role: CalculationParameterRole.ProcessInput),
+
+    new CalculationParameterDefinition(
+        Key: "additionalParameter2", Name: "Additional parameter", Type: CalculationParameterType.Number,
+        IsRequired: false, Order: 4,
+        Description: "Reserved additional process parameter.",
+        Role: CalculationParameterRole.ProcessInput),
+
+    new CalculationParameterDefinition(
+        Key: "additionalParameter3", Name: "Additional parameter", Type: CalculationParameterType.Number,
+        IsRequired: false, Order: 5,
+        Description: "Reserved additional process parameter.",
+        Role: CalculationParameterRole.ProcessInput),
+
+    // DeltaD оператор в TechMES не редактирует.
+    // В рабочем Job он автоматически связан с ITEM DeltaD самого Density Equipment.
+    new CalculationParameterDefinition(
+        Key: CorrectionKey, Name: "DeltaD", Type: CalculationParameterType.Number, Unit: "kg/m³",
+        IsRequired: false, DefaultValue: 0d, Step: 0.1, Decimals: 3, Order: 10,
+        Description: "Density correction read from the Density Equipment DeltaD SCADA item.",
+        Role: CalculationParameterRole.Configuration)
     ];
 
     private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions = CreateMixtureParameters(PropertyParameterDefinitions);
