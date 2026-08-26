@@ -51,6 +51,16 @@
     border: 1px solid var(--rz-border-color, #d7dbe0);
     border-radius: 2px;
     background: transparent;
+    /*
+     * Responsive Density рассчитываем относительно реальной ширины
+     * самой верхней панели, а не относительно всего окна браузера.
+     *
+     * Это особенно важно при открытой левой панели Equipment:
+     * viewport может оставаться широким, но рабочая область Density
+     * уже становится заметно уже.
+     */
+    container-name: density-live;
+    container-type: inline-size;
 }
 
 .density-live-header {
@@ -401,39 +411,6 @@
    Responsive
    ============================================================ */
 
-@media (max-width: 1100px) {
-
-    /*
-     * Pie переносим на следующую строку.
-     *
-     * При этом первая строка всё ещё знает реальное количество
-     * bargraph и не резервирует место под отсутствующий Pressure.
-     */
-    .density-live-layout {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .density-live-layout-bars-1 {
-        grid-template-columns: 128px minmax(0, 1fr);
-    }
-
-    .density-live-layout-bars-2 {
-        grid-template-columns: 256px minmax(0, 1fr);
-    }
-
-    .density-pie-column {
-        grid-column: 1 / -1;
-        width: 100%;
-        min-width: 0;
-        max-width: none;
-        margin-top: 18px;
-        padding-top: 18px;
-        padding-left: 0;
-        border-top: 1px solid var(--rz-border-color, #d7dbe0);
-        border-left: 0;
-    }
-}
-
 @media (max-width: 760px) {
 
     .density-live-layout,
@@ -464,6 +441,78 @@
         width: 76px;
         min-width: 76px;
     }
+}
+
+/* ============================================================
+   Pie visibility
+
+   Pie имеет фиксированную ширину 430px.
+
+   Если для него уже не хватает места без сжатия центральной
+   области, Pie полностью скрываем.
+
+   Порог зависит от количества видимых ProcessInput bargraph:
+
+       0 bar -> Pie можно держать дольше;
+       1 bar -> слева занято ещё 128px;
+       2 bar -> слева занято ещё 256px.
+
+   Благодаря container query учитывается реальная ширина
+   Density-панели, а не ширина viewport.
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   Два bargraph: Temperature + Pressure
+
+   256px bars
+   + нормальная центральная область
+   + 430px Pie.
+
+   Ниже этого порога Pie уже начинает мешать центральной части.
+   ------------------------------------------------------------ */
+
+@container density-live (max-width: 1240px) {
+
+    .density-live-layout-bars-2 {
+        grid-template-columns: 256px minmax(0, 1fr);
+    }
+
+        .density-live-layout-bars-2 .density-pie-column {
+            display: none;
+        }
+}
+
+
+/* ------------------------------------------------------------
+   Один bargraph: Temperature ИЛИ Pressure
+   ------------------------------------------------------------ */
+
+@container density-live (max-width: 1110px) {
+
+    .density-live-layout-bars-1 {
+        grid-template-columns: 128px minmax(0, 1fr);
+    }
+
+        .density-live-layout-bars-1 .density-pie-column {
+            display: none;
+        }
+}
+
+
+/* ------------------------------------------------------------
+   Ни одного bargraph
+   ------------------------------------------------------------ */
+
+@container density-live (max-width: 980px) {
+
+    .density-live-layout-bars-0 {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+        .density-live-layout-bars-0 .density-pie-column {
+            display: none;
+        }
 }
 
 
