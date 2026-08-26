@@ -63,7 +63,7 @@
                состояние работающего Calc Job.
                ============================================================ *@
             @{
-                var liveProcessBars = BuildLiveProcessBars();
+                var primaryProcessBars = BuildPrimaryProcessBarSlots();
                 var pieItems = BuildLivePieItems();
             }
 
@@ -146,36 +146,38 @@
                 @* ============================================================
                    MAIN LIVE AREA
                    ============================================================ *@
-                <div class="density-live-layout @(liveProcessBars.Count == 0 ? "density-live-layout-no-bars" : "")">
+                <div class="density-live-layout">
 
 
                     @* ========================================================
-                       LEFT - LINKED AI PROCESS INPUTS
+                       LEFT - TEMPERATURE / PRESSURE
                        ======================================================== *@
-                    @if (liveProcessBars.Count > 0)
-                    {
-                        <div class="density-process-bars">
+                    <div class="density-process-bars">
 
-                            @foreach (var bar in liveProcessBars)
-                            {
-                                <div class="density-process-meter">
+                        @for (var slotIndex = 0; slotIndex < primaryProcessBars.Count; slotIndex++)
+                        {
+                            var bar = primaryProcessBars[slotIndex];
 
-                                    <div class="density-process-meter-top">
+                            <div class="density-process-meter @(bar is null ? "is-empty" : "")">
 
-                                        <div class="density-floating-field density-process-value-field">
+                                @if (bar is not null)
+                                {
+                                    @* ReadOnly-поле находится строго над центром bargraph. Используем штатный RadzenFormField — никаких собственных floating label поверх рамки больше нет. *@
+                                    <div class="density-process-meter-readout">
 
-                                            <span class="density-floating-label">
-                                                @bar.ItemName
-                                            </span>
+                                        <RadzenFormField AllowFloatingLabel="false"
+                                                         Text="@bar.ItemName"
+                                                         Variant="Variant.Outlined"
+                                                         class="density-process-form-field">
 
                                             <RadzenNumeric TValue="double?"
                                                            Value="@bar.Value"
-                                                           Format="0.###"
-                                                           Disabled="true"
+                                                           ReadOnly="true"
                                                            ShowUpDown="false"
+                                                           Format="0.###"
                                                            class="density-process-top-value" />
 
-                                        </div>
+                                        </RadzenFormField>
 
                                     </div>
 
@@ -189,93 +191,98 @@
 
                                     </div>
 
-                                    <div class="density-process-meter-footer">
-
-                                        <div class="density-process-meter-title">
-                                            @bar.Name
-                                        </div>
-
-                                        <div class="density-process-meter-source"
-                                             title="@bar.Source">
-                                            @bar.Source
-                                        </div>
-
-                                        <div class="density-process-meter-unit">
-                                            @(string.IsNullOrWhiteSpace(bar.Unit) ? "-" : bar.Unit)
-                                        </div>
-
+                                    @* Как в VGA: сначала непосредственно под шкалой Unit, затем уже смысловая подпись и source. *@
+                                    <div class="density-process-meter-unit">
+                                        @(string.IsNullOrWhiteSpace(bar.Unit) ? "-" : bar.Unit)
                                     </div>
 
-                                </div>
-                            }
+                                    <div class="density-process-meter-title">
+                                        @bar.Name
+                                    </div>
 
-                        </div>
-                    }
+                                    <div class="density-process-meter-source"
+                                         title="@bar.Source">
+                                        @bar.Source
+                                    </div>
+                                }
 
+                            </div>
+                        }
 
-                    @* ========================================================
-                       CENTER - SCADA VALUES / TECHMES RESULT / ADDITIONAL
-                       ======================================================== *@
+                    </div>
+
                     <div class="density-live-center">
 
+                        @* ========================================================
+                           SCADA VALUES
+                           ======================================================== *@
                         <div class="density-scada-card">
 
-                            <div class="density-value-group-title">
-                                Current value
-                            </div>
+                            <div class="density-value-row">
 
-                            <div class="density-scada-grid">
+                                <div class="density-value-group-title">
+                                    Current value
+                                </div>
 
-                                <div class="density-floating-field density-main-value-field">
+                                <div class="density-value-controls">
 
-                                    <span class="density-floating-label">
-                                        ValHmi
-                                    </span>
+                                    @* Пустой слот такой же ширины, как DeltaD. Благодаря этому ValHmi и ValCalc имеют одинаковую ширину и стоят строго друг под другом. *@
+                                    <div class="density-delta-placeholder" aria-hidden="true"></div>
 
-                                    <RadzenNumeric TValue="double?"
-                                                   Value="@CurrentDensityHmi"
-                                                   Format="0.###' kg/m³'"
-                                                   Disabled="true"
-                                                   ShowUpDown="false"
-                                                   class="density-main-value-input" />
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="ValHmi"
+                                                     Variant="Variant.Outlined"
+                                                     class="density-main-form-field">
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@CurrentDensityHmi"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###' kg/m³'"
+                                                       class="density-main-value-input" />
+
+                                    </RadzenFormField>
 
                                 </div>
 
                             </div>
 
-                            <div class="density-value-group-title">
-                                Calculated value
-                            </div>
 
-                            <div class="density-scada-grid density-scada-grid-with-delta">
+                            <div class="density-value-row">
 
-                                <div class="density-floating-field density-delta-field">
-
-                                    <span class="density-floating-label">
-                                        ΔD
-                                    </span>
-
-                                    <RadzenNumeric TValue="double?"
-                                                   Value="@CurrentDeltaD"
-                                                   Format="0.###"
-                                                   Disabled="true"
-                                                   ShowUpDown="false"
-                                                   class="density-delta-input" />
-
+                                <div class="density-value-group-title">
+                                    Calculated value
                                 </div>
 
-                                <div class="density-floating-field density-main-value-field">
+                                <div class="density-value-controls">
 
-                                    <span class="density-floating-label">
-                                        ValCalc
-                                    </span>
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="ΔD"
+                                                     Variant="Variant.Outlined"
+                                                     class="density-delta-form-field">
 
-                                    <RadzenNumeric TValue="double?"
-                                                   Value="@CurrentDensityCalcEngineering"
-                                                   Format="0.###' kg/m³'"
-                                                   Disabled="true"
-                                                   ShowUpDown="false"
-                                                   class="density-main-value-input" />
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@CurrentDeltaD"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###"
+                                                       class="density-delta-input" />
+
+                                    </RadzenFormField>
+
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="ValCalc"
+                                                     Variant="Variant.Outlined"
+                                                     class="density-main-form-field">
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@CurrentDensityCalcEngineering"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###' kg/m³'"
+                                                       class="density-main-value-input" />
+
+                                    </RadzenFormField>
 
                                 </div>
 
@@ -283,49 +290,75 @@
 
                         </div>
 
+
+                        @* ========================================================
+                           TECHMES RESULT
+                           ======================================================== *@
                         <div class="density-result-card">
 
-                            <div class="density-value-group-title">
-                                TechMES calculated value
-                            </div>
+                            <div class="density-value-row">
 
-                            <div class="density-floating-field density-main-value-field">
+                                <div class="density-value-group-title">
+                                    TechMES calculated value
+                                </div>
 
-                                <span class="density-floating-label">
-                                    Density
-                                </span>
+                                <div class="density-value-controls">
 
-                                <RadzenNumeric TValue="double?"
-                                               Value="@GetLastOutputNumber("density")"
-                                               Format="0.###' kg/m³'"
-                                               Disabled="true"
-                                               ShowUpDown="false"
-                                               class="density-main-value-input" />
+                                    <div class="density-delta-placeholder" aria-hidden="true"></div>
+
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="Density"
+                                                     Variant="Variant.Outlined"
+                                                     class="density-main-form-field">
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetLastOutputNumber("density")"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###' kg/m³'"
+                                                       class="density-main-value-input" />
+
+                                    </RadzenFormField>
+
+                                </div>
 
                             </div>
 
                         </div>
 
+
+                        @* ========================================================
+                           ADDITIONAL PARAMETERS
+                           ======================================================== *@
                         @foreach (var binding in ActiveProcessBindings.Skip(2).Where(binding => binding.IsLinked))
                         {
                             <div class="density-additional-card">
 
-                                <div class="density-value-group-title">
-                                    @GetProcessDisplayName(binding)
-                                </div>
+                                <div class="density-value-row">
 
-                                <div class="density-floating-field density-main-value-field">
+                                    <div class="density-value-group-title">
+                                        @GetProcessDisplayName(binding)
+                                    </div>
 
-                                    <span class="density-floating-label">
-                                        @GetProcessRuntimeTag(binding)
-                                    </span>
+                                    <div class="density-value-controls">
 
-                                    <RadzenNumeric TValue="double?"
-                                                   Value="@GetProcessCurrentValue(binding)"
-                                                   Format="@GetNumberFormat(binding.Parameter)"
-                                                   Disabled="true"
-                                                   ShowUpDown="false"
-                                                   class="density-main-value-input" />
+                                        <div class="density-delta-placeholder" aria-hidden="true"></div>
+
+                                        <RadzenFormField AllowFloatingLabel="false"
+                                                         Text="@GetProcessRuntimeTag(binding)"
+                                                         Variant="Variant.Outlined"
+                                                         class="density-main-form-field">
+
+                                            <RadzenNumeric TValue="double?"
+                                                           Value="@GetProcessCurrentValue(binding)"
+                                                           ReadOnly="true"
+                                                           ShowUpDown="false"
+                                                           Format="@GetNumberFormat(binding.Parameter)"
+                                                           class="density-main-value-input" />
+
+                                        </RadzenFormField>
+
+                                    </div>
 
                                 </div>
 
@@ -346,13 +379,24 @@
 
                                 <RadzenChart class="density-pie-chart">
 
-                                    <RadzenPieSeries TItem="DensityPieItem"
-                                                     Data="@pieItems"
-                                                     CategoryProperty="@nameof(DensityPieItem.LegendText)"
-                                                     ValueProperty="@nameof(DensityPieItem.Percent)"
-                                                     StartAngle="90"
-                                                     StrokeWidth="2"
-                                                     ShowTooltipOnLegend="true">
+                                    <TechMesPieSeries TItem="DensityPieItem"
+                                                      Data="@pieItems"
+                                                      CategoryProperty="@nameof(DensityPieItem.LegendText)"
+                                                      ValueProperty="@nameof(DensityPieItem.Percent)"
+                                                      DataLabelText="@FormatPieItemDensity"
+                                                      StartAngle="90"
+                                                      StrokeWidth="2"
+                                                      ShowTooltipOnLegend="true">
+
+                                        <ChildContent>
+
+                                            @* Положение подписей полностью рассчитывает штатный Radzen. Inside размещает подписи внутри соответствующих секторов Pie. Мы не вычисляем координаты самостоятельно. *@
+                                            <RadzenSeriesDataLabels Visible="true"
+                                                                    Position="DataLabelPosition.Inside"
+                                                                    Appearance="DataLabelAppearance.Chip"
+                                                                    AllowOverlap="true" />
+
+                                        </ChildContent>
 
                                         <TooltipTemplate Context="item">
 
@@ -374,35 +418,17 @@
 
                                         </TooltipTemplate>
 
-                                    </RadzenPieSeries>
+                                    </TechMesPieSeries>
 
                                     <RadzenLegend Position="LegendPosition.Bottom" />
 
                                 </RadzenChart>
 
-
-                                <div class="density-pie-label-layer">
-
-                                    @foreach (var item in pieItems.Where(item => item.DensityKgPerM3.HasValue))
-                                    {
-                                        <div class="density-pie-density-label"
-                                             style="@GetPieLabelStyle(item)"
-                                             title="@($"{item.Code}: {item.Percent:0.###}%")">
-
-                                            @FormatPieDensity(item.DensityKgPerM3)
-
-                                        </div>
-                                    }
-
-                                </div>
-
                             </div>
                         }
                         else
                         {
-                            <div class="density-pie-empty">
-                                Mixture data is not available.
-                            </div>
+                            <div class="density-pie-empty"> Mixture data is not available. </div>
                         }
 
                     </div>
@@ -902,11 +928,28 @@
             return;
 
         SynchronizeConfiguration(force: true);
-        await RefreshDensityScadaValuesAsync(force: true);
-        await ValidateStoredProcessBindingsAsync();
-        await RefreshLinkedAiSnapshotsAsync();
 
+        // Сразу после восстановления редактора фиксируем его как сохранённое состояние.
+        //
+        // Это нужно сделать ДО любых await:
+        // иначе Blazor может успеть выполнить промежуточный render и показать
+        // ложное сообщение Unsaved changes, хотя пользователь ничего не менял.
         CaptureSavedEditorState();
+
+        // Читаем собственные SCADA items Density:
+        // ValHmi, ValCalc, CompN, PercN, DeltaD.
+        await RefreshDensityScadaValuesAsync(force: true);
+
+        // Проверяем сохранённые ProcessInput.
+        // После этого Equipment.ITEM bindings получают реальный LINKED.
+        await ValidateStoredProcessBindingsAsync();
+
+        // Теперь, когда bindings гарантированно проверены,
+        // сразу загружаем AI snapshot для bargraph.
+        //
+        // Поэтому Temperature/Pressure bar появляются сразу,
+        // а не только после следующего 5-секундного refresh.
+        await RefreshLinkedAiSnapshotsAsync();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -916,12 +959,21 @@
 
         var contextChanged = SynchronizeConfiguration();
 
+        if (contextChanged)
+        {
+            // Новая модель/Job только что восстановлены из сохранённой конфигурации. Это НЕ пользовательское изменение.
+            // Фиксируем signature немедленно, до первого await, чтобы при переключении между Density не мигал Unsaved changes.
+            CaptureSavedEditorState();
+        }
+
         await RefreshDensityScadaValuesAsync();
 
         if (contextChanged)
         {
+            // RefreshDensityScadaValuesAsync мог выполняться ещё до того, как сохранённые Equipment.ITEM bindings получили LINKED.
+            // Поэтому сначала выполняем реальную проверку bindings, а затем ещё раз сразу запрашиваем AI snapshots.
             await ValidateStoredProcessBindingsAsync();
-            CaptureSavedEditorState();
+            await RefreshLinkedAiSnapshotsAsync();
         }
     }
 
@@ -1267,47 +1319,81 @@
     }
 
     /// <summary>
-    /// Формирует список bar-графов для верхней панели.
+    /// Формирует два фиксированных слота верхней панели:
     ///
-    /// Bar отображается только когда одновременно выполнены условия:
-    /// - ProcessInput имеет LINKED;
-    /// - source является Equipment.ITEM;
-    /// - Equipment имеет TypeGroup AI;
-    /// - Param snapshot содержит Min/Max для выбранного ITEM.
+    ///     slot 0 = Temperature
+    ///     slot 1 = Pressure.
+    ///
+    /// Размер левой области поэтому никогда не зависит от того,
+    /// найден Pressure или нет.
+    ///
+    /// Если конкретный ProcessInput:
+    /// - не LINKED;
+    /// - не является Equipment.ITEM;
+    /// - Equipment не относится к AI;
+    /// - не имеет корректных Min/Max;
+    ///
+    /// соответствующий slot остаётся пустым, но его геометрическое место сохраняется.
+    ///
+    /// Additional parameter здесь намеренно не участвуют:
+    /// они отображаются отдельными карточками в центральной части.
     /// </summary>
-    private IReadOnlyList<DensityProcessBarView> BuildLiveProcessBars()
+    private IReadOnlyList<DensityProcessBarView?> BuildPrimaryProcessBarSlots()
     {
-        var result = new List<DensityProcessBarView>();
+        var bindings = _processBindings
+            .OrderBy(binding => binding.Parameter.Order)
+            .Take(2)
+            .ToArray();
 
-        foreach (var binding in ActiveProcessBindings)
+        var result = new List<DensityProcessBarView?>(2);
+
+        for (var index = 0; index < 2; index++)
         {
-            if (!TryGetLinkedAiEquipment(binding, out var equipment, out var itemName))
+            if (index >= bindings.Length)
+            {
+                result.Add(null);
                 continue;
+            }
 
-            if (!_linkedAiSnapshots.TryGetValue(equipment.Name, out var snapshot))
-                continue;
-
-            if (!TryGetAiBounds(snapshot, itemName, out var min, out var max))
-                continue;
-
-            var value = GetProcessCurrentValue(binding);
-
-            if (!value.HasValue)
-                continue;
-
-            result.Add(new DensityProcessBarView(
-                ParameterKey: binding.Parameter.Key,
-                Name: GetProcessDisplayName(binding),
-                Source: binding.ValidatedSourceText,
-                ItemName: itemName,
-                Value: value.Value,
-                Min: min,
-                Max: max,
-                Unit: string.IsNullOrWhiteSpace(snapshot.Unit) ? binding.Parameter.Unit ?? "" : snapshot.Unit.Trim(),
-                FillColor: GetProcessBarColor(binding)));
+            result.Add(BuildLiveProcessBar(bindings[index]));
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Пытается построить один AI bargraph для ProcessInput.
+    ///
+    /// Bargraph существует только после реального LINKED и только для AI Equipment.
+    /// Direct Variable Tag в bargraph не превращаем, потому что у него нет
+    /// гарантированной Equipment-структуры Min/Max.
+    /// </summary>
+    private DensityProcessBarView? BuildLiveProcessBar(DensityProcessBindingEditor binding)
+    {
+        if (!TryGetLinkedAiEquipment(binding, out var equipment, out var itemName))
+            return null;
+
+        if (!_linkedAiSnapshots.TryGetValue(equipment.Name, out var snapshot))
+            return null;
+
+        if (!TryGetAiBounds(snapshot, itemName, out var min, out var max))
+            return null;
+
+        var value = GetProcessCurrentValue(binding);
+
+        if (!value.HasValue)
+            return null;
+
+        return new DensityProcessBarView(
+            ParameterKey: binding.Parameter.Key,
+            Name: GetProcessDisplayName(binding),
+            Source: binding.ValidatedSourceText,
+            ItemName: itemName,
+            Value: value.Value,
+            Min: min,
+            Max: max,
+            Unit: string.IsNullOrWhiteSpace(snapshot.Unit) ? binding.Parameter.Unit ?? "" : snapshot.Unit.Trim(),
+            FillColor: GetProcessBarColor(binding));
     }
 
     /// <summary>
@@ -2021,13 +2107,15 @@
     }
 
     /// <summary>
-    /// Формирует Pie по текущим SCADA PercN.
+    /// Формирует данные Pie по фактическому составу смеси.
     ///
-    /// Размер сектора = MassPercent.
+    /// Percent определяет геометрический размер сектора.
     ///
-    /// DensityKgPerM3 читается из LastOutputs componentNDensity,
-    /// то есть это именно то значение, которое реально участвовало
-    /// в последнем успешном расчёте Calc.Service.
+    /// DensityKgPerM3 является фактической плотностью компонента,
+    /// которая участвовала в последнем успешном расчёте Calc.Service.
+    ///
+    /// Никаких координат labels здесь больше не рассчитываем:
+    /// их положение полностью определяет RadzenPieSeries.
     /// </summary>
     private IReadOnlyList<DensityPieItem> BuildLivePieItems()
     {
@@ -2035,7 +2123,6 @@
             return [];
 
         var result = new List<DensityPieItem>();
-        var cumulativePercent = 0d;
 
         for (var index = 0; index < CurrentComponentCount.Value; index++)
         {
@@ -2045,32 +2132,26 @@
             if (string.IsNullOrWhiteSpace(code) || !percent.HasValue || percent.Value <= 0d)
                 continue;
 
-            var midpointPercent = cumulativePercent + percent.Value / 2d;
-
-            // Radzen Pie начинаем сверху.
-            //
-            // Позицию отдельной Density-label рассчитываем по средней точке
-            // соответствующего сектора. Это позволяет показывать именно
-            // component density, а не Percentage.
-
-            // Положение подписи делаем внутри сектора, а не снаружи.
-            var angle = (90d - midpointPercent * 3.6d) * Math.PI / 180d;
-            var labelLeft = 50d + Math.Cos(angle) * 24d;
-            var labelTop = 44d - Math.Sin(angle) * 24d;
-
             result.Add(new DensityPieItem(
                 Index: index,
                 Code: code,
                 LegendText: $"{code} {percent.Value:0.#}%",
                 Percent: percent.Value,
-                DensityKgPerM3: GetLastOutputNumber($"component{index}Density"),
-                LabelLeftPercent: labelLeft,
-                LabelTopPercent: labelTop));
-
-            cumulativePercent += percent.Value;
+                DensityKgPerM3: GetLastOutputNumber($"component{index}Density")));
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Текст внутри сектора Pie.
+    /// Размер сектора задаётся Percent, а внутри показываем рассчитанную Density компонента.
+    /// </summary>
+    private static string FormatPieItemDensity(DensityPieItem item)
+    {
+        return item.DensityKgPerM3.HasValue
+            ? item.DensityKgPerM3.Value.ToString("0.###", CultureInfo.InvariantCulture)
+            : "-";
     }
 
     private string GetLiveMixtureTitle()
@@ -2089,13 +2170,6 @@
         }
 
         return codes.Count > 0 ? string.Join(" - ", codes) : "Mixture";
-    }
-
-    private static string GetPieLabelStyle(DensityPieItem item)
-    {
-        return string.Create(
-            CultureInfo.InvariantCulture,
-            $"left:{item.LabelLeftPercent:0.###}%; top:{item.LabelTopPercent:0.###}%;");
     }
 
     private static string FormatPieDensity(double? value)
@@ -2192,9 +2266,7 @@
         string Code,
         string LegendText,
         double Percent,
-        double? DensityKgPerM3,
-        double LabelLeftPercent,
-        double LabelTopPercent);
+        double? DensityKgPerM3);
 
     private sealed record DensityScadaReadResult(string ItemName, bool Success, double? Value, string? Message)
     {

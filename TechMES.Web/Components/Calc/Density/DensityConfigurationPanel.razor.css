@@ -114,74 +114,69 @@
 
 /* ============================================================
    Основная live-разметка
+
+   Геометрия desktop:
+   - Temperature slot = 128px
+   - Pressure slot    = 128px
+   - Center           = всё оставшееся место
+   - Pie              = 430px
+
+   Поэтому появление/исчезновение Pressure bar
+   вообще не двигает центр и Pie.
    ============================================================ */
 
 .density-live-layout {
     display: grid;
-    grid-template-columns: 240px minmax(0, 1fr) 430px;
+    grid-template-columns: 256px minmax(0, 1fr) 430px;
     align-items: stretch;
-    gap: 18px;
     width: 100%;
     min-width: 0;
 }
 
-.density-live-layout-no-bars {
-    grid-template-columns: minmax(0, 1fr) 430px;
-}
-
-/* ============================================================
-   Общий стиль floating field
-   ============================================================ */
-
-.density-floating-field {
-    position: relative;
-    min-width: 0;
-}
-
-.density-floating-label {
-    position: absolute;
-    top: -7px;
-    left: 8px;
-    z-index: 1;
-    padding: 0 4px;
-    background: var(--rz-base-background-color);
-    color: var(--rz-text-secondary-color);
-    font-size: 10px;
-    line-height: 1;
-}
 
 /* ============================================================
    ProcessInput AI bars
    ============================================================ */
 
 .density-process-bars {
-    display: flex;
+    display: grid;
+    grid-template-columns: 128px 128px;
     align-items: stretch;
-    gap: 0;
-    min-width: 0;
-    padding-right: 16px;
+    width: 256px;
+    min-width: 256px;
     border-right: 1px solid var(--rz-border-color, #d7dbe0);
 }
 
 .density-process-meter {
+    box-sizing: border-box;
     display: flex;
-    flex: 0 0 110px;
     flex-direction: column;
-    min-width: 110px;
-    max-width: 110px;
-    padding: 0 12px;
+    align-items: center;
+    width: 128px;
+    min-width: 128px;
+    padding: 0 10px;
 }
 
-    .density-process-meter:not(:last-child) {
+    .density-process-meter:first-child {
         border-right: 1px solid var(--rz-border-color, #d7dbe0);
     }
 
-.density-process-meter-top {
-    margin-bottom: 12px;
+    /* Пустой Temperature/Pressure slot остаётся геометрически на месте,
+   но не показывает никаких элементов. */
+    .density-process-meter.is-empty {
+        visibility: hidden;
+    }
+
+.density-process-meter-readout {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-height: 48px;
+    margin-bottom: 10px;
 }
 
-.density-process-value-field {
-    width: 100%;
+::deep .density-process-form-field {
+    width: 96px;
 }
 
 ::deep .density-process-top-value {
@@ -195,45 +190,55 @@
     }
 
 .density-process-meter-body {
-    flex: 1 1 auto;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    width: 96px;
+    height: 290px;
     min-height: 290px;
 }
 
     .density-process-meter-body ::deep .param-meter {
+        height: 290px;
         min-height: 290px;
     }
 
-.density-process-meter-footer {
-    display: grid;
-    gap: 4px;
-    margin-top: 10px;
+/* Как в VGA: Unit идёт непосредственно под bar-area. */
+.density-process-meter-unit {
+    min-height: 18px;
+    margin-top: 8px;
+    color: var(--rz-text-color);
+    font-size: 12px;
     text-align: center;
 }
 
 .density-process-meter-title {
+    width: 100%;
+    margin-top: 7px;
     overflow: hidden;
+    color: var(--rz-text-color);
     font-size: 13px;
     font-weight: 600;
+    text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .density-process-meter-source {
+    width: 100%;
     min-height: 16px;
+    margin-top: 3px;
     overflow: hidden;
     color: var(--rz-text-secondary-color);
     font-size: 10px;
+    text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.density-process-meter-unit {
-    color: var(--rz-text-secondary-color);
-    font-size: 12px;
-}
 
 /* ============================================================
-   Center cards
+   Center
    ============================================================ */
 
 .density-live-center {
@@ -241,23 +246,28 @@
     flex-direction: column;
     gap: 14px;
     min-width: 0;
+    padding: 0 18px;
 }
 
 .density-scada-card,
 .density-result-card,
 .density-additional-card {
+    box-sizing: border-box;
+    display: grid;
+    gap: 14px;
     width: 100%;
     min-width: 0;
+    padding: 16px;
     border: 1px solid var(--rz-border-color, #d7dbe0);
     border-radius: 5px;
-    padding: 16px;
 }
 
-.density-scada-card,
-.density-result-card,
-.density-additional-card {
+.density-value-row {
     display: grid;
-    gap: 12px;
+    grid-template-columns: 150px minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
 }
 
 .density-value-group-title {
@@ -266,22 +276,32 @@
     font-weight: 600;
 }
 
-.density-scada-grid {
+/* Каждый ряд имеет одинаковый правый layout:
+   90px = DeltaD slot
+   1fr  = основное поле.
+
+   Поэтому ValHmi, ValCalc и Density имеют строго одинаковую ширину. */
+.density-value-controls {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 12px;
+    grid-template-columns: 90px minmax(180px, 1fr);
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
 }
 
-.density-scada-grid-with-delta {
-    grid-template-columns: 86px minmax(0, 1fr);
+.density-delta-placeholder {
+    width: 90px;
+    min-width: 90px;
 }
 
-.density-main-value-field {
+::deep .density-delta-form-field {
+    width: 90px;
+    min-width: 90px;
+}
+
+::deep .density-main-form-field {
     width: 100%;
-}
-
-.density-delta-field {
-    width: 86px;
+    min-width: 0;
 }
 
 ::deep .density-main-value-input,
@@ -296,16 +316,21 @@
     }
 
     ::deep .density-delta-input .rz-inputtext {
-        text-align: center;
+        text-align: right;
         font-size: 14px;
         font-weight: 600;
     }
 
+
 /* ============================================================
    Pie
+
+   Pie-column всегда 430px.
+   Центральная колонка единственная имеет размер "*".
    ============================================================ */
 
 .density-pie-column {
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -317,35 +342,14 @@
 }
 
 .density-pie-shell {
-    position: relative;
     width: 100%;
     height: 360px;
+    min-width: 0;
 }
 
 ::deep .density-pie-chart {
     width: 100%;
     height: 100%;
-}
-
-.density-pie-label-layer {
-    position: absolute;
-    inset: 10px 0 54px 0;
-    pointer-events: none;
-}
-
-.density-pie-density-label {
-    position: absolute;
-    z-index: 3;
-    min-width: 42px;
-    padding: 3px 7px;
-    border: 1px solid var(--rz-border-color, #d7dbe0);
-    border-radius: 5px;
-    background: rgba(255, 255, 255, 0.92);
-    font-size: 11px;
-    line-height: 1;
-    text-align: center;
-    transform: translate(-50%, -50%);
-    white-space: nowrap;
 }
 
 .density-pie-tooltip {
@@ -358,56 +362,62 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 100%;
     min-height: 280px;
     color: var(--rz-text-secondary-color);
     font-size: 13px;
 }
 
+
 /* ============================================================
-   Responsive live panel
+   Responsive
    ============================================================ */
 
-@media (max-width: 1250px) {
-    .density-live-layout,
-    .density-live-layout-no-bars {
-        grid-template-columns: 1fr;
-    }
-
-    .density-process-bars {
-        padding-right: 0;
-        padding-bottom: 16px;
-        border-right: 0;
-        border-bottom: 1px solid var(--rz-border-color, #d7dbe0);
-        overflow-x: auto;
+@media (max-width: 1100px) {
+    .density-live-layout {
+        grid-template-columns: 256px minmax(0, 1fr);
     }
 
     .density-pie-column {
+        grid-column: 1 / -1;
         width: 100%;
         min-width: 0;
         max-width: none;
+        margin-top: 18px;
+        padding-top: 18px;
         padding-left: 0;
-        border-left: 0;
         border-top: 1px solid var(--rz-border-color, #d7dbe0);
-        padding-top: 16px;
+        border-left: 0;
     }
 }
 
 @media (max-width: 760px) {
-    .density-live-header {
-        align-items: flex-start;
-        flex-direction: column;
-    }
-
-    .density-toolbar-enabled {
-        justify-content: flex-start;
-    }
-
-    .density-scada-grid-with-delta {
+    .density-live-layout {
         grid-template-columns: 1fr;
     }
 
-    .density-delta-field {
-        width: 100%;
+    .density-process-bars {
+        width: 256px;
+        margin: 0 auto 18px;
+        border-right: 0;
+    }
+
+    .density-live-center {
+        padding: 0;
+    }
+
+    .density-value-row {
+        grid-template-columns: 1fr;
+    }
+
+    .density-value-controls {
+        grid-template-columns: 76px minmax(0, 1fr);
+    }
+
+    .density-delta-placeholder,
+    ::deep .density-delta-form-field {
+        width: 76px;
+        min-width: 76px;
     }
 }
 
