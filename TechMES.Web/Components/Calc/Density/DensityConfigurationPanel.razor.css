@@ -302,9 +302,20 @@
 
 .density-value-row {
     display: grid;
-    grid-template-columns: 150px minmax(0, 1fr);
+    /*
+     * Левая колонка — подпись строки.
+     *
+     * Правая колонка больше не растягивается на всю ширину карточки.
+     * Она занимает только реальную ширину набора полей.
+     *
+     * Поэтому между текстом Current value / Calculated value
+     * и самими полями остаётся стабильное свободное пространство,
+     * а inputs не превращаются в длинные полосы.
+     */
+    grid-template-columns: 150px auto;
     align-items: center;
-    gap: 16px;
+    justify-content: start;
+    gap: 28px;
     min-width: 0;
 }
 
@@ -314,16 +325,31 @@
     font-weight: 600;
 }
 
-/* Каждый ряд имеет одинаковый правый layout:
-   90px = DeltaD slot
-   1fr  = основное поле.
 
-   Поэтому ValHmi, ValCalc и Density имеют строго одинаковую ширину. */
+/* ============================================================
+   Центральные ReadOnly-поля
+
+   Геометрия:
+       DeltaD  = 90px
+       gap     = 10px
+       main    = 220px
+
+   ValHmi, ValCalc и Density поэтому всегда имеют одинаковую
+   фиксированную ширину.
+
+   В строках без DeltaD оставляем невидимый 90px slot,
+   поэтому основные поля стоят строго друг под другом.
+   ============================================================ */
+
 .density-value-controls {
     display: grid;
-    grid-template-columns: 90px minmax(180px, 1fr);
+    grid-template-columns: 90px 220px;
     align-items: center;
     gap: 10px;
+    /*
+     * Не позволяем controls растягиваться вместе с карточкой.
+     */
+    width: max-content;
     min-width: 0;
 }
 
@@ -338,8 +364,9 @@
 }
 
 ::deep .density-main-form-field {
-    width: 100%;
-    min-width: 0;
+    width: 220px;
+    min-width: 220px;
+    max-width: 220px;
 }
 
 ::deep .density-main-value-input,
@@ -347,16 +374,21 @@
     width: 100%;
 }
 
-    ::deep .density-main-value-input .rz-inputtext {
-        text-align: right;
-        font-size: 16px;
-        font-weight: 600;
-    }
 
+    /*
+ * Стиль значения повторяет Tank Measurement area:
+ *
+ * - обычный шрифт Radzen;
+ * - обычный font-weight;
+ * - стандартный размер текста темы;
+ * - только выравнивание вправо.
+ *
+ * Специально НЕ задаём здесь font-size и font-weight.
+ */
+    ::deep .density-main-value-input .rz-inputtext,
     ::deep .density-delta-input .rz-inputtext {
         text-align: right;
-        font-size: 14px;
-        font-weight: 600;
+        font-weight: 400;
     }
 
 
@@ -430,16 +462,24 @@
 
     .density-value-row {
         grid-template-columns: 1fr;
+        gap: 12px;
     }
 
     .density-value-controls {
-        grid-template-columns: 76px minmax(0, 1fr);
+        grid-template-columns: 76px minmax(0, 220px);
+        width: 100%;
     }
 
     .density-delta-placeholder,
     ::deep .density-delta-form-field {
         width: 76px;
         min-width: 76px;
+    }
+
+    ::deep .density-main-form-field {
+        width: 100%;
+        min-width: 0;
+        max-width: 220px;
     }
 }
 
