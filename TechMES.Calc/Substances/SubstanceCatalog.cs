@@ -83,6 +83,8 @@ public static class SubstanceCatalog
         Add("Water", "Water", SubstancePhase.Liquid, () => new Water(false));
         Add("WaterS", "Water", SubstancePhase.Vapor, () => new Water(true));
 
+        Add("DryMatter", "Dry matter", SubstancePhase.Liquid, () => new DryMatter());
+
         Add("Butadiene_1_2", "1,2-Butadiene", SubstancePhase.Liquid, () => new Butadiene_1_2(false));
         Add("Butadiene_1_2S", "1,2-Butadiene", SubstancePhase.Vapor, () => new Butadiene_1_2(true));
 

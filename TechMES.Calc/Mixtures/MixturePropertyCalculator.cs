@@ -49,9 +49,10 @@ public static class MixturePropertyCalculator
 
             var model = SubstanceCatalog.CreateRequiredModel(component.SubstanceCode);
 
-            // Все старые вещества по умолчанию попадают в исходный GetDensity(float temperature, float pressure).
-            // Если новый компонент переопределит расширенную перегрузку, он дополнительно получит additionalParameters.
-            var pureDensity = model.GetDensity((float)temperatureC, (float)pressureBarAbsolute, additionalParameters);
+            // Передаём компоненту также его собственную массовую долю.
+            // Для всех legacy-компонентов базовый overload игнорирует MassPercent и уходит в исходный GetDensity(T, P).
+            // DryMatter использует MassPercent, потому что исходная ICUMSA-корреляция нелинейно зависит от концентрации сухих веществ.
+            var pureDensity = model.GetDensity((float)temperatureC, (float)pressureBarAbsolute, component.MassPercent, additionalParameters);
 
             if (!double.IsFinite(pureDensity) || pureDensity <= 0d)
                 throw new CalculationException("substance.density.invalid", $"Substance '{component.SubstanceCode}' returned invalid density {pureDensity}.");
@@ -158,5 +159,47 @@ public static class MixturePropertyCalculator
 
         if (Math.Abs(totalPercent - 100d) > PercentageTolerance)
             throw new CalculationException("mixture.percent-total-invalid", $"Mixture mass percentages must total 100%. Actual total: {totalPercent:0.######}%.");
+
+        ValidateDryMatterComposition(components);
+    }
+
+    /// <summary>
+    /// Проверяет специальный контракт DryMatter.
+    /// Корреляция DryMatter восстановлена из исходного PLC-расчёта сахарного водного раствора.
+    ///
+    /// Поэтому допустимы только:
+    ///
+    ///     DryMatter = 100%
+    ///
+    /// либо:
+    ///
+    ///     Water + DryMatter = 100%.
+    ///
+    /// Использование DryMatter вместе с ACN, Alcohol и другими веществами математически не соответствует исходной ICUMSA-корреляции
+    /// и должно завершаться явной ошибкой, а не давать внешне правдоподобное, но физически неверное значение.
+    /// </summary>
+    private static void ValidateDryMatterComposition(IReadOnlyList<MixtureComponent> components)
+    {
+        var activeComponents = components.Where(component => component.MassPercent > 0d).ToArray();
+        var dryMatter = activeComponents.FirstOrDefault(component => string.Equals(component.SubstanceCode, "DryMatter", StringComparison.OrdinalIgnoreCase));
+
+        if (dryMatter is null)
+            return;
+
+        // Чистый DryMatter 100% является допустимой контрольной точкой.
+        if (activeComponents.Length == 1 && string.Equals(activeComponents[0].SubstanceCode, "DryMatter", StringComparison.OrdinalIgnoreCase) && Math.Abs(activeComponents[0].MassPercent - 100d) <= PercentageTolerance)
+            return;
+
+        // Для раствора разрешены только два активных компонента: Water и DryMatter.
+        if (activeComponents.Length != 2)
+            throw new CalculationException("mixture.drymatter.unsupported-combination", "DryMatter density correlation supports only pure DryMatter or a Water + DryMatter mixture.");
+
+        var hasWater = activeComponents.Any(component =>
+            string.Equals(component.SubstanceCode, "Water", StringComparison.OrdinalIgnoreCase));
+
+        var hasOnlySupportedComponents = activeComponents.All(component => string.Equals(component.SubstanceCode, "Water", StringComparison.OrdinalIgnoreCase) || string.Equals(component.SubstanceCode, "DryMatter", StringComparison.OrdinalIgnoreCase));
+
+        if (!hasWater || !hasOnlySupportedComponents)
+            throw new CalculationException("mixture.drymatter.unsupported-combination", "DryMatter density correlation supports only pure DryMatter or a Water + DryMatter mixture.");
     }
 }

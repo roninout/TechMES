@@ -11,13 +11,13 @@ namespace TechMES.Calc.Substances
     {
         #region fields & props
 
-        // Универсальная газовая постоянная Дж/(моль*К)
+        // Универсальная газовая постоянная Дж/(моль*К).
         protected const double R = 8.3144598;
 
-        // Признак агрегатного состояния вещества в точке измерения
+        // Признак агрегатного состояния вещества в точке измерения.
         protected bool isSteam;
 
-        // Молярная масса вещества
+        // Молярная масса вещества.
         public abstract double MolarMass { get; }
 
         // Свойство, определяющее агрегатное состояние:
@@ -48,14 +48,28 @@ namespace TechMES.Calc.Substances
         /// Все перенесённые legacy-компоненты по умолчанию попадают
         /// в исходный GetDensity(float temperature, float pressure),
         /// поэтому их формулы остаются идентичными TechDotNetLib.
-        ///
-        /// Новый компонент, которому нужен дополнительный параметр,
-        /// переопределяет только эту перегрузку и получает словарь
-        /// дополнительных ProcessInput по их ключам.
         /// </summary>
         public virtual double GetDensity(float temperature, float pressure, IReadOnlyDictionary<string, double>? additionalParameters)
         {
             return GetDensity(temperature, pressure);
+        }
+
+        /// <summary>
+        /// Расширенная перегрузка Density, дополнительно получающая
+        /// текущую массовую долю самого компонента в смеси.
+        ///
+        /// Для обычных компонентов MassPercent не требуется,
+        /// поэтому базовая реализация просто вызывает предыдущую перегрузку.
+        ///
+        /// Этот уровень нужен для специальных корреляций, в которых
+        /// физическое свойство компонента зависит от его концентрации в смеси.
+        ///
+        /// Первый такой компонент - DryMatter.
+        /// Остальные перенесённые вещества продолжают работать без изменений.
+        /// </summary>
+        public virtual double GetDensity(float temperature, float pressure, double massPercent, IReadOnlyDictionary<string, double>? additionalParameters)
+        {
+            return GetDensity(temperature, pressure, additionalParameters);
         }
 
         /// <summary>

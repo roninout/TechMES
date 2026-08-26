@@ -88,6 +88,98 @@ namespace TechMES.Calc.Thermodynamics
         }
 
         /// <summary>
+        /// VSS – эффективный удельный объём сухих веществ сахарного раствора, м³/кг.
+        ///
+        /// Исходная PLC-корреляция определяла плотность готового сахарного раствора:
+        ///
+        ///     rhoSolution = rhoWater
+        ///                 + s   * A(T)
+        ///                 + s^2 * B(T)
+        ///                 + s^3 * C(T)
+        ///
+        /// где:
+        ///     s = массовая доля сухих веществ 0..1.
+        ///
+        /// В TechMES вода является отдельным компонентом смеси.
+        /// Поэтому VSS не возвращает удельный объём всего раствора.
+        /// Из исходной ICUMSA-корреляции алгебраически исключается вклад Water,
+        /// и возвращается такой эффективный удельный объём DryMatter,
+        /// при котором стандартная формула смеси:
+        ///
+        ///     1 / rhoMix = wWater / rhoWater + wDryMatter / rhoDryMatter
+        ///
+        /// даёт точно ту же плотность, что исходный PLC-расчёт.
+        ///
+        /// temperature      - температура, °C.
+        /// dryMatterPercent - массовая концентрация сухих веществ, %.
+        /// </summary>
+        public static double VSS(double temperature, double dryMatterPercent)
+        {
+            if (!double.IsFinite(temperature))
+                throw new ArgumentOutOfRangeException(nameof(temperature), "Temperature must be a finite number.");
+
+            if (!double.IsFinite(dryMatterPercent) || dryMatterPercent <= 0.0 || dryMatterPercent > 100.0)
+                throw new ArgumentOutOfRangeException(nameof(dryMatterPercent), "Dry matter percent must be greater than 0 and not greater than 100.");
+
+            // Исходная формула рассчитана для температуры от 0 °C.
+            // Как и в Water.GetDensity(), отрицательную температуру ограничиваем нулём.
+            var t = Math.Max(0.0, temperature);
+            var t2 = t * t;
+
+            // Массовая доля сухих веществ 0..1.
+            var s = dryMatterPercent * 0.01;
+
+            // Плотность Water не дублируем отдельной формулой.
+            // Используем тот же VW(), который использует компонент Water.
+            var waterSpecificVolume = VW(t);
+
+            if (!double.IsFinite(waterSpecificVolume) || waterSpecificVolume <= 0.0)
+                throw new ArithmeticException("Calculated Water specific volume is invalid.");
+
+            var waterDensity = 1.0 / waterSpecificVolume;
+
+            // Исходный вклад сухих веществ из PLC-корреляции ICUMSA.
+            //
+            // Эта часть перенесена буквально:
+            //
+            // DS * 0.01 * (385.1761 - 0.1343*T - 0.0031*T^2)
+            // + (DS * 0.01)^2 * (154.316 - 0.4357*T + 0.0016*T^2)
+            // + (DS * 0.01)^3 * (71.52 + 0.842*T - 0.0055*T^2)
+            var dryMatterDensityContribution =
+                s * (385.1761 - 0.1343 * t - 0.0031 * t2)
+                + s * s * (154.316 - 0.4357 * t + 0.0016 * t2)
+                + s * s * s * (71.52 + 0.842 * t - 0.0055 * t2);
+
+            // Плотность всего сахарного раствора по исходной PLC-формуле.
+            var solutionDensity = waterDensity + dryMatterDensityContribution;
+
+            if (!double.IsFinite(solutionDensity) || solutionDensity <= 0.0)
+                throw new ArithmeticException("Calculated sugar solution density is invalid.");
+
+            var solutionSpecificVolume = 1.0 / solutionDensity;
+            var waterMassFraction = 1.0 - s;
+
+            // Стандартная формула нашего MixturePropertyCalculator:
+            //
+            // Vsolution = wWater * Vwater + wDryMatter * VdryMatter
+            //
+            // Отсюда:
+            //
+            // VdryMatter =
+            //     (Vsolution - wWater * Vwater) / wDryMatter
+            //
+            // Таким образом вклад Water из исходной формулы исключается,
+            // потому что Water будет добавлен отдельно самим MixturePropertyCalculator.
+            var dryMatterSpecificVolume =
+                (solutionSpecificVolume - waterMassFraction * waterSpecificVolume) / s;
+
+            if (!double.IsFinite(dryMatterSpecificVolume) || dryMatterSpecificVolume <= 0.0)
+                throw new ArithmeticException("Calculated DryMatter specific volume is invalid.");
+
+            return dryMatterSpecificVolume;
+        }
+
+        /// <summary>
         /// VG – питомий об'єм метану, м³/кг
         /// </summary>
         public static double VG(double p, double t)
@@ -341,24 +433,6 @@ namespace TechMES.Calc.Thermodynamics
 
         public static double PSAT(double t)
         {
-            //double k0 = 2.0;
-            //double k1 = 0.95;
-            //double k2 = 1.452207;
-            //double k3 = -0.8487895;
-
-            //double tK = t + 273.15;
-            //double u = ((k0 * Math.Pow(647.3 / tK - k1, 0.4)) - k2) / k3;
-
-            //double beta = 0.0;
-            //for (int i = 0; i <= 11; i++)
-            //{
-            //    beta += K[i] * CHEB(i, u);
-            //}
-
-            //if (beta > 100.0)
-            //    beta = 10.0;
-
-            //return 22.12e6 * Math.Exp(beta); // Па
             double k0 = 2.0;
             double k1 = 0.95;
             double k2 = 1.452207;
@@ -385,103 +459,6 @@ namespace TechMES.Calc.Thermodynamics
         public static double TSAT(double ps, double ax = 50.0, double bx = 200.0, double tol = 0.1)
         {
             //// У FC1053: P1 := 100000 + PS * 100000 (Па)
-            // Старый альтернативный вариант:
-            // double pTarget = ps * 100000.0;
-
-            //// Робимо функцію f(TK) = P1 - Psat(TK-273.15)
-            //double F(double tK) => pTarget - PSAT(tK - 273.15);
-
-            //double a = ax + 273.15;
-            //double b = bx + 273.15;
-
-            //double fa = F(a);
-            //double fb = F(b);
-
-            //if (Math.Sign(fa) == Math.Sign(fb))
-            //    throw new ArgumentException("Tsat: initial bracket does not bracket a root.");
-
-            //double c = a, fc = fa;
-            //double d = b - a, e = d;
-
-            //const double eps = 2.980232e-8; // як у FC1053
-            //double outT = b;
-
-            //while (true)
-            //{
-            //    if (Math.Abs(fc) < Math.Abs(fb))
-            //    {
-            //        a = b; b = c; c = a;
-            //        fa = fb; fb = fc; fc = fa;
-            //    }
-
-            //    double tol1 = 2.0 * eps * Math.Abs(b) + tol / 2.0;
-            //    double xm = 0.5 * (c - b);
-
-            //    if (Math.Abs(xm) <= tol1 || fb == 0.0)
-            //    {
-            //        outT = b - 273.15;
-            //        break;
-            //    }
-
-            //    double s, p, q;
-            //    if (Math.Abs(e) >= tol1 && Math.Abs(fa) > Math.Abs(fb))
-            //    {
-            //        // Інтерполяція
-            //        s = fb / fa;
-            //        if (a == c)
-            //        {
-            //            p = 2.0 * xm * s;
-            //            q = 1.0 - s;
-            //        }
-            //        else
-            //        {
-            //            double r = fb / fc;
-            //            double t = fa / fc;
-            //            p = s * (2.0 * xm * t * (t - r) - (b - a) * (r - 1.0));
-            //            q = (t - 1.0) * (r - 1.0) * (s - 1.0);
-            //        }
-
-            //        if (p > 0.0) q = -q;
-            //        p = Math.Abs(p);
-
-            //        double min1 = 3.0 * xm * q - Math.Abs(tol1 * q);
-            //        double min2 = Math.Abs(e * q);
-
-            //        if (2.0 * p < (min1 < min2 ? min1 : min2))
-            //        {
-            //            e = d;
-            //            d = p / q;
-            //        }
-            //        else
-            //        {
-            //            d = xm;
-            //            e = d;
-            //        }
-            //    }
-            //    else
-            //    {
-            //        d = xm;
-            //        e = d;
-            //    }
-
-            //    a = b;
-            //    fa = fb;
-
-            //    if (Math.Abs(d) > tol1)
-            //        b += d;
-            //    else
-            //        b += Math.Sign(xm) * tol1;
-
-            //    fb = F(b);
-
-            //    if (fb * fc > 0.0)
-            //    {
-            //        c = a;
-            //        fc = fa;
-            //        d = b - a;
-            //        e = d;
-            //    }
-            //}
 
             //return outT;
             double eps = 2.980232E-008f;

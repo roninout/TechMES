@@ -8,12 +8,17 @@ namespace TechMES.Calc.Tests;
 public sealed class SubstancePropertyTests
 {
     [Fact]
-    public void CatalogContainsAllLegacyCodes()
+    public void CatalogContainsLegacyAndExtendedCodes()
     {
-        Assert.Equal(54, SubstanceCatalog.Items.Count);
+        Assert.Equal(55, SubstanceCatalog.Items.Count);
+
         Assert.Equal(SubstancePhase.Liquid, SubstanceCatalog.GetRequired("ACN").Phase);
         Assert.Equal(SubstancePhase.Vapor, SubstanceCatalog.GetRequired("ACNS").Phase);
         Assert.Equal("Ethanol", SubstanceCatalog.GetRequired("Ethanol").Name);
+
+        // DryMatter является новым TechMES-компонентом, восстановленным из старой PLC ICUMSA-корреляции.
+        Assert.Equal(SubstancePhase.Liquid, SubstanceCatalog.GetRequired("DryMatter").Phase);
+        Assert.Equal("Dry matter", SubstanceCatalog.GetRequired("DryMatter").Name);
     }
 
     [Fact]
@@ -210,5 +215,109 @@ public sealed class SubstancePropertyTests
                     ConfigurationCode: 10)));
 
         Assert.Equal("content.components.unsupported", exception.Code);
+    }
+
+    /// <summary>
+    /// Проверяет Water + DryMatter непосредственно против исходной
+    /// PLC-корреляции сахарного раствора.
+    ///
+    /// Expected вычисляется независимо от TechLib.VSS и DryMatter,
+    /// поэтому этот тест действительно контролирует перенос формулы,
+    /// а не сравнивает production-код с самим собой.
+    /// </summary>
+    [Theory]
+    [InlineData(0d, 3d)]
+    [InlineData(20d, 45d)]
+    [InlineData(37.2d, 55d)]
+    [InlineData(80d, 70d)]
+    [InlineData(120d, 90d)]
+    [InlineData(200d, 97d)]
+    public void WaterDryMatterDensityMatchesOriginalPlcCorrelation(double temperatureC, double dryMatterPercent)
+    {
+        var waterPercent = 100d - dryMatterPercent;
+
+        var actualDensity = MixturePropertyCalculator.CalculateDensityKgPerM3(
+            [
+                new MixtureComponent("Water", waterPercent),
+            new MixtureComponent("DryMatter", dryMatterPercent)
+            ],
+            temperatureC: temperatureC,
+            pressureBarAbsolute: 1d);
+
+        var expectedDensity = CalculateOriginalSugarSolutionDensity(temperatureC, dryMatterPercent);
+
+        Assert.Equal(expectedDensity, actualDensity, precision: 10);
+    }
+
+    [Fact]
+    public void PureDryMatterRepresentsOneHundredPercentConcentration()
+    {
+        const double temperatureC = 20d;
+
+        var actualDensity = MixturePropertyCalculator.CalculateDensityKgPerM3(
+            [
+                new MixtureComponent("DryMatter", 100d)
+            ],
+            temperatureC: temperatureC,
+            pressureBarAbsolute: 1d);
+
+        var expectedDensity = CalculateOriginalSugarSolutionDensity(
+            temperatureC: temperatureC,
+            dryMatterPercent: 100d);
+
+        Assert.Equal(expectedDensity, actualDensity, precision: 10);
+    }
+
+    [Fact]
+    public void DryMatterCannotBeMixedWithNonWaterComponent()
+    {
+        var exception = Assert.Throws<CalculationException>(() =>
+            MixturePropertyCalculator.CalculateDensityKgPerM3(
+                [
+                    new MixtureComponent("ACN", 50d),
+                new MixtureComponent("DryMatter", 50d)
+                ],
+                temperatureC: 20d,
+                pressureBarAbsolute: 1d));
+
+        Assert.Equal("mixture.drymatter.unsupported-combination", exception.Code);
+    }
+
+    /// <summary>
+    /// Независимое эталонное воспроизведение формулы с PLC.
+    ///
+    /// Здесь намеренно не вызываются:
+    /// TechLib.VW,
+    /// TechLib.VSS,
+    /// Water,
+    /// DryMatter,
+    /// MixturePropertyCalculator.
+    ///
+    /// Если production-формула будет случайно изменена,
+    /// этот expected останется прежним и regression-тест упадёт.
+    /// </summary>
+    private static double CalculateOriginalSugarSolutionDensity(double temperatureC, double dryMatterPercent)
+    {
+        // Production-компоненты получают Temperature как float,
+        // поэтому эталон повторяет тот же входной контракт.
+        var t = Math.Max(0d, (float)temperatureC);
+        var t2 = t * t;
+        var s = dryMatterPercent * 0.01d;
+
+        // Плотность воды из исходного PLC-кода.
+        var waterDensity =
+            1000.1353
+            + 0.00076933504 * t
+            - 0.0056218464 * t2
+            + 0.000017341396 * t2 * t
+            - 0.00000003089613 * t2 * t2;
+
+        // Вклад сухих веществ из исходного PLC-кода.
+        var dryMatterContribution =
+            s * (385.1761 - 0.1343 * t - 0.0031 * t2)
+            + s * s * (154.316 - 0.4357 * t + 0.0016 * t2)
+            + s * s * s * (71.52 + 0.842 * t - 0.0055 * t2);
+
+        return waterDensity + dryMatterContribution;
     }
 }

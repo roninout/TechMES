@@ -30,6 +30,7 @@ namespace TechMES.Calc.Tests;
 public sealed class DensityLegacyRegressionTests
 {
     private const double LegacyGasConstant = 8.3144598d;
+    private const double LegacyAtmosphericPressureBarAbsolute = 1.01325d;
 
     /// <summary>
     /// Проверяет самый простой жидкостный вариант.
@@ -112,9 +113,7 @@ public sealed class DensityLegacyRegressionTests
         const double temperatureC = 20d;
         const double pressureBarGauge = 1.7d;
 
-        var pressureBarAbsolute =
-            pressureBarGauge
-            + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute;
+        var pressureBarAbsolute = pressureBarGauge + LegacyAtmosphericPressureBarAbsolute;
 
         var expectedDensity = LegacyIdealGasDensity(
             temperatureC: temperatureC,
@@ -155,9 +154,7 @@ public sealed class DensityLegacyRegressionTests
         const double nitrogenPercent = 65d;
         const double oxygenPercent = 35d;
 
-        var pressureBarAbsolute =
-            pressureBarGauge
-            + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute;
+        var pressureBarAbsolute = pressureBarGauge + LegacyAtmosphericPressureBarAbsolute;
 
         var nitrogenDensity = LegacyIdealGasDensity(
             temperatureC: temperatureC,
