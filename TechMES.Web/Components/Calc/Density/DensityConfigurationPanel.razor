@@ -63,7 +63,8 @@
                состояние работающего Calc Job.
                ============================================================ *@
             @{
-                var primaryProcessBars = BuildPrimaryProcessBarSlots();
+                var primaryProcessBars = BuildPrimaryProcessBars();
+                var processBarCount = primaryProcessBars.Count;
                 var pieItems = BuildLivePieItems();
             }
 
@@ -146,23 +147,28 @@
                 @* ============================================================
                    MAIN LIVE AREA
                    ============================================================ *@
-                <div class="density-live-layout">
+                <div class="density-live-layout density-live-layout-bars-@processBarCount">
 
 
                     @* ========================================================
                        LEFT - TEMPERATURE / PRESSURE
                        ======================================================== *@
-                    <div class="density-process-bars">
 
-                        @for (var slotIndex = 0; slotIndex < primaryProcessBars.Count; slotIndex++)
-                        {
-                            var bar = primaryProcessBars[slotIndex];
+                    @if (primaryProcessBars.Count > 0)
+                    {
+                        <div class="density-process-bars density-process-bars-@processBarCount">
 
-                            <div class="density-process-meter @(bar is null ? "is-empty" : "")">
+                            @foreach (var bar in primaryProcessBars)
+                            {
+                                <div class="density-process-meter">
 
-                                @if (bar is not null)
-                                {
-                                    @* ReadOnly-поле находится строго над центром bargraph. Используем штатный RadzenFormField — никаких собственных floating label поверх рамки больше нет. *@
+                                    @* =========================================================
+                                       READONLY CURRENT VALUE
+
+                                       Верхнее поле имеет фиксированную ширину.
+                                       Сам вертикальный bar ниже центрируется относительно
+                                       именно этого поля, а не относительно числовой шкалы.
+                                       ========================================================= *@
                                     <div class="density-process-meter-readout">
 
                                         <RadzenFormField AllowFloatingLabel="false"
@@ -181,6 +187,10 @@
 
                                     </div>
 
+
+                                    @* =========================================================
+                                       VERTICAL BAR
+                                       ========================================================= *@
                                     <div class="density-process-meter-body">
 
                                         <ParamGraphVerticalBar Label="@bar.ItemName"
@@ -191,25 +201,28 @@
 
                                     </div>
 
-                                    @* Как в VGA: сначала непосредственно под шкалой Unit, затем уже смысловая подпись и source. *@
+
+                                    @* Unit находится сразу под bargraph, как в существующей VGA-панели. *@
                                     <div class="density-process-meter-unit">
                                         @(string.IsNullOrWhiteSpace(bar.Unit) ? "-" : bar.Unit)
                                     </div>
+
 
                                     <div class="density-process-meter-title">
                                         @bar.Name
                                     </div>
 
+
                                     <div class="density-process-meter-source"
                                          title="@bar.Source">
                                         @bar.Source
                                     </div>
-                                }
 
-                            </div>
-                        }
+                                </div>
+                            }
 
-                    </div>
+                        </div>
+                    }
 
                     <div class="density-live-center">
 
@@ -1319,43 +1332,44 @@
     }
 
     /// <summary>
-    /// Формирует два фиксированных слота верхней панели:
+    /// Формирует bargraph для первых двух штатных ProcessInput:
     ///
-    ///     slot 0 = Temperature
-    ///     slot 1 = Pressure.
+    ///     Temperature
+    ///     Pressure.
     ///
-    /// Размер левой области поэтому никогда не зависит от того,
-    /// найден Pressure или нет.
+    /// В результат попадают только реально отображаемые bargraph.
     ///
-    /// Если конкретный ProcessInput:
-    /// - не LINKED;
-    /// - не является Equipment.ITEM;
-    /// - Equipment не относится к AI;
-    /// - не имеет корректных Min/Max;
+    /// Условия отображения остаются прежними:
     ///
-    /// соответствующий slot остаётся пустым, но его геометрическое место сохраняется.
+    /// - ProcessInput должен иметь статус LINKED;
+    /// - source должен быть Equipment.ITEM;
+    /// - Equipment должен относиться к AI;
+    /// - snapshot должен содержать корректные Min/Max;
+    /// - должно существовать текущее числовое значение.
     ///
-    /// Additional parameter здесь намеренно не участвуют:
-    /// они отображаются отдельными карточками в центральной части.
+    /// В отличие от предыдущей реализации здесь не создаются
+    /// искусственные пустые слоты.
+    ///
+    /// Поэтому:
+    ///
+    ///     0 bar -> левая область полностью отсутствует;
+    ///     1 bar -> область занимает ширину одного элемента;
+    ///     2 bar -> область занимает ширину двух элементов.
+    ///
+    /// Центральная область автоматически занимает освободившееся место.
     /// </summary>
-    private IReadOnlyList<DensityProcessBarView?> BuildPrimaryProcessBarSlots()
+    private IReadOnlyList<DensityProcessBarView> BuildPrimaryProcessBars()
     {
-        var bindings = _processBindings
+        var result = new List<DensityProcessBarView>(2);
+
+        foreach (var binding in _processBindings
             .OrderBy(binding => binding.Parameter.Order)
-            .Take(2)
-            .ToArray();
-
-        var result = new List<DensityProcessBarView?>(2);
-
-        for (var index = 0; index < 2; index++)
+            .Take(2))
         {
-            if (index >= bindings.Length)
-            {
-                result.Add(null);
-                continue;
-            }
+            var bar = BuildLiveProcessBar(binding);
 
-            result.Add(BuildLiveProcessBar(bindings[index]));
+            if (bar is not null)
+                result.Add(bar);
         }
 
         return result;
