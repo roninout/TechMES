@@ -151,6 +151,38 @@ public sealed class DensityCapacityDefinitionTests
     }
 
     [Fact]
+    public void DensityReturnsComponentDensitiesForRuntimeVisualization()
+    {
+        var definition = new DensityCalculationDefinition();
+
+        var result = definition.Calculate(new CalculationParameterSet(
+            new Dictionary<string, object?>
+            {
+                ["temperatureC"] = 20d,
+                ["pressureBarGauge"] = 0d,
+                ["componentCount"] = 2,
+
+                ["component0Code"] = "ACN",
+                ["component0Percent"] = 50d,
+
+                ["component1Code"] = "Water",
+                ["component1Percent"] = 50d
+            }));
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        var component0Density = GetOutput(result, "component0Density");
+        var component1Density = GetOutput(result, "component1Density");
+
+        Assert.Equal(781.986d, component0Density, precision: 6);
+        Assert.True(double.IsFinite(component1Density));
+        Assert.True(component1Density > 0d);
+
+        // Основной Density остаётся абсолютно тем же.
+        Assert.Equal(876.8993740276006d, GetOutput(result, "density"), precision: 8);
+    }
+
+    [Fact]
     public void CapacityCalculatesPureAcetonitrile()
     {
         var definition = new CapacityCalculationDefinition();

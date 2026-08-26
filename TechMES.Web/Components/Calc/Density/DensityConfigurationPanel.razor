@@ -62,67 +62,21 @@
                поэтому несохранённые Settings не подменяют фактическое
                состояние работающего Calc Job.
                ============================================================ *@
+            @{
+                var liveProcessBars = BuildLiveProcessBars();
+                var pieItems = BuildLivePieItems();
+            }
+
             <div class="density-live-panel">
 
-                <div class="density-toolbar">
+                @* ============================================================
+                   HEADER
+                   ============================================================ *@
+                <div class="density-live-header">
 
-                    <div class="density-toolbar-calculation">
-
-                        <label class="density-field-label">
-                            Calculation
-                        </label>
-
-                        <div class="density-calculation-name">
-                            @Definition.Name
-                        </div>
-
+                    <div class="density-live-mixture-title">
+                        @GetLiveMixtureTitle()
                     </div>
-
-
-                    <div class="density-toolbar-status">
-
-                        @if (HasUnsavedChanges)
-                        {
-                            <RadzenAlert AlertStyle="AlertStyle.Warning"
-                                         Variant="Variant.Flat"
-                                         Shade="Shade.Lighter"
-                                         AllowClose="false"
-                                         ShowIcon="true"
-                                         class="density-toolbar-alert">
-
-                                Unsaved changes. Runtime continues using the last saved configuration.
-
-                            </RadzenAlert>
-                        }
-                        else if (Job is null)
-                        {
-                            <RadzenAlert AlertStyle="AlertStyle.Warning"
-                                         Variant="Variant.Flat"
-                                         Shade="Shade.Lighter"
-                                         AllowClose="false"
-                                         ShowIcon="true"
-                                         class="density-toolbar-alert">
-
-                                Job is not configured. Calculation is not running.
-
-                            </RadzenAlert>
-                        }
-                        else if (!Job.Enabled)
-                        {
-                            <RadzenAlert AlertStyle="AlertStyle.Warning"
-                                         Variant="Variant.Flat"
-                                         Shade="Shade.Lighter"
-                                         AllowClose="false"
-                                         ShowIcon="true"
-                                         class="density-toolbar-alert">
-
-                                Job is disabled. Calculation is not running.
-
-                            </RadzenAlert>
-                        }
-
-                    </div>
-
 
                     <div class="density-toolbar-enabled">
 
@@ -145,96 +99,283 @@
                 <div class="density-panel-separator"></div>
 
 
-                @if (Job?.Enabled == true && Job.WriteEnabled != true)
+                @* Предупреждение о выключенной записи ValCalc здесь больше не показываем.
+                Allow output writes является штатной настройкой, а не Runtime error. *@
+
+                @if (HasUnsavedChanges)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                 Variant="Variant.Flat"
+                                 Shade="Shade.Lighter"
+                                 AllowClose="false"
+                                 ShowIcon="true"
+                                 class="density-live-status-alert">
+
+                        Unsaved changes. Runtime continues using the last saved configuration.
+
+                    </RadzenAlert>
+                }
+                else if (State?.Status == CalcJobStateStatusDto.Error)
                 {
                     <RadzenAlert AlertStyle="AlertStyle.Danger"
                                  Variant="Variant.Flat"
                                  Shade="Shade.Lighter"
                                  AllowClose="false"
                                  ShowIcon="true"
-                                 class="density-write-alert">
+                                 class="density-live-status-alert">
 
-                        SCADA output writing is disabled in the saved Job configuration.
+                        @(State.ReasonMessage ?? "Density calculation failed.")
+
+                    </RadzenAlert>
+                }
+                else if (State?.Status == CalcJobStateStatusDto.Skipped)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                 Variant="Variant.Flat"
+                                 Shade="Shade.Lighter"
+                                 AllowClose="false"
+                                 ShowIcon="true"
+                                 class="density-live-status-alert">
+
+                        @(State.ReasonMessage ?? "Density calculation was skipped.")
 
                     </RadzenAlert>
                 }
 
 
-                @* ========================================================
-                   LIVE VALUES
-                   
-                   ProcessInput строятся динамически.
-                   
-                   Если позже в Definition будет добавлен третий параметр:
-                   
-                   Role = ProcessInput
-                   
-                   он автоматически появится здесь без изменения Razor.
-                   ======================================================== *@
-                <div class="density-live-grid">
+                @* ============================================================
+                   MAIN LIVE AREA
+                   ============================================================ *@
+                <div class="density-live-layout @(liveProcessBars.Count == 0 ? "density-live-layout-no-bars" : "")">
 
-                    <div class="density-live-card density-live-card-result">
-                        <div class="density-live-card-title">Density</div>
-                        <div class="density-live-card-description">TechMES calculated value</div>
 
-                        <RadzenNumeric TValue="double?"
-                                       Value="@GetLastOutputNumber("density")"
-                                       Format="0.###' kg/m³'"
-                                       Disabled="true"
-                                       ShowUpDown="false"
-                                       class="density-live-value" />
-                    </div>
-
-                    <div class="density-live-card">
-                        <div class="density-live-card-title">SCADA ValHmi</div>
-
-                        <div class="density-live-card-description" title="@DensityHmiTag">
-                            @(DensityHmiTag ?? "ITEM ValHmi not found")
-                        </div>
-
-                        <RadzenNumeric TValue="double?"
-                                       Value="@CurrentDensityHmi"
-                                       Format="0.###"
-                                       Disabled="true"
-                                       ShowUpDown="false"
-                                       class="density-live-value" />
-                    </div>
-
-                    @foreach (var binding in ActiveProcessBindings)
+                    @* ========================================================
+                       LEFT - LINKED AI PROCESS INPUTS
+                       ======================================================== *@
+                    @if (liveProcessBars.Count > 0)
                     {
-                        <div class="density-live-card">
+                        <div class="density-process-bars">
 
-                            <div class="density-live-card-title">
-                                @binding.Parameter.Name
-                            </div>
+                            @foreach (var bar in liveProcessBars)
+                            {
+                                <div class="density-process-meter">
 
-                            <div class="density-live-card-description" title="@GetProcessRuntimeTag(binding)">
-                                @GetProcessRuntimeTag(binding)
-                            </div>
+                                    <div class="density-process-meter-title">
+                                        @bar.Name
+                                    </div>
 
-                            <RadzenNumeric TValue="double?"
-                                           Value="@GetProcessCurrentValue(binding)"
-                                           Format="@GetNumberFormat(binding.Parameter)"
-                                           Disabled="true"
-                                           ShowUpDown="false"
-                                           class="density-live-value" />
+                                    <div class="density-process-meter-source"
+                                         title="@bar.Source">
+                                        @bar.Source
+                                    </div>
+
+                                    <div class="density-process-meter-body">
+
+                                        <ParamGraphVerticalBar Label="@bar.ItemName"
+                                                               Value="@bar.Value"
+                                                               Min="@bar.Min"
+                                                               Max="@bar.Max"
+                                                               FillColor="@bar.FillColor" />
+
+                                    </div>
+
+                                    <div class="density-process-meter-unit">
+                                        @(string.IsNullOrWhiteSpace(bar.Unit) ? "-" : bar.Unit)
+                                    </div>
+
+                                </div>
+                            }
+
                         </div>
                     }
 
-                    <div class="density-live-card">
-                        <div class="density-live-card-title">DeltaD</div>
 
-                        <div class="density-live-card-description" title="@DeltaDTag">
-                            @(DeltaDTag ?? "ITEM DeltaD not found")
+                    @* ========================================================
+                       CENTER - SCADA VALUES / TECHMES RESULT / ADDITIONAL
+                       ======================================================== *@
+                    <div class="density-live-center">
+
+
+                        <div class="density-scada-card">
+
+                            <div class="density-scada-row">
+
+                                <div class="density-scada-label">
+                                    ValHmi
+                                </div>
+
+                                <RadzenNumeric TValue="double?"
+                                               Value="@CurrentDensityHmi"
+                                               Format="0.###' kg/m³'"
+                                               Disabled="true"
+                                               ShowUpDown="false"
+                                               class="density-scada-value" />
+
+                            </div>
+
+
+                            <div class="density-scada-row">
+
+                                <div class="density-scada-label">
+                                    ValCalc
+                                </div>
+
+                                <div class="density-scada-value-group">
+
+                                    <div class="density-delta-value"
+                                         title="Density correction DeltaD">
+
+                                        <span class="density-delta-label">ΔD</span>
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@CurrentDeltaD"
+                                                       Format="0.###"
+                                                       Disabled="true"
+                                                       ShowUpDown="false"
+                                                       class="density-delta-input" />
+
+                                    </div>
+
+                                    <RadzenNumeric TValue="double?"
+                                                   Value="@CurrentDensityCalcEngineering"
+                                                   Format="0.###' kg/m³'"
+                                                   Disabled="true"
+                                                   ShowUpDown="false"
+                                                   class="density-scada-value" />
+
+                                </div>
+
+                            </div>
+
                         </div>
 
-                        <RadzenNumeric TValue="double?"
-                                       Value="@CurrentDeltaD"
-                                       Format="0.###"
-                                       Disabled="true"
-                                       ShowUpDown="false"
-                                       class="density-live-value" />
+
+                        <div class="density-result-card">
+
+                            <div>
+
+                                <div class="density-result-title">
+                                    Density
+                                </div>
+
+                                <div class="density-result-description">
+                                    TechMES calculated value
+                                </div>
+
+                            </div>
+
+                            <RadzenNumeric TValue="double?"
+                                           Value="@GetLastOutputNumber("density")"
+                                           Format="0.###' kg/m³'"
+                                           Disabled="true"
+                                           ShowUpDown="false"
+                                           class="density-result-value" />
+
+                        </div>
+
+
+                        @foreach (var binding in ActiveProcessBindings.Skip(2).Where(binding => binding.IsLinked))
+                        {
+                            <div class="density-additional-card">
+
+                                <div>
+
+                                    <div class="density-additional-title">
+                                        @GetProcessDisplayName(binding)
+                                    </div>
+
+                                    <div class="density-additional-source"
+                                         title="@GetProcessRuntimeTag(binding)">
+                                        @GetProcessRuntimeTag(binding)
+                                    </div>
+
+                                </div>
+
+                                <RadzenNumeric TValue="double?"
+                                               Value="@GetProcessCurrentValue(binding)"
+                                               Format="@GetNumberFormat(binding.Parameter)"
+                                               Disabled="true"
+                                               ShowUpDown="false"
+                                               class="density-additional-value" />
+
+                            </div>
+                        }
+
                     </div>
+
+
+                    @* ========================================================
+                       RIGHT - MIXTURE PIE
+                       ======================================================== *@
+                    <div class="density-pie-column">
+
+                        @if (pieItems.Count > 0)
+                        {
+                            <div class="density-pie-shell">
+
+                                <RadzenChart class="density-pie-chart">
+
+                                    <RadzenPieSeries TItem="DensityPieItem"
+                                                     Data="@pieItems"
+                                                     CategoryProperty="@nameof(DensityPieItem.Code)"
+                                                     ValueProperty="@nameof(DensityPieItem.Percent)"
+                                                     StartAngle="90"
+                                                     StrokeWidth="2"
+                                                     ShowTooltipOnLegend="true">
+
+                                        <TooltipTemplate Context="item">
+
+                                            <div class="density-pie-tooltip">
+
+                                                <strong>@item.Code</strong>
+
+                                                <div>
+                                                    @item.Percent.ToString("0.###", CultureInfo.InvariantCulture) %
+                                                </div>
+
+                                                <div>
+                                                    Density:
+                                                    @FormatPieDensity(item.DensityKgPerM3)
+                                                    kg/m³
+                                                </div>
+
+                                            </div>
+
+                                        </TooltipTemplate>
+
+                                    </RadzenPieSeries>
+
+                                    <RadzenLegend Position="LegendPosition.Bottom" />
+
+                                </RadzenChart>
+
+
+                                <div class="density-pie-label-layer">
+
+                                    @foreach (var item in pieItems.Where(item => item.DensityKgPerM3.HasValue))
+                                    {
+                                        <div class="density-pie-density-label"
+                                             style="@GetPieLabelStyle(item)"
+                                             title="@($"{item.Code}: {item.Percent:0.###}%")">
+
+                                            @FormatPieDensity(item.DensityKgPerM3)
+
+                                        </div>
+                                    }
+
+                                </div>
+
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="density-pie-empty">
+                                Mixture data is not available.
+                            </div>
+                        }
+
+                    </div>
+
 
                 </div>
 
@@ -504,6 +645,7 @@
     private readonly List<DensityProcessBindingEditor> _processBindings = [];
     private readonly List<DensityComponentEditor> _components = [];
     private readonly Dictionary<string, double?> _liveScadaValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ParamSnapshotResponse> _linkedAiSnapshots = new(StringComparer.OrdinalIgnoreCase);
 
     private string _contextKey = "";
     private string _savedEditorSignature = "";
@@ -574,9 +716,34 @@
 
     private double? CurrentDeltaD => GetRuntimeTagInputNumber(CorrectionKey) ?? GetLiveScadaValue("DeltaD");
 
-    // ValHmi не является Calculation input.
-    // Поэтому его значение всегда читается только для UI.
+    // ValHmi уже находится в инженерных единицах и отображается как есть.
     private double? CurrentDensityHmi => GetLiveScadaValue("ValHmi");
+
+    // ValCalc читается как фактическое значение SCADA-тега.
+    // При записи Density Runtime применяет output Scale/Offset. Поэтому для отображения выполняем обратное преобразование:
+    //
+    //     engineering = (SCADA - Offset) / Scale
+    //
+    // Сейчас Density использует Scale = 10, Offset = 0, но UI не хардкодит это правило и читает его из сохранённого Job.
+    private double? CurrentDensityCalcEngineering
+    {
+        get
+        {
+            var scadaValue = GetLiveScadaValue("ValCalc");
+
+            if (!scadaValue.HasValue)
+                return null;
+
+            var output = Job?.Outputs.FirstOrDefault(item => string.Equals(item.OutputKey, "density", StringComparison.OrdinalIgnoreCase));
+            var scale = output?.Scale ?? 10d;
+            var offset = output?.Offset ?? 0d;
+
+            if (!double.IsFinite(scale) || Math.Abs(scale) < double.Epsilon || !double.IsFinite(offset))
+                return null;
+
+            return (scadaValue.Value - offset) / scale;
+        }
+    }
 
     private IReadOnlyList<CalcParameterOptionDto> SubstanceOptions => GetParameter("component0Code")?.Options ?? [];
 
@@ -706,6 +873,7 @@
         SynchronizeConfiguration(force: true);
         await RefreshDensityScadaValuesAsync(force: true);
         await ValidateStoredProcessBindingsAsync();
+        await RefreshLinkedAiSnapshotsAsync();
 
         CaptureSavedEditorState();
     }
@@ -884,11 +1052,8 @@
             foreach (var binding in ActiveProcessBindings)
                 await ResolveProcessBindingAsync(binding);
 
-            NotificationService.Notify(
-                IsProcessBindingsReady ? NotificationSeverity.Success : NotificationSeverity.Warning,
-                "Density",
-                IsProcessBindingsReady ? "Required process bindings are valid." : "Some required process bindings were not resolved.",
-                4000);
+            await RefreshLinkedAiSnapshotsAsync();
+            NotificationService.Notify(IsProcessBindingsReady ? NotificationSeverity.Success : NotificationSeverity.Warning,"Density", IsProcessBindingsReady ? "Required process bindings are valid." : "Some required process bindings were not resolved.", 4000);
         }
         finally
         {
@@ -982,17 +1147,238 @@
     }
 
     // ============================================================
+    // ProcessInput AI visualization
+    // ============================================================
+
+    /// <summary>
+    /// Обновляет Param snapshot только для тех Linked ProcessInput,
+    /// которые были разрешены как Equipment.ITEM и принадлежат AI Equipment.
+    ///
+    /// Direct Variable Tag сюда намеренно не попадает:
+    /// для него у нас нет гарантированного Equipment Min/Max контракта.
+    /// </summary>
+    private async Task RefreshLinkedAiSnapshotsAsync()
+    {
+        var equipments = new Dictionary<string, EquipmentDto>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var binding in ActiveProcessBindings)
+        {
+            if (TryGetLinkedAiEquipment(binding, out var equipment, out _))
+                equipments[equipment.Name] = equipment;
+        }
+
+        var activeNames = equipments.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var oldName in _linkedAiSnapshots.Keys.Where(name => !activeNames.Contains(name)).ToList())
+            _linkedAiSnapshots.Remove(oldName);
+
+        if (equipments.Count == 0)
+            return;
+
+        var reads = await Task.WhenAll(equipments.Values.Select(async equipment =>
+        {
+            try
+            {
+                var snapshot = await ParamApi.GetSnapshotAsync(equipment.Name);
+
+                return new DensityAiSnapshotRead(
+                    EquipmentName: equipment.Name,
+                    Snapshot: snapshot.Supported && snapshot.TypeGroup == EquipmentTypeGroup.AI ? snapshot : null);
+            }
+            catch
+            {
+                return new DensityAiSnapshotRead(equipment.Name, null);
+            }
+        }));
+
+        foreach (var read in reads)
+        {
+            if (read.Snapshot is not null)
+                _linkedAiSnapshots[read.EquipmentName] = read.Snapshot;
+            else
+                _linkedAiSnapshots.Remove(read.EquipmentName);
+        }
+    }
+
+    /// <summary>
+    /// Определяет, что Linked ProcessInput был введён именно в формате
+    /// Equipment.ITEM и Equipment относится к группе AI.
+    ///
+    /// Для direct Variable Tag метод возвращает false.
+    /// </summary>
+    private bool TryGetLinkedAiEquipment(DensityProcessBindingEditor binding, out EquipmentDto equipment, out string itemName)
+    {
+        equipment = null!;
+        itemName = "";
+
+        if (!binding.IsLinked || string.IsNullOrWhiteSpace(binding.ValidatedSourceText))
+            return false;
+
+        var source = binding.ValidatedSourceText.Trim();
+
+        var candidate = EquipmentCatalog
+            .Where(item => !item.IsGroup && item.TypeGroup == EquipmentTypeGroup.AI && !string.IsNullOrWhiteSpace(item.Name))
+            .OrderByDescending(item => item.Name.Length)
+            .FirstOrDefault(item => source.StartsWith(item.Name + ".", StringComparison.OrdinalIgnoreCase));
+
+        if (candidate is null)
+            return false;
+
+        var sourceItemName = source[(candidate.Name.Length + 1)..].Trim();
+
+        if (sourceItemName.Length == 0)
+            return false;
+
+        equipment = candidate;
+        itemName = sourceItemName;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Формирует список bar-графов для верхней панели.
+    ///
+    /// Bar отображается только когда одновременно выполнены условия:
+    /// - ProcessInput имеет LINKED;
+    /// - source является Equipment.ITEM;
+    /// - Equipment имеет TypeGroup AI;
+    /// - Param snapshot содержит Min/Max для выбранного ITEM.
+    /// </summary>
+    private IReadOnlyList<DensityProcessBarView> BuildLiveProcessBars()
+    {
+        var result = new List<DensityProcessBarView>();
+
+        foreach (var binding in ActiveProcessBindings)
+        {
+            if (!TryGetLinkedAiEquipment(binding, out var equipment, out var itemName))
+                continue;
+
+            if (!_linkedAiSnapshots.TryGetValue(equipment.Name, out var snapshot))
+                continue;
+
+            if (!TryGetAiBounds(snapshot, itemName, out var min, out var max))
+                continue;
+
+            var value = GetProcessCurrentValue(binding);
+
+            if (!value.HasValue)
+                continue;
+
+            result.Add(new DensityProcessBarView(
+                ParameterKey: binding.Parameter.Key,
+                Name: GetProcessDisplayName(binding),
+                Source: binding.ValidatedSourceText,
+                ItemName: itemName,
+                Value: value.Value,
+                Min: min,
+                Max: max,
+                Unit: string.IsNullOrWhiteSpace(snapshot.Unit) ? binding.Parameter.Unit ?? "" : snapshot.Unit.Trim(),
+                FillColor: GetProcessBarColor(binding)));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Возвращает диапазон шкалы для конкретного AI ITEM.
+    ///
+    /// Стандартный AI R использует MinR/MaxR.
+    /// PLC Value использует Min/Max.
+    ///
+    /// Для будущих ITEM допускаем структуру MinITEM/MaxITEM,
+    /// но если такой пары нет, bargraph не показываем.
+    /// </summary>
+    private static bool TryGetAiBounds(ParamSnapshotResponse snapshot, string itemName, out double min, out double max)
+    {
+        min = 0d;
+        max = 0d;
+
+        double? minValue;
+        double? maxValue;
+
+        if (itemName.Equals("R", StringComparison.OrdinalIgnoreCase))
+        {
+            minValue = GetSnapshotNumber(snapshot, "MinR");
+            maxValue = GetSnapshotNumber(snapshot, "MaxR");
+        }
+        else if (itemName.Equals("Value", StringComparison.OrdinalIgnoreCase))
+        {
+            minValue = GetSnapshotNumber(snapshot, "Min");
+            maxValue = GetSnapshotNumber(snapshot, "Max");
+        }
+        else
+        {
+            minValue = GetSnapshotNumber(snapshot, $"Min{itemName}");
+            maxValue = GetSnapshotNumber(snapshot, $"Max{itemName}");
+        }
+
+        if (!minValue.HasValue || !maxValue.HasValue || !double.IsFinite(minValue.Value) || !double.IsFinite(maxValue.Value))
+            return false;
+
+        if (Math.Abs(maxValue.Value - minValue.Value) < double.Epsilon)
+            return false;
+
+        min = minValue.Value;
+        max = maxValue.Value;
+
+        return true;
+    }
+
+    private static double? GetSnapshotNumber(ParamSnapshotResponse snapshot, params string[] names)
+    {
+        var item = snapshot.Items.FirstOrDefault(candidate => names.Any(name => candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+
+        if (item is null)
+            return null;
+
+        if (item.NumericValue.HasValue)
+            return item.NumericValue.Value;
+
+        if (double.TryParse(item.ValueText?.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+            return parsed;
+
+        return null;
+    }
+
+    private static string GetProcessDisplayName(DensityProcessBindingEditor binding)
+    {
+        return binding.Parameter.Order switch
+        {
+            1 => "Temperature",
+            2 => "Pressure",
+            3 => "Additional parameter 1",
+            4 => "Additional parameter 2",
+            5 => "Additional parameter 3",
+            _ => binding.Parameter.Name
+        };
+    }
+
+    private static string GetProcessBarColor(DensityProcessBindingEditor binding)
+    {
+        return binding.Parameter.Order switch
+        {
+            1 => "#4f81bd",
+            2 => "#4f9a50",
+            3 => "#8064a2",
+            4 => "#c27c3a",
+            5 => "#6f6f6f",
+            _ => "#4f81bd"
+        };
+    }
+
+    // ============================================================
     // Density own SCADA values
     // ============================================================
 
     /// <summary>
-    /// Читает read-only SCADA-параметры Density.
+    /// Читает read-only SCADA-параметры Density и обновляет Param snapshot
+    /// для ProcessInput, связанных с AI Equipment.
     ///
-    /// Если работающий Job уже содержит Tag input и LastInputs,
-    /// повторный HTTP/CtApi read для этого параметра не нужен.
+    /// ValHmi и ValCalc всегда читаются отдельно:
+    /// они не являются Calculation inputs.
     ///
-    /// ValHmi всегда читается отдельно, потому что он намеренно
-    /// не входит в Calculation Job.
+    /// CompN/PercN/DeltaD повторно читаются только тогда,
+    /// когда работающий Job ещё не дал их через LastInputs.
     /// </summary>
     private async Task RefreshDensityScadaValuesAsync(bool force = false)
     {
@@ -1006,6 +1392,7 @@
         {
             _scadaRefreshModelName = Model.Name;
             _liveScadaValues.Clear();
+            _linkedAiSnapshots.Clear();
             force = true;
         }
 
@@ -1019,9 +1406,10 @@
         try
         {
             var itemsToRead = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "ValHmi"
-            };
+        {
+            "ValHmi",
+            "ValCalc"
+        };
 
             if (!GetRuntimeTagInputNumber(ComponentCountKey).HasValue)
                 itemsToRead.Add("CompN");
@@ -1044,6 +1432,8 @@
 
             if (failed.Count > 0)
                 _scadaReadError = string.Join(" ", failed.Select(read => $"{read.ItemName}: {read.Message}"));
+
+            await RefreshLinkedAiSnapshotsAsync();
         }
         finally
         {
@@ -1572,6 +1962,116 @@
     }
 
     // ============================================================
+    // Mixture live visualization
+    // ============================================================
+
+    /// <summary>
+    /// Возвращает код компонента именно из сохранённого Job.
+    ///
+    /// Это важно для верхней панели:
+    /// несохранённое изменение ComboBox в Settings не должно подменять
+    /// состав, с которым сейчас реально работает Calc.Service.
+    ///
+    /// Для нового, ещё не созданного Job используем текущий editor только
+    /// как предварительное отображение.
+    /// </summary>
+    private string GetLiveComponentCode(int index)
+    {
+        var stored = FindJobInput(GetComponentCodeKey(index));
+
+        if (stored?.SourceType == CalcInputSourceTypeDto.Constant
+            && stored.ConstantValue.HasValue
+            && stored.ConstantValue.Value.ValueKind == JsonValueKind.String)
+        {
+            return stored.ConstantValue.Value.GetString()?.Trim() ?? "";
+        }
+
+        return _components.ElementAtOrDefault(index)?.SubstanceCode?.Trim() ?? "";
+    }
+
+    /// <summary>
+    /// Формирует Pie по текущим SCADA PercN.
+    ///
+    /// Размер сектора = MassPercent.
+    ///
+    /// DensityKgPerM3 читается из LastOutputs componentNDensity,
+    /// то есть это именно то значение, которое реально участвовало
+    /// в последнем успешном расчёте Calc.Service.
+    /// </summary>
+    private IReadOnlyList<DensityPieItem> BuildLivePieItems()
+    {
+        if (!CurrentComponentCount.HasValue)
+            return [];
+
+        var result = new List<DensityPieItem>();
+        var cumulativePercent = 0d;
+
+        for (var index = 0; index < CurrentComponentCount.Value; index++)
+        {
+            var code = GetLiveComponentCode(index);
+            var percent = GetCurrentPercent(index);
+
+            if (string.IsNullOrWhiteSpace(code) || !percent.HasValue || percent.Value <= 0d)
+                continue;
+
+            var midpointPercent = cumulativePercent + percent.Value / 2d;
+
+            // Radzen Pie начинаем сверху.
+            //
+            // Позицию отдельной Density-label рассчитываем по средней точке
+            // соответствующего сектора. Это позволяет показывать именно
+            // component density, а не Percentage.
+            var angle = (90d - midpointPercent * 3.6d) * Math.PI / 180d;
+            var labelLeft = 50d + Math.Cos(angle) * 40d;
+            var labelTop = 46d - Math.Sin(angle) * 36d;
+
+            result.Add(new DensityPieItem(
+                Index: index,
+                Code: code,
+                Percent: percent.Value,
+                DensityKgPerM3: GetLastOutputNumber($"component{index}Density"),
+                LabelLeftPercent: labelLeft,
+                LabelTopPercent: labelTop));
+
+            cumulativePercent += percent.Value;
+        }
+
+        return result;
+    }
+
+    private string GetLiveMixtureTitle()
+    {
+        if (!CurrentComponentCount.HasValue)
+            return "Mixture";
+
+        var codes = new List<string>();
+
+        for (var index = 0; index < CurrentComponentCount.Value; index++)
+        {
+            var code = GetLiveComponentCode(index);
+
+            if (!string.IsNullOrWhiteSpace(code))
+                codes.Add(code);
+        }
+
+        return codes.Count > 0 ? string.Join(" - ", codes) : "Mixture";
+    }
+
+    private static string GetPieLabelStyle(DensityPieItem item)
+    {
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"left:{item.LabelLeftPercent:0.###}%; top:{item.LabelTopPercent:0.###}%;");
+    }
+
+    private static string FormatPieDensity(double? value)
+    {
+        return value.HasValue
+            ? value.Value.ToString("0.###", CultureInfo.InvariantCulture)
+            : "-";
+    }
+
+    // ============================================================
     // Formatting
     // ============================================================
 
@@ -1639,6 +2139,27 @@
         public int Index { get; set; }
         public string SubstanceCode { get; set; } = "";
     }
+
+    private sealed record DensityAiSnapshotRead(string EquipmentName, ParamSnapshotResponse? Snapshot);
+
+    private sealed record DensityProcessBarView(
+        string ParameterKey,
+        string Name,
+        string Source,
+        string ItemName,
+        double Value,
+        double Min,
+        double Max,
+        string Unit,
+        string FillColor);
+
+    private sealed record DensityPieItem(
+        int Index,
+        string Code,
+        double Percent,
+        double? DensityKgPerM3,
+        double LabelLeftPercent,
+        double LabelTopPercent);
 
     private sealed record DensityScadaReadResult(string ItemName, bool Success, double? Value, string? Message)
     {

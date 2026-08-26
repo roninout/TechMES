@@ -103,8 +103,32 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
     private static readonly IReadOnlyList<CalculationOutputDefinition> OutputDefinitions =
     [
         new CalculationOutputDefinition(
-            Key: "density", Name: "Density", Unit: "kg/m³", Decimals: 3, Order: 1,
-            Description: "Calculated mixture density including SCADA DeltaD.")
+        Key: "density", Name: "Density", Unit: "kg/m³", Decimals: 3, Order: 1,
+        Description: "Calculated mixture density including SCADA DeltaD."),
+
+    // Диагностические outputs.
+    //
+    // Они не имеют SCADA output binding и используются только для Runtime/UI.
+    // componentN соответствует тому же SCADA слоту, что componentNCode/PercN.
+    new CalculationOutputDefinition(
+        Key: "component0Density", Name: "Component 1 density", Unit: "kg/m³", Decimals: 3, Order: 101,
+        Description: "Calculated density of mixture component 1."),
+
+    new CalculationOutputDefinition(
+        Key: "component1Density", Name: "Component 2 density", Unit: "kg/m³", Decimals: 3, Order: 102,
+        Description: "Calculated density of mixture component 2."),
+
+    new CalculationOutputDefinition(
+        Key: "component2Density", Name: "Component 3 density", Unit: "kg/m³", Decimals: 3, Order: 103,
+        Description: "Calculated density of mixture component 3."),
+
+    new CalculationOutputDefinition(
+        Key: "component3Density", Name: "Component 4 density", Unit: "kg/m³", Decimals: 3, Order: 104,
+        Description: "Calculated density of mixture component 4."),
+
+    new CalculationOutputDefinition(
+        Key: "component4Density", Name: "Component 5 density", Unit: "kg/m³", Decimals: 3, Order: 105,
+        Description: "Calculated density of mixture component 5.")
     ];
 
     public override string Code => DefinitionCode;
@@ -127,16 +151,19 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
     /// Последовательность соответствует старому TechParamsCalc:
     ///
     /// 1. Получаем Temperature.
-    /// 2. Получаем Pressure.R как gauge pressure или 0, если binding отсутствует.
+    /// 2. Получаем Pressure.R как gauge pressure или 0.
     /// 3. Формируем absolute pressure:
     ///        P(abs) = P(g) + Patm.
     /// 4. Формируем смесь из CompN/PercN/componentNCode.
-    /// 5. Передаём Temperature и absolute pressure в формулы компонентов.
+    /// 5. Считаем фактическую Density каждого компонента.
     /// 6. Считаем смесь по 1 / Σ(w_i / rho_i).
     /// 7. Прибавляем инженерный DeltaD.
     ///
-    /// Старое ×10 здесь отсутствует. Оно относится только к SCADA ValCalc
-    /// и применяется Runtime output binding непосредственно перед TagWrite.
+    /// Кроме основного density возвращаем componentNDensity.
+    /// Это диагностические Runtime outputs для верхней WEB-панели.
+    /// Они не записываются в SCADA.
+    ///
+    /// Старое ×10 применяется только Runtime output binding при записи ValCalc.
     /// </summary>
     protected override CalculationResult CalculateCore(CalculationParameterSet parameters, bool includeTrace)
     {
@@ -146,11 +173,35 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
         var deltaD = parameters.GetDouble(CorrectionKey, 0d);
         var components = ReadMixtureComponents(parameters);
         var additionalParameters = ReadAdditionalParameters(parameters);
-        var baseDensityKgPerM3 = MixturePropertyCalculator.CalculateDensityKgPerM3(components, temperatureC, pressureBarAbsolute, additionalParameters);
+
+        var mixtureResult = MixturePropertyCalculator.CalculateDensity(components, temperatureC, pressureBarAbsolute, additionalParameters);
+        var baseDensityKgPerM3 = mixtureResult.DensityKgPerM3;
         var densityKgPerM3 = baseDensityKgPerM3 + deltaD;
 
         if (!double.IsFinite(densityKgPerM3) || densityKgPerM3 <= 0d)
             return CalculationResult.Failure("density.result.invalid", "Calculated density after DeltaD must be a finite value greater than zero.");
+
+        var outputs = new List<CalculationOutput>
+    {
+        new CalculationOutput(
+            Key: "density",
+            Name: "Density",
+            Value: densityKgPerM3,
+            Unit: "kg/m³")
+    };
+
+        // В LastOutputs сохраняем также фактическую Density каждого
+        // участвующего компонента.
+        //
+        // Index сохраняет соответствие componentNCode/PercN.
+        foreach (var component in mixtureResult.Components)
+        {
+            outputs.Add(new CalculationOutput(
+                Key: $"component{component.Index}Density",
+                Name: $"{component.SubstanceCode} density",
+                Value: component.DensityKgPerM3,
+                Unit: "kg/m³"));
+        }
 
         var trace = new List<CalculationTraceItem>();
 
@@ -161,26 +212,19 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
             trace.Add(new CalculationTraceItem("pressureBarAbsolute", "Absolute pressure", Format(pressureBarAbsolute), "bar(abs)"));
 
             foreach (var parameter in additionalParameters.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
-            {
                 trace.Add(new CalculationTraceItem(parameter.Key, "Additional parameter", Format(parameter.Value), null));
-            }
 
             AddMixtureTrace(trace, components);
+
+            foreach (var component in mixtureResult.Components)
+                trace.Add(new CalculationTraceItem($"component{component.Index}Density", $"{component.SubstanceCode} density", Format(component.DensityKgPerM3), "kg/m³"));
 
             trace.Add(new CalculationTraceItem("baseDensity", "Density before DeltaD", Format(baseDensityKgPerM3), "kg/m³"));
             trace.Add(new CalculationTraceItem("densityCorrection", "DeltaD", Format(deltaD), "kg/m³"));
             trace.Add(new CalculationTraceItem("density", "Final density", Format(densityKgPerM3), "kg/m³"));
         }
 
-        return CalculationResult.Success(
-        [
-            new CalculationOutput(
-                Key: "density",
-                Name: "Density",
-                Value: densityKgPerM3,
-                Unit: "kg/m³")
-        ],
-        trace: trace);
+        return CalculationResult.Success(outputs, trace: trace);
     }
 
     /// <summary>

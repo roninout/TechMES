@@ -38,7 +38,6 @@
     font-size: 13px;
 }
 
-
 /* ============================================================
    Верхняя live panel
    ============================================================ */
@@ -48,62 +47,27 @@
     flex-direction: column;
     width: 100%;
     min-width: 0;
-    padding: 16px 18px 18px;
+    padding: 18px;
     border: 1px solid var(--rz-border-color, #d7dbe0);
     border-radius: 2px;
     background: transparent;
 }
 
-
-/* ============================================================
-   Toolbar
-   ============================================================ */
-
-.density-toolbar {
-    display: grid;
-    grid-template-columns: minmax(220px, 300px) minmax(300px, 1fr) auto;
-    align-items: end;
-    gap: 20px;
-    width: 100%;
-    min-width: 0;
-}
-
-.density-toolbar-calculation {
-    min-width: 0;
-}
-
-.density-field-label {
-    display: block;
-    margin-bottom: 6px;
-    color: var(--rz-text-secondary-color);
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.density-calculation-name {
+.density-live-header {
     display: flex;
     align-items: center;
-    min-height: 38px;
-    padding: 0 12px;
-    border: 1px solid var(--rz-border-color, #d7dbe0);
-    border-radius: 4px;
-    font-size: 14px;
-    font-weight: 600;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 42px;
 }
 
-.density-toolbar-status {
-    display: flex;
-    align-items: flex-end;
+.density-live-mixture-title {
     min-width: 0;
-}
-
-.density-toolbar-alert {
-    width: 100%;
-    margin: 0 !important;
-}
-
-.density-toolbar-status ::deep .rz-alert {
-    margin-bottom: 0 !important;
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .density-toolbar-enabled {
@@ -111,6 +75,7 @@
     align-items: center;
     justify-content: flex-end;
     gap: 9px;
+    flex: 0 0 auto;
     min-height: 38px;
     white-space: nowrap;
 }
@@ -138,52 +103,197 @@
 .density-panel-separator {
     width: 100%;
     height: 1px;
-    margin: 14px 0;
+    margin: 8px 0 18px;
     background: var(--rz-border-color, #d7dbe0);
 }
 
-.density-write-alert {
+.density-live-status-alert {
     width: 100%;
-    margin: 0 0 14px;
+    margin: 0 0 16px !important;
 }
 
 
 /* ============================================================
-   Live values
+   Основная live-разметка
    ============================================================ */
 
-.density-live-grid {
+.density-live-layout {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-    gap: 12px;
+    grid-template-columns: minmax(190px, 260px) minmax(300px, 360px) minmax(360px, 1fr);
+    align-items: stretch;
+    gap: 18px;
     width: 100%;
     min-width: 0;
 }
 
-.density-live-card {
+.density-live-layout-no-bars {
+    grid-template-columns: minmax(300px, 360px) minmax(360px, 1fr);
+}
+
+
+/* ============================================================
+   ProcessInput AI bars
+   ============================================================ */
+
+.density-process-bars {
     display: flex;
-    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
     min-width: 0;
-    min-height: 118px;
-    padding: 14px;
-    border: 1px solid var(--rz-border-color, #d7dbe0);
-    border-radius: 5px;
+    padding-right: 16px;
+    border-right: 1px solid var(--rz-border-color, #d7dbe0);
 }
 
-.density-live-card-result {
-    border-width: 2px;
+.density-process-meter {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-width: 76px;
 }
 
-.density-live-card-title {
+.density-process-meter-title {
     overflow: hidden;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.density-live-card-description {
+.density-process-meter-source {
     min-height: 18px;
+    margin-top: 3px;
+    overflow: hidden;
+    color: var(--rz-text-secondary-color);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.density-process-meter-body {
+    flex: 1 1 auto;
+    min-height: 280px;
+    margin-top: 8px;
+}
+
+    .density-process-meter-body ::deep .param-meter {
+        min-height: 280px;
+    }
+
+.density-process-meter-unit {
+    margin-top: 7px;
+    text-align: center;
+    color: var(--rz-text-secondary-color);
+    font-size: 12px;
+}
+
+
+/* ============================================================
+   Center cards
+   ============================================================ */
+
+.density-live-center {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+
+.density-scada-card,
+.density-result-card,
+.density-additional-card {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    border-radius: 5px;
+}
+
+.density-scada-card {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+}
+
+.density-scada-row {
+    display: grid;
+    grid-template-columns: 100px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+}
+
+.density-scada-label {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.density-scada-value-group {
+    display: grid;
+    grid-template-columns: 86px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+}
+
+::deep .density-scada-value,
+::deep .density-result-value,
+::deep .density-additional-value {
+    width: 100%;
+}
+
+    ::deep .density-scada-value .rz-inputtext,
+    ::deep .density-result-value .rz-inputtext,
+    ::deep .density-additional-value .rz-inputtext {
+        text-align: right;
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+.density-delta-value {
+    position: relative;
+    min-width: 0;
+}
+
+.density-delta-label {
+    position: absolute;
+    top: -7px;
+    left: 7px;
+    z-index: 1;
+    padding: 0 3px;
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-secondary-color);
+    font-size: 9px;
+    line-height: 1;
+}
+
+::deep .density-delta-input {
+    width: 100%;
+}
+
+    ::deep .density-delta-input .rz-inputtext {
+        text-align: right;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+.density-result-card,
+.density-additional-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(120px, 145px);
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+}
+
+.density-result-card {
+    min-height: 100px;
+}
+
+.density-result-title,
+.density-additional-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.density-result-description,
+.density-additional-source {
     margin-top: 3px;
     overflow: hidden;
     color: var(--rz-text-secondary-color);
@@ -192,17 +302,123 @@
     white-space: nowrap;
 }
 
-::deep .density-live-value {
-    width: 100%;
-    margin-top: auto;
+
+/* ============================================================
+   Pie
+   ============================================================ */
+
+.density-pie-column {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
 }
 
-    ::deep .density-live-value .rz-inputtext,
-    ::deep .density-live-value .rz-numeric-input {
-        text-align: right;
-        font-size: 17px;
-        font-weight: 600;
+.density-pie-shell {
+    position: relative;
+    width: 100%;
+    min-width: 320px;
+    height: 360px;
+}
+
+::deep .density-pie-chart {
+    width: 100%;
+    height: 100%;
+}
+
+.density-pie-label-layer {
+    position: absolute;
+    inset: 0 0 52px 0;
+    pointer-events: none;
+}
+
+.density-pie-density-label {
+    position: absolute;
+    z-index: 3;
+    min-width: 42px;
+    padding: 3px 7px;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    border-radius: 5px;
+    background: var(--rz-base-background-color);
+    font-size: 11px;
+    line-height: 1;
+    text-align: center;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+}
+
+.density-pie-tooltip {
+    display: grid;
+    gap: 3px;
+    min-width: 130px;
+}
+
+.density-pie-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 280px;
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
+}
+
+
+/* ============================================================
+   Responsive live panel
+   ============================================================ */
+
+@media (max-width: 1200px) {
+    .density-live-layout,
+    .density-live-layout-no-bars {
+        grid-template-columns: 1fr 1fr;
     }
+
+    .density-process-bars {
+        grid-column: 1 / -1;
+        min-height: 320px;
+        padding-right: 0;
+        padding-bottom: 16px;
+        border-right: 0;
+        border-bottom: 1px solid var(--rz-border-color, #d7dbe0);
+    }
+}
+
+@media (max-width: 760px) {
+    .density-live-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .density-toolbar-enabled {
+        justify-content: flex-start;
+    }
+
+    .density-live-layout,
+    .density-live-layout-no-bars {
+        grid-template-columns: 1fr;
+    }
+
+    .density-process-bars {
+        overflow-x: auto;
+    }
+
+    .density-process-meter {
+        min-width: 94px;
+    }
+
+    .density-scada-row {
+        grid-template-columns: 1fr;
+    }
+
+    .density-result-card,
+    .density-additional-card {
+        grid-template-columns: 1fr;
+    }
+
+    .density-pie-shell {
+        min-width: 0;
+    }
+}
 
 
 /* ============================================================

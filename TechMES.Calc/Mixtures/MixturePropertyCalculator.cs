@@ -20,44 +20,76 @@ public static class MixturePropertyCalculator
     private const double PercentageTolerance = 1e-6;
 
     /// <summary>
-    /// Рассчитывает плотность смеси в kg/m³.
+    /// Рассчитывает только итоговую плотность смеси в kg/m³.
     ///
-    /// Формула полностью соответствует старому TechDotNetLib.Mix:
+    /// Метод оставляем как короткий совместимый API для существующего кода и тестов.
+    /// Полный расчёт выполняет CalculateDensity(), который дополнительно возвращает
+    /// фактическую Density каждого компонента.
+    /// </summary>
+    public static double CalculateDensityKgPerM3(IReadOnlyList<MixtureComponent> components, double temperatureC, double pressureBarAbsolute, IReadOnlyDictionary<string, double>? additionalParameters = null)
+    {
+        return CalculateDensity(components, temperatureC, pressureBarAbsolute, additionalParameters).DensityKgPerM3;
+    }
+
+    /// <summary>
+    /// Рассчитывает плотность смеси и возвращает фактические промежуточные
+    /// плотности всех компонентов.
+    ///
+    /// Основная формула полностью соответствует старому TechDotNetLib.Mix:
     ///
     ///     rho = 1 / Σ(w_i / rho_i)
     ///
     /// где:
     /// w_i   - массовая доля компонента от 0 до 1;
-    /// rho_i - плотность чистого компонента в kg/m³.
+    /// rho_i - плотность компонента в kg/m³.
     ///
-    /// Единственное намеренное отличие от старого Mix:
-    /// старое финальное умножение ×10 здесь отсутствует,
-    /// потому что это SCADA scaling, а не физическая формула.
-    /// Scale=10 применяется Runtime непосредственно перед записью ValCalc.
+    /// Для DryMatter rho_i является эффективной плотностью при текущем
+    /// MassPercent. Это позволяет общей формуле смеси точно воспроизводить
+    /// старую нелинейную ICUMSA-корреляцию.
+    ///
+    /// Старое финальное ×10 здесь отсутствует.
+    /// Оно относится только к SCADA ValCalc и применяется Runtime при TagWrite.
     /// </summary>
-    public static double CalculateDensityKgPerM3(IReadOnlyList<MixtureComponent> components, double temperatureC, double pressureBarAbsolute, IReadOnlyDictionary<string, double>? additionalParameters = null)
+    public static MixtureDensityCalculationResult CalculateDensity(IReadOnlyList<MixtureComponent> components, double temperatureC, double pressureBarAbsolute, IReadOnlyDictionary<string, double>? additionalParameters = null)
     {
         ValidateInputs(components, temperatureC, pressureBarAbsolute);
 
         var denominator = 0d;
+        var componentResults = new List<MixtureDensityComponentResult>();
 
-        foreach (var component in components)
+        for (var index = 0; index < components.Count; index++)
         {
-            // Нулевая массовая доля не влияет на смесь.
+            var component = components[index];
+
+            // Компонент с нулевой массовой долей не участвует в формуле смеси.
+            //
+            // Его GetDensity намеренно не вызываем:
+            // неактивный компонент не должен приводить расчёт к ошибке только потому,
+            // что его физическая модель в текущей точке не поддерживается.
             if (component.MassPercent == 0d)
                 continue;
 
             var model = SubstanceCatalog.CreateRequiredModel(component.SubstanceCode);
 
-            // Передаём компоненту также его собственную массовую долю.
-            // Для всех legacy-компонентов базовый overload игнорирует MassPercent и уходит в исходный GetDensity(T, P).
-            // DryMatter использует MassPercent, потому что исходная ICUMSA-корреляция нелинейно зависит от концентрации сухих веществ.
-            var pureDensity = model.GetDensity((float)temperatureC, (float)pressureBarAbsolute, component.MassPercent, additionalParameters);
+            // Передаём компоненту его собственную массовую долю.
+            //
+            // Все обычные legacy-компоненты игнорируют MassPercent и переходят
+            // в исходный GetDensity(T, P).
+            //
+            // DryMatter использует MassPercent для восстановления старой
+            // концентрационно-зависимой ICUMSA-корреляции.
+            var componentDensity = model.GetDensity((float)temperatureC, (float)pressureBarAbsolute, component.MassPercent, additionalParameters);
 
-            if (!double.IsFinite(pureDensity) || pureDensity <= 0d)
-                throw new CalculationException("substance.density.invalid", $"Substance '{component.SubstanceCode}' returned invalid density {pureDensity}.");
+            if (!double.IsFinite(componentDensity) || componentDensity <= 0d)
+                throw new CalculationException("substance.density.invalid", $"Substance '{component.SubstanceCode}' returned invalid density {componentDensity}.");
 
-            denominator += component.MassPercent * 0.01d / pureDensity;
+            denominator += component.MassPercent * 0.01d / componentDensity;
+
+            componentResults.Add(new MixtureDensityComponentResult(
+                Index: index,
+                SubstanceCode: component.SubstanceCode,
+                MassPercent: component.MassPercent,
+                DensityKgPerM3: componentDensity));
         }
 
         if (!double.IsFinite(denominator) || denominator <= 0d)
@@ -68,7 +100,7 @@ public static class MixturePropertyCalculator
         if (!double.IsFinite(density) || density <= 0d)
             throw new CalculationException("mixture.density.invalid-result", "Calculated mixture density is invalid.");
 
-        return density;
+        return new MixtureDensityCalculationResult(density, componentResults);
     }
 
     /// <summary>
