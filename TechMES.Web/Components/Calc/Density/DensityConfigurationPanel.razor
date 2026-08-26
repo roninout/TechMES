@@ -160,13 +160,23 @@
                             {
                                 <div class="density-process-meter">
 
-                                    <div class="density-process-meter-title">
-                                        @bar.Name
-                                    </div>
+                                    <div class="density-process-meter-top">
 
-                                    <div class="density-process-meter-source"
-                                         title="@bar.Source">
-                                        @bar.Source
+                                        <div class="density-floating-field density-process-value-field">
+
+                                            <span class="density-floating-label">
+                                                @bar.ItemName
+                                            </span>
+
+                                            <RadzenNumeric TValue="double?"
+                                                           Value="@bar.Value"
+                                                           Format="0.###"
+                                                           Disabled="true"
+                                                           ShowUpDown="false"
+                                                           class="density-process-top-value" />
+
+                                        </div>
+
                                     </div>
 
                                     <div class="density-process-meter-body">
@@ -179,8 +189,21 @@
 
                                     </div>
 
-                                    <div class="density-process-meter-unit">
-                                        @(string.IsNullOrWhiteSpace(bar.Unit) ? "-" : bar.Unit)
+                                    <div class="density-process-meter-footer">
+
+                                        <div class="density-process-meter-title">
+                                            @bar.Name
+                                        </div>
+
+                                        <div class="density-process-meter-source"
+                                             title="@bar.Source">
+                                            @bar.Source
+                                        </div>
+
+                                        <div class="density-process-meter-unit">
+                                            @(string.IsNullOrWhiteSpace(bar.Unit) ? "-" : bar.Unit)
+                                        </div>
+
                                     </div>
 
                                 </div>
@@ -195,108 +218,116 @@
                        ======================================================== *@
                     <div class="density-live-center">
 
-
                         <div class="density-scada-card">
 
-                            <div class="density-scada-row">
+                            <div class="density-value-group-title">
+                                Current value
+                            </div>
 
-                                <div class="density-scada-label">
-                                    ValHmi
+                            <div class="density-scada-grid">
+
+                                <div class="density-floating-field density-main-value-field">
+
+                                    <span class="density-floating-label">
+                                        ValHmi
+                                    </span>
+
+                                    <RadzenNumeric TValue="double?"
+                                                   Value="@CurrentDensityHmi"
+                                                   Format="0.###' kg/m³'"
+                                                   Disabled="true"
+                                                   ShowUpDown="false"
+                                                   class="density-main-value-input" />
+
                                 </div>
-
-                                <RadzenNumeric TValue="double?"
-                                               Value="@CurrentDensityHmi"
-                                               Format="0.###' kg/m³'"
-                                               Disabled="true"
-                                               ShowUpDown="false"
-                                               class="density-scada-value" />
 
                             </div>
 
+                            <div class="density-value-group-title">
+                                Calculated value
+                            </div>
 
-                            <div class="density-scada-row">
+                            <div class="density-scada-grid density-scada-grid-with-delta">
 
-                                <div class="density-scada-label">
-                                    ValCalc
+                                <div class="density-floating-field density-delta-field">
+
+                                    <span class="density-floating-label">
+                                        ΔD
+                                    </span>
+
+                                    <RadzenNumeric TValue="double?"
+                                                   Value="@CurrentDeltaD"
+                                                   Format="0.###"
+                                                   Disabled="true"
+                                                   ShowUpDown="false"
+                                                   class="density-delta-input" />
+
                                 </div>
 
-                                <div class="density-scada-value-group">
+                                <div class="density-floating-field density-main-value-field">
 
-                                    <div class="density-delta-value"
-                                         title="Density correction DeltaD">
-
-                                        <span class="density-delta-label">ΔD</span>
-
-                                        <RadzenNumeric TValue="double?"
-                                                       Value="@CurrentDeltaD"
-                                                       Format="0.###"
-                                                       Disabled="true"
-                                                       ShowUpDown="false"
-                                                       class="density-delta-input" />
-
-                                    </div>
+                                    <span class="density-floating-label">
+                                        ValCalc
+                                    </span>
 
                                     <RadzenNumeric TValue="double?"
                                                    Value="@CurrentDensityCalcEngineering"
                                                    Format="0.###' kg/m³'"
                                                    Disabled="true"
                                                    ShowUpDown="false"
-                                                   class="density-scada-value" />
+                                                   class="density-main-value-input" />
 
                                 </div>
 
                             </div>
 
                         </div>
-
 
                         <div class="density-result-card">
 
-                            <div>
+                            <div class="density-value-group-title">
+                                TechMES calculated value
+                            </div>
 
-                                <div class="density-result-title">
+                            <div class="density-floating-field density-main-value-field">
+
+                                <span class="density-floating-label">
                                     Density
-                                </div>
+                                </span>
 
-                                <div class="density-result-description">
-                                    TechMES calculated value
-                                </div>
+                                <RadzenNumeric TValue="double?"
+                                               Value="@GetLastOutputNumber("density")"
+                                               Format="0.###' kg/m³'"
+                                               Disabled="true"
+                                               ShowUpDown="false"
+                                               class="density-main-value-input" />
 
                             </div>
 
-                            <RadzenNumeric TValue="double?"
-                                           Value="@GetLastOutputNumber("density")"
-                                           Format="0.###' kg/m³'"
-                                           Disabled="true"
-                                           ShowUpDown="false"
-                                           class="density-result-value" />
-
                         </div>
-
 
                         @foreach (var binding in ActiveProcessBindings.Skip(2).Where(binding => binding.IsLinked))
                         {
                             <div class="density-additional-card">
 
-                                <div>
-
-                                    <div class="density-additional-title">
-                                        @GetProcessDisplayName(binding)
-                                    </div>
-
-                                    <div class="density-additional-source"
-                                         title="@GetProcessRuntimeTag(binding)">
-                                        @GetProcessRuntimeTag(binding)
-                                    </div>
-
+                                <div class="density-value-group-title">
+                                    @GetProcessDisplayName(binding)
                                 </div>
 
-                                <RadzenNumeric TValue="double?"
-                                               Value="@GetProcessCurrentValue(binding)"
-                                               Format="@GetNumberFormat(binding.Parameter)"
-                                               Disabled="true"
-                                               ShowUpDown="false"
-                                               class="density-additional-value" />
+                                <div class="density-floating-field density-main-value-field">
+
+                                    <span class="density-floating-label">
+                                        @GetProcessRuntimeTag(binding)
+                                    </span>
+
+                                    <RadzenNumeric TValue="double?"
+                                                   Value="@GetProcessCurrentValue(binding)"
+                                                   Format="@GetNumberFormat(binding.Parameter)"
+                                                   Disabled="true"
+                                                   ShowUpDown="false"
+                                                   class="density-main-value-input" />
+
+                                </div>
 
                             </div>
                         }
@@ -317,7 +348,7 @@
 
                                     <RadzenPieSeries TItem="DensityPieItem"
                                                      Data="@pieItems"
-                                                     CategoryProperty="@nameof(DensityPieItem.Code)"
+                                                     CategoryProperty="@nameof(DensityPieItem.LegendText)"
                                                      ValueProperty="@nameof(DensityPieItem.Percent)"
                                                      StartAngle="90"
                                                      StrokeWidth="2"
@@ -2021,13 +2052,16 @@
             // Позицию отдельной Density-label рассчитываем по средней точке
             // соответствующего сектора. Это позволяет показывать именно
             // component density, а не Percentage.
+
+            // Положение подписи делаем внутри сектора, а не снаружи.
             var angle = (90d - midpointPercent * 3.6d) * Math.PI / 180d;
-            var labelLeft = 50d + Math.Cos(angle) * 40d;
-            var labelTop = 46d - Math.Sin(angle) * 36d;
+            var labelLeft = 50d + Math.Cos(angle) * 24d;
+            var labelTop = 44d - Math.Sin(angle) * 24d;
 
             result.Add(new DensityPieItem(
                 Index: index,
                 Code: code,
+                LegendText: $"{code} {percent.Value:0.#}%",
                 Percent: percent.Value,
                 DensityKgPerM3: GetLastOutputNumber($"component{index}Density"),
                 LabelLeftPercent: labelLeft,
@@ -2156,6 +2190,7 @@
     private sealed record DensityPieItem(
         int Index,
         string Code,
+        string LegendText,
         double Percent,
         double? DensityKgPerM3,
         double LabelLeftPercent,

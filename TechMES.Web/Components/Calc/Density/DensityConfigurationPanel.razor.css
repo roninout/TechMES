@@ -112,14 +112,13 @@
     margin: 0 0 16px !important;
 }
 
-
 /* ============================================================
    Основная live-разметка
    ============================================================ */
 
 .density-live-layout {
     display: grid;
-    grid-template-columns: minmax(190px, 260px) minmax(300px, 360px) minmax(360px, 1fr);
+    grid-template-columns: 240px minmax(0, 1fr) 430px;
     align-items: stretch;
     gap: 18px;
     width: 100%;
@@ -127,9 +126,29 @@
 }
 
 .density-live-layout-no-bars {
-    grid-template-columns: minmax(300px, 360px) minmax(360px, 1fr);
+    grid-template-columns: minmax(0, 1fr) 430px;
 }
 
+/* ============================================================
+   Общий стиль floating field
+   ============================================================ */
+
+.density-floating-field {
+    position: relative;
+    min-width: 0;
+}
+
+.density-floating-label {
+    position: absolute;
+    top: -7px;
+    left: 8px;
+    z-index: 1;
+    padding: 0 4px;
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-secondary-color);
+    font-size: 10px;
+    line-height: 1;
+}
 
 /* ============================================================
    ProcessInput AI bars
@@ -138,7 +157,7 @@
 .density-process-bars {
     display: flex;
     align-items: stretch;
-    gap: 12px;
+    gap: 0;
     min-width: 0;
     padding-right: 16px;
     border-right: 1px solid var(--rz-border-color, #d7dbe0);
@@ -146,9 +165,49 @@
 
 .density-process-meter {
     display: flex;
-    flex: 1 1 0;
+    flex: 0 0 110px;
     flex-direction: column;
-    min-width: 76px;
+    min-width: 110px;
+    max-width: 110px;
+    padding: 0 12px;
+}
+
+    .density-process-meter:not(:last-child) {
+        border-right: 1px solid var(--rz-border-color, #d7dbe0);
+    }
+
+.density-process-meter-top {
+    margin-bottom: 12px;
+}
+
+.density-process-value-field {
+    width: 100%;
+}
+
+::deep .density-process-top-value {
+    width: 100%;
+}
+
+    ::deep .density-process-top-value .rz-inputtext {
+        text-align: center;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+.density-process-meter-body {
+    flex: 1 1 auto;
+    min-height: 290px;
+}
+
+    .density-process-meter-body ::deep .param-meter {
+        min-height: 290px;
+    }
+
+.density-process-meter-footer {
+    display: grid;
+    gap: 4px;
+    margin-top: 10px;
+    text-align: center;
 }
 
 .density-process-meter-title {
@@ -160,8 +219,7 @@
 }
 
 .density-process-meter-source {
-    min-height: 18px;
-    margin-top: 3px;
+    min-height: 16px;
     overflow: hidden;
     color: var(--rz-text-secondary-color);
     font-size: 10px;
@@ -169,23 +227,10 @@
     white-space: nowrap;
 }
 
-.density-process-meter-body {
-    flex: 1 1 auto;
-    min-height: 280px;
-    margin-top: 8px;
-}
-
-    .density-process-meter-body ::deep .param-meter {
-        min-height: 280px;
-    }
-
 .density-process-meter-unit {
-    margin-top: 7px;
-    text-align: center;
     color: var(--rz-text-secondary-color);
     font-size: 12px;
 }
-
 
 /* ============================================================
    Center cards
@@ -205,103 +250,56 @@
     min-width: 0;
     border: 1px solid var(--rz-border-color, #d7dbe0);
     border-radius: 5px;
-}
-
-.density-scada-card {
-    display: grid;
-    gap: 12px;
     padding: 16px;
 }
 
-.density-scada-row {
+.density-scada-card,
+.density-result-card,
+.density-additional-card {
     display: grid;
-    grid-template-columns: 100px minmax(0, 1fr);
-    align-items: center;
     gap: 12px;
 }
 
-.density-scada-label {
+.density-value-group-title {
+    color: var(--rz-text-color);
     font-size: 14px;
     font-weight: 600;
 }
 
-.density-scada-value-group {
+.density-scada-grid {
     display: grid;
-    grid-template-columns: 86px minmax(0, 1fr);
-    align-items: center;
-    gap: 10px;
+    grid-template-columns: 1fr;
+    gap: 12px;
 }
 
-::deep .density-scada-value,
-::deep .density-result-value,
-::deep .density-additional-value {
+.density-scada-grid-with-delta {
+    grid-template-columns: 86px minmax(0, 1fr);
+}
+
+.density-main-value-field {
     width: 100%;
 }
 
-    ::deep .density-scada-value .rz-inputtext,
-    ::deep .density-result-value .rz-inputtext,
-    ::deep .density-additional-value .rz-inputtext {
+.density-delta-field {
+    width: 86px;
+}
+
+::deep .density-main-value-input,
+::deep .density-delta-input {
+    width: 100%;
+}
+
+    ::deep .density-main-value-input .rz-inputtext {
         text-align: right;
         font-size: 16px;
         font-weight: 600;
     }
 
-.density-delta-value {
-    position: relative;
-    min-width: 0;
-}
-
-.density-delta-label {
-    position: absolute;
-    top: -7px;
-    left: 7px;
-    z-index: 1;
-    padding: 0 3px;
-    background: var(--rz-base-background-color);
-    color: var(--rz-text-secondary-color);
-    font-size: 9px;
-    line-height: 1;
-}
-
-::deep .density-delta-input {
-    width: 100%;
-}
-
     ::deep .density-delta-input .rz-inputtext {
-        text-align: right;
+        text-align: center;
         font-size: 14px;
         font-weight: 600;
     }
-
-.density-result-card,
-.density-additional-card {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(120px, 145px);
-    align-items: center;
-    gap: 14px;
-    padding: 16px;
-}
-
-.density-result-card {
-    min-height: 100px;
-}
-
-.density-result-title,
-.density-additional-title {
-    font-size: 14px;
-    font-weight: 600;
-}
-
-.density-result-description,
-.density-additional-source {
-    margin-top: 3px;
-    overflow: hidden;
-    color: var(--rz-text-secondary-color);
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 
 /* ============================================================
    Pie
@@ -311,13 +309,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 0;
+    width: 430px;
+    min-width: 430px;
+    max-width: 430px;
+    padding-left: 16px;
+    border-left: 1px solid var(--rz-border-color, #d7dbe0);
 }
 
 .density-pie-shell {
     position: relative;
     width: 100%;
-    min-width: 320px;
     height: 360px;
 }
 
@@ -328,7 +329,7 @@
 
 .density-pie-label-layer {
     position: absolute;
-    inset: 0 0 52px 0;
+    inset: 10px 0 54px 0;
     pointer-events: none;
 }
 
@@ -339,7 +340,7 @@
     padding: 3px 7px;
     border: 1px solid var(--rz-border-color, #d7dbe0);
     border-radius: 5px;
-    background: var(--rz-base-background-color);
+    background: rgba(255, 255, 255, 0.92);
     font-size: 11px;
     line-height: 1;
     text-align: center;
@@ -362,24 +363,32 @@
     font-size: 13px;
 }
 
-
 /* ============================================================
    Responsive live panel
    ============================================================ */
 
-@media (max-width: 1200px) {
+@media (max-width: 1250px) {
     .density-live-layout,
     .density-live-layout-no-bars {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
     }
 
     .density-process-bars {
-        grid-column: 1 / -1;
-        min-height: 320px;
         padding-right: 0;
         padding-bottom: 16px;
         border-right: 0;
         border-bottom: 1px solid var(--rz-border-color, #d7dbe0);
+        overflow-x: auto;
+    }
+
+    .density-pie-column {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        padding-left: 0;
+        border-left: 0;
+        border-top: 1px solid var(--rz-border-color, #d7dbe0);
+        padding-top: 16px;
     }
 }
 
@@ -393,30 +402,12 @@
         justify-content: flex-start;
     }
 
-    .density-live-layout,
-    .density-live-layout-no-bars {
+    .density-scada-grid-with-delta {
         grid-template-columns: 1fr;
     }
 
-    .density-process-bars {
-        overflow-x: auto;
-    }
-
-    .density-process-meter {
-        min-width: 94px;
-    }
-
-    .density-scada-row {
-        grid-template-columns: 1fr;
-    }
-
-    .density-result-card,
-    .density-additional-card {
-        grid-template-columns: 1fr;
-    }
-
-    .density-pie-shell {
-        min-width: 0;
+    .density-delta-field {
+        width: 100%;
     }
 }
 
