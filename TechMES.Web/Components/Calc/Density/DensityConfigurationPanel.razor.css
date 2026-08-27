@@ -273,12 +273,22 @@
     white-space: nowrap;
 }
 
-
 /* ============================================================
    Center
    ============================================================ */
 
 .density-live-center {
+    /*
+     * Центральные размеры регулируются только здесь.
+     *
+     * Main:
+     *     ValHmi
+     *     ValCalc
+     *     Density
+     *
+     * Delta:
+     *     DeltaD
+     */
     --density-main-field-width: 150px;
     --density-delta-field-width: 90px;
     --density-value-fields-gap: 10px;
@@ -289,16 +299,12 @@
     padding: 0 18px;
 }
 
-.density-live-center {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    min-width: 0;
-    padding: 0 18px;
-}
 
-.density-scada-card,
-.density-result-card,
+/* ============================================================
+   Main card
+   ============================================================ */
+
+.density-main-card,
 .density-additional-card {
     box-sizing: border-box;
     display: grid;
@@ -310,13 +316,20 @@
     border-radius: 5px;
 }
 
+
+/* ============================================================
+   Один горизонтальный ряд карточки
+
+   Слева:
+       название.
+
+   Справа:
+       фиксированный набор fields,
+       прижатый к правому краю.
+   ============================================================ */
+
 .density-value-row {
     display: grid;
-    /*
-     * Текст слева получает всё оставшееся свободное место,
-     * а блок полей имеет собственную фиксированную ширину
-     * и всегда прижат к правой стороне карточки.
-     */
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 28px;
@@ -324,39 +337,73 @@
     min-width: 0;
 }
 
-.density-value-controls {
-    display: grid;
-    grid-template-columns: var(--density-delta-field-width) var(--density-main-field-width);
-    align-items: center;
-    gap: var(--density-value-fields-gap);
-    width: max-content;
-    /*
-     * Явно прижимаем весь набор Delta + Main field вправо.
-     */
-    justify-self: end;
-    min-width: 0;
-}
 
-.density-value-group-title {
+/* ============================================================
+   Selection title
+
+   Слева всегда существует фиксированное место под галочку,
+   поэтому текст Current / Calculated не прыгает при смене Sel.
+   ============================================================ */
+
+.density-selection-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
     color: var(--rz-text-color);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 400;
+}
+
+    .density-selection-title.is-selected {
+        font-weight: 600;
+    }
+
+
+/*
+ * TechMES calculated value специально НЕ выделяем жирным.
+ */
+.density-selection-title-techmes {
+    font-weight: 400;
+}
+
+
+/*
+ * Фиксированная зона для галочки.
+ */
+.density-selection-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 18px;
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+}
+
+
+/*
+ * Галочка активного источника SCADA.
+ */
+::deep .density-selection-icon {
+    color: var(--rz-success);
+    font-size: 17px;
 }
 
 
 /* ============================================================
-   Центральные ReadOnly-поля
+   Separator внутри основной карточки
+   ============================================================ */
 
-   Геометрия:
-       DeltaD  = 90px
-       gap     = 10px
-       main    = 220px
+.density-card-separator {
+    width: 100%;
+    height: 1px;
+    background: var(--rz-border-color, #d7dbe0);
+}
 
-   ValHmi, ValCalc и Density поэтому всегда имеют одинаковую
-   фиксированную ширину.
 
-   В строках без DeltaD оставляем невидимый 90px slot,
-   поэтому основные поля стоят строго друг под другом.
+/* ============================================================
+   Центральные fields
    ============================================================ */
 
 .density-value-controls {
@@ -366,17 +413,21 @@
     gap: var(--density-value-fields-gap);
     width: max-content;
     min-width: 0;
+    justify-self: end;
 }
+
 
 .density-delta-placeholder {
     width: var(--density-delta-field-width);
     min-width: var(--density-delta-field-width);
 }
 
+
 ::deep .density-delta-form-field {
     width: var(--density-delta-field-width);
     min-width: var(--density-delta-field-width);
 }
+
 
 ::deep .density-main-form-field {
     width: var(--density-main-field-width);
@@ -384,21 +435,54 @@
     max-width: var(--density-main-field-width);
 }
 
- /*
- * Стиль значения повторяет Tank Measurement area:
- *
- * - обычный шрифт Radzen;
- * - обычный font-weight;
- * - стандартный размер текста темы;
- * - только выравнивание вправо.
- *
- * Специально НЕ задаём здесь font-size и font-weight.
+
+::deep .density-main-value-input,
+::deep .density-delta-input {
+    width: 100%;
+}
+
+
+    /*
+ * Все ReadOnly значения повторяют обычный стиль Tank: без искусственного bold.
  */
     ::deep .density-main-value-input .rz-inputtext,
     ::deep .density-delta-input .rz-inputtext {
         text-align: right;
         font-weight: 400;
     }
+
+
+/* ============================================================
+   TechMES Density field
+
+   Само поле выделяем лёгким background,
+   но текст внутри остаётся обычным.
+   ============================================================ */
+
+::deep .density-result-value-input .rz-inputtext {
+    background-color: var(--rz-base-light) !important;
+    font-weight: 400;
+}
+
+
+/*
+ * На всякий случай задаём background и FormField,
+ * чтобы светлый фон занимал всю input-area Radzen.
+ */
+::deep .density-result-form-field .rz-form-field-content {
+    background-color: var(--rz-base-light);
+}
+
+
+/* ============================================================
+   Обычный заголовок Additional parameter
+   ============================================================ */
+
+.density-value-group-title {
+    color: var(--rz-text-color);
+    font-size: 14px;
+    font-weight: 600;
+}
 
 
 /* ============================================================
@@ -475,7 +559,7 @@
     }
 
     .density-value-controls {
-        grid-template-columns: 76px minmax(0, 220px);
+        grid-template-columns: 76px minmax(0, var(--density-main-field-width));
         width: 100%;
     }
 
@@ -488,7 +572,7 @@
     ::deep .density-main-form-field {
         width: 100%;
         min-width: 0;
-        max-width: 220px;
+        max-width: var(--density-main-field-width);
     }
 }
 

@@ -227,20 +227,89 @@
                     <div class="density-live-center">
 
                         @* ========================================================
-                           SCADA VALUES
+                           MAIN DENSITY CARD
+                           Верх: собственный расчёт TechMES.
+                           Низ: фактическое выбранное SCADA значение.
+                           Sel:
+                               0 -> Current value / ValHmi;
+                               1 -> Calculated value / ValCalc.
                            ======================================================== *@
-                        <div class="density-scada-card">
+                        <div class="density-main-card">
 
+
+                            @* ====================================================
+                               TECHMES CALCULATED VALUE
+                               ==================================================== *@
                             <div class="density-value-row">
 
-                                <div class="density-value-group-title">
-                                    Current value
+                                <div class="density-selection-title density-selection-title-techmes">
+
+                                    <div class="density-selection-mark"></div>
+
+                                    <span>
+                                        TechMES calculated value
+                                    </span>
+
                                 </div>
 
                                 <div class="density-value-controls">
 
-                                    @* Пустой слот такой же ширины, как DeltaD. Благодаря этому ValHmi и ValCalc имеют одинаковую ширину и стоят строго друг под другом. *@
-                                    <div class="density-delta-placeholder" aria-hidden="true"></div>
+                                    <div class="density-delta-placeholder"
+                                         aria-hidden="true">
+                                    </div>
+
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="Density"
+                                                     Variant="Variant.Outlined"
+                                                     class="density-main-form-field density-result-form-field">
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetLastOutputNumber("density")"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###' kg/m³'"
+                                                       class="density-main-value-input density-result-value-input" />
+
+                                    </RadzenFormField>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="density-card-separator"></div>
+
+
+                            @* ====================================================
+           CURRENT VALUE / ValHmi
+
+           Sel = 0 -> эта строка активна.
+           ==================================================== *@
+                            <div class="density-value-row">
+
+                                <div class="density-selection-title @(IsCalculatedValueSelected == false ? "is-selected" : "")">
+
+                                    <div class="density-selection-mark">
+
+                                        @if (IsCalculatedValueSelected == false)
+                                        {
+                                            <RadzenIcon Icon="check"
+                                                        class="density-selection-icon" />
+                                        }
+
+                                    </div>
+
+                                    <span>
+                                        Current value
+                                    </span>
+
+                                </div>
+
+                                <div class="density-value-controls">
+
+                                    <div class="density-delta-placeholder"
+                                         aria-hidden="true">
+                                    </div>
 
                                     <RadzenFormField AllowFloatingLabel="false"
                                                      Text="ValHmi"
@@ -261,10 +330,29 @@
                             </div>
 
 
+                            @* ====================================================
+           CALCULATED VALUE / Delta + ValCalc
+
+           Sel = 1 -> эта строка активна.
+           ==================================================== *@
                             <div class="density-value-row">
 
-                                <div class="density-value-group-title">
-                                    Calculated value
+                                <div class="density-selection-title @(IsCalculatedValueSelected == true ? "is-selected" : "")">
+
+                                    <div class="density-selection-mark">
+
+                                        @if (IsCalculatedValueSelected == true)
+                                        {
+                                            <RadzenIcon Icon="check"
+                                                        class="density-selection-icon" />
+                                        }
+
+                                    </div>
+
+                                    <span>
+                                        Calculated value
+                                    </span>
+
                                 </div>
 
                                 <div class="density-value-controls">
@@ -305,44 +393,8 @@
 
 
                         @* ========================================================
-                           TECHMES RESULT
-                           ======================================================== *@
-                        <div class="density-result-card">
-
-                            <div class="density-value-row">
-
-                                <div class="density-value-group-title">
-                                    TechMES calculated value
-                                </div>
-
-                                <div class="density-value-controls">
-
-                                    <div class="density-delta-placeholder" aria-hidden="true"></div>
-
-                                    <RadzenFormField AllowFloatingLabel="false"
-                                                     Text="Density"
-                                                     Variant="Variant.Outlined"
-                                                     class="density-main-form-field">
-
-                                        <RadzenNumeric TValue="double?"
-                                                       Value="@GetLastOutputNumber("density")"
-                                                       ReadOnly="true"
-                                                       ShowUpDown="false"
-                                                       Format="0.###' kg/m³'"
-                                                       class="density-main-value-input" />
-
-                                    </RadzenFormField>
-
-                                </div>
-
-                            </div>
-
-                        </div>
-
-
-                        @* ========================================================
-                           ADDITIONAL PARAMETERS
-                           ======================================================== *@
+       ADDITIONAL PARAMETERS
+       ======================================================== *@
                         @foreach (var binding in ActiveProcessBindings.Skip(2).Where(binding => binding.IsLinked))
                         {
                             <div class="density-additional-card">
@@ -355,7 +407,9 @@
 
                                     <div class="density-value-controls">
 
-                                        <div class="density-delta-placeholder" aria-hidden="true"></div>
+                                        <div class="density-delta-placeholder"
+                                             aria-hidden="true">
+                                        </div>
 
                                         <RadzenFormField AllowFloatingLabel="false"
                                                          Text="@GetProcessRuntimeTag(binding)"
@@ -1537,10 +1591,11 @@
         try
         {
             var itemsToRead = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "ValHmi",
-            "ValCalc"
-        };
+            {
+                "ValHmi",
+                "ValCalc",
+                "Sel"
+            };
 
             if (!GetRuntimeTagInputNumber(ComponentCountKey).HasValue)
                 itemsToRead.Add("CompN");
@@ -1968,6 +2023,30 @@
     private double? GetLiveScadaValue(string itemName)
     {
         return _liveScadaValues.TryGetValue(itemName, out var value) ? value : null;
+    }
+
+    /// <summary>
+    /// Текущее состояние SCADA ITEM Sel.
+    ///
+    /// Контракт Density:
+    ///
+    ///     Sel = 0 -> SCADA использует ValHmi;
+    ///     Sel = 1 -> SCADA использует ValCalc.
+    ///
+    /// Sel является только read-only диагностическим значением.
+    /// TechMES его не изменяет и не записывает.
+    /// </summary>
+    private bool? IsCalculatedValueSelected
+    {
+        get
+        {
+            var value = GetLiveScadaValue("Sel");
+
+            if (!value.HasValue || !double.IsFinite(value.Value))
+                return null;
+
+            return value.Value >= 0.5d;
+        }
     }
 
     // ============================================================
