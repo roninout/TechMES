@@ -1,3 +1,4 @@
+using TechMES.Calc.Constants;
 using TechMES.Calc.Mixtures;
 using TechMES.Calc.Parameters;
 using TechMES.Calc.Results;
@@ -28,7 +29,7 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
     public const string DefinitionCode = "mixture.capacity";
 
     private const string TemperatureKey = "temperatureC";
-    private const string PressureKey = "pressureBarAbsolute";
+    private const string PressureKey = "pressureBarGauge";
     private const string CorrectionKey = "capacityCorrection";
 
     private static readonly string[] AdditionalParameterKeys =
@@ -53,24 +54,18 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
             Description: "Mixture temperature used by the substance heat-capacity correlations.",
             Role: CalculationParameterRole.ProcessInput),
 
-        // Pressure присутствовал в старом Capacity object, но legacy Mix.GetCapacity
-        // его фактически не использовал.
-        //
-        // Пока оставляем полноценный optional ProcessInput с DefaultValue:
-        // WEB получает тот же ProcessInput lifecycle, что и Density,
-        // а текущая формула не создаёт ложную обязательную зависимость.
+        // Старый Capacity, как и Density, получал Pressure.Val_R как избыточное давление. Абсолютное давление формировалось перед вызовом TechDotNetLib.Mix:
+        //     P(abs) = P(g) + Patm.
+        // Текущие legacy GetCapacity физически используют только Temperature, поэтому Pressure пока является зарезервированным ProcessInput.
+        // Но контракт сохраняем правильным уже сейчас, чтобы будущая Cp-модель могла использовать Pressure без изменения Job configuration.
         new CalculationParameterDefinition(
-            Key: PressureKey,
-            Name: "Absolute pressure",
-            Type: CalculationParameterType.Number,
-            Unit: "bar(abs)",
-            IsRequired: false,
-            DefaultValue: 1.01325d,
-            Minimum: 0.000001,
-            Step: 0.01,
-            Decimals: 4,
+            Key: PressureKey, 
+            Name: "Pressure", 
+            Type: CalculationParameterType.Number, 
+            Unit: "bar(g)",
+            IsRequired: false, DefaultValue: 0d, Step: 0.01, Decimals: 4, 
             Order: 2,
-            Description: "Reserved absolute pressure input. Current legacy Capacity correlations depend only on Temperature.",
+            Description: "Optional gauge pressure. Absolute pressure is calculated by adding the configured atmospheric pressure.",
             Role: CalculationParameterRole.ProcessInput),
 
         new CalculationParameterDefinition(
@@ -191,7 +186,8 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
     protected override CalculationResult CalculateCore(CalculationParameterSet parameters, bool includeTrace)
     {
         var temperatureC = parameters.GetRequiredDouble(TemperatureKey);
-        var pressureBarAbsolute = parameters.GetRequiredDouble(PressureKey);
+        var pressureBarGauge = parameters.GetDouble(PressureKey, 0d);
+        var pressureBarAbsolute = pressureBarGauge + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute;
         var deltaC = parameters.GetDouble(CorrectionKey, 0d);
         var components = ReadMixtureComponents(parameters);
         var additionalParameters = ReadAdditionalParameters(parameters);
@@ -206,20 +202,12 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
 
         var outputs = new List<CalculationOutput>
         {
-            new(
-                Key: "capacity",
-                Name: "Specific heat capacity",
-                Value: capacityJPerKgK,
-                Unit: "J/(kg·K)")
+            new(Key: "capacity", Name: "Specific heat capacity", Value: capacityJPerKgK, Unit: "J/(kg·K)")
         };
 
         foreach (var component in mixtureResult.Components)
         {
-            outputs.Add(new CalculationOutput(
-                Key: $"component{component.Index}Capacity",
-                Name: $"{component.SubstanceCode} specific heat capacity",
-                Value: component.SpecificHeatCapacityJPerKgK,
-                Unit: "J/(kg·K)"));
+            outputs.Add(new CalculationOutput(Key: $"component{component.Index}Capacity", Name: $"{component.SubstanceCode} specific heat capacity", Value: component.SpecificHeatCapacityJPerKgK, Unit: "J/(kg·K)"));
         }
 
         var trace = new List<CalculationTraceItem>();
@@ -227,8 +215,8 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
         if (includeTrace)
         {
             trace.Add(new CalculationTraceItem("temperatureC", "Temperature", Format(temperatureC), "°C"));
-
             // Pressure пока диагностический ProcessInput.
+            trace.Add(new CalculationTraceItem("pressureBarGauge", "Pressure", Format(pressureBarGauge), "bar(g)"));
             trace.Add(new CalculationTraceItem("pressureBarAbsolute", "Absolute pressure", Format(pressureBarAbsolute), "bar(abs)"));
 
             foreach (var parameter in additionalParameters.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
@@ -240,30 +228,12 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
 
             foreach (var component in mixtureResult.Components)
             {
-                trace.Add(new CalculationTraceItem(
-                    $"component{component.Index}Capacity",
-                    $"{component.SubstanceCode} specific heat capacity",
-                    Format(component.SpecificHeatCapacityJPerKgK),
-                    "J/(kg·K)"));
+                trace.Add(new CalculationTraceItem($"component{component.Index}Capacity", $"{component.SubstanceCode} specific heat capacity", Format(component.SpecificHeatCapacityJPerKgK), "J/(kg·K)"));
             }
 
-            trace.Add(new CalculationTraceItem(
-                "baseCapacity",
-                "Capacity before DeltaC",
-                Format(baseCapacityJPerKgK),
-                "J/(kg·K)"));
-
-            trace.Add(new CalculationTraceItem(
-                "capacityCorrection",
-                "DeltaC",
-                Format(deltaC),
-                "J/(kg·K)"));
-
-            trace.Add(new CalculationTraceItem(
-                "capacity",
-                "Final specific heat capacity",
-                Format(capacityJPerKgK),
-                "J/(kg·K)"));
+            trace.Add(new CalculationTraceItem("baseCapacity", "Capacity before DeltaC", Format(baseCapacityJPerKgK), "J/(kg·K)"));
+            trace.Add(new CalculationTraceItem("capacityCorrection", "DeltaC", Format(deltaC), "J/(kg·K)"));
+            trace.Add(new CalculationTraceItem("capacity", "Final specific heat capacity", Format(capacityJPerKgK), "J/(kg·K)"));
         }
 
         return CalculationResult.Success(outputs, trace: trace);

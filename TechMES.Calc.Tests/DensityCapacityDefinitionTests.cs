@@ -236,7 +236,7 @@ public sealed class DensityCapacityDefinitionTests
             new Dictionary<string, object?>
             {
                 ["temperatureC"] = 20d,
-                ["pressureBarAbsolute"] = 1d,
+                ["pressureBarGauge"] = 1d,
                 ["componentCount"] = 1,
                 ["component0Code"] = "ACN",
                 ["component0Percent"] = 100d
@@ -429,7 +429,7 @@ public sealed class DensityCapacityDefinitionTests
         Assert.Equal(
         [
             "temperatureC",
-            "pressureBarAbsolute",
+            "pressureBarGauge",
             "additionalParameter1",
             "additionalParameter2",
             "additionalParameter3"

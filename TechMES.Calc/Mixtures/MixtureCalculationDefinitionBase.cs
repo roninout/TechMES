@@ -63,9 +63,7 @@ public abstract class MixtureCalculationDefinitionBase : CalculationDefinitionBa
     /// Ограничение в пять относится исключительно к текущей структуре
     /// компонентов смеси в Plant SCADA и не относится к ProcessInput.
     /// </summary>
-    protected static IReadOnlyList<CalculationParameterDefinition> CreateMixtureParameters(
-        IReadOnlyList<CalculationParameterDefinition> propertyParameters,
-        SubstancePropertySupport? requiredSubstanceProperty = null)
+    protected static IReadOnlyList<CalculationParameterDefinition> CreateMixtureParameters(IReadOnlyList<CalculationParameterDefinition> propertyParameters, SubstancePropertySupport? requiredSubstanceProperty = null)
     {
         ArgumentNullException.ThrowIfNull(propertyParameters);
 
