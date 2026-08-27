@@ -330,17 +330,20 @@ public sealed class SubstancePropertyTests
     [Fact]
     public void WaterDryMatterCapacityMatchesOriginalSugarSolutionFormula()
     {
-        const double temperature = 84.3;
+        const double temperatureC = 84.3;
         const double dryMatterPercent = 55.0;
+        const double purityPercent = 100.0;
 
-        var capacity = MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
+        var actualCapacity = MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
             [
                 new MixtureComponent("DryMatter", dryMatterPercent),
-                new MixtureComponent("Water", 100.0 - dryMatterPercent)
+            new MixtureComponent("Water", 100.0 - dryMatterPercent)
             ],
-            temperatureC: temperature);
+            temperatureC: temperatureC);
 
-        Assert.Equal(3167.7489807144243d, capacity, precision: 8);
+        var expectedCapacity = CalculateOriginalSugarSolutionCapacity(temperatureC, dryMatterPercent, purityPercent);
+
+        Assert.Equal(expectedCapacity, actualCapacity, precision: 10);
     }
 
     [Fact]
@@ -389,5 +392,30 @@ public sealed class SubstancePropertyTests
             + s * s * s * (71.52 + 0.842 * t - 0.0055 * t2);
 
         return waterDensity + dryMatterContribution;
+    }
+
+    /// <summary>
+    /// Независимое эталонное воспроизведение исходной PLC-формулы CSS.
+    ///
+    /// Здесь намеренно не вызываются:
+    /// TechLib.CSS,
+    /// Water,
+    /// DryMatter,
+    /// MixturePropertyCalculator.
+    ///
+    /// Temperature сначала приводится к float, потому что исходный
+    /// контракт компонентов TechDotNetLib использует GetCapacity(float).
+    ///
+    /// Благодаря этому тест проверяет именно старую расчётную цепочку,
+    /// а не математическую double-версию формулы.
+    /// </summary>
+    private static double CalculateOriginalSugarSolutionCapacity(double temperatureC, double dryMatterPercent, double purityPercent)
+    {
+        var t = (double)(float)temperatureC;
+
+        if (t > 0.0)
+            return 4218.0 + 2.8 * t * Math.Log10(0.01 * t) - dryMatterPercent * (29.73 - 0.07536 * t - 0.046 * purityPercent);
+
+        return 4186.8 * (1.0 - (0.6 - 0.0018 * t) * dryMatterPercent * 0.01);
     }
 }

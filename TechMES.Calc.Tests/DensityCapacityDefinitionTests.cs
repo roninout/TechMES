@@ -38,31 +38,22 @@ public sealed class DensityCapacityDefinitionTests
     {
         var definition = new CapacityCalculationDefinition();
 
-        var componentParameter = definition.Parameters.Single(parameter =>
-            string.Equals(parameter.Key, "component0Code", StringComparison.OrdinalIgnoreCase));
-
+        var componentParameter = definition.Parameters.Single(parameter => string.Equals(parameter.Key, "component0Code", StringComparison.OrdinalIgnoreCase));
         var options = componentParameter.Options!;
 
-        Assert.Contains(options, option =>
-            string.Equals(option.Value, "ACN", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(options, option => string.Equals(option.Value, "ACN", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(options, option => string.Equals(option.Value, "DryMatter", StringComparison.OrdinalIgnoreCase));
 
-        Assert.DoesNotContain(options, option =>
-            string.Equals(option.Value, "DryMatter", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(options, option => string.Equals(option.Value, "Fusel", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(options, option => string.Equals(option.Value, "Methan", StringComparison.OrdinalIgnoreCase));
 
-        Assert.DoesNotContain(options, option =>
-            string.Equals(option.Value, "Fusel", StringComparison.OrdinalIgnoreCase));
-
-        Assert.DoesNotContain(options, option =>
-            string.Equals(option.Value, "Methan", StringComparison.OrdinalIgnoreCase));
-
-        var acn = options.Single(option =>
-            string.Equals(option.Value, "ACN", StringComparison.OrdinalIgnoreCase));
-
-        var acnVapor = options.Single(option =>
-            string.Equals(option.Value, "ACNS", StringComparison.OrdinalIgnoreCase));
+        var acn = options.Single(option => string.Equals(option.Value, "ACN", StringComparison.OrdinalIgnoreCase));
+        var acnVapor = options.Single(option => string.Equals(option.Value, "ACNS", StringComparison.OrdinalIgnoreCase));
+        var dryMatter = options.Single(option => string.Equals(option.Value, "DryMatter", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal("liquid", acn.Phase);
         Assert.Equal("vapor", acnVapor.Phase);
+        Assert.Equal("liquid", dryMatter.Phase);
     }
 
     [Fact]

@@ -210,12 +210,10 @@ public static class MixturePropertyCalculator
     }
 
     /// <summary>
-    /// Специальный контракт DryMatter.
-    /// Density и Capacity DryMatter восстановлены из корреляций сахарного водного раствора.
-    ///
-    /// Поэтому поддерживаются только:
-    /// - DryMatter = 100%;
-    /// - Water + DryMatter = 100%.
+    /// В отличие от Density:
+    /// - Pressure здесь не валидируется и не используется;
+    /// - DryMatter использует собственную CSS-корреляцию сахарного водного раствора;
+    /// - поддержка Capacity дополнительно проверяется capability metadata.
     /// </summary>
     private static void ValidateDryMatterComposition(IReadOnlyList<MixtureComponent> components)
     {
