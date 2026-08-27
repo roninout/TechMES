@@ -186,11 +186,11 @@ internal static class CalcContractMapper
             Description = parameter.Description,
 
             Options = options.Select(option => new CalcParameterOptionDto
-                        {
-                            Value = option.Value,
-                            Name = option.Name
-                        })
-                        .ToList()
+            {
+                Value = option.Value,
+                Name = option.Name,
+                Phase = option.Phase
+            }).ToList()
         };
     }
 

@@ -88,16 +88,12 @@ public abstract class MixtureCalculationDefinitionBase : CalculationDefinitionBa
             Order: 100,
             Description: "Number of active mixture components. Current SCADA structure supports from 1 to 5 components."));
 
-        // Коды веществ не читаются непосредственно из SCADA.
-        //
-        // В старом TechParamsCalc состав смеси хранился собственной логикой.
-        // В новой архитектуре выбранный SubstanceCode является обычным
-        // Constant input конкретного Calc Job.
-        //
-        // Поэтому пользователь выбирает вещество из общего Substance Catalog,
-        // а в Job сохраняется его стабильный Code.
+        // Для Substance Selection передаём фазу отдельным структурированным полем.
+        // Name остаётся только пользовательским отображением: Water — Water (liquid)
+        // Но WEB больше не должен разбирать окончание Name, чтобы понять физическую фазу вещества.
+        // Для фильтрации Liquid/Vapour используется исключительно Option.Phase.
         var substanceOptions = SubstanceCatalog.Items
-            .Select(item => new CalculationParameterOption(item.Code, $"{item.Code} — {item.Name} ({GetPhaseName(item.Phase)})"))
+            .Select(item => new CalculationParameterOption(item.Code, $"{item.Code} — {item.Name} ({GetPhaseName(item.Phase)})", GetPhaseName(item.Phase)))
             .ToArray();
 
         // Внутренние ключи компонентов оставляем 0-based:

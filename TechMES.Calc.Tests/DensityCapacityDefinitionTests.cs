@@ -21,6 +21,19 @@ public sealed class DensityCapacityDefinitionTests
     }
 
     [Fact]
+    public void MixtureComponentOptionsExposeSubstancePhase()
+    {
+        var definition = new DensityCalculationDefinition();
+
+        var componentParameter = definition.Parameters.Single(parameter => string.Equals(parameter.Key, "component0Code", StringComparison.OrdinalIgnoreCase));
+        var water = componentParameter.Options!.Single(option => string.Equals(option.Value, "Water", StringComparison.OrdinalIgnoreCase));
+        var waterVapor = componentParameter.Options!.Single(option => string.Equals(option.Value, "WaterS", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal("liquid", water.Phase);
+        Assert.Equal("vapor", waterVapor.Phase);
+    }
+
+    [Fact]
     public void DensityCalculatesPureAcetonitrile()
     {
         var definition = new DensityCalculationDefinition();

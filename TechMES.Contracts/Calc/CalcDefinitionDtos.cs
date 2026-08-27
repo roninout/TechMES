@@ -46,6 +46,16 @@ public sealed class CalcParameterOptionDto
     /// Отображаемое пользователю название.
     /// </summary>
     public string Name { get; set; } = "";
+
+    /// <summary>
+    /// Необязательная физическая фаза варианта.
+    /// Для Substance Options:
+    ///     liquid
+    ///     vapor
+    /// Для остальных Selection-параметров null.
+    /// Поле предназначено для логики UI и не зависит от пользовательского отображаемого Name.
+    /// </summary>
+    public string? Phase { get; set; }
 }
 
 /// <summary>

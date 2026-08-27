@@ -918,33 +918,38 @@
         }
     }
 
+    private const string LiquidSubstancePhase = "liquid";
+    private const string VaporSubstancePhase = "vapor";
+
     private IReadOnlyList<CalcParameterOptionDto> SubstanceOptions => GetParameter("component0Code")?.Options ?? [];
 
     /// <summary>
-    /// Компоненты, которые разрешено показывать в ComboBox
-    /// для выбранной глобальной фазы смеси.
+    /// Текущая выбранная глобальная фаза смеси в Settings.
     ///
-    /// Calculation Definition уже передаёт phase в Name:
+    /// Внутри Calc используется настоящий SubstancePhase.
+    /// WEB получает его транспортное представление через CalcParameterOptionDto.Phase.
     ///
-    ///     "... (liquid)"
-    ///     "... (vapor)"
-    ///
-    /// Поэтому WEB не зависит от TechMES.Calc/SubstancePhase напрямую.
-    /// Это сохраняет существующее разделение проектов:
-    /// TechMES.Web -> Contracts, но не -> TechMES.Calc.
+    /// Поэтому здесь больше нет анализа пользовательского Name.
     /// </summary>
-    private IReadOnlyList<CalcParameterOptionDto> FilteredSubstanceOptions => SubstanceOptions.Where(option => IsVaporOption(option) == _isVaporMixture).ToArray();
+    private string SelectedSubstancePhase => _isVaporMixture ? VaporSubstancePhase : LiquidSubstancePhase;
 
     /// <summary>
-    /// Определяет Vapor option по phase, которую уже передаёт Calculation Definition.
+    /// Возвращает только компоненты текущей глобальной фазы смеси.
+    ///
+    /// Phase приходит отдельным полем Definition DTO:
+    ///
+    ///     liquid
+    ///     vapor
+    ///
+    /// Отображаемый Name компонента в фильтрации больше не участвует.
     /// </summary>
-    private static bool IsVaporOption(CalcParameterOptionDto option)
-    {
-        return option.Name.EndsWith("(vapor)", StringComparison.OrdinalIgnoreCase);
-    }
+    private IReadOnlyList<CalcParameterOptionDto> FilteredSubstanceOptions => SubstanceOptions.Where(option => string.Equals(option.Phase, SelectedSubstancePhase, StringComparison.OrdinalIgnoreCase)).ToArray();
 
     /// <summary>
-    /// Определяет фазу сохранённого SubstanceCode.
+    /// Определяет фазу конкретного сохранённого SubstanceCode.
+    ///
+    /// Поиск выполняется по стабильному Value,
+    /// а физическая фаза берётся только из отдельного Option.Phase.
     /// </summary>
     private bool IsVaporSubstanceCode(string? substanceCode)
     {
@@ -953,7 +958,7 @@
 
         var option = SubstanceOptions.FirstOrDefault(item => string.Equals(item.Value, substanceCode.Trim(), StringComparison.OrdinalIgnoreCase));
 
-        return option is not null && IsVaporOption(option);
+        return string.Equals(option?.Phase, VaporSubstancePhase, StringComparison.OrdinalIgnoreCase);
     }
 
     private string MixturePhaseText => _isVaporMixture ? "Vapour" : "Liquid";

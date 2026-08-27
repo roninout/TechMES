@@ -63,7 +63,22 @@ public enum CalculationParameterRole
 /// <param name="Name">
 /// Отображаемое пользователю название.
 /// </param>
-public sealed record CalculationParameterOption(string Value, string Name);
+/// <param name="Phase">
+/// Необязательная физическая фаза варианта.
+///
+/// Поле используется для Selection-параметров компонентов смеси.
+/// Для веществ содержит нормализованное значение:
+///
+///     liquid
+///     vapor
+///
+/// Для обычных Selection, не связанных с веществами, остаётся null.
+///
+/// Phase хранится отдельно от Name намеренно:
+/// пользовательское отображаемое название может изменяться,
+/// а логика WEB не должна анализировать его текст.
+/// </param>
+public sealed record CalculationParameterOption(string Value, string Name, string? Phase = null);
 
 /// <summary>
 /// Полностью описывает один входной параметр Calculation Definition.
