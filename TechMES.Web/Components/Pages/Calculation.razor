@@ -305,6 +305,16 @@
                                                    EquipmentCatalog="@_equipmentCatalog"
                                                    JobChanged="@ReloadAfterDensityJobChangedAsync" />
                     }
+                    else if (_selectedModel.Type == CalcModelTypeDto.Capacity)
+                    {
+                        <CapacityConfigurationPanel @ref="_capacityConfigurationPanel"
+                                                    @key="_selectedModel.Name"
+                                                    Model="@_selectedModel"
+                                                    Job="@selectedJob"
+                                                    State="@selectedState"
+                                                    EquipmentCatalog="@_equipmentCatalog"
+                                                    JobChanged="@ReloadAfterCapacityJobChangedAsync" />
+                    }
                     else
                     {
                         <div class="calc-model-placeholder">
@@ -356,6 +366,7 @@
     private CalcModelDto? _selectedModel;
     private TankConfigurationPanel? _tankConfigurationPanel;
     private DensityConfigurationPanel? _densityConfigurationPanel;
+    private CapacityConfigurationPanel? _capacityConfigurationPanel;
 
     /// <summary>
     /// true, если левая панель списка Calc models скрыта.
@@ -511,6 +522,18 @@
     /// Поэтому выполнять новый CtApi catalog scan здесь не требуется.
     /// </summary>
     private Task ReloadAfterDensityJobChangedAsync()
+    {
+        return ReloadJobsAndStatesAsync();
+    }
+
+    /// <summary>
+    /// После создания или сохранения Capacity Job повторно читаем
+    /// только Jobs и Runtime States.
+    ///
+    /// Calc Model Catalog и Equipment Catalog не изменились,
+    /// поэтому новый CtApi scan здесь не требуется.
+    /// </summary>
+    private Task ReloadAfterCapacityJobChangedAsync()
     {
         return ReloadJobsAndStatesAsync();
     }
@@ -726,8 +749,7 @@
             return;
 
         // Каждая специализированная Calculation panel сообщает, есть ли в ней несохранённая конфигурация.
-        // При добавлении Density нельзя оставлять проверку, жёстко привязанную только к Tank.
-        var hasPendingChanges = _tankConfigurationPanel?.HasPendingChanges == true || _densityConfigurationPanel?.HasPendingChanges == true;
+        var hasPendingChanges = _tankConfigurationPanel?.HasPendingChanges == true || _densityConfigurationPanel?.HasPendingChanges == true || _capacityConfigurationPanel?.HasPendingChanges == true;
 
         if (hasPendingChanges)
         {

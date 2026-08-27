@@ -1,0 +1,2532 @@
+﻿@using System.Globalization
+@using System.Text.Json
+@using TechMES.Contracts.Equipment
+@using TechMES.Contracts.Param
+@inject CalcApiClient CalcApi
+@inject ParamApiClient ParamApi
+@inject CalcProcessInputResolver ProcessInputResolver
+@inject NotificationService NotificationService
+
+<div class="capacity-configuration-host">
+
+    @if (_isLoadingDefinition)
+    {
+        <div class="capacity-loading">
+
+            <TechMesLoadingBar Label="Loading Capacity configuration" />
+
+            <div class="capacity-loading-content">
+
+                <RadzenIcon Icon="hourglass_top"
+                            class="capacity-loading-icon" />
+
+                <div class="capacity-loading-title">
+                    Loading Capacity configuration...
+                </div>
+
+                <div class="capacity-loading-model">
+                    @Model.Name
+                </div>
+
+            </div>
+
+        </div>
+    }
+    else if (Definition is null)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger"
+                     AllowClose="false"
+                     ShowIcon="true">
+
+            @(_loadError.Length > 0
+                ? _loadError
+                : "Capacity calculation definition is not available.")
+
+        </RadzenAlert>
+    }
+    else
+    {
+        <div class="capacity-configuration">
+
+            @* ============================================================
+               ВЕРХНЯЯ ПАНЕЛЬ
+               
+               В отличие от Tank здесь нет SVG.
+               
+               Панель показывает только текущее рабочее состояние:
+               - рассчитанную Capacity;
+               - текущие значения всех ProcessInput;
+               - текущую Capacity correction.
+               
+               Все значения берутся из сохранённого Runtime State,
+               поэтому несохранённые Settings не подменяют фактическое
+               состояние работающего Calc Job.
+               ============================================================ *@
+            @{
+                var primaryProcessBars = BuildPrimaryProcessBars();
+                var processBarCount = primaryProcessBars.Count;
+                var pieItems = BuildLivePieItems();
+            }
+
+            <div class="capacity-live-panel">
+
+                @* ============================================================
+                   HEADER
+                   ============================================================ *@
+                <div class="capacity-live-header">
+
+                    <div class="capacity-live-mixture-title">
+
+                        <RadzenIcon Icon="@GetLiveMixturePhaseIcon()"
+                                    class="capacity-live-mixture-phase-icon" />
+
+                        <span>
+                            @GetLiveMixtureTitle()
+                        </span>
+
+                    </div>
+
+                    <div class="capacity-toolbar-enabled">
+
+                        <span class="capacity-switch-state @GetSwitchStateClass(_enabled)">
+                            @GetSwitchStateText(_enabled)
+                        </span>
+
+                        <RadzenSwitch @bind-Value="_enabled"
+                                      Disabled="@(_isSaving || (!_enabled && !IsConfigurationReady))" />
+
+                        <span class="capacity-switch-label">
+                            Enabled
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="capacity-panel-separator"></div>
+
+
+                @* Предупреждение о выключенной записи ValCalc здесь больше не показываем.
+                Allow output writes является штатной настройкой, а не Runtime error. *@
+
+                @if (HasUnsavedChanges)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                 Variant="Variant.Flat"
+                                 Shade="Shade.Lighter"
+                                 AllowClose="false"
+                                 ShowIcon="true"
+                                 class="capacity-live-status-alert">
+
+                        Unsaved changes. Runtime continues using the last saved configuration.
+
+                    </RadzenAlert>
+                }
+                else if (State?.Status == CalcJobStateStatusDto.Error)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger"
+                                 Variant="Variant.Flat"
+                                 Shade="Shade.Lighter"
+                                 AllowClose="false"
+                                 ShowIcon="true"
+                                 class="capacity-live-status-alert">
+
+                        @(State.ReasonMessage ?? "Capacity calculation failed.")
+
+                    </RadzenAlert>
+                }
+                else if (State?.Status == CalcJobStateStatusDto.Skipped)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                 Variant="Variant.Flat"
+                                 Shade="Shade.Lighter"
+                                 AllowClose="false"
+                                 ShowIcon="true"
+                                 class="capacity-live-status-alert">
+
+                        @(State.ReasonMessage ?? "Capacity calculation was skipped.")
+
+                    </RadzenAlert>
+                }
+
+
+                @* ============================================================
+                   MAIN LIVE AREA
+                   ============================================================ *@
+                <div class="capacity-live-layout capacity-live-layout-bars-@processBarCount">
+
+
+                    @* ========================================================
+                       LEFT - TEMPERATURE / PRESSURE
+                       ======================================================== *@
+
+                    @if (primaryProcessBars.Count > 0)
+                    {
+                        <div class="capacity-process-bars capacity-process-bars-@processBarCount">
+
+                            @foreach (var bar in primaryProcessBars)
+                            {
+                                <div class="capacity-process-meter">
+
+                                    @* =========================================================
+                                       READONLY CURRENT VALUE
+
+                                       Верхнее поле имеет фиксированную ширину.
+                                       Сам вертикальный bar ниже центрируется относительно
+                                       именно этого поля, а не относительно числовой шкалы.
+                                       ========================================================= *@
+                                    <div class="capacity-process-meter-readout">
+
+                                        <RadzenFormField AllowFloatingLabel="false"
+                                                         Text="@bar.ItemName"
+                                                         Variant="Variant.Outlined"
+                                                         class="capacity-process-form-field">
+
+                                            <RadzenNumeric TValue="double?"
+                                                           Value="@bar.Value"
+                                                           ReadOnly="true"
+                                                           ShowUpDown="false"
+                                                           Format="0.###"
+                                                           class="capacity-process-top-value" />
+
+                                        </RadzenFormField>
+
+                                    </div>
+
+
+                                    @* =========================================================
+                                       VERTICAL BAR
+                                       ========================================================= *@
+                                    <div class="capacity-process-meter-body">
+
+                                        <ParamGraphVerticalBar Label="@bar.ItemName"
+                                                               Value="@bar.Value"
+                                                               Min="@bar.Min"
+                                                               Max="@bar.Max"
+                                                               FillColor="@bar.FillColor" />
+
+                                    </div>
+
+
+                                    @* Unit находится сразу под bargraph, как в существующей VGA-панели. *@
+                                    <div class="capacity-process-meter-unit">
+                                        @(string.IsNullOrWhiteSpace(bar.Unit) ? "-" : bar.Unit)
+                                    </div>
+
+
+                                    <div class="capacity-process-meter-title">
+                                        @bar.Name
+                                    </div>
+
+
+                                    <div class="capacity-process-meter-source"
+                                         title="@bar.Source">
+                                        @bar.Source
+                                    </div>
+
+                                </div>
+                            }
+
+                        </div>
+                    }
+
+                    <div class="capacity-live-center">
+
+                        @* ========================================================
+                           MAIN DENSITY CARD
+                           Верх: собственный расчёт TechMES.
+                           Низ: фактическое выбранное SCADA значение.
+                           Sel:
+                               0 -> Current value / ValHmi;
+                               1 -> Calculated value / ValCalc.
+                           ======================================================== *@
+                        <div class="capacity-main-card">
+
+
+                            @* ====================================================
+                               TECHMES CALCULATED VALUE
+                               ==================================================== *@
+                            <div class="capacity-value-row">
+
+                                <div class="capacity-selection-title capacity-selection-title-techmes @(IsTechMesOutputWriteEnabled ? "is-selected" : "")">
+
+                                    <div class="capacity-selection-mark">
+
+                                        @if (IsTechMesOutputWriteEnabled)
+                                        {
+                                            <RadzenIcon Icon="check"
+                                                        class="capacity-selection-icon" />
+                                        }
+
+                                    </div>
+
+                                    <span>
+                                        TechMES calculated value
+                                    </span>
+
+                                </div>
+
+                                <div class="capacity-value-controls">
+
+                                    <div class="capacity-delta-placeholder"
+                                         aria-hidden="true">
+                                    </div>
+
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="Capacity"
+                                                     Variant="Variant.Outlined"
+                                                     class="capacity-main-form-field capacity-result-form-field">
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetLastOutputNumber("capacity")"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###' J/(kg·K)'"
+                                                       class="capacity-main-value-input capacity-result-value-input" />
+
+                                    </RadzenFormField>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="capacity-card-separator"></div>
+
+
+                            @* ====================================================
+           CURRENT VALUE / ValHmi
+
+           Sel = 0 -> эта строка активна.
+           ==================================================== *@
+                            <div class="capacity-value-row">
+
+                                <div class="capacity-selection-title @(IsCalculatedValueSelected == false ? "is-selected" : "")">
+
+                                    <div class="capacity-selection-mark">
+
+                                        @if (IsCalculatedValueSelected == false)
+                                        {
+                                            <RadzenIcon Icon="check"
+                                                        class="capacity-selection-icon" />
+                                        }
+
+                                    </div>
+
+                                    <span>
+                                        Current value
+                                    </span>
+
+                                </div>
+
+                                <div class="capacity-value-controls">
+
+                                    <div class="capacity-delta-placeholder"
+                                         aria-hidden="true">
+                                    </div>
+
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="ValHmi"
+                                                     Variant="Variant.Outlined"
+                                                     class="capacity-main-form-field">
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@CurrentCapacityHmi"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###' J/(kg·K)'"
+                                                       class="capacity-main-value-input" />
+
+                                    </RadzenFormField>
+
+                                </div>
+
+                            </div>
+
+
+                            @* ====================================================
+           CALCULATED VALUE / Delta + ValCalc
+
+           Sel = 1 -> эта строка активна.
+           ==================================================== *@
+                            <div class="capacity-value-row">
+
+                                <div class="capacity-selection-title @(IsCalculatedValueSelected == true ? "is-selected" : "")">
+
+                                    <div class="capacity-selection-mark">
+
+                                        @if (IsCalculatedValueSelected == true)
+                                        {
+                                            <RadzenIcon Icon="check"
+                                                        class="capacity-selection-icon" />
+                                        }
+
+                                    </div>
+
+                                    <span>
+                                        Calculated value
+                                    </span>
+
+                                </div>
+
+                                <div class="capacity-value-controls">
+
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="Delta"
+                                                     Variant="Variant.Outlined"
+                                                     class="capacity-delta-form-field">
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@CurrentDeltaC"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###"
+                                                       class="capacity-delta-input" />
+
+                                    </RadzenFormField>
+
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="ValCalc"
+                                                     Variant="Variant.Outlined"
+                                                     class="capacity-main-form-field">
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@CurrentCapacityCalcEngineering"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###' J/(kg·K)'"
+                                                       class="capacity-main-value-input" />
+
+                                    </RadzenFormField>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        @* ========================================================
+       ADDITIONAL PARAMETERS
+       ======================================================== *@
+                        @foreach (var binding in ActiveProcessBindings.Skip(2).Where(binding => binding.IsLinked))
+                        {
+                            <div class="capacity-additional-card">
+
+                                <div class="capacity-value-row">
+
+                                    <div class="capacity-value-group-title">
+                                        @GetProcessDisplayName(binding)
+                                    </div>
+
+                                    <div class="capacity-value-controls">
+
+                                        <div class="capacity-delta-placeholder"
+                                             aria-hidden="true">
+                                        </div>
+
+                                        <RadzenFormField AllowFloatingLabel="false"
+                                                         Text="@GetProcessRuntimeTag(binding)"
+                                                         Variant="Variant.Outlined"
+                                                         class="capacity-main-form-field">
+
+                                            <RadzenNumeric TValue="double?"
+                                                           Value="@GetProcessCurrentValue(binding)"
+                                                           ReadOnly="true"
+                                                           ShowUpDown="false"
+                                                           Format="@GetNumberFormat(binding.Parameter)"
+                                                           class="capacity-main-value-input" />
+
+                                        </RadzenFormField>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+                        }
+
+                    </div>
+
+
+                    @* ========================================================
+                       RIGHT - MIXTURE PIE
+                       ======================================================== *@
+                    <div class="capacity-pie-column">
+
+                        @if (pieItems.Count > 0)
+                        {
+                            <div class="capacity-pie-shell">
+
+                                <RadzenChart class="capacity-pie-chart">
+
+                                    <TechMesPieSeries TItem="CapacityPieItem"
+                                                      Data="@pieItems"
+                                                      CategoryProperty="@nameof(CapacityPieItem.LegendText)"
+                                                      ValueProperty="@nameof(CapacityPieItem.Percent)"
+                                                      DataLabelText="@FormatPieItemCapacity"
+                                                      StartAngle="90"
+                                                      StrokeWidth="2"
+                                                      ShowTooltipOnLegend="true">
+
+                                        <ChildContent>
+
+                                            <RadzenSeriesDataLabels Visible="true"
+                                                                    Position="DataLabelPosition.Inside"
+                                                                    Appearance="DataLabelAppearance.Chip"
+                                                                    AllowOverlap="true" />
+
+                                        </ChildContent>
+
+                                        <TooltipTemplate Context="item">
+
+                                            <div class="capacity-pie-tooltip">
+
+                                                <strong>@item.Code</strong>
+
+                                                <div>
+                                                    @item.Percent.ToString("0.###", CultureInfo.InvariantCulture) %
+                                                </div>
+
+                                                <div>
+                                                    Capacity:
+                                                    @FormatPieCapacity(item.CapacityJPerKgK)
+                                                    J/(kg·K)
+                                                </div>
+
+                                            </div>
+
+                                        </TooltipTemplate>
+
+                                    </TechMesPieSeries>
+
+                                    <RadzenLegend Position="LegendPosition.Bottom" />
+
+                                </RadzenChart>
+
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="capacity-pie-empty"> Mixture data is not available. </div>
+                        }
+
+                    </div>
+
+
+                </div>
+
+            </div>
+
+
+            @* ============================================================
+               SETTINGS
+               
+               Здесь находится всё, что пользователь действительно
+               конфигурирует:
+               
+               - SCADA bindings ProcessInput;
+               - состав смеси;
+               - correction fallback;
+               - output write permission.
+               ============================================================ *@
+            <section class="capacity-settings-column">
+
+                <ParamAiPanel Title="Settings"
+                              Icon="settings"
+                              InitiallyCollapsed="true">
+
+                    <div class="capacity-settings-body">
+
+                        @* ==================================================
+                           PROCESS INPUT BINDINGS
+                           ================================================== *@
+                        <section class="capacity-process-settings">
+
+                            @{
+                                var visibleBindings = ActiveProcessBindings;
+                            }
+
+                            @for (var index = 0; index < visibleBindings.Count; index++)
+                            {
+                                var binding = visibleBindings[index];
+
+                                <div class="capacity-process-row">
+
+                                    <div class="capacity-settings-index">
+                                        @(index + 1)
+                                    </div>
+
+                                    <RadzenTextBox Value="@binding.SourceText"
+                                                   Change="@((string value) => OnProcessSourceChanged(binding, value))"
+                                                   Placeholder="Equipment.ITEM or SCADA tag"
+                                                   Disabled="@(_isSaving || _isCheckingBindings)"
+                                                   class="capacity-process-tag" />
+
+                                    <div class="capacity-process-status">
+                                        <RadzenBadge Text="@GetBindingBadgeText(binding)"
+                                                     BadgeStyle="@GetBindingBadgeStyle(binding)" />
+                                    </div>
+
+                                    <div class="capacity-process-name">
+                                        @binding.Parameter.Name
+                                    </div>
+
+                                    <div class="capacity-process-action">
+
+                                        @if (index == 0)
+                                        {
+                                            <RadzenNumeric TValue="int"
+                                                           Value="@_processParameterCount"
+                                                           Change="@OnProcessParameterCountChanged"
+                                                           Min="2"
+                                                           Max="5"
+                                                           Step="1"
+                                                           Disabled="@(_isSaving || _isCheckingBindings)"
+                                                           class="capacity-process-count" />
+                                        }
+                                        else if (index == 1)
+                                        {
+                                            <RadzenButton Text="Check"
+                                                          Icon="manage_search"
+                                                          ButtonStyle="ButtonStyle.Light"
+                                                          Disabled="@(_isSaving || _isCheckingBindings)"
+                                                          Click="@CheckProcessBindingsAsync"
+                                                          class="capacity-process-check" />
+                                        }
+
+                                    </div>
+
+                                </div>
+                            }
+
+                        </section>
+
+
+                        <div class="capacity-settings-separator"></div>
+
+
+                        @* ==================================================
+                           MIXTURE
+                           ================================================== *@
+                        <section class="capacity-mixture-settings">
+
+                            <div class="capacity-mixture-header">
+
+                                <div class="capacity-mixture-title">
+                                    <RadzenIcon Icon="science" />
+                                    <span>Mixture</span>
+                                </div>
+
+                                <div class="capacity-mixture-phase">
+
+                                    <span class="capacity-mixture-phase-text">
+                                        @MixturePhaseText
+                                    </span>
+
+                                    @* false = Liquid  -> water_drop true  = Vapour  -> air
+                                       ToggleButton не имеет собственного видимого background: оставляем только картинку Material Icon. *@
+                                    <RadzenToggleButton Value="@_isVaporMixture"
+                                                        Change="@OnMixturePhaseChanged"
+                                                        Icon="water_drop"
+                                                        ToggleIcon="air"
+                                                        ButtonStyle="ButtonStyle.Light"
+                                                        ToggleButtonStyle="ButtonStyle.Light"
+                                                        Variant="Variant.Text"
+                                                        ToggleVariant="Variant.Text"
+                                                        Disabled="@_isSaving"
+                                                        class="capacity-mixture-phase-toggle"
+                                                        title="Switch Liquid / Vapour" />
+
+                                </div>
+
+                            </div>
+
+                            @if (CurrentComponentCount is { } componentCount)
+                            {
+                                @for (var index = 0; index < componentCount; index++)
+                                {
+                                    var component = _components[index];
+
+                                    <div class="capacity-mixture-row">
+
+                                        <div class="capacity-settings-index">
+                                            @(index + 1)
+                                        </div>
+
+                                        <RadzenDropDown TValue="string"
+                                                        Data="@FilteredSubstanceOptions"
+                                                        TextProperty="@nameof(CalcParameterOptionDto.Name)"
+                                                        ValueProperty="@nameof(CalcParameterOptionDto.Value)"
+                                                        @bind-Value="component.SubstanceCode"
+                                                        Placeholder="Select component..."
+                                                        Disabled="@_isSaving"
+                                                        class="capacity-mixture-component" />
+
+                                        <div></div>
+
+                                        <div></div>
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetCurrentPercent(index)"
+                                                       Format="0.###' %'"
+                                                       Disabled="true"
+                                                       ShowUpDown="false"
+                                                       class="capacity-mixture-percent" />
+
+                                    </div>
+                                }
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(MixtureValidationError))
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                             AllowClose="false"
+                                             ShowIcon="true"
+                                             class="capacity-settings-warning">
+
+                                    @MixtureValidationError
+
+                                </RadzenAlert>
+                            }
+
+                        </section>
+
+
+                        <div class="capacity-settings-separator"></div>
+
+
+                        <div class="capacity-write-settings">
+
+                            <div>
+
+                                <div class="capacity-write-title">
+                                    Allow output writes
+                                </div>
+
+                                <div class="capacity-write-description">
+                                    Write calculated Capacity to SCADA ValCalc
+                                </div>
+
+                            </div>
+
+                            <div class="capacity-write-switch">
+
+                                <span class="capacity-switch-state @GetSwitchStateClass(_allowOutputWrites)">
+                                    @GetSwitchStateText(_allowOutputWrites)
+                                </span>
+
+                                <RadzenSwitch @bind-Value="_allowOutputWrites"
+                                                Disabled="@(_isSaving || (!_allowOutputWrites && (!IsConfigurationReady || !IsOutputBindingReady)))" />
+
+                            </div>
+
+                        </div>
+
+
+                        @if (!IsOutputBindingReady)
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Danger"
+                                            AllowClose="false"
+                                            ShowIcon="true"
+                                            class="capacity-settings-warning">
+
+                                Capacity Equipment does not contain ITEM ValCalc.
+                                Output writes cannot be enabled.
+
+                            </RadzenAlert>
+                        }
+
+
+                    </div>
+
+                </ParamAiPanel>
+
+
+                <div class="capacity-actions">
+
+                    @if (Job is null)
+                    {
+                        <RadzenButton Text="Create job"
+                                      Icon="add"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@(_isSaving || !IsConfigurationReady)"
+                                      Click="@CreateJobAsync" />
+                    }
+                    else
+                    {
+                        <RadzenButton Text="Save"
+                                      Icon="save"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@(_isSaving || !HasUnsavedChanges || !IsConfigurationReady)"
+                                      Click="@SaveJobAsync" />
+                    }
+
+                </div>
+
+            </section>
+
+        </div>
+    }
+
+</div>
+
+
+@code {
+    private const string CapacityDefinitionCode = "mixture.capacity";
+    private const string ComponentCountKey = "componentCount";
+    private const string CorrectionKey = "capacityCorrection";
+
+    private const int MinProcessParameterCount = 2;
+    private const int MaxProcessParameterCount = 5;
+    private int _processParameterCount = MinProcessParameterCount;
+
+    private const int MaxComponentCount = 5;
+    private const double PercentageTolerance = 1e-6;
+
+    [Parameter, EditorRequired]
+    public CalcModelDto Model { get; set; } = default!;
+
+    [Parameter]
+    public CalcJobDto? Job { get; set; }
+
+    [Parameter]
+    public CalcJobStateDto? State { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<EquipmentDto> EquipmentCatalog { get; set; } = [];
+
+    [Parameter]
+    public EventCallback JobChanged { get; set; }
+
+    private CalcDefinitionDto? _definition;
+
+    private readonly List<CapacityProcessBindingEditor> _processBindings = [];
+    private readonly List<CapacityComponentEditor> _components = [];
+    private readonly Dictionary<string, double?> _liveScadaValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ParamSnapshotResponse> _linkedAiSnapshots = new(StringComparer.OrdinalIgnoreCase);
+
+    private string _contextKey = "";
+    private string _savedEditorSignature = "";
+    private string _loadError = "";
+    private string _scadaReadError = "";
+    private string _scadaRefreshModelName = "";
+
+    private DateTimeOffset _nextScadaRefreshUtc = DateTimeOffset.MinValue;
+
+    private bool _enabled;
+    private bool _allowOutputWrites;
+
+    // false = Liquid; true  = Vapor. Это только состояние редактора Settings.
+    // В Calc Job отдельное поле Phase не сохраняем: после загрузки фаза однозначно восстанавливается по уже сохранённым SubstanceCode.
+    private bool _isVaporMixture;
+
+    private bool _isLoadingDefinition;
+    private bool _isSaving;
+    private bool _isCheckingBindings;
+    private bool _isReadingScada;
+
+    private CalcDefinitionDto? Definition => _definition;
+
+    // ============================================================
+    // SCADA ITEM mapping
+    // ============================================================
+
+    private string? ComponentCountTag => GetItemTag(Model, "CompN");
+    private string? DeltaCTag => GetItemTag(Model, "DeltaC");
+    private string? CapacityHmiTag => GetItemTag(Model, "ValHmi");
+    private string? CapacityOutputTag => GetItemTag(Model, "ValCalc");
+
+    private string? GetPercTag(int index)
+    {
+        return GetItemTag(Model, $"Perc{index}");
+    }
+
+    /// <summary>
+    /// Показывает, разрешена ли запись рассчитанного TechMES Capacity в SCADA ValCalc в текущей СОХРАНЁННОЙ конфигурации Job.
+    /// Используем Job.WriteEnabled, а не редактируемый _allowOutputWrites, потому что верхняя панель отображает фактическое состояние Runtime.
+    /// Если пользователь изменил Allow output writes, но ещё не нажал Save, верхняя панель продолжает показывать реально работающую конфигурацию.
+    /// </summary>
+    private bool IsTechMesOutputWriteEnabled => Job?.WriteEnabled == true;
+
+    // ============================================================
+    // Current values
+    // ============================================================
+
+    /// <summary>
+    /// Возвращает текущее количество компонентов.
+    ///
+    /// Для работающего Job первым источником является LastInputs,
+    /// но только если componentCount действительно сохранён как Tag binding.
+    ///
+    /// До создания Job значение читается непосредственно из SCADA CompN
+    /// через общий Param numeric tag check.
+    /// </summary>
+    private int? CurrentComponentCount
+    {
+        get
+        {
+            var rawValue = GetRuntimeTagInputNumber(ComponentCountKey) ?? GetLiveScadaValue("CompN");
+
+            if (!rawValue.HasValue || !double.IsFinite(rawValue.Value))
+                return null;
+
+            var value = (int)Math.Round(rawValue.Value);
+
+            if (Math.Abs(rawValue.Value - value) > 1e-6 || value < 1 || value > MaxComponentCount)
+                return null;
+
+            return value;
+        }
+    }
+
+    private double? GetCurrentPercent(int index)
+    {
+        return GetRuntimeTagInputNumber(GetComponentPercentKey(index)) ?? GetLiveScadaValue($"Perc{index}");
+    }
+
+    private double? CurrentDeltaC => GetRuntimeTagInputNumber(CorrectionKey) ?? GetLiveScadaValue("DeltaC");
+
+    // ValHmi Capacity уже находится в инженерных единицах J/(kg·K).
+    private double? CurrentCapacityHmi => GetLiveScadaValue("ValHmi");
+
+    /// <summary>
+    /// ValCalc читается как фактическое SCADA значение.
+    ///
+    /// Capacity в отличие от Density не использует legacy Scale = 10.
+    /// Runtime пишет итоговую теплоёмкость непосредственно в J/(kg·K), поэтому нормальный output contract:
+    ///
+    ///     Scale = 1
+    ///     Offset = 0
+    ///
+    /// Обратное преобразование всё равно выполняем через сохранённый Job, чтобы UI не зависел от захардкоженного значения.
+    /// </summary>
+    private double? CurrentCapacityCalcEngineering
+    {
+        get
+        {
+            var scadaValue = GetLiveScadaValue("ValCalc");
+
+            if (!scadaValue.HasValue)
+                return null;
+
+            var output = Job?.Outputs.FirstOrDefault(item => string.Equals(item.OutputKey, "capacity", StringComparison.OrdinalIgnoreCase));
+            var scale = output?.Scale ?? 1d;
+            var offset = output?.Offset ?? 0d;
+
+            if (!double.IsFinite(scale) || Math.Abs(scale) < double.Epsilon || !double.IsFinite(offset))
+                return null;
+
+            return (scadaValue.Value - offset) / scale;
+        }
+    }
+
+    private const string LiquidSubstancePhase = "liquid";
+    private const string VaporSubstancePhase = "vapor";
+
+    private IReadOnlyList<CalcParameterOptionDto> SubstanceOptions => GetParameter("component0Code")?.Options ?? [];
+
+    /// <summary>
+    /// Текущая выбранная глобальная фаза смеси в Settings.
+    ///
+    /// Внутри Calc используется настоящий SubstancePhase.
+    /// WEB получает его транспортное представление через CalcParameterOptionDto.Phase.
+    ///
+    /// Поэтому здесь больше нет анализа пользовательского Name.
+    /// </summary>
+    private string SelectedSubstancePhase => _isVaporMixture ? VaporSubstancePhase : LiquidSubstancePhase;
+
+    /// <summary>
+    /// Возвращает только компоненты текущей глобальной фазы смеси.
+    ///
+    /// Phase приходит отдельным полем Definition DTO:
+    ///
+    ///     liquid
+    ///     vapor
+    ///
+    /// Отображаемый Name компонента в фильтрации больше не участвует.
+    /// </summary>
+    private IReadOnlyList<CalcParameterOptionDto> FilteredSubstanceOptions => SubstanceOptions.Where(option => string.Equals(option.Phase, SelectedSubstancePhase, StringComparison.OrdinalIgnoreCase)).ToArray();
+
+    /// <summary>
+    /// Определяет фазу конкретного сохранённого SubstanceCode.
+    ///
+    /// Поиск выполняется по стабильному Value,
+    /// а физическая фаза берётся только из отдельного Option.Phase.
+    /// </summary>
+    private bool IsVaporSubstanceCode(string? substanceCode)
+    {
+        if (string.IsNullOrWhiteSpace(substanceCode))
+            return false;
+
+        var option = SubstanceOptions.FirstOrDefault(item => string.Equals(item.Value, substanceCode.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        return string.Equals(option?.Phase, VaporSubstancePhase, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string MixturePhaseText => _isVaporMixture ? "Vapour" : "Liquid";
+
+    private string MixturePhaseIcon => _isVaporMixture ? "air" : "water_drop";
+
+    /// <summary>
+    /// Верхняя live-панель должна показывать фазу реально сохранённой смеси,
+    /// а не несохранённого состояния переключателя Settings.
+    ///
+    /// Для нового Job сохранённой смеси ещё нет,
+    /// поэтому используется текущее состояние редактора.
+    /// </summary>
+    private string GetLiveMixturePhaseIcon()
+    {
+        if (CurrentComponentCount.HasValue)
+        {
+            for (var index = 0; index < CurrentComponentCount.Value; index++)
+            {
+                var code = GetLiveComponentCode(index);
+
+                if (!string.IsNullOrWhiteSpace(code))
+                    return IsVaporSubstanceCode(code) ? "air" : "water_drop";
+            }
+        }
+
+        return MixturePhaseIcon;
+    }
+
+    /// <summary>
+    /// Возвращает только те ProcessInput, которые сейчас включены пользователем.
+    /// Первые два параметра всегда активны: Temperature и Pressure.
+    /// Дополнительные ProcessInput появляются последовательно при увеличении количества параметров от 3 до 5.
+    /// </summary>
+    private IReadOnlyList<CapacityProcessBindingEditor> ActiveProcessBindings => _processBindings
+        .OrderBy(binding => binding.Parameter.Order)
+        .Take(_processParameterCount)
+        .ToList();
+
+    // ============================================================
+    // Readiness
+    // ============================================================
+
+    /// <summary>
+    /// Проверяет готовность всех активных ProcessInput.
+    ///
+    /// Возможны три ситуации.
+    ///
+    /// 1. Binding успешно проверен:
+    ///    параметр готов независимо от наличия DefaultValue.
+    ///
+    /// 2. Поле пустое, но Calculation Definition имеет DefaultValue:
+    ///    параметр также готов.
+    ///    Именно так работает optional Pressure.
+    ///
+    /// 3. Поле пустое и DefaultValue отсутствует либо пользователь
+    ///    ввёл значение, которое не удалось разрешить:
+    ///    параметр не готов.
+    ///
+    /// Благодаря этому Additional parameter остаётся обязательным
+    /// после его включения пользователем, потому что у резервных
+    /// дополнительных параметров DefaultValue отсутствует.
+    /// </summary>
+    private bool IsProcessBindingsReady => ActiveProcessBindings.All(IsProcessBindingReady);
+
+    private static bool IsProcessBindingReady(CapacityProcessBindingEditor binding)
+    {
+        if (binding.IsLinked)
+            return true;
+
+        // Если пользователь что-то ввёл, это значение обязательно должно пройти реальный Runtime Check.
+        if (!string.IsNullOrWhiteSpace(binding.SourceText))
+            return false;
+
+        // Пустой ProcessInput разрешён только тогда, когда сам Definition явно определяет значение по умолчанию.
+        return HasProcessDefaultValue(binding.Parameter);
+    }
+
+    private static bool HasProcessDefaultValue(CalcParameterDefinitionDto parameter)
+    {
+        return parameter.DefaultValue.HasValue
+            && parameter.DefaultValue.Value.ValueKind != JsonValueKind.Null
+            && parameter.DefaultValue.Value.ValueKind != JsonValueKind.Undefined;
+    }
+
+    /// <summary>
+    /// Проверяем полную SCADA-структуру Capacity Equipment.
+    ///
+    /// Perc0...Perc4 должны существовать независимо от текущего CompN,
+    /// потому что это фиксированный контракт Capacity Equipment Type.
+    /// </summary>
+    private bool IsCapacityScadaStructureReady =>
+        !string.IsNullOrWhiteSpace(ComponentCountTag)
+        && !string.IsNullOrWhiteSpace(DeltaCTag)
+        && Enumerable.Range(0, MaxComponentCount).All(index => !string.IsNullOrWhiteSpace(GetPercTag(index)));
+
+    private bool IsCapacityScadaValuesReady
+    {
+        get
+        {
+            if (!CurrentComponentCount.HasValue || !CurrentDeltaC.HasValue)
+                return false;
+
+            for (var index = 0; index < CurrentComponentCount.Value; index++)
+            {
+                if (!GetCurrentPercent(index).HasValue)
+                    return false;
+            }
+
+            return true;
+        }
+    }
+
+    private bool IsOutputBindingReady => !string.IsNullOrWhiteSpace(CapacityOutputTag);
+
+    private bool IsConfigurationReady =>
+        Definition is not null
+        && IsProcessBindingsReady
+        && IsCapacityScadaStructureReady
+        && IsCapacityScadaValuesReady
+        && IsOutputBindingReady
+        && string.IsNullOrWhiteSpace(MixtureValidationError);
+
+    /// <summary>
+    /// Старый Job Version 1 использовал Constants для CompN/Perc.
+    ///
+    /// После установки Definition Version 2 такой Job должен быть явно
+    /// пересохранён, чтобы получить новые SCADA bindings.
+    /// Поэтому version mismatch также считается изменением конфигурации.
+    /// </summary>
+    private bool HasDefinitionVersionChange =>
+        Job is not null
+        && Definition is not null
+        && !string.Equals(Job.DefinitionVersion, Definition.Version, StringComparison.Ordinal);
+
+    private bool HasUnsavedChanges =>
+        HasDefinitionVersionChange
+        || !string.Equals(_savedEditorSignature, BuildEditorSignature(), StringComparison.Ordinal);
+
+    public bool HasPendingChanges => HasUnsavedChanges;
+
+    // ============================================================
+    // Lifecycle
+    // ============================================================
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDefinitionAsync();
+
+        if (Definition is null)
+            return;
+
+        SynchronizeConfiguration(force: true);
+
+        // Сразу после восстановления редактора фиксируем его как сохранённое состояние.
+        //
+        // Это нужно сделать ДО любых await:
+        // иначе Blazor может успеть выполнить промежуточный render и показать
+        // ложное сообщение Unsaved changes, хотя пользователь ничего не менял.
+        CaptureSavedEditorState();
+
+        // Читаем собственные SCADA items Capacity:
+        // ValHmi, ValCalc, CompN, PercN, DeltaC.
+        await RefreshCapacityScadaValuesAsync(force: true);
+
+        // Проверяем сохранённые ProcessInput.
+        // После этого Equipment.ITEM bindings получают реальный LINKED.
+        await ValidateStoredProcessBindingsAsync();
+
+        // Теперь, когда bindings гарантированно проверены,
+        // сразу загружаем AI snapshot для bargraph.
+        //
+        // Поэтому Temperature/Pressure bar появляются сразу,
+        // а не только после следующего 5-секундного refresh.
+        await RefreshLinkedAiSnapshotsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Definition is null)
+            return;
+
+        var contextChanged = SynchronizeConfiguration();
+
+        if (contextChanged)
+        {
+            // Новая модель/Job только что восстановлены из сохранённой конфигурации. Это НЕ пользовательское изменение.
+            // Фиксируем signature немедленно, до первого await, чтобы при переключении между Capacity не мигал Unsaved changes.
+            CaptureSavedEditorState();
+        }
+
+        await RefreshCapacityScadaValuesAsync();
+
+        if (contextChanged)
+        {
+            // RefreshCapacityScadaValuesAsync мог выполняться ещё до того, как сохранённые Equipment.ITEM bindings получили LINKED.
+            // Поэтому сначала выполняем реальную проверку bindings, а затем ещё раз сразу запрашиваем AI snapshots.
+            await ValidateStoredProcessBindingsAsync();
+            await RefreshLinkedAiSnapshotsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Загружает установленный Runtime Capacity Definition.
+    ///
+    /// WEB не хранит собственную копию списка ProcessInput:
+    /// Temperature, Pressure и будущие параметры приходят из Definition.
+    /// </summary>
+    private async Task LoadDefinitionAsync()
+    {
+        _isLoadingDefinition = true;
+        _loadError = "";
+
+        try
+        {
+            var definitions = await CalcApi.GetDefinitionsAsync();
+            _definition = definitions.FirstOrDefault(definition => string.Equals(definition.Code, CapacityDefinitionCode, StringComparison.OrdinalIgnoreCase));
+
+            if (_definition is null)
+                _loadError = "Capacity calculation definition is not available in Runtime.";
+        }
+        catch (Exception ex)
+        {
+            _loadError = "Cannot load Capacity calculation definition: " + ex.Message;
+            _definition = null;
+        }
+        finally
+        {
+            _isLoadingDefinition = false;
+        }
+    }
+
+    /// <summary>
+    /// Восстанавливает редактируемую конфигурацию из Calc Job.
+    ///
+    /// Live SCADA CompN/Perc/DeltaC сюда не копируются.
+    /// Они существуют независимо от WEB-конфигурации и читаются отдельно.
+    /// </summary>
+    private bool SynchronizeConfiguration(bool force = false)
+    {
+        if (Definition is null)
+            return false;
+
+        var structureSignature = string.Join("|", Model.ItemTags
+            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+            .Select(pair => $"{pair.Key}={pair.Value}"));
+
+        var newContextKey = $"{Model.Name}|{Job?.Id}|{Job?.Revision}|{Definition.Version}|{structureSignature}";
+
+        if (!force && string.Equals(_contextKey, newContextKey, StringComparison.Ordinal))
+            return false;
+
+        _contextKey = newContextKey;
+
+        BuildProcessBindings();
+        BuildComponentConfiguration();
+
+        // Сохранённое Enabled/WriteEnabled не должны автоматически выключаться
+        // только потому, что в момент открытия страницы SCADA ещё не успела прочитаться.
+        _enabled = Job?.Enabled == true;
+        _allowOutputWrites = Job?.WriteEnabled == true;
+
+        _nextScadaRefreshUtc = DateTimeOffset.MinValue;
+
+        return true;
+    }
+
+    // ============================================================
+    // ProcessInput resolving
+    // ============================================================
+
+    /// <summary>
+    /// Строит редакторы всех доступных ProcessInput.
+    ///
+    /// SourceText восстанавливается из SourceReference — то есть пользователь
+    /// снова видит, например, S03.R02.TT01.R.
+    ///
+    /// ResolvedTagName содержит реальный Variable Tag, который читает Calc.Service.
+    ///
+    /// Для старых Job, созданных до SourceReference, используем TagName
+    /// как backward-compatible отображаемое значение.
+    /// </summary>
+    private void BuildProcessBindings()
+    {
+        _processBindings.Clear();
+
+        if (Definition is null)
+            return;
+
+        foreach (var parameter in Definition.Parameters.Where(parameter => parameter.Role == CalcParameterRoleDto.ProcessInput).OrderBy(parameter => parameter.Order))
+        {
+            var stored = FindJobInput(parameter.Key);
+            var storedTag = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.TagName?.Trim() ?? "" : "";
+            var storedSourceReference = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.SourceReference?.Trim() ?? "" : "";
+
+            // Старые Job ещё не имеют SourceReference.
+            // Для них в поле продолжаем показывать сохранённый Variable Tag.
+            var sourceText = storedSourceReference.Length > 0 ? storedSourceReference : storedTag;
+
+            var currentValue = 0d;
+            var hasRuntimeValue = storedTag.Length > 0 && TryGetRuntimeNumber(State?.LastInputs, parameter.Key, out currentValue);
+
+            _processBindings.Add(new CapacityProcessBindingEditor
+            {
+                Parameter = parameter,
+                SourceText = sourceText,
+                ResolvedTagName = storedTag,
+                ValidatedSourceText = hasRuntimeValue ? sourceText : "",
+                CurrentValue = hasRuntimeValue ? currentValue : null,
+                Resolution = hasRuntimeValue ? storedSourceReference.Length > 0 ? $"Saved {storedSourceReference}" : "Saved Runtime tag" : "",
+                MaxAgeSeconds = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.MaxAgeSeconds : null,
+                CheckState = hasRuntimeValue ? CapacityBindingCheckState.Linked : CapacityBindingCheckState.NotChecked
+            });
+        }
+
+        // Для нового Job активны два штатных входа: Temperature и Pressure.
+        //
+        // Для сохранённого Job число восстанавливается по реально сохранённым
+        // ProcessInput Tag bindings, поэтому отдельное поле в PostgreSQL не требуется.
+        var configuredProcessInputs = _processBindings.Count(binding =>
+        {
+            var stored = FindJobInput(binding.Parameter.Key);
+            return stored?.SourceType == CalcInputSourceTypeDto.Tag && !string.IsNullOrWhiteSpace(stored.TagName);
+        });
+
+        _processParameterCount = Math.Clamp(configuredProcessInputs, MinProcessParameterCount, MaxProcessParameterCount);
+    }
+
+    /// <summary>
+    /// После загрузки сохранённого Job проверяет те bindings,
+    /// для которых Runtime State ещё не дал подтверждённого значения.
+    ///
+    /// Это позволяет открыть выключенный Job и всё равно увидеть
+    /// реальный статус Temperature/Pressure.
+    /// </summary>
+    private async Task ValidateStoredProcessBindingsAsync()
+    {
+        foreach (var binding in _processBindings.Where(binding => !binding.IsLinked && !string.IsNullOrWhiteSpace(binding.SourceText)))
+            await ResolveProcessBindingAsync(binding);
+    }
+
+    /// <summary>
+    /// Выполняет Check всех ProcessInput.
+    ///
+    /// Для каждого параметра используется CalcProcessInputResolver:
+    /// сначала Runtime AI.R, затем direct numeric Variable Tag.
+    /// </summary>
+    private async Task CheckProcessBindingsAsync()
+    {
+        if (_isCheckingBindings)
+            return;
+
+        _isCheckingBindings = true;
+
+        try
+        {
+            foreach (var binding in ActiveProcessBindings)
+                await ResolveProcessBindingAsync(binding);
+
+            await RefreshLinkedAiSnapshotsAsync();
+            NotificationService.Notify(IsProcessBindingsReady ? NotificationSeverity.Success : NotificationSeverity.Warning,"Capacity", IsProcessBindingsReady ? "Required process bindings are valid." : "Some required process bindings were not resolved.", 4000);
+        }
+        finally
+        {
+            _isCheckingBindings = false;
+        }
+    }
+
+    private async Task ResolveProcessBindingAsync(CapacityProcessBindingEditor binding)
+    {
+        var source = binding.SourceText.Trim();
+
+        binding.ResolvedTagName = "";
+        binding.ValidatedSourceText = "";
+        binding.CurrentValue = null;
+        binding.Resolution = "";
+        binding.Message = "";
+
+        if (source.Length == 0)
+        {
+            // Пустое поле допустимо только для параметра, которому Calculation Definition явно задал DefaultValue.
+            // Для Capacity Pressure это 0 bar(g).
+            if (HasProcessDefaultValue(binding.Parameter))
+            {
+                binding.CheckState = CapacityBindingCheckState.NotChecked;
+                binding.Message = "Default value will be used.";
+                return;
+            }
+
+            binding.CheckState = binding.Parameter.IsRequired ? CapacityBindingCheckState.NotFound : CapacityBindingCheckState.NotChecked;
+            binding.Message = binding.Parameter.IsRequired ? "Source is required." : "Process input must be configured when it is enabled.";
+
+            return;
+        }
+
+        binding.CheckState = CapacityBindingCheckState.Checking;
+
+        var resolution = await ProcessInputResolver.ResolveAsync(source, EquipmentCatalog);
+
+        if (!resolution.Success || string.IsNullOrWhiteSpace(resolution.ResolvedTagName) || !resolution.CurrentValue.HasValue)
+        {
+            binding.CheckState = CapacityBindingCheckState.NotFound;
+            binding.Message = resolution.Message ?? "Process input was not resolved.";
+            return;
+        }
+
+        binding.ResolvedTagName = resolution.ResolvedTagName;
+        binding.ValidatedSourceText = source;
+        binding.CurrentValue = resolution.CurrentValue;
+        binding.Resolution = resolution.Resolution ?? "";
+        binding.CheckState = CapacityBindingCheckState.Linked;
+    }
+
+    /// <summary>
+    /// Любое изменение пользовательской ссылки сбрасывает предыдущий Check.
+    ///
+    /// То есть после изменения даже одного символа прежний LINKED
+    /// больше не считается действительным.
+    /// </summary>
+    private void OnProcessSourceChanged(CapacityProcessBindingEditor binding, string? value)
+    {
+        var normalized = (value ?? "").Trim();
+
+        if (string.Equals(binding.SourceText, normalized, StringComparison.Ordinal))
+            return;
+
+        binding.SourceText = normalized;
+        binding.ResolvedTagName = "";
+        binding.ValidatedSourceText = "";
+        binding.CurrentValue = null;
+        binding.Resolution = "";
+        binding.Message = "";
+        binding.CheckState = CapacityBindingCheckState.NotChecked;
+    }
+
+    /// <summary>
+    /// Изменяет количество активных Process parameters.
+    ///
+    /// При уменьшении количества дополнительные строки скрываются, но их текущее содержимое в редакторе сразу не уничтожается.
+    /// При следующем Save в Job попадут только активные строки.
+    /// </summary>
+    private void OnProcessParameterCountChanged(int value)
+    {
+        _processParameterCount = Math.Clamp(value, MinProcessParameterCount, MaxProcessParameterCount);
+    }
+
+    // ============================================================
+    // ProcessInput AI visualization
+    // ============================================================
+
+    /// <summary>
+    /// Обновляет Param snapshot только для тех Linked ProcessInput,
+    /// которые были разрешены как Equipment.ITEM и принадлежат AI Equipment.
+    ///
+    /// Direct Variable Tag сюда намеренно не попадает:
+    /// для него у нас нет гарантированного Equipment Min/Max контракта.
+    /// </summary>
+    private async Task RefreshLinkedAiSnapshotsAsync()
+    {
+        var equipments = new Dictionary<string, EquipmentDto>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var binding in ActiveProcessBindings)
+        {
+            if (TryGetLinkedAiEquipment(binding, out var equipment, out _))
+                equipments[equipment.Name] = equipment;
+        }
+
+        var activeNames = equipments.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var oldName in _linkedAiSnapshots.Keys.Where(name => !activeNames.Contains(name)).ToList())
+            _linkedAiSnapshots.Remove(oldName);
+
+        if (equipments.Count == 0)
+            return;
+
+        var reads = await Task.WhenAll(equipments.Values.Select(async equipment =>
+        {
+            try
+            {
+                var snapshot = await ParamApi.GetSnapshotAsync(equipment.Name);
+
+                return new CapacityAiSnapshotRead(
+                    EquipmentName: equipment.Name,
+                    Snapshot: snapshot.Supported && snapshot.TypeGroup == EquipmentTypeGroup.AI ? snapshot : null);
+            }
+            catch
+            {
+                return new CapacityAiSnapshotRead(equipment.Name, null);
+            }
+        }));
+
+        foreach (var read in reads)
+        {
+            if (read.Snapshot is not null)
+                _linkedAiSnapshots[read.EquipmentName] = read.Snapshot;
+            else
+                _linkedAiSnapshots.Remove(read.EquipmentName);
+        }
+    }
+
+    /// <summary>
+    /// Определяет, что Linked ProcessInput был введён именно в формате
+    /// Equipment.ITEM и Equipment относится к группе AI.
+    ///
+    /// Для direct Variable Tag метод возвращает false.
+    /// </summary>
+    private bool TryGetLinkedAiEquipment(CapacityProcessBindingEditor binding, out EquipmentDto equipment, out string itemName)
+    {
+        equipment = null!;
+        itemName = "";
+
+        if (!binding.IsLinked || string.IsNullOrWhiteSpace(binding.ValidatedSourceText))
+            return false;
+
+        var source = binding.ValidatedSourceText.Trim();
+
+        var candidate = EquipmentCatalog
+            .Where(item => !item.IsGroup && item.TypeGroup == EquipmentTypeGroup.AI && !string.IsNullOrWhiteSpace(item.Name))
+            .OrderByDescending(item => item.Name.Length)
+            .FirstOrDefault(item => source.StartsWith(item.Name + ".", StringComparison.OrdinalIgnoreCase));
+
+        if (candidate is null)
+            return false;
+
+        var sourceItemName = source[(candidate.Name.Length + 1)..].Trim();
+
+        if (sourceItemName.Length == 0)
+            return false;
+
+        equipment = candidate;
+        itemName = sourceItemName;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Формирует bargraph для первых двух штатных ProcessInput:
+    ///
+    ///     Temperature
+    ///     Pressure.
+    ///
+    /// В результат попадают только реально отображаемые bargraph.
+    ///
+    /// Условия отображения остаются прежними:
+    ///
+    /// - ProcessInput должен иметь статус LINKED;
+    /// - source должен быть Equipment.ITEM;
+    /// - Equipment должен относиться к AI;
+    /// - snapshot должен содержать корректные Min/Max;
+    /// - должно существовать текущее числовое значение.
+    ///
+    /// В отличие от предыдущей реализации здесь не создаются
+    /// искусственные пустые слоты.
+    ///
+    /// Поэтому:
+    ///
+    ///     0 bar -> левая область полностью отсутствует;
+    ///     1 bar -> область занимает ширину одного элемента;
+    ///     2 bar -> область занимает ширину двух элементов.
+    ///
+    /// Центральная область автоматически занимает освободившееся место.
+    /// </summary>
+    private IReadOnlyList<CapacityProcessBarView> BuildPrimaryProcessBars()
+    {
+        var result = new List<CapacityProcessBarView>(2);
+
+        foreach (var binding in _processBindings
+            .OrderBy(binding => binding.Parameter.Order)
+            .Take(2))
+        {
+            var bar = BuildLiveProcessBar(binding);
+
+            if (bar is not null)
+                result.Add(bar);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Пытается построить один AI bargraph для ProcessInput.
+    ///
+    /// Bargraph существует только после реального LINKED и только для AI Equipment.
+    /// Direct Variable Tag в bargraph не превращаем, потому что у него нет
+    /// гарантированной Equipment-структуры Min/Max.
+    /// </summary>
+    private CapacityProcessBarView? BuildLiveProcessBar(CapacityProcessBindingEditor binding)
+    {
+        if (!TryGetLinkedAiEquipment(binding, out var equipment, out var itemName))
+            return null;
+
+        if (!_linkedAiSnapshots.TryGetValue(equipment.Name, out var snapshot))
+            return null;
+
+        if (!TryGetAiBounds(snapshot, itemName, out var min, out var max))
+            return null;
+
+        var value = GetProcessCurrentValue(binding);
+
+        if (!value.HasValue)
+            return null;
+
+        return new CapacityProcessBarView(
+            ParameterKey: binding.Parameter.Key,
+            Name: GetProcessDisplayName(binding),
+            Source: binding.ValidatedSourceText,
+            ItemName: itemName,
+            Value: value.Value,
+            Min: min,
+            Max: max,
+            Unit: string.IsNullOrWhiteSpace(snapshot.Unit) ? binding.Parameter.Unit ?? "" : snapshot.Unit.Trim(),
+            FillColor: GetProcessBarColor(binding));
+    }
+
+    /// <summary>
+    /// Возвращает диапазон шкалы для конкретного AI ITEM.
+    ///
+    /// Стандартный AI R использует MinR/MaxR.
+    /// PLC Value использует Min/Max.
+    ///
+    /// Для будущих ITEM допускаем структуру MinITEM/MaxITEM,
+    /// но если такой пары нет, bargraph не показываем.
+    /// </summary>
+    private static bool TryGetAiBounds(ParamSnapshotResponse snapshot, string itemName, out double min, out double max)
+    {
+        min = 0d;
+        max = 0d;
+
+        double? minValue;
+        double? maxValue;
+
+        if (itemName.Equals("R", StringComparison.OrdinalIgnoreCase))
+        {
+            minValue = GetSnapshotNumber(snapshot, "MinR");
+            maxValue = GetSnapshotNumber(snapshot, "MaxR");
+        }
+        else if (itemName.Equals("Value", StringComparison.OrdinalIgnoreCase))
+        {
+            minValue = GetSnapshotNumber(snapshot, "Min");
+            maxValue = GetSnapshotNumber(snapshot, "Max");
+        }
+        else
+        {
+            minValue = GetSnapshotNumber(snapshot, $"Min{itemName}");
+            maxValue = GetSnapshotNumber(snapshot, $"Max{itemName}");
+        }
+
+        if (!minValue.HasValue || !maxValue.HasValue || !double.IsFinite(minValue.Value) || !double.IsFinite(maxValue.Value))
+            return false;
+
+        if (Math.Abs(maxValue.Value - minValue.Value) < double.Epsilon)
+            return false;
+
+        min = minValue.Value;
+        max = maxValue.Value;
+
+        return true;
+    }
+
+    private static double? GetSnapshotNumber(ParamSnapshotResponse snapshot, params string[] names)
+    {
+        var item = snapshot.Items.FirstOrDefault(candidate => names.Any(name => candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+
+        if (item is null)
+            return null;
+
+        if (item.NumericValue.HasValue)
+            return item.NumericValue.Value;
+
+        if (double.TryParse(item.ValueText?.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+            return parsed;
+
+        return null;
+    }
+
+    private static string GetProcessDisplayName(CapacityProcessBindingEditor binding)
+    {
+        return binding.Parameter.Order switch
+        {
+            1 => "Temperature",
+            2 => "Pressure",
+            3 => "Additional parameter 1",
+            4 => "Additional parameter 2",
+            5 => "Additional parameter 3",
+            _ => binding.Parameter.Name
+        };
+    }
+
+    private static string GetProcessBarColor(CapacityProcessBindingEditor binding)
+    {
+        return binding.Parameter.Order switch
+        {
+            1 => "#4f81bd",
+            2 => "#4f9a50",
+            3 => "#8064a2",
+            4 => "#c27c3a",
+            5 => "#6f6f6f",
+            _ => "#4f81bd"
+        };
+    }
+
+    // ============================================================
+    // Capacity own SCADA values
+    // ============================================================
+
+    /// <summary>
+    /// Читает read-only SCADA-параметры Capacity и обновляет Param snapshot
+    /// для ProcessInput, связанных с AI Equipment.
+    ///
+    /// ValHmi и ValCalc всегда читаются отдельно:
+    /// они не являются Calculation inputs.
+    ///
+    /// CompN/PercN/DeltaC повторно читаются только тогда,
+    /// когда работающий Job ещё не дал их через LastInputs.
+    /// </summary>
+    private async Task RefreshCapacityScadaValuesAsync(bool force = false)
+    {
+        if (_isReadingScada)
+            return;
+
+        var modelChanged = !string.Equals(_scadaRefreshModelName, Model.Name, StringComparison.OrdinalIgnoreCase);
+        var now = DateTimeOffset.UtcNow;
+
+        if (modelChanged)
+        {
+            _scadaRefreshModelName = Model.Name;
+            _liveScadaValues.Clear();
+            _linkedAiSnapshots.Clear();
+            force = true;
+        }
+
+        if (!force && now < _nextScadaRefreshUtc)
+            return;
+
+        _nextScadaRefreshUtc = now.AddSeconds(5);
+        _isReadingScada = true;
+        _scadaReadError = "";
+
+        try
+        {
+            var itemsToRead = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "ValHmi",
+                "ValCalc",
+                "Sel"
+            };
+
+            if (!GetRuntimeTagInputNumber(ComponentCountKey).HasValue)
+                itemsToRead.Add("CompN");
+
+            if (!GetRuntimeTagInputNumber(CorrectionKey).HasValue)
+                itemsToRead.Add("DeltaC");
+
+            for (var index = 0; index < MaxComponentCount; index++)
+            {
+                if (!GetRuntimeTagInputNumber(GetComponentPercentKey(index)).HasValue)
+                    itemsToRead.Add($"Perc{index}");
+            }
+
+            var reads = await Task.WhenAll(itemsToRead.Select(ReadCapacityScadaItemAsync));
+
+            foreach (var read in reads)
+                _liveScadaValues[read.ItemName] = read.Success ? read.Value : null;
+
+            var failed = reads.Where(read => !read.Success && !string.IsNullOrWhiteSpace(read.Message)).ToList();
+
+            if (failed.Count > 0)
+                _scadaReadError = string.Join(" ", failed.Select(read => $"{read.ItemName}: {read.Message}"));
+
+            await RefreshLinkedAiSnapshotsAsync();
+        }
+        finally
+        {
+            _isReadingScada = false;
+        }
+    }
+
+    /// <summary>
+    /// Читает один уже известный ITEM Capacity через его реальный Variable Tag.
+    ///
+    /// Используется тот же общий ParamApi.CheckNumericTagAsync,
+    /// который сейчас обслуживает Test Kp.
+    /// </summary>
+    private async Task<CapacityScadaReadResult> ReadCapacityScadaItemAsync(string itemName)
+    {
+        var tagName = GetItemTag(Model, itemName);
+
+        if (string.IsNullOrWhiteSpace(tagName))
+            return CapacityScadaReadResult.Failed(itemName, $"ITEM {itemName} was not found in Calc Model.");
+
+        try
+        {
+            var response = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest
+            {
+                TagName = tagName,
+                RequireTrend = false
+            });
+
+            if (response.Found && response.CurrentValue.HasValue)
+                return CapacityScadaReadResult.Successful(itemName, response.CurrentValue.Value);
+
+            return CapacityScadaReadResult.Failed(itemName, response.Message ?? "Numeric value was not read.");
+        }
+        catch (Exception ex)
+        {
+            return CapacityScadaReadResult.Failed(itemName, ex.Message);
+        }
+    }
+
+    // ============================================================
+    // Mixture
+    // ============================================================
+
+    /// <summary>
+    /// Из Job восстанавливаем соответствие Perc-slot -> Substance.
+    /// После восстановления SubstanceCode определяем глобальную фазу редактора.
+    /// Отдельный Phase в Job не нужен: любой сохранённый SubstanceCode уже однозначно относится либо к Liquid, либо к Vapor.
+    /// Если Job новый и ни одного вещества ещё нет, начальным режимом является Liquid.
+    /// </summary>
+    private void BuildComponentConfiguration()
+    {
+        _components.Clear();
+
+        for (var index = 0; index < MaxComponentCount; index++)
+        {
+            _components.Add(new CapacityComponentEditor
+            {
+                Index = index,
+                SubstanceCode = ReadStoredString(GetComponentCodeKey(index), "")
+            });
+        }
+
+        var firstSelectedCode = _components.Select(component => component.SubstanceCode?.Trim() ?? "").FirstOrDefault(code => code.Length > 0);
+
+        _isVaporMixture = firstSelectedCode is not null && IsVaporSubstanceCode(firstSelectedCode);
+    }
+
+    /// <summary>
+    /// Переключает глобальную фазу смеси.
+    /// При смене Liquid <-> Vapor очищаем только те уже выбранные SubstanceCode, которые принадлежат противоположной фазе.
+    /// </summary>
+    private void OnMixturePhaseChanged(bool isVapor)
+    {
+        if (_isVaporMixture == isVapor)
+            return;
+
+        _isVaporMixture = isVapor;
+
+        foreach (var component in _components)
+        {
+            if (string.IsNullOrWhiteSpace(component.SubstanceCode))
+                continue;
+
+            if (IsVaporSubstanceCode(component.SubstanceCode) != _isVaporMixture)
+                component.SubstanceCode = "";
+        }
+    }
+
+    /// <summary>
+    /// Проверяет текущую SCADA-смесь и нашу настройку SubstanceCode.
+    ///
+    /// Математическое ядро повторит эту проверку во время выполнения Job.
+    /// Здесь она нужна для понятного UI ещё до Save.
+    /// </summary>
+    private string MixtureValidationError
+    {
+        get
+        {
+            if (!CurrentComponentCount.HasValue)
+                return "SCADA CompN was not read as an integer value from 1 to 5.";
+
+            var componentCount = CurrentComponentCount.Value;
+            var usedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var totalPercent = 0d;
+
+            for (var index = 0; index < componentCount; index++)
+            {
+                var component = _components[index];
+
+                if (string.IsNullOrWhiteSpace(component.SubstanceCode))
+                    return $"Substance for component {index + 1} is not selected.";
+
+                if (!usedCodes.Add(component.SubstanceCode.Trim()))
+                    return $"Substance '{component.SubstanceCode}' is specified more than once.";
+
+                var percent = GetCurrentPercent(index);
+
+                if (!percent.HasValue)
+                    return $"SCADA Perc{index} value is not available.";
+
+                if (!double.IsFinite(percent.Value) || percent.Value < 0d || percent.Value > 100d)
+                    return $"SCADA Perc{index} must be between 0 and 100%.";
+
+                totalPercent += percent.Value;
+            }
+
+            if (Math.Abs(totalPercent - 100d) > PercentageTolerance)
+                return $"SCADA mixture percentages must total 100%. Current total: {totalPercent:0.###}%.";
+
+            return "";
+        }
+    }
+
+    // ============================================================
+    // Save
+    // ============================================================
+
+    private async Task CreateJobAsync()
+    {
+        if (Definition is null || !IsConfigurationReady)
+            return;
+
+        _isSaving = true;
+
+        try
+        {
+            var allowWrites = _allowOutputWrites && IsOutputBindingReady;
+
+            var request = new CalcJobSaveRequest
+            {
+                EquipmentName = Model.Name,
+                Name = $"{Model.Name} Capacity",
+                Description = Model.Description,
+                DefinitionCode = Definition.Code,
+                DefinitionVersion = Definition.Version,
+                Enabled = _enabled,
+                PeriodMs = 5000,
+                WriteEnabled = allowWrites,
+                SortOrder = 0,
+                ExpectedRevision = null,
+                Inputs = BuildCapacityInputs(),
+                Outputs = BuildCapacityOutputs(allowWrites)
+            };
+
+            await CalcApi.CreateJobAsync(request);
+
+            NotificationService.Notify(NotificationSeverity.Success, "Calculations", $"Capacity Job created for {Model.Name}.", 4000);
+            await JobChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Calculations", ex.Message, 6000);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveJobAsync()
+    {
+        if (Job is null || Definition is null || !IsConfigurationReady)
+            return;
+
+        _isSaving = true;
+
+        try
+        {
+            var allowWrites = _allowOutputWrites && IsOutputBindingReady;
+
+            var request = new CalcJobSaveRequest
+            {
+                EquipmentName = Job.EquipmentName,
+                Name = Job.Name,
+                Description = Job.Description,
+                DefinitionCode = Definition.Code,
+                DefinitionVersion = Definition.Version,
+                Enabled = _enabled,
+                PeriodMs = Job.PeriodMs,
+                WriteEnabled = allowWrites,
+                SortOrder = Job.SortOrder,
+                ExpectedRevision = Job.Revision,
+                Inputs = BuildCapacityInputs(),
+                Outputs = BuildCapacityOutputs(allowWrites)
+            };
+
+            await CalcApi.UpdateJobAsync(Job.Id, request);
+
+            NotificationService.Notify(NotificationSeverity.Success, "Calculations", $"Capacity configuration saved for {Model.Name}.", 4000);
+            await JobChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Calculations", ex.Message, 6000);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// Формирует окончательный Capacity Job.
+    ///
+    /// ProcessInput:
+    /// сохраняются только после успешного Resolve/Check.
+    ///
+    /// CompN:
+    /// всегда Capacity ITEM CompN.
+    ///
+    /// Perc0...Perc4:
+    /// всегда соответствующие Capacity SCADA ITEM.
+    ///
+    /// DeltaC:
+    /// всегда Capacity ITEM DeltaC.
+    ///
+    /// componentNCode:
+    /// единственная постоянная настройка состава.
+    ///
+    /// ValHmi здесь отсутствует.
+    /// </summary>
+    private List<CalcJobInputSaveDto> BuildCapacityInputs()
+    {
+        var result = new List<CalcJobInputSaveDto>();
+
+        foreach (var binding in ActiveProcessBindings)
+        {
+            if (!binding.IsLinked)
+                continue;
+
+            result.Add(new CalcJobInputSaveDto
+            {
+                ParameterKey = binding.Parameter.Key,
+                SourceType = CalcInputSourceTypeDto.Tag,
+                TagName = binding.ResolvedTagName,
+                SourceReference = binding.SourceText.Trim(),
+                MaxAgeSeconds = binding.MaxAgeSeconds,
+                SortOrder = binding.Parameter.Order
+            });
+        }
+
+        AddFixedTagInput(result, ComponentCountKey, ComponentCountTag);
+        AddFixedTagInput(result, CorrectionKey, DeltaCTag);
+
+        for (var index = 0; index < MaxComponentCount; index++)
+            AddFixedTagInput(result, GetComponentPercentKey(index), GetPercTag(index));
+
+        for (var index = 0; index < MaxComponentCount; index++)
+        {
+            var code = (_components[index].SubstanceCode ?? "").Trim();
+            var parameter = GetParameter(GetComponentCodeKey(index));
+
+            if (parameter is not null && code.Length > 0)
+                result.Add(CreateConstantInput(parameter, code));
+        }
+
+        return result.OrderBy(input => input.SortOrder).ToList();
+    }
+
+    private void AddFixedTagInput(List<CalcJobInputSaveDto> target, string parameterKey, string? tagName)
+    {
+        if (string.IsNullOrWhiteSpace(tagName))
+            return;
+
+        var parameter = GetParameter(parameterKey);
+
+        if (parameter is null)
+            return;
+
+        target.Add(new CalcJobInputSaveDto
+        {
+            ParameterKey = parameter.Key,
+            SourceType = CalcInputSourceTypeDto.Tag,
+            TagName = tagName,
+            SortOrder = parameter.Order
+        });
+    }
+
+    /// <summary>
+    /// Capacity имеет ровно один SCADA output: ValCalc.
+    ///
+    /// Значение Calculation output уже находится в инженерных
+    /// единицах J/(kg·K), поэтому дополнительный legacy scaling
+    /// при записи не применяется.
+    ///
+    /// Scale = 1.
+    /// Offset = 0.
+    ///
+    /// DeltaC является отдельным read-only SCADA input.
+    /// </summary>
+    private List<CalcJobOutputSaveDto> BuildCapacityOutputs(bool allowWrites)
+    {
+        if (Definition is null)
+            return [];
+
+        var output = Definition.Outputs.Single(item => string.Equals(item.Key, "capacity", StringComparison.OrdinalIgnoreCase));
+
+        return
+        [
+            new CalcJobOutputSaveDto
+            {
+                OutputKey = output.Key,
+                TagName = CapacityOutputTag,
+                WriteEnabled = allowWrites,
+                Scale = 1d,
+                Offset = 0d,
+                SortOrder = output.Order
+            }
+        ];
+    }
+
+    private static CalcJobInputSaveDto CreateConstantInput(CalcParameterDefinitionDto parameter, object value)
+    {
+        return new CalcJobInputSaveDto
+        {
+            ParameterKey = parameter.Key,
+            SourceType = CalcInputSourceTypeDto.Constant,
+            ConstantValue = JsonSerializer.SerializeToElement(value),
+            SortOrder = parameter.Order
+        };
+    }
+
+    // ============================================================
+    // Unsaved state
+    // ============================================================
+
+    /// <summary>
+    /// Формирует снимок только редактируемой пользователем конфигурации.
+    ///
+    /// Текущие SCADA CompN, PercN, DeltaC и ValHmi сюда не входят,
+    /// поэтому изменение технологического процесса не создаёт Unsaved state.
+    /// </summary>
+    private string BuildEditorSignature()
+    {
+        var parts = new List<string>
+    {
+        $"enabled={_enabled}",
+        $"writes={_allowOutputWrites}",
+        $"processParameterCount={_processParameterCount}"
+    };
+
+        foreach (var binding in ActiveProcessBindings)
+            parts.Add($"{binding.Parameter.Key}={binding.SourceText.Trim()}");
+
+        for (var index = 0; index < MaxComponentCount; index++)
+        {
+            var code = (_components.ElementAtOrDefault(index)?.SubstanceCode ?? "").Trim();
+            parts.Add($"component{index}={code}");
+        }
+
+        return string.Join("|", parts);
+    }
+
+    private void CaptureSavedEditorState()
+    {
+        _savedEditorSignature = BuildEditorSignature();
+    }
+
+    // ============================================================
+    // Runtime values
+    // ============================================================
+
+    private double? GetLastOutputNumber(string key)
+    {
+        return TryGetRuntimeNumber(State?.LastOutputs, key, out var value) ? value : null;
+    }
+
+    /// <summary>
+    /// Возвращает значение только если конкретный сохранённый Job input
+    /// действительно является Tag binding.
+    ///
+    /// Это важно для миграции Version 1:
+    /// старые Constant CompN/Perc нельзя принимать за текущие SCADA значения.
+    /// </summary>
+    private double? GetRuntimeTagInputNumber(string key)
+    {
+        var input = FindJobInput(key);
+
+        if (input?.SourceType != CalcInputSourceTypeDto.Tag)
+            return null;
+
+        return TryGetRuntimeNumber(State?.LastInputs, key, out var value) ? value : null;
+    }
+
+    private double? GetProcessCurrentValue(CapacityProcessBindingEditor binding)
+    {
+        return GetRuntimeTagInputNumber(binding.Parameter.Key) ?? binding.CurrentValue;
+    }
+
+    private string GetProcessRuntimeTag(CapacityProcessBindingEditor binding)
+    {
+        var stored = FindJobInput(binding.Parameter.Key);
+
+        if (stored?.SourceType == CalcInputSourceTypeDto.Tag && !string.IsNullOrWhiteSpace(stored.TagName))
+            return stored.TagName;
+
+        if (binding.IsLinked)
+            return binding.ResolvedTagName;
+
+        return "Not linked";
+    }
+
+    private double? GetLiveScadaValue(string itemName)
+    {
+        return _liveScadaValues.TryGetValue(itemName, out var value) ? value : null;
+    }
+
+    /// <summary>
+    /// Текущее состояние SCADA ITEM Sel.
+    ///
+    /// Контракт Capacity:
+    ///
+    ///     Sel = 0 -> SCADA использует ValHmi;
+    ///     Sel = 1 -> SCADA использует ValCalc.
+    ///
+    /// Sel является только read-only диагностическим значением.
+    /// TechMES его не изменяет и не записывает.
+    /// </summary>
+    private bool? IsCalculatedValueSelected
+    {
+        get
+        {
+            var value = GetLiveScadaValue("Sel");
+
+            if (!value.HasValue || !double.IsFinite(value.Value))
+                return null;
+
+            return value.Value >= 0.5d;
+        }
+    }
+
+    // ============================================================
+    // Binding UI
+    // ============================================================
+
+    private static string GetBindingBadgeText(CapacityProcessBindingEditor binding)
+    {
+        if (string.IsNullOrWhiteSpace(binding.SourceText) && HasProcessDefaultValue(binding.Parameter))
+            return "DEFAULT";
+
+        return binding.CheckState switch
+        {
+            CapacityBindingCheckState.Checking => "CHECKING",
+            CapacityBindingCheckState.Linked => "LINKED",
+            CapacityBindingCheckState.NotFound => "NOT FOUND",
+            _ => "NOT CHECKED"
+        };
+    }
+
+    private static BadgeStyle GetBindingBadgeStyle(CapacityProcessBindingEditor binding)
+    {
+        if (string.IsNullOrWhiteSpace(binding.SourceText) && HasProcessDefaultValue(binding.Parameter))
+            return BadgeStyle.Info;
+
+        return binding.CheckState switch
+        {
+            CapacityBindingCheckState.Checking => BadgeStyle.Info,
+            CapacityBindingCheckState.Linked => BadgeStyle.Success,
+            CapacityBindingCheckState.NotFound => BadgeStyle.Danger,
+            _ => BadgeStyle.Light
+        };
+    }
+
+    private static string GetBindingDescription(CapacityProcessBindingEditor binding)
+    {
+        if (binding.IsLinked)
+            return $"{binding.Resolution}: {binding.ResolvedTagName}";
+
+        if (!string.IsNullOrWhiteSpace(binding.Message))
+            return binding.Message;
+
+        return binding.Parameter.Unit ?? "";
+    }
+
+    // ============================================================
+    // Definition / Job helpers
+    // ============================================================
+
+    private CalcParameterDefinitionDto? GetParameter(string key)
+    {
+        return Definition?.Parameters.FirstOrDefault(parameter => string.Equals(parameter.Key, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private CalcJobInputDto? FindJobInput(string key)
+    {
+        return Job?.Inputs.FirstOrDefault(input => string.Equals(input.ParameterKey, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetComponentCodeKey(int index)
+    {
+        return $"component{index}Code";
+    }
+
+    private static string GetComponentPercentKey(int index)
+    {
+        return $"component{index}Percent";
+    }
+
+    private string ReadStoredString(string key, string defaultValue)
+    {
+        var input = FindJobInput(key);
+
+        if (input?.SourceType == CalcInputSourceTypeDto.Constant
+            && input.ConstantValue.HasValue
+            && input.ConstantValue.Value.ValueKind == JsonValueKind.String)
+        {
+            return input.ConstantValue.Value.GetString()?.Trim() ?? defaultValue;
+        }
+
+        return defaultValue;
+    }
+
+    // ============================================================
+    // SCADA ITEM helper
+    // ============================================================
+
+    private static string? GetItemTag(CalcModelDto? model, string itemName)
+    {
+        if (model?.ItemTags is null || model.ItemTags.Count == 0 || string.IsNullOrWhiteSpace(itemName))
+            return null;
+
+        if (model.ItemTags.TryGetValue(itemName, out var tagName) && !string.IsNullOrWhiteSpace(tagName))
+            return tagName.Trim();
+
+        var item = model.ItemTags.FirstOrDefault(pair => string.Equals(pair.Key, itemName, StringComparison.OrdinalIgnoreCase));
+
+        return !string.IsNullOrWhiteSpace(item.Value) ? item.Value.Trim() : null;
+    }
+
+    // ============================================================
+    // Runtime JSON helper
+    // ============================================================
+
+    private static bool TryGetRuntimeNumber(JsonElement? source, string key, out double value)
+    {
+        value = 0d;
+
+        if (!source.HasValue || source.Value.ValueKind != JsonValueKind.Object)
+            return false;
+
+        foreach (var property in source.Value.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, key, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            return property.Value.ValueKind == JsonValueKind.Number
+                && property.Value.TryGetDouble(out value)
+                && double.IsFinite(value);
+        }
+
+        return false;
+    }
+
+    // ============================================================
+    // Mixture live visualization
+    // ============================================================
+
+    /// <summary>
+    /// Возвращает код компонента именно из сохранённого Job.
+    ///
+    /// Это важно для верхней панели:
+    /// несохранённое изменение ComboBox в Settings не должно подменять
+    /// состав, с которым сейчас реально работает Calc.Service.
+    ///
+    /// Для нового, ещё не созданного Job используем текущий editor только
+    /// как предварительное отображение.
+    /// </summary>
+    private string GetLiveComponentCode(int index)
+    {
+        var stored = FindJobInput(GetComponentCodeKey(index));
+
+        if (stored?.SourceType == CalcInputSourceTypeDto.Constant
+            && stored.ConstantValue.HasValue
+            && stored.ConstantValue.Value.ValueKind == JsonValueKind.String)
+        {
+            return stored.ConstantValue.Value.GetString()?.Trim() ?? "";
+        }
+
+        return _components.ElementAtOrDefault(index)?.SubstanceCode?.Trim() ?? "";
+    }
+
+    /// <summary>
+    /// Формирует данные Pie по фактическому составу смеси.
+    ///
+    /// Percent определяет геометрический размер сектора.
+    ///
+    /// CapacityKgPerM3 является фактической плотностью компонента,
+    /// которая участвовала в последнем успешном расчёте Calc.Service.
+    ///
+    /// Никаких координат labels здесь больше не рассчитываем:
+    /// их положение полностью определяет RadzenPieSeries.
+    /// </summary>
+    private IReadOnlyList<CapacityPieItem> BuildLivePieItems()
+    {
+        if (!CurrentComponentCount.HasValue)
+            return [];
+
+        var result = new List<CapacityPieItem>();
+
+        for (var index = 0; index < CurrentComponentCount.Value; index++)
+        {
+            var code = GetLiveComponentCode(index);
+            var percent = GetCurrentPercent(index);
+
+            if (string.IsNullOrWhiteSpace(code) || !percent.HasValue || percent.Value <= 0d)
+                continue;
+
+            result.Add(new CapacityPieItem(
+                Index: index,
+                Code: code,
+                LegendText: $"{code} {percent.Value:0.#}%",
+                Percent: percent.Value,
+                CapacityJPerKgK: GetLastOutputNumber($"component{index}Capacity")));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Текст внутри сектора Pie.
+    /// Размер сектора задаётся Percent, а внутри показываем рассчитанную Capacity компонента.
+    /// </summary>
+    private static string FormatPieItemCapacity(CapacityPieItem item)
+    {
+        return item.CapacityJPerKgK.HasValue
+            ? item.CapacityJPerKgK.Value.ToString("0.###", CultureInfo.InvariantCulture)
+            : "-";
+    }
+
+    /// <summary>
+    /// Формирует заголовок фактически работающей смеси.
+    ///
+    /// SubstanceCode берём из сохранённого Job,
+    /// а проценты - из текущих SCADA PercN.
+    ///
+    /// Например:
+    ///
+    ///     Butene_1 (45%) - Water (55%)
+    ///
+    /// Поэтому несохранённое изменение ComboBox не подменяет
+    /// верхнюю Runtime-панель существующего Job.
+    /// </summary>
+    private string GetLiveMixtureTitle()
+    {
+        if (!CurrentComponentCount.HasValue)
+            return "Mixture";
+
+        var components = new List<string>();
+
+        for (var index = 0; index < CurrentComponentCount.Value; index++)
+        {
+            var code = GetLiveComponentCode(index);
+            var percent = GetCurrentPercent(index);
+
+            if (string.IsNullOrWhiteSpace(code))
+                continue;
+
+            components.Add(percent.HasValue
+                ? $"{code} ({percent.Value:0.#}%)"
+                : code);
+        }
+
+        return components.Count > 0
+            ? string.Join(" - ", components)
+            : "Mixture";
+    }
+
+    private static string FormatPieCapacity(double? value)
+    {
+        return value.HasValue
+            ? value.Value.ToString("0.###", CultureInfo.InvariantCulture)
+            : "-";
+    }
+
+    // ============================================================
+    // Formatting
+    // ============================================================
+
+    private static string GetNumberFormat(CalcParameterDefinitionDto parameter)
+    {
+        var decimals = Math.Clamp(parameter.Decimals, 0, 6);
+        var pattern = decimals == 0 ? "0" : "0." + new string('#', decimals);
+
+        return string.IsNullOrWhiteSpace(parameter.Unit) ? pattern : $"{pattern}' {parameter.Unit}'";
+    }
+
+    private static string GetSwitchStateText(bool value)
+    {
+        return value ? "on" : "off";
+    }
+
+    private static string GetSwitchStateClass(bool value)
+    {
+        return value ? "is-on" : "is-off";
+    }
+
+    // ============================================================
+    // Local models
+    // ============================================================
+
+    private enum CapacityBindingCheckState
+    {
+        NotChecked,
+        Checking,
+        Linked,
+        NotFound
+    }
+
+    private sealed class CapacityProcessBindingEditor
+    {
+        public CalcParameterDefinitionDto Parameter { get; set; } = new();
+
+        // То, что пользователь ввёл в Settings.
+        public string SourceText { get; set; } = "";
+
+        // Реальный Variable Tag, который после успешного Check
+        // будет сохранён в Calc Job.
+        public string ResolvedTagName { get; set; } = "";
+
+        // SourceText, для которого последний Check был успешным.
+        // Если пользователь меняет SourceText, IsLinked сразу становится false.
+        public string ValidatedSourceText { get; set; } = "";
+
+        public string Resolution { get; set; } = "";
+        public string Message { get; set; } = "";
+
+        public int? MaxAgeSeconds { get; set; }
+        public double? CurrentValue { get; set; }
+
+        public CapacityBindingCheckState CheckState { get; set; }
+
+        public bool IsLinked =>
+            CheckState == CapacityBindingCheckState.Linked
+            && !string.IsNullOrWhiteSpace(ResolvedTagName)
+            && string.Equals(SourceText.Trim(), ValidatedSourceText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class CapacityComponentEditor
+    {
+        public int Index { get; set; }
+        public string SubstanceCode { get; set; } = "";
+    }
+
+    private sealed record CapacityAiSnapshotRead(string EquipmentName, ParamSnapshotResponse? Snapshot);
+
+    private sealed record CapacityProcessBarView(
+        string ParameterKey,
+        string Name,
+        string Source,
+        string ItemName,
+        double Value,
+        double Min,
+        double Max,
+        string Unit,
+        string FillColor);
+
+    private sealed record CapacityPieItem(
+        int Index,
+        string Code,
+        string LegendText,
+        double Percent,
+        double? CapacityJPerKgK);
+
+    private sealed record CapacityScadaReadResult(string ItemName, bool Success, double? Value, string? Message)
+    {
+        public static CapacityScadaReadResult Successful(string itemName, double value)
+        {
+            return new CapacityScadaReadResult(itemName, true, value, null);
+        }
+
+        public static CapacityScadaReadResult Failed(string itemName, string? message)
+        {
+            return new CapacityScadaReadResult(itemName, false, null, message);
+        }
+    }
+}
