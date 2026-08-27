@@ -242,9 +242,17 @@
                                ==================================================== *@
                             <div class="density-value-row">
 
-                                <div class="density-selection-title density-selection-title-techmes">
+                                <div class="density-selection-title density-selection-title-techmes @(IsTechMesOutputWriteEnabled ? "is-selected" : "")">
 
-                                    <div class="density-selection-mark"></div>
+                                    <div class="density-selection-mark">
+
+                                        @if (IsTechMesOutputWriteEnabled)
+                                        {
+                                            <RadzenIcon Icon="check"
+                                                        class="density-selection-icon" />
+                                        }
+
+                                    </div>
 
                                     <span>
                                         TechMES calculated value
@@ -801,6 +809,13 @@
     {
         return GetItemTag(Model, $"Perc{index}");
     }
+
+    /// <summary>
+    /// Показывает, разрешена ли запись рассчитанного TechMES Density в SCADA ValCalc в текущей СОХРАНЁННОЙ конфигурации Job.
+    /// Используем Job.WriteEnabled, а не редактируемый _allowOutputWrites, потому что верхняя панель отображает фактическое состояние Runtime.
+    /// Если пользователь изменил Allow output writes, но ещё не нажал Save, верхняя панель продолжает показывать реально работающую конфигурацию.
+    /// </summary>
+    private bool IsTechMesOutputWriteEnabled => Job?.WriteEnabled == true;
 
     // ============================================================
     // Current values

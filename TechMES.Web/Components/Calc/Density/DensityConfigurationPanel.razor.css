@@ -360,17 +360,7 @@
     }
 
 
-/*
- * TechMES calculated value специально НЕ выделяем жирным.
- */
-.density-selection-title-techmes {
-    font-weight: 400;
-}
-
-
-/*
- * Фиксированная зона для галочки.
- */
+/* Фиксированная зона для галочки. */
 .density-selection-mark {
     display: flex;
     align-items: center;
@@ -441,38 +431,12 @@
     width: 100%;
 }
 
-
-    /*
- * Все ReadOnly значения повторяют обычный стиль Tank: без искусственного bold.
- */
+    /* Все ReadOnly значения повторяют обычный стиль Tank: без искусственного bold. */
     ::deep .density-main-value-input .rz-inputtext,
     ::deep .density-delta-input .rz-inputtext {
         text-align: right;
         font-weight: 400;
     }
-
-
-/* ============================================================
-   TechMES Density field
-
-   Само поле выделяем лёгким background,
-   но текст внутри остаётся обычным.
-   ============================================================ */
-
-::deep .density-result-value-input .rz-inputtext {
-    background-color: var(--rz-base-light) !important;
-    font-weight: 400;
-}
-
-
-/*
- * На всякий случай задаём background и FormField,
- * чтобы светлый фон занимал всю input-area Radzen.
- */
-::deep .density-result-form-field .rz-form-field-content {
-    background-color: var(--rz-base-light);
-}
-
 
 /* ============================================================
    Обычный заголовок Additional parameter
@@ -483,7 +447,6 @@
     font-size: 14px;
     font-weight: 600;
 }
-
 
 /* ============================================================
    Pie
