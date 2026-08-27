@@ -82,6 +82,16 @@ namespace TechMES.Calc.Substances
         }
 
         /// <summary>
+        /// Расширенная перегрузка Capacity, дополнительно получающая фактическую массовую долю компонента в смеси.
+        /// Большинство legacy-компонентов от концентрации не зависит, поэтому базовая реализация вызывает обычную перегрузку.
+        /// DryMatter использует MassPercent для точного восстановления исходной формулы теплоёмкости сахарного раствора.
+        /// </summary>
+        public virtual double GetCapacity(float temperature, double massPercent, IReadOnlyDictionary<string, double>? additionalParameters)
+        {
+            return GetCapacity(temperature, additionalParameters);
+        }
+
+        /// <summary>
         /// Расширенная перегрузка Content.
         /// Старые компоненты продолжают использовать исходный GetContent(float temperature, float pressure).
         /// </summary>

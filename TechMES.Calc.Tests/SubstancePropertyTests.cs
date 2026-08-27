@@ -20,25 +20,11 @@ public sealed class SubstancePropertyTests
         Assert.Equal(SubstancePhase.Liquid, SubstanceCatalog.GetRequired("DryMatter").Phase);
         Assert.Equal("Dry matter", SubstanceCatalog.GetRequired("DryMatter").Name);
 
-        Assert.True(
-            SubstanceCatalog.GetRequired("ACN")
-                .Supports(SubstancePropertySupport.SpecificHeatCapacity));
-
-        Assert.False(
-            SubstanceCatalog.GetRequired("DryMatter")
-                .Supports(SubstancePropertySupport.SpecificHeatCapacity));
-
-        Assert.False(
-            SubstanceCatalog.GetRequired("Fusel")
-                .Supports(SubstancePropertySupport.SpecificHeatCapacity));
-
-        Assert.False(
-            SubstanceCatalog.GetRequired("Methan")
-                .Supports(SubstancePropertySupport.SpecificHeatCapacity));
-
-        Assert.Equal(
-            52,
-            SubstanceCatalog.GetSupported(SubstancePropertySupport.SpecificHeatCapacity).Count);
+        Assert.True(SubstanceCatalog.GetRequired("ACN").Supports(SubstancePropertySupport.SpecificHeatCapacity));
+        Assert.True(SubstanceCatalog.GetRequired("DryMatter").Supports(SubstancePropertySupport.SpecificHeatCapacity));
+        Assert.False(SubstanceCatalog.GetRequired("Fusel").Supports(SubstancePropertySupport.SpecificHeatCapacity));
+        Assert.False(SubstanceCatalog.GetRequired("Methan").Supports(SubstancePropertySupport.SpecificHeatCapacity));
+        Assert.Equal(53,SubstanceCatalog.GetSupported(SubstancePropertySupport.SpecificHeatCapacity).Count);
     }
 
     [Fact]
@@ -186,7 +172,6 @@ public sealed class SubstancePropertyTests
     [Theory]
     [InlineData("Methan")]
     [InlineData("Fusel")]
-    [InlineData("DryMatter")]
     public void UnsupportedCapacityModelsAreRejectedByNormalizedContract(string code)
     {
         var exception = Assert.Throws<CalculationException>(() =>
@@ -340,6 +325,32 @@ public sealed class SubstancePropertyTests
                 pressureBarAbsolute: 1d));
 
         Assert.Equal("mixture.drymatter.unsupported-combination", exception.Code);
+    }
+
+    [Fact]
+    public void WaterDryMatterCapacityMatchesOriginalSugarSolutionFormula()
+    {
+        const double temperature = 84.3;
+        const double dryMatterPercent = 55.0;
+
+        var capacity = MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
+            [
+                new MixtureComponent("DryMatter", dryMatterPercent),
+                new MixtureComponent("Water", 100.0 - dryMatterPercent)
+            ],
+            temperatureC: temperature);
+
+        Assert.Equal(3167.7489807144243d, capacity, precision: 8);
+    }
+
+    [Fact]
+    public void PureDryMatterCapacityUsesHundredPercentSugarSolutionCorrelation()
+    {
+        var capacity = MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
+            [new MixtureComponent("DryMatter", 100d)],
+            temperatureC: 20d);
+
+        Assert.Equal(1816.5776797571834d, capacity, precision: 8);
     }
 
     /// <summary>

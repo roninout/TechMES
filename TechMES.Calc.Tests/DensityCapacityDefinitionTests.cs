@@ -331,7 +331,7 @@ public sealed class DensityCapacityDefinitionTests
             {
                 ["temperatureC"] = 20d,
                 ["componentCount"] = 1,
-                ["component0Code"] = "DryMatter",
+                ["component0Code"] = "Fusel",
                 ["component0Percent"] = 100d
             }));
 

@@ -180,6 +180,35 @@ namespace TechMES.Calc.Thermodynamics
         }
 
         /// <summary>
+        /// CSS – удельная теплоёмкость сахарного раствора, J/(kg·K).
+        ///
+        /// Формула перенесена из PLC без изменения коэффициентов.
+        ///
+        /// temperature      - температура раствора, °C;
+        /// dryMatterPercent - массовая концентрация сухих веществ DS, %;
+        /// purityPercent    - чистота сухих веществ PUR, %.
+        ///
+        /// При T > 0 °C используется формула НУХТ с Log10.
+        /// При T <= 0 °C используется исходная эмпирическая формула.
+        /// </summary>
+        public static double CSS(double temperature, double dryMatterPercent, double purityPercent)
+        {
+            if (!double.IsFinite(temperature))
+                throw new ArgumentOutOfRangeException(nameof(temperature), "Temperature must be a finite number.");
+
+            if (!double.IsFinite(dryMatterPercent) || dryMatterPercent < 0.0 || dryMatterPercent > 100.0)
+                throw new ArgumentOutOfRangeException(nameof(dryMatterPercent), "Dry matter percent must be between 0 and 100.");
+
+            if (!double.IsFinite(purityPercent) || purityPercent < 0.0 || purityPercent > 100.0)
+                throw new ArgumentOutOfRangeException(nameof(purityPercent), "Purity percent must be between 0 and 100.");
+
+            if (temperature > 0.0)
+                return 4218.0 + 2.8 * temperature * Math.Log10(0.01 * temperature) - dryMatterPercent * (29.73 - 0.07536 * temperature - 0.046 * purityPercent);
+
+            return 4186.8 * (1.0 - (0.6 - 0.0018 * temperature) * dryMatterPercent * 0.01);
+        }
+
+        /// <summary>
         /// VG – питомий об'єм метану, м³/кг
         /// </summary>
         public static double VG(double p, double t)

@@ -102,8 +102,7 @@ public static class SubstanceCatalog
         Add("Water", "Water", SubstancePhase.Liquid, () => new Water(false));
         Add("WaterS", "Water", SubstancePhase.Vapor, () => new Water(true));
 
-        // DryMatter имеет восстановленную Density ICUMSA-корреляцию, но Capacity пока не реализована.
-        Add("DryMatter", "Dry matter", SubstancePhase.Liquid, () => new DryMatter(), SubstancePropertySupport.Density);
+        Add("DryMatter", "Dry matter", SubstancePhase.Liquid, () => new DryMatter(), SubstancePropertySupport.Density | SubstancePropertySupport.SpecificHeatCapacity);
 
         Add("Butadiene_1_2", "1,2-Butadiene", SubstancePhase.Liquid, () => new Butadiene_1_2(false));
         Add("Butadiene_1_2S", "1,2-Butadiene", SubstancePhase.Vapor, () => new Butadiene_1_2(true));

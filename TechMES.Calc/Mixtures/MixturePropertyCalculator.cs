@@ -98,6 +98,7 @@ public static class MixturePropertyCalculator
     public static MixtureCapacityCalculationResult CalculateSpecificHeatCapacity(IReadOnlyList<MixtureComponent> components, double temperatureC, IReadOnlyDictionary<string, double>? additionalParameters = null)
     {
         ValidateCommonInputs(components, temperatureC);
+        ValidateDryMatterComposition(components);
 
         var capacityKjPerKgK = 0d;
         var componentResults = new List<MixtureCapacityComponentResult>();
@@ -116,7 +117,7 @@ public static class MixturePropertyCalculator
                 throw new CalculationException("substance.capacity.unsupported", $"Substance '{component.SubstanceCode}' is not supported by the normalized specific heat capacity calculation.");
 
             var model = SubstanceCatalog.CreateRequiredModel(component.SubstanceCode);
-            var pureCapacityKjPerKgK = model.GetCapacity((float)temperatureC, additionalParameters);
+            var pureCapacityKjPerKgK = model.GetCapacity((float)temperatureC, component.MassPercent, additionalParameters);
 
             if (!double.IsFinite(pureCapacityKjPerKgK) || pureCapacityKjPerKgK <= 0d)
                 throw new CalculationException("substance.capacity.invalid", $"Substance '{component.SubstanceCode}' returned invalid heat capacity {pureCapacityKjPerKgK}.");
@@ -209,14 +210,12 @@ public static class MixturePropertyCalculator
     }
 
     /// <summary>
-    /// Density-only контракт DryMatter.
+    /// Специальный контракт DryMatter.
+    /// Density и Capacity DryMatter восстановлены из корреляций сахарного водного раствора.
     ///
-    /// Корреляция восстановлена из PLC-расчёта сахарного водного раствора,
-    /// поэтому поддерживаются только:
+    /// Поэтому поддерживаются только:
     /// - DryMatter = 100%;
     /// - Water + DryMatter = 100%.
-    ///
-    /// Capacity эту проверку намеренно не вызывает.
     /// </summary>
     private static void ValidateDryMatterComposition(IReadOnlyList<MixtureComponent> components)
     {
