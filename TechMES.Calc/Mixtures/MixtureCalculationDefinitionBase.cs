@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using TechMES.Calc.Abstractions;
 using TechMES.Calc.Exceptions;
 using TechMES.Calc.Parameters;
@@ -50,18 +50,12 @@ public abstract class MixtureCalculationDefinitionBase : CalculationDefinitionBa
     ///
     /// propertyParameters содержит параметры конкретного физического свойства.
     ///
-    /// Для Density сегодня это:
-    /// - temperatureC;
-    /// - pressureBarAbsolute;
-    /// - densityCorrection.
+    /// requiredSubstanceProperty позволяет property-specific Definition
+    /// показывать только вещества, для которых соответствующая физическая
+    /// формула разрешена SubstanceCatalog.
     ///
-    /// Для Capacity:
-    /// - temperatureC;
-    /// - pressureBarAbsolute;
-    /// - capacityCorrection.
-    ///
-    /// Метод принимает обычный список параметров, поэтому количество
-    /// ProcessInput не ограничено двумя, пятью или любым другим числом.
+    /// Если фильтр не указан, сохраняется прежнее поведение и доступны
+    /// все SubstanceCatalog.Items. Это важно для поэтапной миграции Density.
     ///
     /// После физических параметров автоматически добавляется конфигурация смеси:
     /// componentCount и пять возможных componentNCode/componentNPercent.
@@ -69,7 +63,9 @@ public abstract class MixtureCalculationDefinitionBase : CalculationDefinitionBa
     /// Ограничение в пять относится исключительно к текущей структуре
     /// компонентов смеси в Plant SCADA и не относится к ProcessInput.
     /// </summary>
-    protected static IReadOnlyList<CalculationParameterDefinition> CreateMixtureParameters(IReadOnlyList<CalculationParameterDefinition> propertyParameters)
+    protected static IReadOnlyList<CalculationParameterDefinition> CreateMixtureParameters(
+        IReadOnlyList<CalculationParameterDefinition> propertyParameters,
+        SubstancePropertySupport? requiredSubstanceProperty = null)
     {
         ArgumentNullException.ThrowIfNull(propertyParameters);
 
@@ -88,23 +84,19 @@ public abstract class MixtureCalculationDefinitionBase : CalculationDefinitionBa
             Order: 100,
             Description: "Number of active mixture components. Current SCADA structure supports from 1 to 5 components."));
 
+        var substances = requiredSubstanceProperty.HasValue ? SubstanceCatalog.GetSupported(requiredSubstanceProperty.Value) : SubstanceCatalog.Items;
+
         // Для Substance Selection передаём фазу отдельным структурированным полем.
-        // Name остаётся только пользовательским отображением: Water — Water (liquid)
-        // Но WEB больше не должен разбирать окончание Name, чтобы понять физическую фазу вещества.
-        // Для фильтрации Liquid/Vapour используется исключительно Option.Phase.
-        var substanceOptions = SubstanceCatalog.Items
+        // Name остаётся только пользовательским отображением. Для фильтрации Liquid/Vapour используется исключительно Option.Phase.
+        var substanceOptions = substances
             .Select(item => new CalculationParameterOption(item.Code, $"{item.Code} — {item.Name} ({GetPhaseName(item.Phase)})", GetPhaseName(item.Phase)))
             .ToArray();
 
         // Внутренние ключи компонентов оставляем 0-based:
         //
         // component0Percent -> PERC_0
-        // component1Percent -> PERC_1
         // ...
         // component4Percent -> PERC_4
-        //
-        // Это совпадает с существующей нумерацией SCADA Equipment Type
-        // и впоследствии упростит автоматические bindings.
         //
         // Пользователю при этом показываются обычные номера 1..5.
         for (var index = 0; index < MaxComponentCount; index++)
@@ -160,11 +152,7 @@ public abstract class MixtureCalculationDefinitionBase : CalculationDefinitionBa
         var componentCount = parameters.GetRequiredInt(ComponentCountKey);
 
         if (componentCount < 1 || componentCount > MaxComponentCount)
-        {
-            throw new CalculationException(
-                "mixture.component-count.invalid",
-                $"Mixture component count must be between 1 and {MaxComponentCount}.");
-        }
+            throw new CalculationException("mixture.component-count.invalid", $"Mixture component count must be between 1 and {MaxComponentCount}.");
 
         var components = new List<MixtureComponent>(componentCount);
 
@@ -174,18 +162,10 @@ public abstract class MixtureCalculationDefinitionBase : CalculationDefinitionBa
             var percentKey = GetComponentPercentKey(index);
 
             if (!parameters.TryGetValue(codeKey, out var rawCode) || rawCode is null)
-            {
-                throw new CalculationException(
-                    "mixture.component.code-missing",
-                    $"Substance code for mixture component {index + 1} is missing.");
-            }
+                throw new CalculationException("mixture.component.code-missing", $"Substance code for mixture component {index + 1} is missing.");
 
             if (!parameters.TryGetValue(percentKey, out var rawPercent) || rawPercent is null)
-            {
-                throw new CalculationException(
-                    "mixture.component.percent-missing",
-                    $"Mass percentage for mixture component {index + 1} is missing.");
-            }
+                throw new CalculationException("mixture.component.percent-missing", $"Mass percentage for mixture component {index + 1} is missing.");
 
             var code = parameters.GetRequiredString(codeKey);
             var percent = parameters.GetRequiredDouble(percentKey);
@@ -198,57 +178,29 @@ public abstract class MixtureCalculationDefinitionBase : CalculationDefinitionBa
 
     /// <summary>
     /// Добавляет в Trace полную фактическую конфигурацию смеси.
-    ///
-    /// Это особенно важно для последующей диагностики:
-    /// по одному результату Density/Capacity будет видно,
-    /// какие именно вещества и массовые доли участвовали в расчёте.
     /// </summary>
     protected static void AddMixtureTrace(ICollection<CalculationTraceItem> trace, IReadOnlyList<MixtureComponent> components)
     {
-        trace.Add(new CalculationTraceItem(
-            "componentCount",
-            "Component count",
-            components.Count.ToString(CultureInfo.InvariantCulture)));
+        trace.Add(new CalculationTraceItem("componentCount", "Component count", components.Count.ToString(CultureInfo.InvariantCulture)));
 
         for (var index = 0; index < components.Count; index++)
         {
             var component = components[index];
-
-            trace.Add(new CalculationTraceItem(
-                $"component{index}Code",
-                $"Component {index + 1}",
-                component.SubstanceCode));
-
-            trace.Add(new CalculationTraceItem(
-                $"component{index}Percent",
-                $"Component {index + 1} mass percent",
-                Format(component.MassPercent),
-                "%"));
+            trace.Add(new CalculationTraceItem($"component{index}Code", $"Component {index + 1}", component.SubstanceCode));
+            trace.Add(new CalculationTraceItem($"component{index}Percent", $"Component {index + 1} mass percent", Format(component.MassPercent), "%"));
         }
     }
 
-    /// <summary>
-    /// Возвращает ключ выбора вещества для конкретного SCADA PERC index.
-    /// </summary>
     protected static string GetComponentCodeKey(int index)
     {
         return $"component{index}Code";
     }
 
-    /// <summary>
-    /// Возвращает ключ массовой доли для конкретного SCADA PERC index.
-    /// </summary>
     protected static string GetComponentPercentKey(int index)
     {
         return $"component{index}Percent";
     }
 
-    /// <summary>
-    /// Унифицированное форматирование double для Trace.
-    ///
-    /// Используем InvariantCulture, чтобы диагностическое значение
-    /// не зависело от региональных настроек Windows.
-    /// </summary>
     protected static string Format(double value)
     {
         return value.ToString("0.############", CultureInfo.InvariantCulture);

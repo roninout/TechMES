@@ -34,6 +34,38 @@ public sealed class DensityCapacityDefinitionTests
     }
 
     [Fact]
+    public void CapacityComponentOptionsExposeOnlySupportedHeatCapacityModels()
+    {
+        var definition = new CapacityCalculationDefinition();
+
+        var componentParameter = definition.Parameters.Single(parameter =>
+            string.Equals(parameter.Key, "component0Code", StringComparison.OrdinalIgnoreCase));
+
+        var options = componentParameter.Options!;
+
+        Assert.Contains(options, option =>
+            string.Equals(option.Value, "ACN", StringComparison.OrdinalIgnoreCase));
+
+        Assert.DoesNotContain(options, option =>
+            string.Equals(option.Value, "DryMatter", StringComparison.OrdinalIgnoreCase));
+
+        Assert.DoesNotContain(options, option =>
+            string.Equals(option.Value, "Fusel", StringComparison.OrdinalIgnoreCase));
+
+        Assert.DoesNotContain(options, option =>
+            string.Equals(option.Value, "Methan", StringComparison.OrdinalIgnoreCase));
+
+        var acn = options.Single(option =>
+            string.Equals(option.Value, "ACN", StringComparison.OrdinalIgnoreCase));
+
+        var acnVapor = options.Single(option =>
+            string.Equals(option.Value, "ACNS", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal("liquid", acn.Phase);
+        Assert.Equal("vapor", acnVapor.Phase);
+    }
+
+    [Fact]
     public void DensityCalculatesPureAcetonitrile()
     {
         var definition = new DensityCalculationDefinition();
@@ -254,6 +286,60 @@ public sealed class DensityCapacityDefinitionTests
     }
 
     [Fact]
+    public void CapacityReturnsComponentHeatCapacitiesForRuntimeVisualization()
+    {
+        var definition = new CapacityCalculationDefinition();
+
+        var result = definition.Calculate(new CalculationParameterSet(
+            new Dictionary<string, object?>
+            {
+                ["temperatureC"] = 20d,
+                ["componentCount"] = 2,
+
+                ["component0Code"] = "ACN",
+                ["component0Percent"] = 50d,
+
+                ["component1Code"] = "Water",
+                ["component1Percent"] = 50d
+            }));
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+
+        var component0Capacity = GetOutput(result, "component0Capacity");
+        var component1Capacity = GetOutput(result, "component1Capacity");
+        var mixtureCapacity = GetOutput(result, "capacity");
+
+        Assert.Equal(2221.05154452d, component0Capacity, precision: 8);
+        Assert.True(double.IsFinite(component1Capacity));
+        Assert.True(component1Capacity > 0d);
+
+        // Для массовых долей 50/50 итог обязан быть обычным
+        // арифметическим средним чистых Cp компонентов.
+        Assert.Equal(
+            (component0Capacity + component1Capacity) * 0.5d,
+            mixtureCapacity,
+            precision: 8);
+    }
+
+    [Fact]
+    public void CapacityDefinitionRejectsUnsupportedHeatCapacityModel()
+    {
+        var definition = new CapacityCalculationDefinition();
+
+        var result = definition.Calculate(new CalculationParameterSet(
+            new Dictionary<string, object?>
+            {
+                ["temperatureC"] = 20d,
+                ["componentCount"] = 1,
+                ["component0Code"] = "DryMatter",
+                ["component0Percent"] = 100d
+            }));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("parameter.selection-invalid", result.ErrorCode);
+    }
+
+    [Fact]
     public void ActiveComponentRequiresSubstanceCode()
     {
         var definition = new DensityCalculationDefinition();
@@ -330,7 +416,7 @@ public sealed class DensityCapacityDefinitionTests
     }
 
     [Fact]
-    public void CapacityExposesTemperatureAndPressureAsProcessInputs()
+    public void CapacityExposesFiveProcessInputs()
     {
         var definition = new CapacityCalculationDefinition();
 
@@ -340,7 +426,15 @@ public sealed class DensityCapacityDefinitionTests
             .Select(parameter => parameter.Key)
             .ToArray();
 
-        Assert.Equal(["temperatureC", "pressureBarAbsolute"], processInputs);
+        Assert.Equal(
+        [
+            "temperatureC",
+            "pressureBarAbsolute",
+            "additionalParameter1",
+            "additionalParameter2",
+            "additionalParameter3"
+        ],
+        processInputs);
     }
 
     private static double NitrogenDensity(double temperatureC, double pressureBarAbsolute)

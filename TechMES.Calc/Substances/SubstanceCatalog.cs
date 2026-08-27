@@ -6,11 +6,17 @@ namespace TechMES.Calc.Substances;
 /// <summary>
 /// Catalog of substance codes used by the former TechDotNetLib.
 ///
-/// The catalog owns only code -> formula-model mapping. It does not know
-/// anything about SCADA tags, PostgreSQL or Calc Jobs.
+/// The catalog owns:
+/// - code -> formula-model mapping;
+/// - physical phase;
+/// - explicit property capabilities used by Calculation Definitions.
+///
+/// It does not know anything about SCADA tags, PostgreSQL or Calc Jobs.
 /// </summary>
 public static class SubstanceCatalog
 {
+    private const SubstancePropertySupport DefaultPropertySupport = SubstancePropertySupport.Density | SubstancePropertySupport.SpecificHeatCapacity;
+
     private sealed record Entry(SubstanceDescriptor Descriptor, Func<LegacySubstance> Factory);
 
     private static readonly IReadOnlyDictionary<string, Entry> Entries = CreateEntries();
@@ -19,6 +25,21 @@ public static class SubstanceCatalog
         .Select(entry => entry.Descriptor)
         .OrderBy(item => item.Code, StringComparer.OrdinalIgnoreCase)
         .ToArray();
+
+    /// <summary>
+    /// Возвращает только вещества, явно разрешённые для указанного свойства.
+    ///
+    /// Это основной источник options для property-specific Calculation Definition.
+    /// Благодаря этому WEB не должен угадывать поддержку вещества по имени,
+    /// фазе или пробному выполнению legacy-формулы.
+    /// </summary>
+    public static IReadOnlyList<SubstanceDescriptor> GetSupported(SubstancePropertySupport property)
+    {
+        if (property == SubstancePropertySupport.None)
+            return [];
+
+        return Items.Where(item => item.Supports(property)).ToArray();
+    }
 
     public static bool TryGet(string? code, out SubstanceDescriptor descriptor)
     {
@@ -43,9 +64,7 @@ public static class SubstanceCatalog
     internal static LegacySubstance CreateRequiredModel(string code)
     {
         if (!string.IsNullOrWhiteSpace(code) && Entries.TryGetValue(code.Trim(), out var entry))
-        {
             return entry.Factory();
-        }
 
         throw new CalculationException("substance.unknown", $"Unknown substance code '{code}'.");
     }
@@ -54,9 +73,9 @@ public static class SubstanceCatalog
     {
         var result = new Dictionary<string, Entry>(StringComparer.OrdinalIgnoreCase);
 
-        void Add(string code, string name, SubstancePhase phase, Func<LegacySubstance> factory)
+        void Add(string code, string name, SubstancePhase phase, Func<LegacySubstance> factory, SubstancePropertySupport supportedProperties = DefaultPropertySupport)
         {
-            result.Add(code, new Entry(new SubstanceDescriptor(code, name, phase), factory));
+            result.Add(code, new Entry(new SubstanceDescriptor(code, name, phase, supportedProperties), factory));
         }
 
         Add("ALC", "Alcohol", SubstancePhase.Liquid, () => new Alcohol(false));
@@ -83,7 +102,8 @@ public static class SubstanceCatalog
         Add("Water", "Water", SubstancePhase.Liquid, () => new Water(false));
         Add("WaterS", "Water", SubstancePhase.Vapor, () => new Water(true));
 
-        Add("DryMatter", "Dry matter", SubstancePhase.Liquid, () => new DryMatter());
+        // DryMatter имеет восстановленную Density ICUMSA-корреляцию, но Capacity пока не реализована.
+        Add("DryMatter", "Dry matter", SubstancePhase.Liquid, () => new DryMatter(), SubstancePropertySupport.Density);
 
         Add("Butadiene_1_2", "1,2-Butadiene", SubstancePhase.Liquid, () => new Butadiene_1_2(false));
         Add("Butadiene_1_2S", "1,2-Butadiene", SubstancePhase.Vapor, () => new Butadiene_1_2(true));
@@ -138,12 +158,11 @@ public static class SubstanceCatalog
         Add("HCL", "Hydrochloric acid", SubstancePhase.Liquid, () => new HCL(false));
         Add("HCLS", "Hydrochloric acid", SubstancePhase.Vapor, () => new HCL(true));
 
-        // These two formulas were added late in TechDotNetLib and use their own
-        // native K/Pa contract internally. They are retained as reference models,
-        // but are intentionally not consumed by the new Density/Capacity definitions
-        // until their units are normalized and covered by dedicated tests.
-        Add("Methan", "Methane (legacy native K/Pa model)", SubstancePhase.Vapor, () => new Methan(true));
-        Add("Fusel", "Fusel oil (legacy native K/Pa model)", SubstancePhase.Liquid, () => new Fusel(false));
+        // Methan Capacity использует собственный legacy temperature contract (K), а Fusel.GetCapacity возвращает legacy sentinel -1.
+        // Density пока оставляем доступной для обратной совместимости существующего
+        // Density ядра и regression-тестов. Capacity Definition эти два вещества больше не показывает и Calculation Core их явно отклоняет.
+        Add("Methan", "Methane (legacy native K/Pa model)", SubstancePhase.Vapor, () => new Methan(true), SubstancePropertySupport.Density);
+        Add("Fusel", "Fusel oil (legacy native K/Pa model)", SubstancePhase.Liquid, () => new Fusel(false), SubstancePropertySupport.Density);
 
         return result;
     }

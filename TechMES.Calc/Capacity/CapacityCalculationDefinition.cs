@@ -1,29 +1,27 @@
-﻿using TechMES.Calc.Mixtures;
+using TechMES.Calc.Mixtures;
 using TechMES.Calc.Parameters;
 using TechMES.Calc.Results;
+using TechMES.Calc.Substances;
 
 namespace TechMES.Calc.Capacity;
 
 /// <summary>
 /// Расчёт удельной теплоёмкости многокомпонентной смеси.
 ///
-/// В старом TechParamsCalc объект Capacity содержал ссылки и на Temperature,
-/// и на Pressure и вызывал Mix.GetCapacity(temperature, pressure).
+/// По структуре Calculation Job Capacity намеренно повторяет Density:
+/// - Temperature;
+/// - optional Pressure;
+/// - до трёх дополнительных ProcessInput;
+/// - CompN / Perc0..Perc4;
+/// - component0Code..component4Code;
+/// - DeltaC;
+/// - один основной SCADA output Capacity.
 ///
-/// Однако внутри старого Mix.GetCapacity Pressure фактически не использовалось:
-/// каждый Substance.GetCapacity() получал только Temperature.
+/// Математика смеси при этом своя:
 ///
-/// Поэтому в новой версии:
-/// - Temperature является обязательным физическим входом;
-/// - Pressure уже присутствует в контракте, но пока имеет DefaultValue
-///   и не влияет на текущую legacy-формулу.
+///     Cp = Σ(w_i × Cp_i)
 ///
-/// Это позволяет сохранить Pressure как полноценный ProcessInput уже сейчас,
-/// не создавая при этом ложную зависимость существующей формулы от давления.
-///
-/// Как и Density, этот Definition не ограничен двумя физическими параметрами.
-/// Новые ProcessInput можно добавлять в PropertyParameterDefinitions
-/// без изменения CalcJob, PostgreSQL, Runtime.Service или Calc.Service.
+/// Legacy GetCapacity возвращает kJ/(kg·K), а MixturePropertyCalculator нормализует компонентные и итоговый результаты в J/(kg·K).
 /// </summary>
 public sealed class CapacityCalculationDefinition : MixtureCalculationDefinitionBase
 {
@@ -33,15 +31,15 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
     private const string PressureKey = "pressureBarAbsolute";
     private const string CorrectionKey = "capacityCorrection";
 
+    private static readonly string[] AdditionalParameterKeys =
+    [
+        "additionalParameter1",
+        "additionalParameter2",
+        "additionalParameter3"
+    ];
+
     private static readonly IReadOnlyList<CalculationParameterDefinition> PropertyParameterDefinitions =
     [
-        // Temperature является настоящим процессным входом.
-        //
-        // Специализированный Capacity UI в будущем не должен искать
-        // параметр по имени temperatureC.
-        //
-        // Он определит его по Role = ProcessInput точно так же,
-        // как сейчас это делает DensityConfigurationPanel.
         new CalculationParameterDefinition(
             Key: TemperatureKey,
             Name: "Temperature",
@@ -55,18 +53,12 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
             Description: "Mixture temperature used by the substance heat-capacity correlations.",
             Role: CalculationParameterRole.ProcessInput),
 
-        // Pressure также является ProcessInput.
+        // Pressure присутствовал в старом Capacity object, но legacy Mix.GetCapacity
+        // его фактически не использовал.
         //
-        // Текущие перенесённые Capacity-корреляции его пока не используют,
-        // поэтому параметр остаётся необязательным и имеет DefaultValue.
-        //
-        // Это важно: мы заранее сохраняем нормальный контракт Pressure,
-        // но не заставляем Runtime требовать SCADA binding для формулы,
-        // которой это давление сегодня математически не нужно.
-        //
-        // Если новая версия Capacity действительно начнёт зависеть
-        // от Pressure, достаточно будет сделать IsRequired = true
-        // и увеличить Version алгоритма.
+        // Пока оставляем полноценный optional ProcessInput с DefaultValue:
+        // WEB получает тот же ProcessInput lifecycle, что и Density,
+        // а текущая формула не создаёт ложную обязательную зависимость.
         new CalculationParameterDefinition(
             Key: PressureKey,
             Name: "Absolute pressure",
@@ -81,32 +73,54 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
             Description: "Reserved absolute pressure input. Current legacy Capacity correlations depend only on Temperature.",
             Role: CalculationParameterRole.ProcessInput),
 
-        // Старый Capacity использовал DELTA_C.
+        new CalculationParameterDefinition(
+            Key: "additionalParameter1",
+            Name: "Additional parameter",
+            Type: CalculationParameterType.Number,
+            IsRequired: false,
+            Order: 3,
+            Description: "Reserved additional process parameter.",
+            Role: CalculationParameterRole.ProcessInput),
+
+        new CalculationParameterDefinition(
+            Key: "additionalParameter2",
+            Name: "Additional parameter",
+            Type: CalculationParameterType.Number,
+            IsRequired: false,
+            Order: 4,
+            Description: "Reserved additional process parameter.",
+            Role: CalculationParameterRole.ProcessInput),
+
+        new CalculationParameterDefinition(
+            Key: "additionalParameter3",
+            Name: "Additional parameter",
+            Type: CalculationParameterType.Number,
+            IsRequired: false,
+            Order: 5,
+            Description: "Reserved additional process parameter.",
+            Role: CalculationParameterRole.ProcessInput),
+
+        // Legacy DELTA_C:
         //
-        // Mix.GetCapacity() уже возвращал значение в J/(kg·K).
-        // DELTA_C после чтения из OPC умножался на 10,
-        // а затем при расчёте использовался с коэффициентом 0.1.
-        //
-        // Эти два преобразования взаимно уничтожались.
-        //
-        // Поэтому в новой архитектуре correction сразу хранится
-        // как инженерное значение J/(kg·K), без SCADA scaling
-        // внутри математического ядра.
+        // OPC read scaling ×10 и последующее ×0.1 в старом расчёте
+        // взаимно уничтожались. Поэтому новый Job хранит DeltaC сразу
+        // как инженерное J/(kg·K) значение.
         new CalculationParameterDefinition(
             Key: CorrectionKey,
-            Name: "Capacity correction",
+            Name: "DeltaC",
             Type: CalculationParameterType.Number,
             Unit: "J/(kg·K)",
             IsRequired: false,
             DefaultValue: 0d,
             Step: 1,
             Decimals: 3,
-            Order: 3,
-            Description: "Engineering correction added to the calculated specific heat capacity. Corresponds to legacy DELTA_C.",
+            Order: 10,
+            Description: "Specific heat capacity correction read from the Capacity Equipment DeltaC SCADA item.",
             Role: CalculationParameterRole.Configuration)
     ];
 
-    private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions = CreateMixtureParameters(PropertyParameterDefinitions);
+    // Capacity получает только те вещества, для которых SpecificHeatCapacity явно разрешена SubstanceCatalog.
+    private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions = CreateMixtureParameters(PropertyParameterDefinitions, SubstancePropertySupport.SpecificHeatCapacity);
 
     private static readonly IReadOnlyList<CalculationOutputDefinition> OutputDefinitions =
     [
@@ -116,68 +130,155 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
             Unit: "J/(kg·K)",
             Decimals: 3,
             Order: 1,
-            Description: "Calculated mixture specific heat capacity including Capacity correction.")
+            Description: "Calculated mixture specific heat capacity including DeltaC."),
+
+        // Diagnostic Runtime/UI outputs.
+        new CalculationOutputDefinition(
+            Key: "component0Capacity",
+            Name: "Component 1 specific heat capacity",
+            Unit: "J/(kg·K)",
+            Decimals: 3,
+            Order: 101,
+            Description: "Specific heat capacity of mixture component 1."),
+
+        new CalculationOutputDefinition(
+            Key: "component1Capacity",
+            Name: "Component 2 specific heat capacity",
+            Unit: "J/(kg·K)",
+            Decimals: 3,
+            Order: 102,
+            Description: "Specific heat capacity of mixture component 2."),
+
+        new CalculationOutputDefinition(
+            Key: "component2Capacity",
+            Name: "Component 3 specific heat capacity",
+            Unit: "J/(kg·K)",
+            Decimals: 3,
+            Order: 103,
+            Description: "Specific heat capacity of mixture component 3."),
+
+        new CalculationOutputDefinition(
+            Key: "component3Capacity",
+            Name: "Component 4 specific heat capacity",
+            Unit: "J/(kg·K)",
+            Decimals: 3,
+            Order: 104,
+            Description: "Specific heat capacity of mixture component 4."),
+
+        new CalculationOutputDefinition(
+            Key: "component4Capacity",
+            Name: "Component 5 specific heat capacity",
+            Unit: "J/(kg·K)",
+            Decimals: 3,
+            Order: 105,
+            Description: "Specific heat capacity of mixture component 5.")
     ];
 
     public override string Code => DefinitionCode;
-
     public override string Name => "Mixture specific heat capacity";
-
     public override string Category => "Capacity";
 
-    public override string Version => "1";
+    // Version 2:
+    // - Capacity component options filter unsupported Cp models;
+    // - ProcessInput count expanded to the same 2..5 contract as Density;
+    // - componentNCapacity diagnostic outputs added;
+    // - Density-only DryMatter validation removed from Capacity path.
+    public override string Version => "2";
 
     public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
-
     public override IReadOnlyList<CalculationOutputDefinition> Outputs => OutputDefinitions;
 
-    /// <summary>
-    /// Выполняет расчёт Capacity.
-    ///
-    /// Pressure уже является частью общего контракта ProcessInput,
-    /// но текущая перенесённая математическая модель Capacity
-    /// использует только Temperature.
-    ///
-    /// Pressure всё равно читается из ParameterSet и добавляется в Trace.
-    /// Благодаря этому Runtime State уже хранит полный текущий набор
-    /// процессных параметров, даже если конкретная версия формулы
-    /// использует только часть из них.
-    /// </summary>
     protected override CalculationResult CalculateCore(CalculationParameterSet parameters, bool includeTrace)
     {
         var temperatureC = parameters.GetRequiredDouble(TemperatureKey);
         var pressureBarAbsolute = parameters.GetRequiredDouble(PressureKey);
-        var correctionJPerKgK = parameters.GetDouble(CorrectionKey, 0d);
+        var deltaC = parameters.GetDouble(CorrectionKey, 0d);
         var components = ReadMixtureComponents(parameters);
+        var additionalParameters = ReadAdditionalParameters(parameters);
 
-        var baseCapacityJPerKgK = MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(components, temperatureC);
-        var capacityJPerKgK = baseCapacityJPerKgK + correctionJPerKgK;
+        var mixtureResult = MixturePropertyCalculator.CalculateSpecificHeatCapacity(components, temperatureC, additionalParameters);
+
+        var baseCapacityJPerKgK = mixtureResult.SpecificHeatCapacityJPerKgK;
+        var capacityJPerKgK = baseCapacityJPerKgK + deltaC;
 
         if (!double.IsFinite(capacityJPerKgK) || capacityJPerKgK <= 0d)
-            return CalculationResult.Failure("capacity.result.invalid", "Calculated specific heat capacity after correction must be a finite value greater than zero.");
+            return CalculationResult.Failure("capacity.result.invalid", "Calculated specific heat capacity after DeltaC must be a finite value greater than zero.");
+
+        var outputs = new List<CalculationOutput>
+        {
+            new(
+                Key: "capacity",
+                Name: "Specific heat capacity",
+                Value: capacityJPerKgK,
+                Unit: "J/(kg·K)")
+        };
+
+        foreach (var component in mixtureResult.Components)
+        {
+            outputs.Add(new CalculationOutput(
+                Key: $"component{component.Index}Capacity",
+                Name: $"{component.SubstanceCode} specific heat capacity",
+                Value: component.SpecificHeatCapacityJPerKgK,
+                Unit: "J/(kg·K)"));
+        }
 
         var trace = new List<CalculationTraceItem>();
 
         if (includeTrace)
         {
             trace.Add(new CalculationTraceItem("temperatureC", "Temperature", Format(temperatureC), "°C"));
+
+            // Pressure пока диагностический ProcessInput.
             trace.Add(new CalculationTraceItem("pressureBarAbsolute", "Absolute pressure", Format(pressureBarAbsolute), "bar(abs)"));
+
+            foreach (var parameter in additionalParameters.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                trace.Add(new CalculationTraceItem(parameter.Key, "Additional parameter", Format(parameter.Value),null));
+            }
 
             AddMixtureTrace(trace, components);
 
-            trace.Add(new CalculationTraceItem("baseCapacity", "Capacity before correction", Format(baseCapacityJPerKgK), "J/(kg·K)"));
-            trace.Add(new CalculationTraceItem("capacityCorrection", "Capacity correction", Format(correctionJPerKgK), "J/(kg·K)"));
-            trace.Add(new CalculationTraceItem("capacity", "Final specific heat capacity", Format(capacityJPerKgK), "J/(kg·K)"));
+            foreach (var component in mixtureResult.Components)
+            {
+                trace.Add(new CalculationTraceItem(
+                    $"component{component.Index}Capacity",
+                    $"{component.SubstanceCode} specific heat capacity",
+                    Format(component.SpecificHeatCapacityJPerKgK),
+                    "J/(kg·K)"));
+            }
+
+            trace.Add(new CalculationTraceItem(
+                "baseCapacity",
+                "Capacity before DeltaC",
+                Format(baseCapacityJPerKgK),
+                "J/(kg·K)"));
+
+            trace.Add(new CalculationTraceItem(
+                "capacityCorrection",
+                "DeltaC",
+                Format(deltaC),
+                "J/(kg·K)"));
+
+            trace.Add(new CalculationTraceItem(
+                "capacity",
+                "Final specific heat capacity",
+                Format(capacityJPerKgK),
+                "J/(kg·K)"));
         }
 
-        return CalculationResult.Success(
-        [
-            new CalculationOutput(
-                Key: "capacity",
-                Name: "Specific heat capacity",
-                Value: capacityJPerKgK,
-                Unit: "J/(kg·K)")
-        ],
-        trace: trace);
+        return CalculationResult.Success(outputs, trace: trace);
+    }
+
+    private static IReadOnlyDictionary<string, double> ReadAdditionalParameters(CalculationParameterSet parameters)
+    {
+        var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var key in AdditionalParameterKeys)
+        {
+            if (parameters.TryGetValue(key, out var rawValue) && rawValue is not null)
+                result[key] = parameters.GetRequiredDouble(key);
+        }
+
+        return result;
     }
 }

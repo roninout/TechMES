@@ -19,6 +19,26 @@ public sealed class SubstancePropertyTests
         // DryMatter является новым TechMES-компонентом, восстановленным из старой PLC ICUMSA-корреляции.
         Assert.Equal(SubstancePhase.Liquid, SubstanceCatalog.GetRequired("DryMatter").Phase);
         Assert.Equal("Dry matter", SubstanceCatalog.GetRequired("DryMatter").Name);
+
+        Assert.True(
+            SubstanceCatalog.GetRequired("ACN")
+                .Supports(SubstancePropertySupport.SpecificHeatCapacity));
+
+        Assert.False(
+            SubstanceCatalog.GetRequired("DryMatter")
+                .Supports(SubstancePropertySupport.SpecificHeatCapacity));
+
+        Assert.False(
+            SubstanceCatalog.GetRequired("Fusel")
+                .Supports(SubstancePropertySupport.SpecificHeatCapacity));
+
+        Assert.False(
+            SubstanceCatalog.GetRequired("Methan")
+                .Supports(SubstancePropertySupport.SpecificHeatCapacity));
+
+        Assert.Equal(
+            52,
+            SubstanceCatalog.GetSupported(SubstancePropertySupport.SpecificHeatCapacity).Count);
     }
 
     [Fact]
@@ -148,13 +168,12 @@ public sealed class SubstancePropertyTests
     }
 
     [Theory]
-    [InlineData("Methan", 298.15d)]
     [InlineData("Diesel", 20d)]
     [InlineData("HCL", 20d)]
     [InlineData("HCLS", 20d)]
     [InlineData("NaOH", 20d)]
     [InlineData("NaOHS", 20d)]
-    public void LegacyCapacityModelsAreExecutedWithoutArtificialBlockList(string code, double temperature)
+    public void SupportedLegacyCapacityModelsAreExecuted(string code, double temperature)
     {
         var capacity = MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
             [new MixtureComponent(code, 100d)],
@@ -164,15 +183,40 @@ public sealed class SubstancePropertyTests
         Assert.True(capacity > 0d);
     }
 
-    [Fact]
-    public void FuselCapacityReturnsOriginalInvalidLegacyValueInsteadOfBeingArtificiallyBlocked()
+    [Theory]
+    [InlineData("Methan")]
+    [InlineData("Fusel")]
+    [InlineData("DryMatter")]
+    public void UnsupportedCapacityModelsAreRejectedByNormalizedContract(string code)
     {
         var exception = Assert.Throws<CalculationException>(() =>
             MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
-                [new MixtureComponent("Fusel", 100d)],
+                [new MixtureComponent(code, 100d)],
                 temperatureC: 20d));
 
-        Assert.Equal("substance.capacity.invalid", exception.Code);
+        Assert.Equal("substance.capacity.unsupported", exception.Code);
+    }
+
+    [Fact]
+    public void ZeroPercentUnsupportedCapacityComponentDoesNotParticipateInCalculation()
+    {
+        var capacityWithoutInactiveComponent =
+            MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
+                [new MixtureComponent("ACN", 100d)],
+                temperatureC: 20d);
+
+        var capacityWithInactiveComponent =
+            MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
+                [
+                    new MixtureComponent("ACN", 100d),
+                    new MixtureComponent("Fusel", 0d)
+                ],
+                temperatureC: 20d);
+
+        Assert.Equal(
+            capacityWithoutInactiveComponent,
+            capacityWithInactiveComponent,
+            precision: 12);
     }
 
     [Fact]

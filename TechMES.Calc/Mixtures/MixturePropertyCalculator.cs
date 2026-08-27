@@ -5,54 +5,38 @@ namespace TechMES.Calc.Mixtures;
 
 /// <summary>
 /// Выполняет расчёт физических свойств смеси по массовым долям компонентов.
-///
-/// Формулы отдельных веществ находятся в отдельных файлах
-/// TechMES.Calc/Substances/Components и перенесены из TechDotNetLib.
+/// Формулы отдельных веществ находятся в отдельных файлах TechMES.Calc/Substances/Components и перенесены из TechDotNetLib.
 ///
 /// Этот класс отвечает только за формулу смеси и единицы нового Calc-контракта:
 /// - Density возвращается в kg/m³ без старого SCADA scaling ×10;
 /// - Capacity возвращается в J/(kg·K);
-/// - дополнительные ProcessInput передаются компонентам без изменения
-///   старых GetDensity/GetCapacity/GetContent.
+/// - дополнительные ProcessInput передаются компонентам без изменения   старых GetDensity/GetCapacity/GetContent.
 /// </summary>
 public static class MixturePropertyCalculator
 {
     private const double PercentageTolerance = 1e-6;
 
-    /// <summary>
-    /// Рассчитывает только итоговую плотность смеси в kg/m³.
-    ///
-    /// Метод оставляем как короткий совместимый API для существующего кода и тестов.
-    /// Полный расчёт выполняет CalculateDensity(), который дополнительно возвращает
-    /// фактическую Density каждого компонента.
-    /// </summary>
     public static double CalculateDensityKgPerM3(IReadOnlyList<MixtureComponent> components, double temperatureC, double pressureBarAbsolute, IReadOnlyDictionary<string, double>? additionalParameters = null)
     {
-        return CalculateDensity(components, temperatureC, pressureBarAbsolute, additionalParameters).DensityKgPerM3;
+        return CalculateDensity(components, temperatureC, pressureBarAbsolute,additionalParameters).DensityKgPerM3;
     }
 
     /// <summary>
-    /// Рассчитывает плотность смеси и возвращает фактические промежуточные
-    /// плотности всех компонентов.
-    ///
-    /// Основная формула полностью соответствует старому TechDotNetLib.Mix:
+    /// Рассчитывает Density смеси:
     ///
     ///     rho = 1 / Σ(w_i / rho_i)
     ///
-    /// где:
-    /// w_i   - массовая доля компонента от 0 до 1;
-    /// rho_i - плотность компонента в kg/m³.
+    /// Density-specific проверки находятся именно здесь:
+    /// - корректное абсолютное давление;
+    /// - специальный контракт DryMatter / ICUMSA.
     ///
-    /// Для DryMatter rho_i является эффективной плотностью при текущем
-    /// MassPercent. Это позволяет общей формуле смеси точно воспроизводить
-    /// старую нелинейную ICUMSA-корреляцию.
-    ///
-    /// Старое финальное ×10 здесь отсутствует.
-    /// Оно относится только к SCADA ValCalc и применяется Runtime при TagWrite.
+    /// Благодаря этому Capacity больше не наследует Density-only правила.
     /// </summary>
     public static MixtureDensityCalculationResult CalculateDensity(IReadOnlyList<MixtureComponent> components, double temperatureC, double pressureBarAbsolute, IReadOnlyDictionary<string, double>? additionalParameters = null)
     {
-        ValidateInputs(components, temperatureC, pressureBarAbsolute);
+        ValidateCommonInputs(components, temperatureC);
+        ValidateAbsolutePressure(pressureBarAbsolute);
+        ValidateDryMatterComposition(components);
 
         var denominator = 0d;
         var componentResults = new List<MixtureDensityComponentResult>();
@@ -61,35 +45,17 @@ public static class MixturePropertyCalculator
         {
             var component = components[index];
 
-            // Компонент с нулевой массовой долей не участвует в формуле смеси.
-            //
-            // Его GetDensity намеренно не вызываем:
-            // неактивный компонент не должен приводить расчёт к ошибке только потому,
-            // что его физическая модель в текущей точке не поддерживается.
             if (component.MassPercent == 0d)
                 continue;
 
             var model = SubstanceCatalog.CreateRequiredModel(component.SubstanceCode);
-
-            // Передаём компоненту его собственную массовую долю.
-            //
-            // Все обычные legacy-компоненты игнорируют MassPercent и переходят
-            // в исходный GetDensity(T, P).
-            //
-            // DryMatter использует MassPercent для восстановления старой
-            // концентрационно-зависимой ICUMSA-корреляции.
             var componentDensity = model.GetDensity((float)temperatureC, (float)pressureBarAbsolute, component.MassPercent, additionalParameters);
 
             if (!double.IsFinite(componentDensity) || componentDensity <= 0d)
                 throw new CalculationException("substance.density.invalid", $"Substance '{component.SubstanceCode}' returned invalid density {componentDensity}.");
 
             denominator += component.MassPercent * 0.01d / componentDensity;
-
-            componentResults.Add(new MixtureDensityComponentResult(
-                Index: index,
-                SubstanceCode: component.SubstanceCode,
-                MassPercent: component.MassPercent,
-                DensityKgPerM3: componentDensity));
+            componentResults.Add(new MixtureDensityComponentResult(Index: index, SubstanceCode: component.SubstanceCode, MassPercent: component.MassPercent, DensityKgPerM3: componentDensity));
         }
 
         if (!double.IsFinite(denominator) || denominator <= 0d)
@@ -104,37 +70,59 @@ public static class MixturePropertyCalculator
     }
 
     /// <summary>
+    /// Короткий совместимый API, возвращающий только итоговую Capacity смеси.
+    /// Полный вариант CalculateSpecificHeatCapacity дополнительно возвращает
+    /// фактическую Cp каждого компонента.
+    /// </summary>
+    public static double CalculateSpecificHeatCapacityJPerKgK(IReadOnlyList<MixtureComponent> components, double temperatureC, IReadOnlyDictionary<string, double>? additionalParameters = null)
+    {
+        return CalculateSpecificHeatCapacity(components, temperatureC, additionalParameters).SpecificHeatCapacityJPerKgK;
+    }
+
+    /// <summary>
     /// Рассчитывает удельную теплоёмкость смеси в J/(kg·K).
     ///
     /// Формула соответствует старому TechDotNetLib.Mix:
     ///
     ///     Cp = Σ(w_i × Cp_i)
     ///
-    /// Старые GetCapacity() возвращают kJ/(kg·K),
-    /// поэтому после смешения выполняется исходное ×1000.
+    /// Legacy GetCapacity() возвращает kJ/(kg·K).
+    /// В нормализованный TechMES contract каждый component Cp и итог смеси
+    /// переводятся в J/(kg·K) через ×1000.
     ///
-    /// additionalParameters предназначены для будущих компонентов,
-    /// которым стандартного Temperature недостаточно.
+    /// В отличие от Density:
+    /// - Pressure здесь не валидируется и не используется;
+    /// - DryMatter/ICUMSA composition rule здесь не применяется;
+    /// - поддержка Capacity проверяется отдельной capability metadata.
     /// </summary>
-    public static double CalculateSpecificHeatCapacityJPerKgK(IReadOnlyList<MixtureComponent> components, double temperatureC, IReadOnlyDictionary<string, double>? additionalParameters = null)
+    public static MixtureCapacityCalculationResult CalculateSpecificHeatCapacity(IReadOnlyList<MixtureComponent> components, double temperatureC, IReadOnlyDictionary<string, double>? additionalParameters = null)
     {
-        // Capacity в исходном Mix не использовал Pressure. Для общей валидации передаём допустимое абсолютное давление.
-        ValidateInputs(components, temperatureC, pressureBarAbsolute: 1d);
+        ValidateCommonInputs(components, temperatureC);
 
         var capacityKjPerKgK = 0d;
+        var componentResults = new List<MixtureCapacityComponentResult>();
 
-        foreach (var component in components)
+        for (var index = 0; index < components.Count; index++)
         {
+            var component = components[index];
+
+            // Неактивный компонент не определяет возможность текущего расчёта. Это сохраняет то же поведение, которое уже используется Density.
             if (component.MassPercent == 0d)
                 continue;
 
+            var descriptor = SubstanceCatalog.GetRequired(component.SubstanceCode);
+
+            if (!descriptor.Supports(SubstancePropertySupport.SpecificHeatCapacity))
+                throw new CalculationException("substance.capacity.unsupported", $"Substance '{component.SubstanceCode}' is not supported by the normalized specific heat capacity calculation.");
+
             var model = SubstanceCatalog.CreateRequiredModel(component.SubstanceCode);
-            var pureCapacity = model.GetCapacity((float)temperatureC, additionalParameters);
+            var pureCapacityKjPerKgK = model.GetCapacity((float)temperatureC, additionalParameters);
 
-            if (!double.IsFinite(pureCapacity) || pureCapacity <= 0d)
-                throw new CalculationException("substance.capacity.invalid", $"Substance '{component.SubstanceCode}' returned invalid heat capacity {pureCapacity}.");
+            if (!double.IsFinite(pureCapacityKjPerKgK) || pureCapacityKjPerKgK <= 0d)
+                throw new CalculationException("substance.capacity.invalid", $"Substance '{component.SubstanceCode}' returned invalid heat capacity {pureCapacityKjPerKgK}.");
 
-            capacityKjPerKgK += component.MassPercent * 0.01d * pureCapacity;
+            capacityKjPerKgK += component.MassPercent * 0.01d * pureCapacityKjPerKgK;
+            componentResults.Add(new MixtureCapacityComponentResult(Index: index, SubstanceCode: component.SubstanceCode, MassPercent: component.MassPercent, SpecificHeatCapacityJPerKgK: pureCapacityKjPerKgK * 1000d));
         }
 
         var capacityJPerKgK = capacityKjPerKgK * 1000d;
@@ -142,19 +130,22 @@ public static class MixturePropertyCalculator
         if (!double.IsFinite(capacityJPerKgK) || capacityJPerKgK <= 0d)
             throw new CalculationException("substance.capacity.invalid-result", "Calculated mixture heat capacity is invalid.");
 
-        return capacityJPerKgK;
+        return new MixtureCapacityCalculationResult(capacityJPerKgK, componentResults);
     }
 
     /// <summary>
-    /// Выполняет общую проверку смеси перед запуском конкретной физической формулы.
+    /// Общая для Density/Capacity структурная проверка смеси.
     ///
-    /// Здесь намеренно нет списка "разрешённых" или "запрещённых" legacy-моделей:
-    /// если формула присутствовала в TechDotNetLib, она остаётся доступной.
+    /// Здесь остаются только действительно общие правила:
+    /// - смесь не пустая;
+    /// - Temperature конечна;
+    /// - коды существуют и не повторяются;
+    /// - проценты лежат в 0..100 и дают 100%;
+    /// - активные компоненты принадлежат одной фазе.
     ///
-    /// Отдельная формула компонента сама определяет своё поведение.
-    /// Некорректный конечный результат по-прежнему не пропускается дальше.
+    /// Property-specific правила выполняются конкретным расчётом отдельно.
     /// </summary>
-    private static void ValidateInputs(IReadOnlyList<MixtureComponent> components, double temperatureC, double pressureBarAbsolute)
+    private static void ValidateCommonInputs(IReadOnlyList<MixtureComponent> components, double temperatureC)
     {
         ArgumentNullException.ThrowIfNull(components);
 
@@ -163,9 +154,6 @@ public static class MixturePropertyCalculator
 
         if (!double.IsFinite(temperatureC))
             throw new CalculationException("mixture.temperature.invalid", "Mixture temperature must be a finite number.");
-
-        if (!double.IsFinite(pressureBarAbsolute) || pressureBarAbsolute <= 0d)
-            throw new CalculationException("mixture.pressure.invalid", "Absolute pressure must be a finite number greater than zero.");
 
         var totalPercent = 0d;
         var usedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -180,7 +168,7 @@ public static class MixturePropertyCalculator
             if (!usedCodes.Add(code))
                 throw new CalculationException("mixture.component.duplicate", $"Substance '{code}' is specified more than once.");
 
-            // Проверяем существование кода даже при MassPercent = 0.
+            // Существование кода проверяем даже для 0%.
             SubstanceCatalog.GetRequired(code);
 
             if (!double.IsFinite(component.MassPercent) || component.MassPercent < 0d || component.MassPercent > 100d)
@@ -193,22 +181,14 @@ public static class MixturePropertyCalculator
             throw new CalculationException("mixture.percent-total-invalid", $"Mixture mass percentages must total 100%. Actual total: {totalPercent:0.######}%.");
 
         ValidateSinglePhaseComposition(components);
-        ValidateDryMatterComposition(components);
     }
 
-    /// <summary>
-    /// Запрещает смешивать Liquid и Vapor компоненты.
-    ///
-    /// UI Density уже фильтрует Substance ComboBox по выбранной фазе,
-    /// но эта проверка обязана существовать и в математическом ядре:
-    ///
-    /// - Job может быть создан не через WEB;
-    /// - может существовать старая некорректная конфигурация;
-    /// - в будущем Calc может использовать другой клиент.
-    ///
-    /// Компоненты с MassPercent = 0 не определяют фазу фактической смеси,
-    /// потому что они физически не участвуют в расчёте.
-    /// </summary>
+    private static void ValidateAbsolutePressure(double pressureBarAbsolute)
+    {
+        if (!double.IsFinite(pressureBarAbsolute) || pressureBarAbsolute <= 0d)
+            throw new CalculationException("mixture.pressure.invalid", "Absolute pressure must be a finite number greater than zero.");
+    }
+
     private static void ValidateSinglePhaseComposition(IReadOnlyList<MixtureComponent> components)
     {
         SubstancePhase? mixturePhase = null;
@@ -229,19 +209,14 @@ public static class MixturePropertyCalculator
     }
 
     /// <summary>
-    /// Проверяет специальный контракт DryMatter.
-    /// Корреляция DryMatter восстановлена из исходного PLC-расчёта сахарного водного раствора.
+    /// Density-only контракт DryMatter.
     ///
-    /// Поэтому допустимы только:
+    /// Корреляция восстановлена из PLC-расчёта сахарного водного раствора,
+    /// поэтому поддерживаются только:
+    /// - DryMatter = 100%;
+    /// - Water + DryMatter = 100%.
     ///
-    ///     DryMatter = 100%
-    ///
-    /// либо:
-    ///
-    ///     Water + DryMatter = 100%.
-    ///
-    /// Использование DryMatter вместе с ACN, Alcohol и другими веществами математически не соответствует исходной ICUMSA-корреляции
-    /// и должно завершаться явной ошибкой, а не давать внешне правдоподобное, но физически неверное значение.
+    /// Capacity эту проверку намеренно не вызывает.
     /// </summary>
     private static void ValidateDryMatterComposition(IReadOnlyList<MixtureComponent> components)
     {
@@ -251,17 +226,13 @@ public static class MixturePropertyCalculator
         if (dryMatter is null)
             return;
 
-        // Чистый DryMatter 100% является допустимой контрольной точкой.
         if (activeComponents.Length == 1 && string.Equals(activeComponents[0].SubstanceCode, "DryMatter", StringComparison.OrdinalIgnoreCase) && Math.Abs(activeComponents[0].MassPercent - 100d) <= PercentageTolerance)
             return;
 
-        // Для раствора разрешены только два активных компонента: Water и DryMatter.
         if (activeComponents.Length != 2)
             throw new CalculationException("mixture.drymatter.unsupported-combination", "DryMatter density correlation supports only pure DryMatter or a Water + DryMatter mixture.");
 
-        var hasWater = activeComponents.Any(component =>
-            string.Equals(component.SubstanceCode, "Water", StringComparison.OrdinalIgnoreCase));
-
+        var hasWater = activeComponents.Any(component => string.Equals(component.SubstanceCode, "Water", StringComparison.OrdinalIgnoreCase));
         var hasOnlySupportedComponents = activeComponents.All(component => string.Equals(component.SubstanceCode, "Water", StringComparison.OrdinalIgnoreCase) || string.Equals(component.SubstanceCode, "DryMatter", StringComparison.OrdinalIgnoreCase));
 
         if (!hasWater || !hasOnlySupportedComponents)
