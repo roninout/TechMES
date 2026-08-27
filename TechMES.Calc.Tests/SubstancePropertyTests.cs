@@ -88,6 +88,21 @@ public sealed class SubstancePropertyTests
     }
 
     [Fact]
+    public void LiquidAndVaporComponentsCannotBeMixed()
+    {
+        var exception = Assert.Throws<CalculationException>(() =>
+            MixturePropertyCalculator.CalculateDensityKgPerM3(
+                [
+                    new MixtureComponent("Water", 50d),
+                new MixtureComponent("WaterS", 50d)
+                ],
+                temperatureC: 20d,
+                pressureBarAbsolute: 1.01325d));
+
+        Assert.Equal("mixture.phase-mixed", exception.Code);
+    }
+
+    [Fact]
     public void AbsolutePressureMustBeGreaterThanZero()
     {
         var exception = Assert.Throws<CalculationException>(() =>

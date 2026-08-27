@@ -72,12 +72,21 @@
 }
 
 .density-live-mixture-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     min-width: 0;
     overflow: hidden;
     font-size: 15px;
     font-weight: 700;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+::deep .density-live-mixture-phase-icon {
+    flex: 0 0 auto;
+    color: var(--rz-primary);
+    font-size: 26px;
 }
 
 .density-toolbar-enabled {
@@ -713,8 +722,44 @@
 .density-mixture-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 18px;
     min-height: 48px;
 }
+
+.density-mixture-phase {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.density-mixture-phase-text {
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+::deep .density-mixture-phase-toggle {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 !important;
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+    ::deep .density-mixture-phase-toggle:hover,
+    ::deep .density-mixture-phase-toggle:focus {
+        border-color: transparent !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+
+    ::deep .density-mixture-phase-toggle .rzi {
+        font-size: 25px;
+    }
 
 .density-mixture-title {
     display: flex;

@@ -192,7 +192,40 @@ public static class MixturePropertyCalculator
         if (Math.Abs(totalPercent - 100d) > PercentageTolerance)
             throw new CalculationException("mixture.percent-total-invalid", $"Mixture mass percentages must total 100%. Actual total: {totalPercent:0.######}%.");
 
+        ValidateSinglePhaseComposition(components);
         ValidateDryMatterComposition(components);
+    }
+
+    /// <summary>
+    /// Запрещает смешивать Liquid и Vapor компоненты.
+    ///
+    /// UI Density уже фильтрует Substance ComboBox по выбранной фазе,
+    /// но эта проверка обязана существовать и в математическом ядре:
+    ///
+    /// - Job может быть создан не через WEB;
+    /// - может существовать старая некорректная конфигурация;
+    /// - в будущем Calc может использовать другой клиент.
+    ///
+    /// Компоненты с MassPercent = 0 не определяют фазу фактической смеси,
+    /// потому что они физически не участвуют в расчёте.
+    /// </summary>
+    private static void ValidateSinglePhaseComposition(IReadOnlyList<MixtureComponent> components)
+    {
+        SubstancePhase? mixturePhase = null;
+
+        foreach (var component in components.Where(component => component.MassPercent > 0d))
+        {
+            var descriptor = SubstanceCatalog.GetRequired(component.SubstanceCode);
+
+            if (!mixturePhase.HasValue)
+            {
+                mixturePhase = descriptor.Phase;
+                continue;
+            }
+
+            if (descriptor.Phase != mixturePhase.Value)
+                throw new CalculationException("mixture.phase-mixed", "Liquid and vapor components cannot be mixed in the same calculation.");
+        }
     }
 
     /// <summary>

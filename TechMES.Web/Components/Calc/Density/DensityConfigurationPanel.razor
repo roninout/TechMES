@@ -76,7 +76,14 @@
                 <div class="density-live-header">
 
                     <div class="density-live-mixture-title">
-                        @GetLiveMixtureTitle()
+
+                        <RadzenIcon Icon="@GetLiveMixturePhaseIcon()"
+                                    class="density-live-mixture-phase-icon" />
+
+                        <span>
+                            @GetLiveMixtureTitle()
+                        </span>
+
                     </div>
 
                     <div class="density-toolbar-enabled">
@@ -613,6 +620,28 @@
                                     <span>Mixture</span>
                                 </div>
 
+                                <div class="density-mixture-phase">
+
+                                    <span class="density-mixture-phase-text">
+                                        @MixturePhaseText
+                                    </span>
+
+                                    @* false = Liquid  -> water_drop true  = Vapour  -> air
+                                       ToggleButton не имеет собственного видимого background: оставляем только картинку Material Icon. *@
+                                    <RadzenToggleButton Value="@_isVaporMixture"
+                                                        Change="@OnMixturePhaseChanged"
+                                                        Icon="water_drop"
+                                                        ToggleIcon="air"
+                                                        ButtonStyle="ButtonStyle.Light"
+                                                        ToggleButtonStyle="ButtonStyle.Light"
+                                                        Variant="Variant.Text"
+                                                        ToggleVariant="Variant.Text"
+                                                        Disabled="@_isSaving"
+                                                        class="density-mixture-phase-toggle"
+                                                        title="Switch Liquid / Vapour" />
+
+                                </div>
+
                             </div>
 
                             @if (CurrentComponentCount is { } componentCount)
@@ -628,7 +657,7 @@
                                         </div>
 
                                         <RadzenDropDown TValue="string"
-                                                        Data="@SubstanceOptions"
+                                                        Data="@FilteredSubstanceOptions"
                                                         TextProperty="@nameof(CalcParameterOptionDto.Name)"
                                                         ValueProperty="@nameof(CalcParameterOptionDto.Value)"
                                                         @bind-Value="component.SubstanceCode"
@@ -789,6 +818,11 @@
 
     private bool _enabled;
     private bool _allowOutputWrites;
+
+    // false = Liquid; true  = Vapor. Это только состояние редактора Settings.
+    // В Calc Job отдельное поле Phase не сохраняем: после загрузки фаза однозначно восстанавливается по уже сохранённым SubstanceCode.
+    private bool _isVaporMixture;
+
     private bool _isLoadingDefinition;
     private bool _isSaving;
     private bool _isCheckingBindings;
@@ -885,6 +919,69 @@
     }
 
     private IReadOnlyList<CalcParameterOptionDto> SubstanceOptions => GetParameter("component0Code")?.Options ?? [];
+
+    /// <summary>
+    /// Компоненты, которые разрешено показывать в ComboBox
+    /// для выбранной глобальной фазы смеси.
+    ///
+    /// Calculation Definition уже передаёт phase в Name:
+    ///
+    ///     "... (liquid)"
+    ///     "... (vapor)"
+    ///
+    /// Поэтому WEB не зависит от TechMES.Calc/SubstancePhase напрямую.
+    /// Это сохраняет существующее разделение проектов:
+    /// TechMES.Web -> Contracts, но не -> TechMES.Calc.
+    /// </summary>
+    private IReadOnlyList<CalcParameterOptionDto> FilteredSubstanceOptions => SubstanceOptions.Where(option => IsVaporOption(option) == _isVaporMixture).ToArray();
+
+    /// <summary>
+    /// Определяет Vapor option по phase, которую уже передаёт Calculation Definition.
+    /// </summary>
+    private static bool IsVaporOption(CalcParameterOptionDto option)
+    {
+        return option.Name.EndsWith("(vapor)", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Определяет фазу сохранённого SubstanceCode.
+    /// </summary>
+    private bool IsVaporSubstanceCode(string? substanceCode)
+    {
+        if (string.IsNullOrWhiteSpace(substanceCode))
+            return false;
+
+        var option = SubstanceOptions.FirstOrDefault(item => string.Equals(item.Value, substanceCode.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        return option is not null && IsVaporOption(option);
+    }
+
+    private string MixturePhaseText => _isVaporMixture ? "Vapour" : "Liquid";
+
+    private string MixturePhaseIcon => _isVaporMixture ? "air" : "water_drop";
+
+    /// <summary>
+    /// Верхняя live-панель должна показывать фазу реально сохранённой смеси,
+    /// а не несохранённого состояния переключателя Settings.
+    ///
+    /// Для нового Job сохранённой смеси ещё нет,
+    /// поэтому используется текущее состояние редактора.
+    /// </summary>
+    private string GetLiveMixturePhaseIcon()
+    {
+        if (CurrentComponentCount.HasValue)
+        {
+            for (var index = 0; index < CurrentComponentCount.Value; index++)
+            {
+                var code = GetLiveComponentCode(index);
+
+                if (!string.IsNullOrWhiteSpace(code))
+                    return IsVaporSubstanceCode(code) ? "air" : "water_drop";
+            }
+        }
+
+        return MixturePhaseIcon;
+    }
 
     /// <summary>
     /// Возвращает только те ProcessInput, которые сейчас включены пользователем.
@@ -1679,9 +1776,10 @@
     // ============================================================
 
     /// <summary>
-    /// Из Job восстанавливаем только соответствие Perc-slot -> Substance.
-    ///
-    /// CompN и проценты из Job больше не читаются как Constants.
+    /// Из Job восстанавливаем соответствие Perc-slot -> Substance.
+    /// После восстановления SubstanceCode определяем глобальную фазу редактора.
+    /// Отдельный Phase в Job не нужен: любой сохранённый SubstanceCode уже однозначно относится либо к Liquid, либо к Vapor.
+    /// Если Job новый и ни одного вещества ещё нет, начальным режимом является Liquid.
     /// </summary>
     private void BuildComponentConfiguration()
     {
@@ -1694,6 +1792,31 @@
                 Index = index,
                 SubstanceCode = ReadStoredString(GetComponentCodeKey(index), "")
             });
+        }
+
+        var firstSelectedCode = _components.Select(component => component.SubstanceCode?.Trim() ?? "").FirstOrDefault(code => code.Length > 0);
+
+        _isVaporMixture = firstSelectedCode is not null && IsVaporSubstanceCode(firstSelectedCode);
+    }
+
+    /// <summary>
+    /// Переключает глобальную фазу смеси.
+    /// При смене Liquid <-> Vapor очищаем только те уже выбранные SubstanceCode, которые принадлежат противоположной фазе.
+    /// </summary>
+    private void OnMixturePhaseChanged(bool isVapor)
+    {
+        if (_isVaporMixture == isVapor)
+            return;
+
+        _isVaporMixture = isVapor;
+
+        foreach (var component in _components)
+        {
+            if (string.IsNullOrWhiteSpace(component.SubstanceCode))
+                continue;
+
+            if (IsVaporSubstanceCode(component.SubstanceCode) != _isVaporMixture)
+                component.SubstanceCode = "";
         }
     }
 
@@ -2262,22 +2385,42 @@
             : "-";
     }
 
+    /// <summary>
+    /// Формирует заголовок фактически работающей смеси.
+    ///
+    /// SubstanceCode берём из сохранённого Job,
+    /// а проценты - из текущих SCADA PercN.
+    ///
+    /// Например:
+    ///
+    ///     Butene_1 (45%) - Water (55%)
+    ///
+    /// Поэтому несохранённое изменение ComboBox не подменяет
+    /// верхнюю Runtime-панель существующего Job.
+    /// </summary>
     private string GetLiveMixtureTitle()
     {
         if (!CurrentComponentCount.HasValue)
             return "Mixture";
 
-        var codes = new List<string>();
+        var components = new List<string>();
 
         for (var index = 0; index < CurrentComponentCount.Value; index++)
         {
             var code = GetLiveComponentCode(index);
+            var percent = GetCurrentPercent(index);
 
-            if (!string.IsNullOrWhiteSpace(code))
-                codes.Add(code);
+            if (string.IsNullOrWhiteSpace(code))
+                continue;
+
+            components.Add(percent.HasValue
+                ? $"{code} ({percent.Value:0.#}%)"
+                : code);
         }
 
-        return codes.Count > 0 ? string.Join(" - ", codes) : "Mixture";
+        return components.Count > 0
+            ? string.Join(" - ", components)
+            : "Mixture";
     }
 
     private static string FormatPieDensity(double? value)
