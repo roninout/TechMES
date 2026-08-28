@@ -465,4 +465,41 @@ public sealed class SubstancePropertyTests
 
         return 4186.8 * (1.0 - (0.6 - 0.0018 * t) * dryMatterPercent * 0.01);
     }
+
+    [Theory]
+    [InlineData(60d, 0.8d, 10)]
+    [InlineData(80d, 1.0d, 10)]
+    [InlineData(100d, 1.5d, 10)]
+    [InlineData(120d, 3.5d, 20)]
+    [InlineData(140d, 4.5d, 20)]
+    public void AcnWaterContentMatchesOriginalContentCalc(double temperatureC, double pressureBarAbsolute, int configurationCode)
+    {
+        var legacy = ContentCalc.ACN_Water_Content((float)temperatureC, (float)pressureBarAbsolute, configurationCode);
+        var actual = ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(
+            Components: ["ACN", "Water"],
+            TemperatureC: temperatureC,
+            PressureBarAbsolute: pressureBarAbsolute,
+            ConfigurationCode: configurationCode));
+
+        Assert.Equal(legacy[0] / 100.0, actual[0], precision: 10);
+        Assert.Equal(legacy[1] / 100.0, actual[1], precision: 10);
+    }
+
+    [Theory]
+    [InlineData(60d, 0.8d, 10)]
+    [InlineData(100d, 1.5d, 10)]
+    [InlineData(120d, 3.5d, 20)]
+    public void WaterAcnUsesSameCorrelationWithReversedOutputOrder(double temperatureC, double pressureBarAbsolute, int configurationCode)
+    {
+        var legacy = ContentCalc.Water_ACN_Content((float)temperatureC, (float)pressureBarAbsolute, configurationCode);
+        var actual = ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(
+            Components: ["Water", "ACN"],
+            TemperatureC: temperatureC,
+            PressureBarAbsolute: pressureBarAbsolute,
+            ConfigurationCode: configurationCode));
+
+        Assert.Equal(legacy[0] / 100.0, actual[0], precision: 10);
+        Assert.Equal(legacy[1] / 100.0, actual[1], precision: 10);
+        Assert.Equal(100.0, actual.Sum(), precision: 10);
+    }
 }

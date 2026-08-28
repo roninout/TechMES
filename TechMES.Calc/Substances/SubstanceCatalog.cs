@@ -84,7 +84,7 @@ public static class SubstanceCatalog
         Add("ACA", "Acetaldehyde", SubstancePhase.Liquid, () => new Acetaldehyde(false));
         Add("ACAS", "Acetaldehyde", SubstancePhase.Vapor, () => new Acetaldehyde(true));
 
-        Add("ACN", "Acetonitrile", SubstancePhase.Liquid, () => new Acetonitrile(false));
+        Add("ACN", "Acetonitrile", SubstancePhase.Liquid, () => new Acetonitrile(false), DefaultPropertySupport | SubstancePropertySupport.Content);
         Add("ACNS", "Acetonitrile", SubstancePhase.Vapor, () => new Acetonitrile(true));
 
         Add("HP", "Hydrogen peroxide", SubstancePhase.Liquid, () => new HydrohenPeroxyde(false));
@@ -99,7 +99,7 @@ public static class SubstanceCatalog
         Add("PO", "Propylene oxide", SubstancePhase.Liquid, () => new PropyleneOxyde(false));
         Add("POS", "Propylene oxide", SubstancePhase.Vapor, () => new PropyleneOxyde(true));
 
-        Add("Water", "Water", SubstancePhase.Liquid, () => new Water(false));
+        Add("Water", "Water", SubstancePhase.Liquid, () => new Water(false), DefaultPropertySupport | SubstancePropertySupport.Content);
         Add("WaterS", "Water", SubstancePhase.Vapor, () => new Water(true));
 
         Add("DryMatter", "Dry matter", SubstancePhase.Liquid, () => new DryMatter(), SubstancePropertySupport.Density | SubstancePropertySupport.SpecificHeatCapacity);

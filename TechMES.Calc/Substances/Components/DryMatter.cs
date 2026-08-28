@@ -114,12 +114,6 @@ namespace TechMES.Calc.Substances.Components
             return dryMatterCapacityJPerKgK * 0.001;
         }
 
-        // Content для DryMatter пока не определён.
-        public override double GetContent(float temperature, float pressure)
-        {
-            return -1.0;
-        }
-
         #endregion
     }
 }

@@ -8,18 +8,6 @@ using TechMES.Calc.Thermodynamics;
 
 namespace TechMES.Calc.Content
 {
-    //Структура для сохранения коэффициентов полинома для расчета содержаний
-    internal struct CoefSet
-    {
-        public double a0;
-        public double a1;
-        public double a2;
-        public double a3;
-        public double a4;
-        public double a5;
-
-    }
-
     //Определяет номер формулы для расчета содержания (для разных давлений)
 
 

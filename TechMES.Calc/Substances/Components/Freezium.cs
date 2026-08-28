@@ -70,12 +70,6 @@ namespace TechMES.Calc.Substances.Components
             return capacity;
         }
 
-        //Метод для определения концентрации вещества в N-компонентной смеси
-        public override double GetContent(float temperature, float pressure)
-        {
-            return -1.0;
-        }
-
         //Метод для определения плотности вещества при 100% концентрации, кг/м3
         public override double GetDensity(float temperature, float pressure)
         {

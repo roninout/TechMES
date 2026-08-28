@@ -34,9 +34,6 @@ namespace TechMES.Calc.Substances
         // Метод для определения теплоемкости вещества при 100% концентрации.
         public abstract double GetCapacity(float temperature);
 
-        // Метод для определения концентрации вещества в N-компонентной смеси.
-        public abstract double GetContent(float temperature, float pressure);
-
         #endregion
 
         #region Extended overloads
@@ -89,15 +86,6 @@ namespace TechMES.Calc.Substances
         public virtual double GetCapacity(float temperature, double massPercent, IReadOnlyDictionary<string, double>? additionalParameters)
         {
             return GetCapacity(temperature, additionalParameters);
-        }
-
-        /// <summary>
-        /// Расширенная перегрузка Content.
-        /// Старые компоненты продолжают использовать исходный GetContent(float temperature, float pressure).
-        /// </summary>
-        public virtual double GetContent(float temperature, float pressure, IReadOnlyDictionary<string, double>? additionalParameters)
-        {
-            return GetContent(temperature, pressure);
         }
 
         #endregion

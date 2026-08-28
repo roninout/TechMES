@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+	<ItemGroup>
+		<InternalsVisibleTo Include="TechMES.Calc.Tests" />
+	</ItemGroup>
+
 </Project>

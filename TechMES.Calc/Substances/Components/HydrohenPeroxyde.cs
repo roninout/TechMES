@@ -123,12 +123,6 @@ namespace TechMES.Calc.Substances.Components
             return pressureSaturation;
         }
 
-        //Метод для определения концентрации вещества в N-компонентной смеси
-        public override double GetContent(float temperature, float pressure)
-        {
-            return -1;
-        }
-
         #endregion
     }
 }

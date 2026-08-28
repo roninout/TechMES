@@ -48,14 +48,17 @@ public static class ContentPropertyCalculator
         var pressure = (float)request.PressureBarAbsolute;
         var configurationCode = request.ConfigurationCode;
 
+        // Сначала пытаемся выполнить уже перенесённую новую Content-модель.
+        //
+        // Во время поэтапной миграции оставшиеся системы временно продолжают выполняться через ContentCalc.
+        // После переноса всех основных корреляций legacy fallback будет удалён.
+        if (ContentCombinationCalculator.TryCalculatePercent(components, temperature, pressure, configurationCode, out var migratedResult))
+            return migratedResult;
+
         double[]? raw = null;
 
         if (Match(components, "ALC", "Water"))
             raw = ContentCalc.ALC_Water_Content(temperature, pressure, configurationCode);
-        else if (Match(components, "ACN", "Water"))
-            raw = ContentCalc.ACN_Water_Content(temperature, pressure, configurationCode);
-        else if (Match(components, "Water", "ACN"))
-            raw = ContentCalc.Water_ACN_Content(temperature, pressure, configurationCode);
         else if (Match(components, "PO", "P"))
             raw = ContentCalc.PO_P_Content(temperature, pressure, configurationCode);
         else if (Match(components, "P", "PO"))

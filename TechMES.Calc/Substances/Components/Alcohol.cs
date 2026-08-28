@@ -114,27 +114,6 @@ namespace TechMES.Calc.Substances.Components
             //return capacity;
         }
 
-        //Метод для определения концентрации вещества в N-компонентной смеси
-        public override double GetContent(float temperature, float pressure)
-        {
-            double content;
-            double alcMass;
-            double a0 = -0.071728663;
-            double a1 = 1.2743981;
-            double a2 = 0.001897273;
-            double a3 = 8.29E-06; //0.00000829;
-
-            // Масовий вміст алкоголю
-            //alcMass = (temperature - WspLib.Tsat((float)pressure)) * 100.0 / (1670.409 / (5.37229 - Math.Log((float)(pressure) * 0.98717) * 0.434294) - 232.959 - WspLib.Tsat((float)pressure));
-            alcMass = (temperature - TechLib.TSAT((float)pressure)) * 100.0 / (1670.409 / (5.37229 - Math.Log((float)(pressure) * 0.98717) * 0.434294) - 232.959 - TechLib.TSAT((float)pressure));
-
-            // Обмеження 0.0 - 100.0
-            alcMass = Math.Max(0, Math.Min(100.0, alcMass));
-
-            content = a0 + a1 * alcMass - a2 * Math.Pow(alcMass, 2) - a3 * Math.Pow(alcMass, 3);
-            return content; 
-        }
-
         //Расчет давления насыщенного пара при заданной температуре, бар, абс.
         private double GetPressure(double temperature)
         {

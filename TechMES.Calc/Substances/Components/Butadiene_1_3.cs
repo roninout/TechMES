@@ -65,10 +65,6 @@ namespace TechMES.Calc.Substances.Components
             return capacity;
         }
 
-        public override double GetContent(float temperature, float pressure)
-        {
-            throw new NotImplementedException();
-        }
 
         public override double GetDensity(float temperature, float pressure)
         {

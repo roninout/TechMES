@@ -106,12 +106,6 @@ namespace TechMES.Calc.Substances.Components
             return capacity;
         }
 
-        // Метод для визначення концентрації речовини в N-компонентній суміші
-        public override double GetContent(float temperature, float pressure)
-        {
-            return -1;
-        }
-
         #endregion
 
 
