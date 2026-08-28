@@ -1077,6 +1077,36 @@
         }
     }
 
+    /// <summary>
+    /// Configuration parameters, относящиеся к веществам,
+    /// уже выбранным в редакторе.
+    ///
+    /// В отличие от ActiveSubstanceConfigurationEditors этот набор
+    /// намеренно не зависит от Runtime State и SCADA CompN.
+    ///
+    /// Это важно для Unsaved signature:
+    /// сразу после Save новый Job некоторое время имеет NeverRun,
+    /// поэтому LastInputs ещё пустой. Сохранённые componentNCode при этом
+    /// уже существуют в Job и являются достаточным источником истины
+    /// для пользовательской конфигурации.
+    /// </summary>
+    private IReadOnlyList<CapacitySubstanceConfigurationEditor> ConfiguredSubstanceConfigurationEditors
+    {
+        get
+        {
+            var selectedCodes = _components
+                .Select(component => component.SubstanceCode?.Trim() ?? "")
+                .Where(code => code.Length > 0)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return _substanceConfigurationEditors
+                .Where(editor => !string.IsNullOrWhiteSpace(editor.Parameter.AppliesToSubstanceCode)
+                    && selectedCodes.Contains(editor.Parameter.AppliesToSubstanceCode))
+                .OrderBy(editor => editor.Parameter.Order)
+                .ToList();
+        }
+    }
+
     // ============================================================
     // Readiness
     // ============================================================
@@ -2231,7 +2261,7 @@
             parts.Add($"component{index}={code}");
         }
 
-        foreach (var editor in ActiveSubstanceConfigurationEditors)
+        foreach (var editor in ConfiguredSubstanceConfigurationEditors)
         {
             var value = editor.Value.HasValue ? editor.Value.Value.ToString("R", CultureInfo.InvariantCulture) : "";
             parts.Add($"{editor.Parameter.Key}={value}");
