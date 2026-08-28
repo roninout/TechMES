@@ -10,7 +10,8 @@ namespace TechMES.Calc.Mixtures;
 /// Этот класс отвечает только за формулу смеси и единицы нового Calc-контракта:
 /// - Density возвращается в kg/m³ без старого SCADA scaling ×10;
 /// - Capacity возвращается в J/(kg·K);
-/// - дополнительные ProcessInput передаются компонентам без изменения   старых GetDensity/GetCapacity/GetContent.
+/// - дополнительные расчётные параметры передаются компонентам без изменения старых GetDensity/GetCapacity/GetContent.
+///   Они могут быть как ProcessInput, так и постоянной Configuration конкретного вещества.
 /// </summary>
 public static class MixturePropertyCalculator
 {

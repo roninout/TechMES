@@ -91,6 +91,13 @@ public sealed class CalcParameterDefinitionDto
     public CalcParameterRoleDto Role { get; set; }
 
     /// <summary>
+    /// Необязательный стабильный SubstanceCode, к которому относится данный Configuration parameter.
+    /// Null означает, что параметр относится к Calculation в целом.
+    /// Например: DryMatter -> Purity.
+    /// </summary>
+    public string? AppliesToSubstanceCode { get; set; }
+
+    /// <summary>
     /// Единица измерения, если она применима.
     /// </summary>
     public string? Unit { get; set; }

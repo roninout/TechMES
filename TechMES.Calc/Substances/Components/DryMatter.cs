@@ -20,10 +20,10 @@ namespace TechMES.Calc.Substances.Components
         // В текущем расчёте жидкой Density значение не используется, но базовый контракт LegacySubstance требует MolarMass.
         private const double molarMass = 342.2965;
 
-        // Первый дополнительный ProcessInput Capacity используется как чистота сухих веществ сахарного раствора, %.
-        internal const string PurityParameterKey = "additionalParameter1";
+        // Постоянная настройка чистоты сухих веществ сахарного раствора, %. Значение хранится в Calc Job как SourceType.Constant.
+        internal const string PurityParameterKey = "dryMatterPurityPercent";
 
-        // Значение по умолчанию 90%. Этот же ключ используется CapacityCalculationDefinition, поэтому имя параметра не дублируется в разных местах.
+        // Значение по умолчанию для нового Job.
         internal const double DefaultPurityPercent = 90.0;
 
         public override double MolarMass => molarMass;
@@ -73,7 +73,7 @@ namespace TechMES.Calc.Substances.Components
         /// <summary>
         /// Возвращает эффективную теплоёмкость DryMatter для его фактической массовой доли в сахарном водном растворе.
         ///
-        /// Purity берётся из additionalParameter1. Если параметр не передан, используется 90%.
+        /// Purity берётся из configuration parameter dryMatterPurityPercent. Если параметр не передан, используется 90%.
         ///
         /// Исходная PLC-функция CSS рассчитывает теплоёмкость всего раствора. В TechMES Water является отдельным компонентом, поэтому вклад Water
         /// алгебраически исключается:

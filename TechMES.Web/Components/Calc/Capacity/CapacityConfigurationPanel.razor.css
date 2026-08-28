@@ -790,6 +790,45 @@
     justify-self: end;
 }
 
+.capacity-mixture-config-separator {
+    width: 100%;
+    height: 1px;
+    margin: 8px 0 4px;
+    background: var(--rz-border-color, #d7dbe0);
+}
+
+.capacity-mixture-config-row {
+    display: grid;
+    grid-template-columns: 36px minmax(260px, 1fr) 88px minmax(180px, 1fr) 130px;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+}
+
+.capacity-mixture-config-info {
+    min-width: 0;
+}
+
+.capacity-mixture-config-name {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.capacity-mixture-config-description {
+    margin-top: 2px;
+    color: var(--rz-text-secondary-color);
+    font-size: 12px;
+}
+
+::deep .capacity-mixture-config-field {
+    width: 130px;
+    justify-self: end;
+}
+
+::deep .capacity-mixture-config-value {
+    width: 100%;
+}
+
 
 /* ============================================================
    Output write

@@ -103,4 +103,5 @@ public sealed record CalculationParameterDefinition(
     int Order = 0,
     string? Description = null,
     IReadOnlyList<CalculationParameterOption>? Options = null,
-    CalculationParameterRole Role = CalculationParameterRole.Configuration);
+    CalculationParameterRole Role = CalculationParameterRole.Configuration,
+    string? AppliesToSubstanceCode = null);

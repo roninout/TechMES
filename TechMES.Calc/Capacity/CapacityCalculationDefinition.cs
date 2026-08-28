@@ -35,7 +35,7 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
 
     private static readonly string[] AdditionalParameterKeys =
     [
-        DryMatter.PurityParameterKey,
+        "additionalParameter1",
         "additionalParameter2",
         "additionalParameter3"
     ];
@@ -69,22 +69,13 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
             Description: "Optional gauge pressure. Absolute pressure is calculated by adding the configured atmospheric pressure.",
             Role: CalculationParameterRole.ProcessInput),
 
-        // Purity используется CSS-корреляцией DryMatter.
-        // Для остальных веществ этот ProcessInput просто не участвует в их legacy GetCapacity.
-        // Если тег не настроен, CalculationParameterValidator автоматически подставляет DefaultValue = 90%.
         new CalculationParameterDefinition(
-            Key: DryMatter.PurityParameterKey,
-            Name: "Purity",
+            Key: "additionalParameter1",
+            Name: "Additional parameter",
             Type: CalculationParameterType.Number,
-            Unit: "%",
             IsRequired: false,
-            DefaultValue: DryMatter.DefaultPurityPercent,
-            Minimum: 0,
-            Maximum: 100,
-            Step: 0.1,
-            Decimals: 1,
             Order: 3,
-            Description: "Dry matter purity used by the sugar solution specific heat capacity correlation.",
+            Description: "Reserved additional process parameter.",
             Role: CalculationParameterRole.ProcessInput),
 
         new CalculationParameterDefinition(
@@ -104,6 +95,23 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
             Order: 5,
             Description: "Reserved additional process parameter.",
             Role: CalculationParameterRole.ProcessInput),
+
+        // Постоянная настройка компонента DryMatter. В Calc Job хранится как SourceType.Constant и не является ProcessInput.
+        new CalculationParameterDefinition(
+            Key: DryMatter.PurityParameterKey,
+            Name: "Purity",
+            Type: CalculationParameterType.Number,
+            Unit: "%",
+            IsRequired: false,
+            DefaultValue: DryMatter.DefaultPurityPercent,
+            Minimum: 0,
+            Maximum: 100,
+            Step: 0.1,
+            Decimals: 1,
+            Order: 6,
+            Description: "Dry matter purity used by the sugar solution specific heat capacity correlation.",
+            Role: CalculationParameterRole.Configuration,
+            AppliesToSubstanceCode: "DryMatter"),
 
         // Legacy DELTA_C:
         //
@@ -183,12 +191,12 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
     public override string Name => "Mixture specific heat capacity";
     public override string Category => "Capacity";
 
-    // Version 2:
-    // - Capacity component options filter unsupported Cp models;
-    // - ProcessInput count expanded to the same 2..5 contract as Density;
-    // - componentNCapacity diagnostic outputs added;
-    // - Density-only DryMatter validation removed from Capacity path.
-    public override string Version => "3";
+    // Version 4:
+    // - Purity больше не является ProcessInput;
+    // - additionalParameter1 снова зарезервирован для будущего ProcessInput;
+    // - DryMatter Purity хранится как Configuration Constant;
+    // - substance-specific Configuration получает AppliesToSubstanceCode metadata.
+    public override string Version => "4";
 
     public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
     public override IReadOnlyList<CalculationOutputDefinition> Outputs => OutputDefinitions;
@@ -200,9 +208,9 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
         var pressureBarAbsolute = pressureBarGauge + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute;
         var deltaC = parameters.GetDouble(CorrectionKey, 0d);
         var components = ReadMixtureComponents(parameters);
-        var additionalParameters = ReadAdditionalParameters(parameters);
+        var componentCalculationParameters = ReadComponentCalculationParameters(parameters);
 
-        var mixtureResult = MixturePropertyCalculator.CalculateSpecificHeatCapacity(components, temperatureC, additionalParameters);
+        var mixtureResult = MixturePropertyCalculator.CalculateSpecificHeatCapacity(components, temperatureC, componentCalculationParameters);
 
         var baseCapacityJPerKgK = mixtureResult.SpecificHeatCapacityJPerKgK;
         var capacityJPerKgK = baseCapacityJPerKgK + deltaC;
@@ -229,9 +237,16 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
             trace.Add(new CalculationTraceItem("pressureBarGauge", "Pressure", Format(pressureBarGauge), "bar(g)"));
             trace.Add(new CalculationTraceItem("pressureBarAbsolute", "Absolute pressure", Format(pressureBarAbsolute), "bar(abs)"));
 
-            foreach (var parameter in additionalParameters.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+            foreach (var key in AdditionalParameterKeys)
             {
-                trace.Add(new CalculationTraceItem(parameter.Key, "Additional parameter", Format(parameter.Value),null));
+                if (componentCalculationParameters.TryGetValue(key, out var value))
+                    trace.Add(new CalculationTraceItem(key, "Additional parameter", Format(value), null));
+            }
+
+            foreach (var parameter in PropertyParameterDefinitions.Where(parameter => !string.IsNullOrWhiteSpace(parameter.AppliesToSubstanceCode)).OrderBy(parameter => parameter.Order))
+            {
+                if (componentCalculationParameters.TryGetValue(parameter.Key, out var value))
+                    trace.Add(new CalculationTraceItem(parameter.Key, parameter.Name, Format(value), parameter.Unit));
             }
 
             AddMixtureTrace(trace, components);
@@ -249,7 +264,17 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
         return CalculationResult.Success(outputs, trace: trace);
     }
 
-    private static IReadOnlyDictionary<string, double> ReadAdditionalParameters(CalculationParameterSet parameters)
+    /// <summary>
+    /// Собирает числовые параметры, которые могут понадобиться формулам отдельных компонентов.
+    ///
+    /// Здесь находятся два разных типа значений:
+    ///
+    /// 1. Additional ProcessInput — будущие динамические параметры процесса.
+    /// 2. Substance Configuration — постоянные коэффициенты конкретного вещества.
+    ///
+    /// Для LegacySubstance они передаются одним read-only dictionary, но в Calculation Definition и Calc Job остаются разными сущностями.
+    /// </summary>
+    private static IReadOnlyDictionary<string, double> ReadComponentCalculationParameters(CalculationParameterSet parameters)
     {
         var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
@@ -257,6 +282,12 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
         {
             if (parameters.TryGetValue(key, out var rawValue) && rawValue is not null)
                 result[key] = parameters.GetRequiredDouble(key);
+        }
+
+        foreach (var parameter in PropertyParameterDefinitions.Where(parameter => !string.IsNullOrWhiteSpace(parameter.AppliesToSubstanceCode)))
+        {
+            if (parameters.TryGetValue(parameter.Key, out var rawValue) && rawValue is not null)
+                result[parameter.Key] = parameters.GetRequiredDouble(parameter.Key);
         }
 
         return result;

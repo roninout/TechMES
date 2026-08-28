@@ -173,6 +173,7 @@ internal static class CalcContractMapper
             Name = parameter.Name,
             Type = ToParameterTypeDto(parameter.Type),
             Role = ToParameterRoleDto(parameter.Role),
+            AppliesToSubstanceCode = parameter.AppliesToSubstanceCode,
 
             Unit = parameter.Unit,
             IsRequired = parameter.IsRequired,

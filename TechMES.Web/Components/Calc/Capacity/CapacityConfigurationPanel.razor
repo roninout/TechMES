@@ -679,6 +679,53 @@
                                 }
                             }
 
+                            @if (ActiveSubstanceConfigurationEditors.Count > 0)
+                            {
+                                <div class="capacity-mixture-config-separator"></div>
+
+                                @foreach (var editor in ActiveSubstanceConfigurationEditors)
+                                {
+                                    <div class="capacity-mixture-config-row">
+
+                                        <div></div>
+
+                                        <div class="capacity-mixture-config-info">
+
+                                            <div class="capacity-mixture-config-name">
+                                                @editor.Parameter.Name
+                                            </div>
+
+                                            <div class="capacity-mixture-config-description">
+                                                @editor.Parameter.AppliesToSubstanceCode
+                                            </div>
+
+                                        </div>
+
+                                        <div></div>
+
+                                        <div></div>
+
+                                        <RadzenFormField AllowFloatingLabel="false"
+                                                         Text="@editor.Parameter.Name"
+                                                         Variant="Variant.Outlined"
+                                                         class="capacity-mixture-config-field">
+
+                                            <RadzenNumeric TValue="double?"
+                                                           @bind-Value="editor.Value"
+                                                           Min="@ToDecimal(editor.Parameter.Minimum)"
+                                                           Max="@ToDecimal(editor.Parameter.Maximum)"
+                                                           Step="@GetNumericStep(editor.Parameter)"
+                                                           ShowUpDown="true"
+                                                           Format="@GetNumberFormat(editor.Parameter)"
+                                                           Disabled="@_isSaving"
+                                                           class="capacity-mixture-config-value" />
+
+                                        </RadzenFormField>
+
+                                    </div>
+                                }
+                            }
+
                             @if (!string.IsNullOrWhiteSpace(MixtureValidationError))
                             {
                                 <RadzenAlert AlertStyle="AlertStyle.Warning"
@@ -804,6 +851,7 @@
 
     private readonly List<CapacityProcessBindingEditor> _processBindings = [];
     private readonly List<CapacityComponentEditor> _components = [];
+    private readonly List<CapacitySubstanceConfigurationEditor> _substanceConfigurationEditors = [];
     private readonly Dictionary<string, double?> _liveScadaValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ParamSnapshotResponse> _linkedAiSnapshots = new(StringComparer.OrdinalIgnoreCase);
 
@@ -1002,6 +1050,33 @@
         .Take(_processParameterCount)
         .ToList();
 
+    /// <summary>
+    /// Возвращает только Configuration parameters тех веществ,
+    /// которые реально выбраны в активных SCADA component slots.
+    ///
+    /// Например Purity показывается только тогда,
+    /// когда одним из выбранных компонентов является DryMatter.
+    /// </summary>
+    private IReadOnlyList<CapacitySubstanceConfigurationEditor> ActiveSubstanceConfigurationEditors
+    {
+        get
+        {
+            var componentCount = CurrentComponentCount ?? 0;
+
+            var selectedCodes = _components
+                .Take(componentCount)
+                .Select(component => component.SubstanceCode?.Trim() ?? "")
+                .Where(code => code.Length > 0)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return _substanceConfigurationEditors
+                .Where(editor => !string.IsNullOrWhiteSpace(editor.Parameter.AppliesToSubstanceCode)
+                    && selectedCodes.Contains(editor.Parameter.AppliesToSubstanceCode))
+                .OrderBy(editor => editor.Parameter.Order)
+                .ToList();
+        }
+    }
+
     // ============================================================
     // Readiness
     // ============================================================
@@ -1027,6 +1102,27 @@
     /// дополнительных параметров DefaultValue отсутствует.
     /// </summary>
     private bool IsProcessBindingsReady => ActiveProcessBindings.All(IsProcessBindingReady);
+
+    private bool IsSubstanceConfigurationReady => ActiveSubstanceConfigurationEditors.All(IsSubstanceConfigurationValueValid);
+
+    private static bool IsSubstanceConfigurationValueValid(CapacitySubstanceConfigurationEditor editor)
+    {
+        if (!editor.Value.HasValue)
+            return !editor.Parameter.IsRequired;
+
+        var value = editor.Value.Value;
+
+        if (!double.IsFinite(value))
+            return false;
+
+        if (editor.Parameter.Minimum.HasValue && value < editor.Parameter.Minimum.Value)
+            return false;
+
+        if (editor.Parameter.Maximum.HasValue && value > editor.Parameter.Maximum.Value)
+            return false;
+
+        return true;
+    }
 
     private static bool IsProcessBindingReady(CapacityProcessBindingEditor binding)
     {
@@ -1081,6 +1177,7 @@
     private bool IsConfigurationReady =>
         Definition is not null
         && IsProcessBindingsReady
+        && IsSubstanceConfigurationReady
         && IsCapacityScadaStructureReady
         && IsCapacityScadaValuesReady
         && IsOutputBindingReady
@@ -1220,6 +1317,7 @@
 
         BuildProcessBindings();
         BuildComponentConfiguration();
+        BuildSubstanceConfiguration();
 
         // Сохранённое Enabled/WriteEnabled не должны автоматически выключаться
         // только потому, что в момент открытия страницы SCADA ещё не успела прочитаться.
@@ -1802,6 +1900,39 @@
     }
 
     /// <summary>
+    /// Строит редакторы постоянных Configuration parameters,
+    /// относящихся к конкретным веществам.
+    ///
+    /// Например:
+    ///
+    ///     DryMatter -> Purity.
+    ///
+    /// Значение сначала восстанавливается из сохранённого Constant input.
+    /// Если Constant ещё отсутствует, используется DefaultValue Definition.
+    /// </summary>
+    private void BuildSubstanceConfiguration()
+    {
+        _substanceConfigurationEditors.Clear();
+
+        if (Definition is null)
+            return;
+
+        foreach (var parameter in Definition.Parameters
+            .Where(parameter => parameter.Role == CalcParameterRoleDto.Configuration
+                && !string.IsNullOrWhiteSpace(parameter.AppliesToSubstanceCode))
+            .OrderBy(parameter => parameter.Order))
+        {
+            var defaultValue = ReadDefaultNumber(parameter);
+
+            _substanceConfigurationEditors.Add(new CapacitySubstanceConfigurationEditor
+            {
+                Parameter = parameter,
+                Value = ReadStoredNumber(parameter.Key, defaultValue)
+            });
+        }
+    }
+
+    /// <summary>
     /// Переключает глобальную фазу смеси.
     /// При смене Liquid <-> Vapor очищаем только те уже выбранные SubstanceCode, которые принадлежат противоположной фазе.
     /// </summary>
@@ -2010,6 +2141,12 @@
                 result.Add(CreateConstantInput(parameter, code));
         }
 
+        foreach (var editor in ActiveSubstanceConfigurationEditors)
+        {
+            if (editor.Value.HasValue)
+                result.Add(CreateConstantInput(editor.Parameter, editor.Value.Value));
+        }
+
         return result.OrderBy(input => input.SortOrder).ToList();
     }
 
@@ -2102,6 +2239,12 @@
         {
             var code = (_components.ElementAtOrDefault(index)?.SubstanceCode ?? "").Trim();
             parts.Add($"component{index}={code}");
+        }
+
+        foreach (var editor in ActiveSubstanceConfigurationEditors)
+        {
+            var value = editor.Value.HasValue ? editor.Value.Value.ToString("R", CultureInfo.InvariantCulture) : "";
+            parts.Add($"{editor.Parameter.Key}={value}");
         }
 
         return string.Join("|", parts);
@@ -2266,6 +2409,35 @@
         return defaultValue;
     }
 
+    private double? ReadStoredNumber(string key, double? defaultValue)
+    {
+        var input = FindJobInput(key);
+
+        if (input?.SourceType == CalcInputSourceTypeDto.Constant
+            && input.ConstantValue.HasValue
+            && input.ConstantValue.Value.ValueKind == JsonValueKind.Number
+            && input.ConstantValue.Value.TryGetDouble(out var value)
+            && double.IsFinite(value))
+        {
+            return value;
+        }
+
+        return defaultValue;
+    }
+
+    private static double? ReadDefaultNumber(CalcParameterDefinitionDto parameter)
+    {
+        if (!parameter.DefaultValue.HasValue
+            || parameter.DefaultValue.Value.ValueKind != JsonValueKind.Number
+            || !parameter.DefaultValue.Value.TryGetDouble(out var value)
+            || !double.IsFinite(value))
+        {
+            return null;
+        }
+
+        return value;
+    }
+
     // ============================================================
     // SCADA ITEM helper
     // ============================================================
@@ -2428,9 +2600,7 @@
             : "-";
     }
 
-    // ============================================================
-    // Formatting
-    // ============================================================
+    #region Formatting
 
     private static string GetNumberFormat(CalcParameterDefinitionDto parameter)
     {
@@ -2438,6 +2608,39 @@
         var pattern = decimals == 0 ? "0" : "0." + new string('#', decimals);
 
         return string.IsNullOrWhiteSpace(parameter.Unit) ? pattern : $"{pattern}' {parameter.Unit}'";
+    }
+
+    /// <summary>
+    /// Преобразует числовые ограничения Calculation Definition из double?
+    /// в decimal?, который ожидает RadzenNumeric в свойствах Min и Max.
+    ///
+    /// В Calculation Definition оставляем double, потому что это
+    /// естественный числовой тип всего расчётного ядра.
+    /// Конвертацию выполняем только на границе WEB UI.
+    /// </summary>
+    private static decimal? ToDecimal(double? value)
+    {
+        if (!value.HasValue || !double.IsFinite(value.Value))
+            return null;
+
+        return (decimal)value.Value;
+    }
+
+    /// <summary>
+    /// Возвращает Step в формате, который ожидает RadzenNumeric.
+    ///
+    /// В Calculation Definition Step хранится как double?,
+    /// а RadzenNumeric принимает Step строкой.
+    ///
+    /// Используем InvariantCulture, чтобы независимо от локали Windows
+    /// значение 0.1 передавалось именно как "0.1", а не как "0,1".
+    /// </summary>
+    private static string GetNumericStep(CalcParameterDefinitionDto parameter)
+    {
+        if (!parameter.Step.HasValue || !double.IsFinite(parameter.Step.Value) || parameter.Step.Value <= 0d)
+            return "1";
+
+        return parameter.Step.Value.ToString("R", CultureInfo.InvariantCulture);
     }
 
     private static string GetSwitchStateText(bool value)
@@ -2450,9 +2653,9 @@
         return value ? "is-on" : "is-off";
     }
 
-    // ============================================================
-    // Local models
-    // ============================================================
+    #endregion
+
+    #region Local models
 
     private enum CapacityBindingCheckState
     {
@@ -2497,6 +2700,12 @@
         public string SubstanceCode { get; set; } = "";
     }
 
+    private sealed class CapacitySubstanceConfigurationEditor
+    {
+        public CalcParameterDefinitionDto Parameter { get; set; } = new();
+        public double? Value { get; set; }
+    }
+
     private sealed record CapacityAiSnapshotRead(string EquipmentName, ParamSnapshotResponse? Snapshot);
 
     private sealed record CapacityProcessBarView(
@@ -2529,4 +2738,6 @@
             return new CapacityScadaReadResult(itemName, false, null, message);
         }
     }
+
+    #endregion
 }

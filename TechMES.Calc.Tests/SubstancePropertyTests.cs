@@ -342,10 +342,7 @@ public sealed class SubstancePropertyTests
                 new MixtureComponent("Water", 100.0 - dryMatterPercent)
             ],
                 temperatureC: temperatureC,
-                additionalParameters: new Dictionary<string, double>
-                {
-                    ["additionalParameter1"] = purityPercent
-                });
+                additionalParameters: new Dictionary<string, double>{["dryMatterPurityPercent"] = purityPercent});
 
         var expectedCapacity = CalculateOriginalSugarSolutionCapacity(temperatureC, dryMatterPercent, purityPercent);
 
@@ -370,22 +367,28 @@ public sealed class SubstancePropertyTests
     }
 
     [Fact]
-    public void CapacityUsesPurityAdditionalProcessInputForDryMatter()
+    public void CapacityExposesDryMatterPurityAsConfiguration()
     {
         var definition = new CapacityCalculationDefinition();
 
-        var purity = definition.Parameters.Single(parameter => string.Equals(parameter.Key, "additionalParameter1", StringComparison.OrdinalIgnoreCase));
+        var purity = definition.Parameters.Single(parameter => string.Equals(parameter.Key, "dryMatterPurityPercent", StringComparison.OrdinalIgnoreCase));
+        var additionalParameter = definition.Parameters.Single(parameter => string.Equals(parameter.Key, "additionalParameter1", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal("Purity", purity.Name);
         Assert.Equal("%", purity.Unit);
         Assert.Equal(90d, Convert.ToDouble(purity.DefaultValue));
-        Assert.Equal(CalculationParameterRole.ProcessInput, purity.Role);
+        Assert.Equal(CalculationParameterRole.Configuration, purity.Role);
+        Assert.Equal("DryMatter", purity.AppliesToSubstanceCode);
+
+        Assert.Equal("Additional parameter", additionalParameter.Name);
+        Assert.Equal(CalculationParameterRole.ProcessInput, additionalParameter.Role);
+        Assert.Null(additionalParameter.AppliesToSubstanceCode);
 
         var result = definition.Calculate(new CalculationParameterSet(
             new Dictionary<string, object?>
             {
                 ["temperatureC"] = 84.3d,
-                ["additionalParameter1"] = 90d,
+                ["dryMatterPurityPercent"] = 90d,
                 ["componentCount"] = 2,
                 ["component0Code"] = "DryMatter",
                 ["component0Percent"] = 55d,
@@ -394,6 +397,7 @@ public sealed class SubstancePropertyTests
             }));
 
         Assert.True(result.IsSuccess, result.ErrorMessage);
+
         var capacity = result.Outputs.Single(item => string.Equals(item.Key, "capacity", StringComparison.OrdinalIgnoreCase)).Value;
 
         Assert.Equal(3142.4489964405648d, capacity, precision: 8);
