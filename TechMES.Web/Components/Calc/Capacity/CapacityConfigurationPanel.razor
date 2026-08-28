@@ -2089,21 +2089,11 @@
     /// <summary>
     /// Формирует окончательный Capacity Job.
     ///
-    /// ProcessInput:
-    /// сохраняются только после успешного Resolve/Check.
-    ///
-    /// CompN:
-    /// всегда Capacity ITEM CompN.
-    ///
-    /// Perc0...Perc4:
-    /// всегда соответствующие Capacity SCADA ITEM.
-    ///
-    /// DeltaC:
-    /// всегда Capacity ITEM DeltaC.
-    ///
-    /// componentNCode:
-    /// единственная постоянная настройка состава.
-    ///
+    /// ProcessInput: сохраняются только после успешного Resolve/Check.
+    /// CompN: всегда Capacity ITEM CompN.
+    /// Perc0...Perc4: всегда соответствующие Capacity SCADA ITEM.
+    /// DeltaC: всегда Capacity ITEM DeltaC.
+    /// componentNCode и substance-specific Configuration сохраняются как Constant.
     /// ValHmi здесь отсутствует.
     /// </summary>
     private List<CalcJobInputSaveDto> BuildCapacityInputs()
@@ -2512,7 +2502,7 @@
     ///
     /// Percent определяет геометрический размер сектора.
     ///
-    /// CapacityKgPerM3 является фактической плотностью компонента,
+    /// CapacityJPerKgK является фактической удельной теплоёмкостью компонента,
     /// которая участвовала в последнем успешном расчёте Calc.Service.
     ///
     /// Никаких координат labels здесь больше не рассчитываем:

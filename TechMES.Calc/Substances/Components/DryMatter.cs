@@ -5,11 +5,8 @@ namespace TechMES.Calc.Substances.Components
 {
     /// <summary>
     /// DryMatter – сухие вещества сахарного водного раствора.
-    ///
     /// Компонент существует только в жидкой фазе.
-    ///
-    /// Density восстановлена из исходной ICUMSA-корреляции PLC.
-    /// Capacity и Content пока не реализованы.
+    /// Density восстановлена из исходной ICUMSA-корреляции PLC. Content пока не реализован.
     /// </summary>
     internal class DryMatter : LegacySubstance
     {
