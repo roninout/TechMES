@@ -20,6 +20,12 @@ namespace TechMES.Calc.Substances.Components
         // В текущем расчёте жидкой Density значение не используется, но базовый контракт LegacySubstance требует MolarMass.
         private const double molarMass = 342.2965;
 
+        // Первый дополнительный ProcessInput Capacity используется как чистота сухих веществ сахарного раствора, %.
+        internal const string PurityParameterKey = "additionalParameter1";
+
+        // Значение по умолчанию 90%. Этот же ключ используется CapacityCalculationDefinition, поэтому имя параметра не дублируется в разных местах.
+        internal const double DefaultPurityPercent = 90.0;
+
         public override double MolarMass => molarMass;
 
         // DryMatter поддерживается только как жидкий компонент.
@@ -57,31 +63,41 @@ namespace TechMES.Calc.Substances.Components
             return density;
         }
 
-        // Для компонента DryMatter принимаем 100% чистоту сухих веществ.
-        // Это соответствует нашей общей модели компонентов: каждый компонент описывает вещество при 100% концентрации.
-        // Если в будущем понадобится реальная PUR из SCADA, её можно будет передать через additionalParameters, не меняя формулу CSS.
-        private const double purityPercent = 100.0;
-
-        // Метод определения удельной теплоёмкости DryMatter при 100% концентрации, kJ/(kg·K).
-        // TechLib.CSS возвращает J/(kg·K), а legacy-контракт GetCapacity возвращает kJ/(kg·K).
+        // Метод определения удельной теплоёмкости DryMatter при 100% концентрации сухих веществ, kJ/(kg·K).
+        // Если дополнительных параметров нет, используется штатная чистота сахарного раствора 90%.
         public override double GetCapacity(float temperature)
         {
-            return TechLib.CSS(temperature, 100.0, purityPercent) * 0.001;
+            return GetCapacity(temperature, 100.0, null);
         }
 
         /// <summary>
         /// Возвращает эффективную теплоёмкость DryMatter для его фактической массовой доли в сахарном водном растворе.
-        /// Исходная PLC-функция CSS рассчитывает теплоёмкость всего раствора. Но в TechMES Water является отдельным компонентом.
-        /// Поэтому, как и для Density/VSS, вклад Water исключается алгебраически.
-        /// Наш MixturePropertyCalculator использует: CpMix = wWater * CpWater + wDryMatter * CpDryMatter
-        /// Отсюда: CpDryMatter = (CpSolution - wWater * CpWater) / wDryMatter
         ///
-        /// После этого стандартный расчёт смеси Water + DryMatter точно воспроизводит исходную CSS-функцию.
+        /// Purity берётся из additionalParameter1. Если параметр не передан, используется 90%.
+        ///
+        /// Исходная PLC-функция CSS рассчитывает теплоёмкость всего раствора. В TechMES Water является отдельным компонентом, поэтому вклад Water
+        /// алгебраически исключается:
+        ///
+        ///     CpMix = wWater * CpWater + wDryMatter * CpDryMatter
+        ///
+        /// отсюда:
+        ///
+        ///     CpDryMatter = (CpSolution - wWater * CpWater) / wDryMatter
+        ///
+        /// После этого стандартный MixturePropertyCalculator точно воспроизводит исходную CSS-корреляцию.
         /// </summary>
         public override double GetCapacity(float temperature, double massPercent, IReadOnlyDictionary<string, double>? additionalParameters)
         {
             if (!double.IsFinite(massPercent) || massPercent <= 0.0 || massPercent > 100.0)
                 throw new ArgumentOutOfRangeException(nameof(massPercent), "DryMatter mass percent must be greater than 0 and not greater than 100.");
+
+            var purityPercent = DefaultPurityPercent;
+
+            if (additionalParameters is not null && additionalParameters.TryGetValue(PurityParameterKey, out var configuredPurity))
+                purityPercent = configuredPurity;
+
+            if (!double.IsFinite(purityPercent) || purityPercent < 0.0 || purityPercent > 100.0)
+                throw new ArgumentOutOfRangeException(nameof(additionalParameters), "DryMatter purity percent must be between 0 and 100.");
 
             var dryMatterMassFraction = massPercent * 0.01;
             var waterMassFraction = 1.0 - dryMatterMassFraction;
@@ -89,7 +105,7 @@ namespace TechMES.Calc.Substances.Components
             // Исходная CSS-функция возвращает теплоёмкость всего сахарного раствора в J/(kg·K).
             var solutionCapacityJPerKgK = TechLib.CSS(temperature, massPercent, purityPercent);
 
-            // Water.GetCapacity возвращает legacy kJ/(kg·K). Для расчёта исключения переводим его в J/(kg·K).
+            // Water.GetCapacity возвращает legacy kJ/(kg·K). Для исключения Water переводим значение в J/(kg·K).
             var waterCapacityJPerKgK = new Water(false).GetCapacity(temperature) * 1000.0;
 
             var dryMatterCapacityJPerKgK = (solutionCapacityJPerKgK - waterMassFraction * waterCapacityJPerKgK) / dryMatterMassFraction;

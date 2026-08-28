@@ -1,6 +1,8 @@
+using TechMES.Calc.Capacity;
 using TechMES.Calc.Content;
 using TechMES.Calc.Exceptions;
 using TechMES.Calc.Mixtures;
+using TechMES.Calc.Parameters;
 using TechMES.Calc.Substances;
 
 namespace TechMES.Calc.Tests;
@@ -332,14 +334,18 @@ public sealed class SubstancePropertyTests
     {
         const double temperatureC = 84.3;
         const double dryMatterPercent = 55.0;
-        const double purityPercent = 100.0;
+        const double purityPercent = 90.0;
 
         var actualCapacity = MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
             [
                 new MixtureComponent("DryMatter", dryMatterPercent),
-            new MixtureComponent("Water", 100.0 - dryMatterPercent)
+                new MixtureComponent("Water", 100.0 - dryMatterPercent)
             ],
-            temperatureC: temperatureC);
+                temperatureC: temperatureC,
+                additionalParameters: new Dictionary<string, double>
+                {
+                    ["additionalParameter1"] = purityPercent
+                });
 
         var expectedCapacity = CalculateOriginalSugarSolutionCapacity(temperatureC, dryMatterPercent, purityPercent);
 
@@ -347,13 +353,50 @@ public sealed class SubstancePropertyTests
     }
 
     [Fact]
-    public void PureDryMatterCapacityUsesHundredPercentSugarSolutionCorrelation()
+    public void PureDryMatterCapacityUsesDefaultNinetyPercentPurity()
     {
-        var capacity = MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
-            [new MixtureComponent("DryMatter", 100d)],
-            temperatureC: 20d);
+        const double temperatureC = 20d;
 
-        Assert.Equal(1816.5776797571834d, capacity, precision: 8);
+        var actualCapacity = MixturePropertyCalculator.CalculateSpecificHeatCapacityJPerKgK(
+            [new MixtureComponent("DryMatter", 100d)],
+            temperatureC: temperatureC);
+
+        var expectedCapacity = CalculateOriginalSugarSolutionCapacity(
+            temperatureC,
+            dryMatterPercent: 100d,
+            purityPercent: 90d);
+
+        Assert.Equal(expectedCapacity, actualCapacity, precision: 10);
+    }
+
+    [Fact]
+    public void CapacityUsesPurityAdditionalProcessInputForDryMatter()
+    {
+        var definition = new CapacityCalculationDefinition();
+
+        var purity = definition.Parameters.Single(parameter => string.Equals(parameter.Key, "additionalParameter1", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal("Purity", purity.Name);
+        Assert.Equal("%", purity.Unit);
+        Assert.Equal(90d, Convert.ToDouble(purity.DefaultValue));
+        Assert.Equal(CalculationParameterRole.ProcessInput, purity.Role);
+
+        var result = definition.Calculate(new CalculationParameterSet(
+            new Dictionary<string, object?>
+            {
+                ["temperatureC"] = 84.3d,
+                ["additionalParameter1"] = 90d,
+                ["componentCount"] = 2,
+                ["component0Code"] = "DryMatter",
+                ["component0Percent"] = 55d,
+                ["component1Code"] = "Water",
+                ["component1Percent"] = 45d
+            }));
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        var capacity = result.Outputs.Single(item => string.Equals(item.Key, "capacity", StringComparison.OrdinalIgnoreCase)).Value;
+
+        Assert.Equal(3142.4489964405648d, capacity, precision: 8);
     }
 
     /// <summary>

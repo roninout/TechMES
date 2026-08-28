@@ -3,6 +3,7 @@ using TechMES.Calc.Mixtures;
 using TechMES.Calc.Parameters;
 using TechMES.Calc.Results;
 using TechMES.Calc.Substances;
+using TechMES.Calc.Substances.Components;
 
 namespace TechMES.Calc.Capacity;
 
@@ -34,7 +35,7 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
 
     private static readonly string[] AdditionalParameterKeys =
     [
-        "additionalParameter1",
+        DryMatter.PurityParameterKey,
         "additionalParameter2",
         "additionalParameter3"
     ];
@@ -68,13 +69,22 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
             Description: "Optional gauge pressure. Absolute pressure is calculated by adding the configured atmospheric pressure.",
             Role: CalculationParameterRole.ProcessInput),
 
+        // Purity используется CSS-корреляцией DryMatter.
+        // Для остальных веществ этот ProcessInput просто не участвует в их legacy GetCapacity.
+        // Если тег не настроен, CalculationParameterValidator автоматически подставляет DefaultValue = 90%.
         new CalculationParameterDefinition(
-            Key: "additionalParameter1",
-            Name: "Additional parameter",
+            Key: DryMatter.PurityParameterKey,
+            Name: "Purity",
             Type: CalculationParameterType.Number,
+            Unit: "%",
             IsRequired: false,
+            DefaultValue: DryMatter.DefaultPurityPercent,
+            Minimum: 0,
+            Maximum: 100,
+            Step: 0.1,
+            Decimals: 1,
             Order: 3,
-            Description: "Reserved additional process parameter.",
+            Description: "Dry matter purity used by the sugar solution specific heat capacity correlation.",
             Role: CalculationParameterRole.ProcessInput),
 
         new CalculationParameterDefinition(
@@ -178,7 +188,7 @@ public sealed class CapacityCalculationDefinition : MixtureCalculationDefinition
     // - ProcessInput count expanded to the same 2..5 contract as Density;
     // - componentNCapacity diagnostic outputs added;
     // - Density-only DryMatter validation removed from Capacity path.
-    public override string Version => "2";
+    public override string Version => "3";
 
     public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
     public override IReadOnlyList<CalculationOutputDefinition> Outputs => OutputDefinitions;
