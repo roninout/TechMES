@@ -571,6 +571,47 @@ public sealed class SubstancePropertyTests
         Assert.Equal(legacy[1] / 100.0, actual[1], precision: 10);
     }
 
+    [Theory]
+    [InlineData("ACN", "Water", "PO", 5d, 0.3d, 10)]       // ниже min pressure + temperature clamp
+    [InlineData("ACN", "Water", "PO", 50d, 0.7d, 11)]      // interpolation, clamp disabled
+    [InlineData("ACN", "Water", "PO", 60d, 1.0d, 20)]      // exact anchor, 80%
+    [InlineData("ACN", "Water", "PO", 100d, 3.2d, 21)]     // above max, clamp disabled
+    [InlineData("ACN", "Water", "PO", 80d, 2.3d, 30)]      // 89%, interpolation
+    [InlineData("ACN", "Water", "PO", 20d, 1.55d, 40)]     // default group + temperature clamp
+    [InlineData("PO", "Water", "ACN", 60d, 1.0d, 20)]      // reverse output order
+    [InlineData("PO", "Water", "ACN", 80d, 2.3d, 31)]      // reverse order + no clamp
+    public void AcnWaterPoContentMatchesOriginalContentCalc(string component0, string component1, string component2, double temperatureC, double pressureBarAbsolute, int configurationCode)
+    {
+        var legacy = GetLegacyTernaryContent(component0, component1, component2, (float)temperatureC, (float)pressureBarAbsolute, configurationCode);
+
+        var actual = ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(
+            Components: [component0, component1, component2], TemperatureC: temperatureC,
+            PressureBarAbsolute: pressureBarAbsolute, ConfigurationCode: configurationCode));
+
+        Assert.Equal(legacy[0] / 100.0, actual[0], precision: 10);
+        Assert.Equal(legacy[1] / 100.0, actual[1], precision: 10);
+        Assert.Equal(legacy[2] / 100.0, actual[2], precision: 10);
+        Assert.Equal(100.0, actual.Sum(), precision: 10);
+    }
+
+    [Fact]
+    public void AcnWaterPoAboveMaximumPressureWithTemperatureClampReturnsCalculationError()
+    {
+        var exception = Assert.Throws<CalculationException>(() => ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(Components: ["ACN", "Water", "PO"], TemperatureC: 80d,PressureBarAbsolute: 3.2d, ConfigurationCode: 10)));
+
+        Assert.Equal("content.pressure.out-of-range", exception.Code);
+    }
+
+    private static double[] GetLegacyTernaryContent(string component0, string component1, string component2, float temperatureC, float pressureBarAbsolute, int configurationCode)
+    {
+        return (component0, component1, component2) switch
+        {
+            ("ACN", "Water", "PO") => ContentCalc.ACN_Water_PO_Content(temperatureC, pressureBarAbsolute, configurationCode),
+            ("PO", "Water", "ACN") => ContentCalc.PO_Water_ACN_Content(temperatureC, pressureBarAbsolute, configurationCode),
+            _ => throw new InvalidOperationException($"Legacy ternary Content combination '{component0} + {component1} + {component2}' is not defined.")
+        };
+    }
+
     /// <summary>
     /// Вызывает именно исходную legacy-функцию ContentCalc.
     ///
