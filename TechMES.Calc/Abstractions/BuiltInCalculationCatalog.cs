@@ -1,4 +1,5 @@
 ﻿using TechMES.Calc.Capacity;
+using TechMES.Calc.Content;
 using TechMES.Calc.Density;
 using TechMES.Calc.Tanks.Types;
 
@@ -7,13 +8,11 @@ namespace TechMES.Calc.Abstractions;
 /// <summary>
 /// Создаёт каталог всех алгоритмов, встроенных в текущую версию TechMES.Calc.
 ///
-/// Сейчас в каталог входят:
+/// В каталог входят:
 /// - Tank Type 1..8;
 /// - Density многокомпонентной смеси;
-/// - Capacity многокомпонентной смеси.
-///
-/// Content будет добавлен отдельным этапом после того, как полностью
-/// определим его контракт параметров, конфигураций и выходов.
+/// - Capacity многокомпонентной смеси;
+/// - все поддерживаемые Content-системы.
 ///
 /// Добавление нового Calculation Definition не требует изменения
 /// CalculationCatalog, Runtime или PostgreSQL.
@@ -23,8 +22,8 @@ public static class BuiltInCalculationCatalog
 {
     public static CalculationCatalog Create()
     {
-        return new CalculationCatalog(
-        [
+        var definitions = new List<ICalculationDefinition>
+        {
             new TankType1VolumeDefinition(),
             new TankType2VolumeDefinition(),
             new TankType3VolumeDefinition(),
@@ -36,6 +35,10 @@ public static class BuiltInCalculationCatalog
 
             new DensityCalculationDefinition(),
             new CapacityCalculationDefinition()
-        ]);
+        };
+
+        definitions.AddRange(ContentCalculationDefinitions.CreateAll());
+
+        return new CalculationCatalog(definitions);
     }
 }
