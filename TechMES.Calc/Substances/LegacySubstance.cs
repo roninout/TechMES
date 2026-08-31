@@ -4,9 +4,8 @@ namespace TechMES.Calc.Substances
 {
     // Абстрактный класс для вещества.
     //
-    // Базовые GetDensity/GetCapacity/GetContent сохранены в том же виде,
-    // в каком они были в TechDotNetLib. Это позволяет переносить формулы
-    // компонентов без изменения их математического кода.
+    // Базовые GetDensity/GetCapacity сохранены в том же виде, в каком они были в TechDotNetLib.
+    // Content вынесен в отдельный IContentSubstanceModel, потому что Content-корреляция зависит не только от вещества, но и от физической системы компонентов.
     internal abstract class LegacySubstance
     {
         #region fields & props

@@ -4,33 +4,22 @@ using TechMES.Calc.Substances;
 namespace TechMES.Calc.Content;
 
 /// <summary>
-/// Новая безопасная оболочка над legacy-корреляциями Content из TechDotNetLib.
+/// Безопасная оболочка Content-корреляций TechMES.Calc.
 ///
-/// Сам ContentCalc хранит исходные полиномы, коэффициенты и алгоритмы интерполяции.
-/// Мы намеренно не меняем их внутри legacy-слоя.
-///
-/// Этот класс отвечает уже за новый контракт TechMES.Calc:
-/// - Temperature передаётся в °C;
-/// - Pressure передаётся в bar(abs);
+/// Контракт:
+/// - Temperature: °C;
+/// - Pressure: bar(abs);
 /// - порядок компонентов сохраняется;
-/// - некорректная конфигурация приводит к CalculationException;
-/// - старый SCADA scaling 0..10000 убирается;
-/// - наружу возвращается содержание компонентов в инженерных процентах.
+/// - наружу возвращаются инженерные проценты;
+/// - некорректные значения приводят к CalculationException.
+///
+/// После Content 2 все бинарные системы выполняются новой архитектурой.
+///
+/// Временный legacy fallback остаётся только для тройной системы
+/// ACN + Water + PO до этапа Content 3.
 /// </summary>
 public static class ContentPropertyCalculator
 {
-    /// <summary>
-    /// Выполняет расчёт Content для одной из комбинаций компонентов,
-    /// которые были реализованы в старом TechDotNetLib.
-    ///
-    /// Порядок Components принципиален:
-    /// ACN + Water и Water + ACN являются разными конфигурациями,
-    /// потому что порядок одновременно определяет порядок выходных результатов.
-    ///
-    /// Поэтому пустые элементы нельзя просто удалить из массива.
-    /// Например [PO, "", Water] является ошибочной конфигурацией,
-    /// а не эквивалентом [PO, Water].
-    /// </summary>
     public static IReadOnlyList<double> CalculatePercent(ContentCalculationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -48,33 +37,27 @@ public static class ContentPropertyCalculator
         var pressure = (float)request.PressureBarAbsolute;
         var configurationCode = request.ConfigurationCode;
 
-        // Сначала пытаемся выполнить уже перенесённую новую Content-модель.
-        //
-        // Во время поэтапной миграции оставшиеся системы временно продолжают выполняться через ContentCalc.
-        // После переноса всех основных корреляций legacy fallback будет удалён.
-        if (ContentCombinationCalculator.TryCalculatePercent(components, temperature, pressure, configurationCode, out var migratedResult))
-            return migratedResult;
+        // Новые Content-модели.
+        if (ContentCombinationCalculator.TryCalculatePercent(components, temperature, pressure,configurationCode, out var migratedResult))
+            return ValidateResult(migratedResult, components.Length);
+
+        // ------------------------------------------------------------
+        // ВРЕМЕННЫЙ LEGACY FALLBACK
+        // ------------------------------------------------------------
+        // После Content 2 здесь остаётся только тройная система.
+        // После Content 3 этот блок должен быть полностью удалён.
+        // ------------------------------------------------------------
 
         double[]? raw = null;
 
-        if (Match(components, "ALC", "Water"))
-            raw = ContentCalc.ALC_Water_Content(temperature, pressure, configurationCode);
-        else if (Match(components, "PO", "P"))
-            raw = ContentCalc.PO_P_Content(temperature, pressure, configurationCode);
-        else if (Match(components, "P", "PO"))
-            raw = ContentCalc.P_PO_Content(temperature, pressure, configurationCode);
-        else if (Match(components, "ACN", "Water", "PO"))
+        if (Match(components, "ACN", "Water", "PO"))
+        {
             raw = ContentCalc.ACN_Water_PO_Content(temperature, pressure, configurationCode);
+        }
         else if (Match(components, "PO", "Water", "ACN"))
+        {
             raw = ContentCalc.PO_Water_ACN_Content(temperature, pressure, configurationCode);
-        else if (Match(components, "PO", "Water"))
-            raw = ContentCalc.PO_Water_Content(temperature, pressure, configurationCode);
-        else if (Match(components, "Water", "PO"))
-            raw = ContentCalc.Water_PO_Content(temperature, pressure, configurationCode);
-        else if (Match(components, "ACA", "PO"))
-            raw = ContentCalc.ACA_PO_Content(temperature, pressure, configurationCode);
-        else if (Match(components, "PO", "ACA"))
-            raw = ContentCalc.PO_ACA_Content(temperature, pressure, configurationCode);
+        }
 
         if (raw is null)
             throw new CalculationException("content.components.unsupported", $"Content correlation is not defined for [{string.Join(", ", components)}].");
@@ -82,12 +65,23 @@ public static class ContentPropertyCalculator
         if (raw.Length < components.Length)
             throw new CalculationException("content.result.invalid-count", $"Content correlation returned {raw.Length} values for {components.Length} configured components.");
 
-        // Legacy ContentCalc хранит содержание в сотых долях процента:
-        // 10000 = 100.00%.
-        //
-        // В TechMES.Calc транспортный SCADA scaling не используется,
-        // поэтому делим legacy-результат на 100 и возвращаем обычные проценты.
         var result = raw.Take(components.Length).Select(value => value / 100d).ToArray();
+
+        return ValidateResult(result, components.Length);
+    }
+
+    /// <summary>
+    /// Проверяет результат как новой Content-модели, так и временного legacy fallback.
+    /// Это также закрывает проблему Content 1:
+    /// после double -> float очень большое конечное double может превратиться в Infinity.
+    /// Поэтому результат корреляции обязательно проверяется непосредственно перед возвратом наружу.
+    /// </summary>
+    private static IReadOnlyList<double> ValidateResult(IReadOnlyList<double> source, int expectedCount)
+    {
+        if (source.Count < expectedCount)
+            throw new CalculationException("content.result.invalid-count", $"Content correlation returned {source.Count} values for {expectedCount} configured components.");
+
+        var result = source.Take(expectedCount).ToArray();
 
         if (result.Any(value => !double.IsFinite(value)))
             throw new CalculationException("content.result.invalid", "Content correlation returned a non-finite value.");
@@ -95,12 +89,6 @@ public static class ContentPropertyCalculator
         return result;
     }
 
-    /// <summary>
-    /// Нормализует список кодов компонентов, не изменяя их количество и порядок.
-    ///
-    /// В отличие от предыдущего варианта здесь намеренно нет Where(...),
-    /// потому что удаление пустого элемента меняет смысл Content-конфигурации.
-    /// </summary>
     private static string[] NormalizeAndValidateComponents(IReadOnlyList<string> source)
     {
         if (source.Count is < 2 or > 3)
@@ -128,12 +116,6 @@ public static class ContentPropertyCalculator
         return result;
     }
 
-    /// <summary>
-    /// Сравнивает фактическую конфигурацию компонентов с одной конкретной
-    /// legacy-корреляцией без учёта регистра символов.
-    ///
-    /// Порядок при этом обязательно учитывается.
-    /// </summary>
     private static bool Match(IReadOnlyList<string> actual, params string[] expected)
     {
         if (actual.Count != expected.Length)

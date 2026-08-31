@@ -467,11 +467,13 @@ public sealed class SubstancePropertyTests
     }
 
     [Theory]
-    [InlineData(60d, 0.8d, 10)]
-    [InlineData(80d, 1.0d, 10)]
-    [InlineData(100d, 1.5d, 10)]
-    [InlineData(120d, 3.5d, 20)]
-    [InlineData(140d, 4.5d, 20)]
+    [InlineData(60d, 0.05d, 10)]   // Ниже минимального давления.
+    [InlineData(75d, 0.83d, 10)]   // Интерполяция.
+    [InlineData(95d, 1.37d, 10)]   // Интерполяция.
+    [InlineData(110d, 2.30d, 10)]  // Выше максимального low-pressure диапазона.
+    [InlineData(120d, 2.80d, 20)]  // Ниже high-pressure диапазона.
+    [InlineData(130d, 3.57d, 20)]  // Интерполяция high-pressure.
+    [InlineData(150d, 5.30d, 20)]  // Выше high-pressure диапазона.
     public void AcnWaterContentMatchesOriginalContentCalc(double temperatureC, double pressureBarAbsolute, int configurationCode)
     {
         var legacy = ContentCalc.ACN_Water_Content((float)temperatureC, (float)pressureBarAbsolute, configurationCode);
@@ -501,5 +503,93 @@ public sealed class SubstancePropertyTests
         Assert.Equal(legacy[0] / 100.0, actual[0], precision: 10);
         Assert.Equal(legacy[1] / 100.0, actual[1], precision: 10);
         Assert.Equal(100.0, actual.Sum(), precision: 10);
+    }
+
+    [Theory]
+
+    // ------------------------------------------------------------
+    // PO + Propylene
+    // ------------------------------------------------------------
+
+    // Ниже минимального давления.
+    [InlineData("PO", "P", 60d, 0.8d, 10)]
+    // Интерполяция между 1.3 и 1.6.
+    [InlineData("PO", "P", 80d, 1.45d, 10)]
+    // Тот же расчёт, но обратный порядок output.
+    [InlineData("P", "PO", 80d, 1.45d, 10)]
+    // Выше максимального давления + legacy no-clamp mode.
+    [InlineData("PO", "P", 100d, 2.8d, 11)]
+
+    // ------------------------------------------------------------
+    // PO + Water
+    // ------------------------------------------------------------
+
+    // Ниже минимального давления.
+    [InlineData("PO", "Water", 50d, 0.4d, 10)]
+    // Интерполяция.
+    [InlineData("PO", "Water", 70d, 1.25d, 10)]
+    // Обратный порядок.
+    [InlineData("Water", "PO", 70d, 1.25d, 10)]
+    // Выше максимального.
+    [InlineData("PO", "Water", 90d, 2.2d, 11)]
+
+    // ------------------------------------------------------------
+    // ACA + PO
+    // ------------------------------------------------------------
+
+    // Ниже минимального давления.
+    [InlineData("ACA", "PO", 30d, 0.25d, 10)]
+    // Интерполяция.
+    [InlineData("ACA", "PO", 50d, 0.725d, 10)]
+    // Обратный порядок.
+    [InlineData("PO", "ACA", 50d, 0.725d, 10)]
+    // Выше максимального.
+    [InlineData("ACA", "PO", 80d, 2.2d, 11)]
+
+    // ------------------------------------------------------------
+    // ALC + Water
+    // ------------------------------------------------------------
+
+    [InlineData("ALC", "Water", 80d, 1.0d, 10)]
+    [InlineData("ALC", "Water", 90d, 1.2d, 11)]
+
+    public void RemainingBinaryContentMatchesOriginalContentCalc(string component0, string component1, double temperatureC, double pressureBarAbsolute, int configurationCode)
+    {
+        var legacy = GetLegacyBinaryContent(component0, component1, (float)temperatureC, (float)pressureBarAbsolute, configurationCode);
+
+        var actual = ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(
+                Components:
+                [
+                    component0,
+                    component1
+                ],
+                TemperatureC: temperatureC,
+                PressureBarAbsolute: pressureBarAbsolute,
+                ConfigurationCode: configurationCode));
+
+        Assert.Equal(legacy[0] / 100.0, actual[0], precision: 10);
+        Assert.Equal(legacy[1] / 100.0, actual[1], precision: 10);
+    }
+
+    /// <summary>
+    /// Вызывает именно исходную legacy-функцию ContentCalc.
+    ///
+    /// Этот helper нужен только regression-тестам.
+    /// Production-код через ContentCalc для бинарных систем после Content 2 больше не выполняется.
+    /// </summary>
+    private static double[] GetLegacyBinaryContent(string component0, string component1, float temperatureC, float pressureBarAbsolute, int configurationCode)
+    {
+        return (component0, component1) switch
+        {
+            ("PO", "P") => ContentCalc.PO_P_Content(temperatureC, pressureBarAbsolute, configurationCode),
+            ("P", "PO") => ContentCalc.P_PO_Content(temperatureC, pressureBarAbsolute, configurationCode),
+            ("PO", "Water") => ContentCalc.PO_Water_Content(temperatureC, pressureBarAbsolute, configurationCode),
+            ("Water", "PO") => ContentCalc.Water_PO_Content(temperatureC, pressureBarAbsolute, configurationCode),
+            ("ACA", "PO") => ContentCalc.ACA_PO_Content(temperatureC, pressureBarAbsolute, configurationCode),
+            ("PO", "ACA") => ContentCalc.PO_ACA_Content(temperatureC, pressureBarAbsolute, configurationCode),
+            ("ALC", "Water") => ContentCalc.ALC_Water_Content(temperatureC, pressureBarAbsolute, configurationCode),
+
+            _ => throw new InvalidOperationException($"Legacy binary Content combination '{component0} + {component1}' is not defined.")
+        };
     }
 }

@@ -37,7 +37,18 @@ internal static class ContentCombinationCalculator
         return true;
     }
 
-    private static IReadOnlyList<double> CalculateBinaryComplement(ContentCombinationDefinition definition, IReadOnlyList<string> requestedOrder, float temperature, float pressureBarAbsolute, int configurationCode)
+    /// <summary>
+    /// Расчёт бинарной смеси.
+    ///
+    /// Корреляция рассчитывает содержание основного компонента,
+    /// содержание второго компонента определяется материальным балансом:
+    ///
+    /// Secondary = 100 - Primary.
+    ///
+    /// После этого значения переставляются в том порядке,
+    /// в котором компоненты были указаны в Calculation Job.
+    /// </summary>
+    private static IReadOnlyList<double> CalculateBinaryComplement(ContentCombinationDefinition definition, IReadOnlyList<string> requestedOrder, float temperature,float pressureBarAbsolute, int configurationCode)
     {
         var model = SubstanceCatalog.CreateRequiredModel(definition.PrimaryComponentCode);
 
@@ -46,7 +57,6 @@ internal static class ContentCombinationCalculator
 
         var primaryContent = contentModel.GetContent(temperature, pressureBarAbsolute, definition.System, configurationCode);
         var secondaryContent = 100.0 - primaryContent;
-
         var values = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
         {
             [definition.PrimaryComponentCode] = primaryContent,
@@ -56,18 +66,80 @@ internal static class ContentCombinationCalculator
         return requestedOrder.Select(code => values[code]).ToArray();
     }
 
-    private static IReadOnlyDictionary<string, ContentCombinationDefinition> CreateDefinitions()
+    /// <summary>
+    /// Список реально поддерживаемых комбинаций Content.
+    ///
+    /// Важно:
+    /// ContentSystem описывает физическую систему.
+    /// Порядок компонентов описывается ключами Definitions.
+    ///
+    /// Например:
+    ///     PO + P
+    ///     P + PO
+    ///
+    /// используют одну физическую корреляцию PoPropylene,
+    /// но возвращают результаты в разном порядке.
+    /// </summary>
+    private static IReadOnlyDictionary<string, ContentCombinationDefinition>CreateDefinitions()
     {
         var result = new Dictionary<string, ContentCombinationDefinition>(StringComparer.OrdinalIgnoreCase);
 
-        var acnWater = new ContentCombinationDefinition(
-            System: ContentSystem.AcnWater,
-            Kind: ContentCombinationKind.BinaryComplement,
-            PrimaryComponentCode: "ACN",
-            SecondaryComponentCode: "Water");
+        void AddBinary(ContentSystem system, string primaryComponentCode, string secondaryComponentCode, params string[][] supportedOrders)
+        {
+            var definition = new ContentCombinationDefinition(
+                System: system,
+                Kind: ContentCombinationKind.BinaryComplement,
+                PrimaryComponentCode: primaryComponentCode,
+                SecondaryComponentCode: secondaryComponentCode);
 
-        result.Add(BuildKey(["ACN", "Water"]), acnWater);
-        result.Add(BuildKey(["Water", "ACN"]), acnWater);
+            foreach (var order in supportedOrders)
+                result.Add(BuildKey(order), definition);
+        }
+
+        // ACN + Water
+        //
+        // Основная корреляция рассчитывает ACN.
+        AddBinary(ContentSystem.AcnWater,
+            "ACN",
+            "Water",
+            ["ACN", "Water"],
+            ["Water", "ACN"]);
+
+        // PO + Propylene
+        //
+        // Основная корреляция рассчитывает PO.
+        AddBinary(ContentSystem.PoPropylene,
+            "PO",
+            "P",
+            ["PO", "P"],
+            ["P", "PO"]);
+
+        // PO + Water
+        //
+        // Основная корреляция рассчитывает PO.
+        AddBinary(ContentSystem.PoWater,
+            "PO",
+            "Water",
+            ["PO", "Water"],
+            ["Water", "PO"]);
+
+        // Acetaldehyde + PO
+        //
+        // Основная корреляция рассчитывает ACA.
+        AddBinary(ContentSystem.AcaPo,
+            "ACA",
+            "PO",
+            ["ACA", "PO"],
+            ["PO", "ACA"]);
+
+        // Alcohol + Water
+        //
+        // В исходном ContentCalc существует только порядок ALC + Water.
+        // Поэтому искусственно добавлять Water + ALC не нужно.
+        AddBinary(ContentSystem.AlcWater,
+            "ALC",
+            "Water",
+            ["ALC", "Water"]);
 
         return result;
     }

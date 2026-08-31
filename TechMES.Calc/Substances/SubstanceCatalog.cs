@@ -78,10 +78,10 @@ public static class SubstanceCatalog
             result.Add(code, new Entry(new SubstanceDescriptor(code, name, phase, supportedProperties), factory));
         }
 
-        Add("ALC", "Alcohol", SubstancePhase.Liquid, () => new Alcohol(false));
+        Add("ALC", "Alcohol", SubstancePhase.Liquid, () => new Alcohol(false), DefaultPropertySupport | SubstancePropertySupport.Content);
         Add("ALCS", "Alcohol", SubstancePhase.Vapor, () => new Alcohol(true));
 
-        Add("ACA", "Acetaldehyde", SubstancePhase.Liquid, () => new Acetaldehyde(false));
+        Add("ACA", "Acetaldehyde", SubstancePhase.Liquid, () => new Acetaldehyde(false), DefaultPropertySupport | SubstancePropertySupport.Content);
         Add("ACAS", "Acetaldehyde", SubstancePhase.Vapor, () => new Acetaldehyde(true));
 
         Add("ACN", "Acetonitrile", SubstancePhase.Liquid, () => new Acetonitrile(false), DefaultPropertySupport | SubstancePropertySupport.Content);
@@ -93,10 +93,10 @@ public static class SubstanceCatalog
         Add("N", "Nitrogen", SubstancePhase.Vapor, () => new Nitrogen());
         Add("O2", "Oxygen", SubstancePhase.Vapor, () => new Oxygen());
 
-        Add("P", "Propylene", SubstancePhase.Liquid, () => new Propylene(false));
+        Add("P", "Propylene", SubstancePhase.Liquid, () => new Propylene(false), DefaultPropertySupport | SubstancePropertySupport.Content);
         Add("PS", "Propylene", SubstancePhase.Vapor, () => new Propylene(true));
 
-        Add("PO", "Propylene oxide", SubstancePhase.Liquid, () => new PropyleneOxyde(false));
+        Add("PO", "Propylene oxide", SubstancePhase.Liquid, () => new PropyleneOxyde(false), DefaultPropertySupport | SubstancePropertySupport.Content);
         Add("POS", "Propylene oxide", SubstancePhase.Vapor, () => new PropyleneOxyde(true));
 
         Add("Water", "Water", SubstancePhase.Liquid, () => new Water(false), DefaultPropertySupport | SubstancePropertySupport.Content);

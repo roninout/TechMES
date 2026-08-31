@@ -1,14 +1,10 @@
-using TechMES.Calc.Substances;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using TechMES.Calc.Content;
+using TechMES.Calc.Exceptions;
 using TechMES.Calc.Thermodynamics;
 
 namespace TechMES.Calc.Substances.Components
 {
-    internal class Alcohol : LegacySubstance
+    internal class Alcohol : LegacySubstance, IContentSubstanceModel
     {
         
         #region fields & props
@@ -131,7 +127,72 @@ namespace TechMES.Calc.Substances.Components
             return pressureSaturation;
         }
 
-        
+        /// <summary>
+        /// Возвращает объёмное содержание Alcohol в системе ALC + Water, %.
+        ///
+        /// Формула перенесена из ContentCalc.ALC_Water_Content.
+        /// </summary>
+        public double GetContent(float temperature, float pressureBarAbsolute, ContentSystem system, int configurationCode)
+        {
+            if (isSteam)
+            {
+                throw new CalculationException(
+                    "content.phase.unsupported",
+                    "ALC Content correlation is defined only for liquid Alcohol.");
+            }
+
+            if (system != ContentSystem.AlcWater)
+            {
+                throw new CalculationException(
+                    "content.system.unsupported",
+                    $"Alcohol Content correlation is not defined for system '{system}'.");
+            }
+
+            double a0 = -0.071728663;
+            double a1 = 1.2743981;
+            double a2 = 0.001897273;
+            double a3 = 8.29E-06;
+
+            // Массовое содержание алкоголя.
+            //
+            // Формулу намеренно сохраняем в том же виде,
+            // что и в исходном ContentCalc.
+            double alcMass =
+                (temperature - TechLib.TSAT(pressureBarAbsolute)) *
+                100.0 /
+                (
+                    1670.409 /
+                    (
+                        5.37229 -
+                        Math.Log(pressureBarAbsolute * 0.98717) *
+                        0.434294
+                    )
+                    -
+                    232.959
+                    -
+                    TechLib.TSAT(pressureBarAbsolute)
+                );
+
+            // Legacy-ограничение массового содержания.
+            alcMass = Math.Max(
+                0.0,
+                Math.Min(100.0, alcMass));
+
+            // Объёмное содержание алкоголя.
+            double content =
+                a0 +
+                a1 * alcMass -
+                a2 * Math.Pow(alcMass, 2) -
+                a3 * Math.Pow(alcMass, 3);
+
+            // configurationCode с единицей 1 исторически отключает clamp.
+            if (configurationCode % 10 == 1)
+                return content;
+
+            return Math.Max(
+                0.0,
+                Math.Min(100.0, content));
+        }
 
         #endregion
 
