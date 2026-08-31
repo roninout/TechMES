@@ -1,0 +1,227 @@
+.content-configuration-host {
+    width: 100%;
+}
+
+.content-configuration {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.content-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+}
+
+.content-definition-area {
+    flex: 1 1 520px;
+    max-width: 680px;
+}
+
+.content-section-caption {
+    margin-bottom: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    opacity: 0.7;
+}
+
+.content-definition-code {
+    margin-top: 5px;
+    font-size: 0.75rem;
+    opacity: 0.6;
+}
+
+.content-switch-area {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    white-space: nowrap;
+}
+
+.content-switch-state {
+    min-width: 28px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-align: right;
+}
+
+    .content-switch-state.is-on {
+        opacity: 1;
+    }
+
+    .content-switch-state.is-off {
+        opacity: 0.55;
+    }
+
+
+/* ============================================================
+   LIVE OUTPUTS
+   ============================================================ */
+
+.content-live-outputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+}
+
+.content-output-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--rz-base-300);
+    border-radius: 8px;
+    background: var(--rz-base-100);
+}
+
+.content-output-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    opacity: 0.75;
+}
+
+.content-output-value {
+    margin-top: 5px;
+    font-size: 1.7rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.content-output-unit {
+    margin-left: 4px;
+    font-size: 0.9rem;
+    font-weight: 400;
+    opacity: 0.65;
+}
+
+.content-output-key {
+    margin-top: 5px;
+    font-family: Consolas, monospace;
+    font-size: 0.72rem;
+    opacity: 0.5;
+}
+
+
+/* ============================================================
+   SETTINGS
+   ============================================================ */
+
+.content-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-top: 4px;
+}
+
+.content-section-title {
+    margin-bottom: 4px;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.content-section-description {
+    font-size: 0.78rem;
+    line-height: 1.4;
+    opacity: 0.65;
+}
+
+.content-separator {
+    height: 1px;
+    background: var(--rz-base-300);
+}
+
+.content-process-row {
+    display: grid;
+    grid-template-columns: minmax(130px, 180px) minmax(260px, 1fr) 105px 90px;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.content-process-info {
+    min-width: 0;
+}
+
+.content-process-name {
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.content-process-unit {
+    margin-top: 2px;
+    font-size: 0.72rem;
+    opacity: 0.55;
+}
+
+.content-process-current {
+    text-align: right;
+    font-family: Consolas, monospace;
+    font-size: 0.82rem;
+}
+
+.content-binding-description {
+    margin-top: 3px;
+    padding-left: 190px;
+    font-size: 0.72rem;
+    opacity: 0.55;
+    overflow-wrap: anywhere;
+}
+
+.content-process-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+
+.content-configuration-code-row,
+.content-write-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    margin-top: 10px;
+}
+
+.content-output-binding-row {
+    display: grid;
+    grid-template-columns: minmax(190px, 260px) minmax(300px, 1fr);
+    align-items: center;
+    gap: 16px;
+    margin-top: 10px;
+}
+
+.content-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+
+@media (max-width: 900px) {
+    .content-header {
+        flex-direction: column;
+    }
+
+    .content-definition-area {
+        width: 100%;
+        max-width: none;
+    }
+
+    .content-process-row {
+        grid-template-columns: 1fr;
+    }
+
+    .content-binding-description {
+        padding-left: 0;
+    }
+
+    .content-output-binding-row {
+        grid-template-columns: 1fr;
+    }
+
+    .content-configuration-code-row,
+    .content-write-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+}

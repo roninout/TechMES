@@ -315,6 +315,16 @@
                                                     EquipmentCatalog="@_equipmentCatalog"
                                                     JobChanged="@ReloadAfterCapacityJobChangedAsync" />
                     }
+                    else if (_selectedModel.Type == CalcModelTypeDto.Content)
+                    {
+                        <ContentConfigurationPanel @ref="_contentConfigurationPanel"
+                                                   @key="_selectedModel.Name"
+                                                   Model="@_selectedModel"
+                                                   Job="@selectedJob"
+                                                   State="@selectedState"
+                                                   EquipmentCatalog="@_equipmentCatalog"
+                                                   JobChanged="@ReloadAfterContentJobChangedAsync" />
+                    }
                     else
                     {
                         <div class="calc-model-placeholder">
@@ -367,6 +377,7 @@
     private TankConfigurationPanel? _tankConfigurationPanel;
     private DensityConfigurationPanel? _densityConfigurationPanel;
     private CapacityConfigurationPanel? _capacityConfigurationPanel;
+    private ContentConfigurationPanel? _contentConfigurationPanel;
 
     /// <summary>
     /// true, если левая панель списка Calc models скрыта.
@@ -534,6 +545,18 @@
     /// поэтому новый CtApi scan здесь не требуется.
     /// </summary>
     private Task ReloadAfterCapacityJobChangedAsync()
+    {
+        return ReloadJobsAndStatesAsync();
+    }
+
+    /// <summary>
+    /// После создания или сохранения Content Job перечитываем
+    /// только Jobs и Runtime States.
+    ///
+    /// Content Definition и Calc Model Catalog не изменяются,
+    /// поэтому повторный CtApi scan не нужен.
+    /// </summary>
+    private Task ReloadAfterContentJobChangedAsync()
     {
         return ReloadJobsAndStatesAsync();
     }
@@ -745,11 +768,14 @@
 
     private async Task SelectModelAsync(CalcModelDto model)
     {
-        if (_selectedModel is not null && string.Equals(_selectedModel.Name, model.Name,StringComparison.OrdinalIgnoreCase))
+        if (_selectedModel is not null && string.Equals(_selectedModel.Name, model.Name, StringComparison.OrdinalIgnoreCase))
             return;
 
-        // Каждая специализированная Calculation panel сообщает, есть ли в ней несохранённая конфигурация.
-        var hasPendingChanges = _tankConfigurationPanel?.HasPendingChanges == true || _densityConfigurationPanel?.HasPendingChanges == true || _capacityConfigurationPanel?.HasPendingChanges == true;
+        var hasPendingChanges =
+            _tankConfigurationPanel?.HasPendingChanges == true
+            || _densityConfigurationPanel?.HasPendingChanges == true
+            || _capacityConfigurationPanel?.HasPendingChanges == true
+            || _contentConfigurationPanel?.HasPendingChanges == true;
 
         if (hasPendingChanges)
         {

@@ -1,0 +1,1183 @@
+﻿@using System.Globalization
+@using System.Text.Json
+@inject CalcApiClient CalcApi
+@inject CalcProcessInputResolver ProcessInputResolver
+@inject NotificationService NotificationService
+
+<div class="content-configuration-host">
+
+    @if (_isLoadingDefinitions)
+    {
+        <TechMesLoadingBar Label="Loading Content configuration" />
+    }
+    else if (_contentDefinitions.Count == 0)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger"
+                     ShowIcon="true"
+                     AllowClose="false">
+            @(_loadError.Length > 0
+                ? _loadError
+                : "Content calculation definitions are not available.")
+        </RadzenAlert>
+    }
+    else
+    {
+        <div class="content-configuration">
+
+            @* ============================================================
+               ВЕРХНЯЯ ПАНЕЛЬ
+               ============================================================ *@
+            <div class="content-header">
+
+                <div class="content-definition-area">
+
+                    <div class="content-section-caption">
+                        Content system
+                    </div>
+
+                    <RadzenDropDown TValue="string"
+                                    Data="@_contentDefinitions"
+                                    TextProperty="@nameof(CalcDefinitionDto.Name)"
+                                    ValueProperty="@nameof(CalcDefinitionDto.Code)"
+                                    @bind-Value="_definitionCode"
+                                    Change="@(_ => OnDefinitionChanged())"
+                                    Disabled="@_isSaving"
+                                    Style="width:100%;" />
+
+                    @if (Definition is not null)
+                    {
+                        <div class="content-definition-code">
+                            @Definition.Code · Version @Definition.Version
+                        </div>
+                    }
+
+                </div>
+
+
+                <div class="content-switch-area">
+
+                    <span class="content-switch-state @GetSwitchStateClass(_enabled)">
+                        @GetSwitchStateText(_enabled)
+                    </span>
+
+                    <RadzenSwitch @bind-Value="_enabled"
+                                  Disabled="@(_isSaving || (!_enabled && !IsConfigurationReady))" />
+
+                    <span>Enabled</span>
+
+                </div>
+
+            </div>
+
+
+            @if (HasUnsavedChanges)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning"
+                             Variant="Variant.Flat"
+                             Shade="Shade.Lighter"
+                             ShowIcon="true"
+                             AllowClose="false">
+                    Unsaved changes. Runtime continues using the last saved configuration.
+                </RadzenAlert>
+            }
+            else if (State?.Status == CalcJobStateStatusDto.Error)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger"
+                             Variant="Variant.Flat"
+                             Shade="Shade.Lighter"
+                             ShowIcon="true"
+                             AllowClose="false">
+                    @(State.ReasonMessage ?? "Content calculation failed.")
+                </RadzenAlert>
+            }
+            else if (State?.Status == CalcJobStateStatusDto.Skipped)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning"
+                             Variant="Variant.Flat"
+                             Shade="Shade.Lighter"
+                             ShowIcon="true"
+                             AllowClose="false">
+                    @(State.ReasonMessage ?? "Content calculation was skipped.")
+                </RadzenAlert>
+            }
+
+
+            @* ============================================================
+               LIVE OUTPUTS
+
+               Здесь показываем все outputs физической системы.
+               Например ACN / Water одновременно даёт:
+                   acnPercent
+                   waterPercent
+               ============================================================ *@
+            @if (Definition is not null)
+            {
+                <div class="content-live-outputs">
+
+                    @foreach (var output in Definition.Outputs.OrderBy(output => output.Order))
+                    {
+                        var value = GetLastOutputNumber(output.Key);
+
+                        <div class="content-output-card">
+
+                            <div class="content-output-name">
+                                @output.Name
+                            </div>
+
+                            <div class="content-output-value">
+                                @(value.HasValue
+                                    ? value.Value.ToString($"F{output.Decimals}", CultureInfo.InvariantCulture)
+                                    : "—")
+
+                                @if (!string.IsNullOrWhiteSpace(output.Unit))
+                                {
+                                    <span class="content-output-unit">
+                                        @output.Unit
+                                    </span>
+                                }
+                            </div>
+
+                            <div class="content-output-key">
+                                @output.Key
+                            </div>
+
+                        </div>
+                    }
+
+                </div>
+            }
+
+
+            @* ============================================================
+               SETTINGS
+               ============================================================ *@
+            <ParamAiPanel Title="Settings"
+                          Icon="settings"
+                          InitiallyCollapsed="false">
+
+                <div class="content-settings">
+
+                    @* ====================================================
+                       PROCESS INPUTS
+                       ==================================================== *@
+                    <section>
+
+                        <div class="content-section-title">
+                            Process inputs
+                        </div>
+
+                        <div class="content-section-description">
+                            Temperature and absolute pressure are resolved to real numeric SCADA tags.
+                        </div>
+
+                        @foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
+                        {
+                            <div class="content-process-row">
+
+                                <div class="content-process-info">
+
+                                    <div class="content-process-name">
+                                        @binding.Parameter.Name
+                                    </div>
+
+                                    <div class="content-process-unit">
+                                        @binding.Parameter.Unit
+                                    </div>
+
+                                </div>
+
+
+                                <RadzenTextBox Value="@binding.SourceText"
+                                               Change="@((string value) => OnProcessSourceChanged(binding, value))"
+                                               Placeholder="Equipment.ITEM or SCADA tag"
+                                               Disabled="@(_isSaving || _isCheckingBindings)"
+                                               Style="width:100%;" />
+
+
+                                <RadzenBadge Text="@GetBindingBadgeText(binding)"
+                                             BadgeStyle="@GetBindingBadgeStyle(binding)" />
+
+
+                                <div class="content-process-current">
+                                    @if (GetProcessCurrentValue(binding) is { } currentValue)
+                                    {
+                                        @currentValue.ToString("0.###", CultureInfo.InvariantCulture)
+                                    }
+                                    else
+                                    {
+                                        <span>—</span>
+                                    }
+                                </div>
+
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(GetBindingDescription(binding)))
+                            {
+                                <div class="content-binding-description">
+                                    @GetBindingDescription(binding)
+                                </div>
+                            }
+                        }
+
+                        <div class="content-process-actions">
+
+                            <RadzenButton Text="Check"
+                                          Icon="manage_search"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Disabled="@(_isSaving || _isCheckingBindings)"
+                                          Click="@CheckProcessBindingsAsync" />
+
+                        </div>
+
+                    </section>
+
+
+                    <div class="content-separator"></div>
+
+
+                    @* ====================================================
+                       CONFIGURATION CODE
+                       ==================================================== *@
+                    <section>
+
+                        <div class="content-section-title">
+                            Correlation configuration
+                        </div>
+
+                        <div class="content-configuration-code-row">
+
+                            <div>
+
+                                <div class="content-process-name">
+                                    Configuration code
+                                </div>
+
+                                <div class="content-section-description">
+                                    Legacy-compatible CONF value used by the selected physical correlation.
+                                </div>
+
+                            </div>
+
+                            <RadzenNumeric TValue="int?"
+                                           @bind-Value="_configurationCode"
+                                           Step="1"
+                                           ShowUpDown="true"
+                                           Disabled="@_isSaving"
+                                           Style="width:150px;" />
+
+                        </div>
+
+                    </section>
+
+
+                    <div class="content-separator"></div>
+
+
+                    @* ====================================================
+                       OUTPUT BINDINGS
+
+                       Здесь нет предположений о SCADA Content Equipment.
+
+                       Definition output:
+                           acnPercent
+                           waterPercent
+                           poPercent
+                           ...
+
+                       пользователь явно связывает с ITEM текущего
+                       Content Equipment.
+
+                       Поэтому один content.acn-water одинаково пригоден
+                       и для ACN, и для Water результата.
+                       ==================================================== *@
+                    <section>
+
+                        <div class="content-section-title">
+                            Output bindings
+                        </div>
+
+                        <div class="content-section-description">
+                            Select which SCADA ITEM receives each calculated component. Unmapped outputs remain available in Runtime diagnostics.
+                        </div>
+
+                        @foreach (var output in _outputBindings.OrderBy(output => output.Output.Order))
+                        {
+                            <div class="content-output-binding-row">
+
+                                <div>
+
+                                    <div class="content-process-name">
+                                        @output.Output.Name
+                                    </div>
+
+                                    <div class="content-output-key">
+                                        @output.Output.Key
+                                    </div>
+
+                                </div>
+
+
+                                <RadzenDropDown TValue="string"
+                                                Data="@GetOutputTargetOptions(output)"
+                                                TextProperty="@nameof(ContentOutputTargetOption.DisplayName)"
+                                                ValueProperty="@nameof(ContentOutputTargetOption.TagName)"
+                                                @bind-Value="output.TargetTagName"
+                                                AllowClear="true"
+                                                Placeholder="Not mapped"
+                                                Disabled="@_isSaving"
+                                                Style="width:100%;" />
+
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(OutputMappingError))
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Danger"
+                                         ShowIcon="true"
+                                         AllowClose="false">
+                                @OutputMappingError
+                            </RadzenAlert>
+                        }
+
+                    </section>
+
+
+                    <div class="content-separator"></div>
+
+
+                    @* ====================================================
+                       WRITE PERMISSION
+                       ==================================================== *@
+                    <div class="content-write-row">
+
+                        <div>
+
+                            <div class="content-process-name">
+                                Allow output writes
+                            </div>
+
+                            <div class="content-section-description">
+                                Runtime may write mapped Content outputs to SCADA.
+                            </div>
+
+                        </div>
+
+
+                        <div class="content-switch-area">
+
+                            <span class="content-switch-state @GetSwitchStateClass(_allowOutputWrites)">
+                                @GetSwitchStateText(_allowOutputWrites)
+                            </span>
+
+                            <RadzenSwitch @bind-Value="_allowOutputWrites"
+                                          Disabled="@(_isSaving || (!_allowOutputWrites && !HasMappedOutput))" />
+
+                        </div>
+
+                    </div>
+
+
+                    @if (_allowOutputWrites && !HasMappedOutput)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                     ShowIcon="true"
+                                     AllowClose="false">
+                            At least one Content output must be mapped before SCADA writes can be enabled.
+                        </RadzenAlert>
+                    }
+
+                </div>
+
+            </ParamAiPanel>
+
+
+            @* ============================================================
+               ACTIONS
+               ============================================================ *@
+            <div class="content-actions">
+
+                @if (Job is null)
+                {
+                    <RadzenButton Text="Create job"
+                                  Icon="add"
+                                  ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@(_isSaving || !IsConfigurationReady)"
+                                  Click="@CreateJobAsync" />
+                }
+                else
+                {
+                    <RadzenButton Text="Save"
+                                  Icon="save"
+                                  ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@(_isSaving || !HasUnsavedChanges || !IsConfigurationReady)"
+                                  Click="@SaveJobAsync" />
+                }
+
+            </div>
+
+        </div>
+    }
+
+</div>
+
+
+@code {
+    [Parameter, EditorRequired]
+    public CalcModelDto Model { get; set; } = default!;
+
+    [Parameter]
+    public CalcJobDto? Job { get; set; }
+
+    [Parameter]
+    public CalcJobStateDto? State { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<EquipmentDto> EquipmentCatalog { get; set; } = [];
+
+    [Parameter]
+    public EventCallback JobChanged { get; set; }
+
+
+    private readonly List<CalcDefinitionDto> _contentDefinitions = [];
+    private readonly List<ContentProcessBindingEditor> _processBindings = [];
+    private readonly List<ContentOutputBindingEditor> _outputBindings = [];
+
+    private string _definitionCode = "";
+    private int? _configurationCode;
+
+    private string _contextKey = "";
+    private string _savedEditorSignature = "";
+    private string _loadError = "";
+
+    private bool _enabled;
+    private bool _allowOutputWrites;
+
+    private bool _isLoadingDefinitions;
+    private bool _isSaving;
+    private bool _isCheckingBindings;
+
+
+    private CalcDefinitionDto? Definition => _contentDefinitions.FirstOrDefault(
+        definition => string.Equals(definition.Code, _definitionCode, StringComparison.OrdinalIgnoreCase));
+
+
+    private bool IsProcessBindingsReady => _processBindings.Count > 0 && _processBindings.All(binding => binding.IsLinked);
+
+    private bool HasMappedOutput => _outputBindings.Any(output => !string.IsNullOrWhiteSpace(output.TargetTagName));
+
+    private bool IsConfigurationReady =>
+        Definition is not null
+        && IsProcessBindingsReady
+        && _configurationCode.HasValue
+        && string.IsNullOrWhiteSpace(OutputMappingError)
+        && (!_allowOutputWrites || HasMappedOutput);
+
+    private bool HasDefinitionVersionChange =>
+        Job is not null
+        && Definition is not null
+        && string.Equals(Job.DefinitionCode, Definition.Code, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(Job.DefinitionVersion, Definition.Version, StringComparison.Ordinal);
+
+    private bool HasUnsavedChanges =>
+        HasDefinitionVersionChange
+        || !string.Equals(_savedEditorSignature, BuildEditorSignature(), StringComparison.Ordinal);
+
+    public bool HasPendingChanges => Definition is not null && HasUnsavedChanges;
+
+
+    // ============================================================
+    // Lifecycle
+    // ============================================================
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDefinitionsAsync();
+
+        if (_contentDefinitions.Count == 0)
+            return;
+
+        SynchronizeConfiguration(force: true);
+        CaptureSavedEditorState();
+
+        await ValidateStoredProcessBindingsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_contentDefinitions.Count == 0)
+            return;
+
+        var contextChanged = SynchronizeConfiguration();
+
+        if (!contextChanged)
+            return;
+
+        CaptureSavedEditorState();
+        await ValidateStoredProcessBindingsAsync();
+    }
+
+
+    /// <summary>
+    /// Content Definitions загружаются из Runtime.
+    ///
+    /// WEB не хранит собственного списка физических систем.
+    /// Поэтому при добавлении новой Content Definition она автоматически
+    /// становится доступна в этом редакторе.
+    /// </summary>
+    private async Task LoadDefinitionsAsync()
+    {
+        _isLoadingDefinitions = true;
+        _loadError = "";
+
+        try
+        {
+            var definitions = await CalcApi.GetDefinitionsAsync();
+
+            _contentDefinitions.Clear();
+            _contentDefinitions.AddRange(definitions
+                .Where(definition => string.Equals(definition.Category, "Content", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(definition => definition.Name, StringComparer.OrdinalIgnoreCase));
+
+            if (_contentDefinitions.Count == 0)
+                _loadError = "Runtime does not expose any Content calculation definitions.";
+        }
+        catch (Exception ex)
+        {
+            _loadError = "Cannot load Content definitions: " + ex.Message;
+        }
+        finally
+        {
+            _isLoadingDefinitions = false;
+        }
+    }
+
+
+    /// <summary>
+    /// Восстанавливает редактор из сохранённого Calc Job.
+    ///
+    /// Runtime State намеренно не входит в context key:
+    /// его обновление каждые две секунды не должно сбрасывать
+    /// несохранённые настройки пользователя.
+    /// </summary>
+    private bool SynchronizeConfiguration(bool force = false)
+    {
+        var structureSignature = string.Join("|", Model.ItemTags
+            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+            .Select(pair => $"{pair.Key}={pair.Value}"));
+
+        var newContextKey = $"{Model.Name}|{Job?.Id}|{Job?.Revision}|{structureSignature}";
+
+        if (!force && string.Equals(_contextKey, newContextKey, StringComparison.Ordinal))
+            return false;
+
+        _contextKey = newContextKey;
+
+        var storedDefinition = Job is null
+            ? null
+            : _contentDefinitions.FirstOrDefault(definition =>
+                string.Equals(definition.Code, Job.DefinitionCode, StringComparison.OrdinalIgnoreCase));
+
+        _definitionCode = storedDefinition?.Code
+            ?? _contentDefinitions.First().Code;
+
+        _enabled = Job?.Enabled == true;
+        _allowOutputWrites = Job?.WriteEnabled == true;
+
+        _configurationCode = ReadStoredConfigurationCode();
+
+        BuildProcessBindings();
+        BuildOutputBindings(restoreSavedMappings: true);
+
+        return true;
+    }
+
+
+    /// <summary>
+    /// При смене физической Content-системы ProcessInput сохраняем:
+    /// Temperature и Pressure имеют одинаковые стабильные ключи
+    /// во всех наших Content Definitions.
+    ///
+    /// Output mappings сбрасываем намеренно, потому что набор веществ
+    /// новой физической системы может быть другим.
+    /// </summary>
+    private void OnDefinitionChanged()
+    {
+        if (Definition is null)
+            return;
+
+        var previousBindings = _processBindings.ToDictionary(
+            binding => binding.Parameter.Key,
+            binding => binding,
+            StringComparer.OrdinalIgnoreCase);
+
+        BuildProcessBindings();
+
+        foreach (var binding in _processBindings)
+        {
+            if (!previousBindings.TryGetValue(binding.Parameter.Key, out var previous))
+                continue;
+
+            binding.SourceText = previous.SourceText;
+            binding.ResolvedTagName = previous.ResolvedTagName;
+            binding.ValidatedSourceText = previous.ValidatedSourceText;
+            binding.CurrentValue = previous.CurrentValue;
+            binding.Resolution = previous.Resolution;
+            binding.Message = previous.Message;
+            binding.CheckState = previous.CheckState;
+            binding.MaxAgeSeconds = previous.MaxAgeSeconds;
+        }
+
+        var restoreSavedMappings = Job is not null
+            && string.Equals(Job.DefinitionCode, Definition.Code, StringComparison.OrdinalIgnoreCase);
+
+        BuildOutputBindings(restoreSavedMappings);
+    }
+
+
+    // ============================================================
+    // ProcessInput
+    // ============================================================
+
+    private void BuildProcessBindings()
+    {
+        _processBindings.Clear();
+
+        if (Definition is null)
+            return;
+
+        foreach (var parameter in Definition.Parameters.Where(parameter => parameter.Role == CalcParameterRoleDto.ProcessInput).OrderBy(parameter => parameter.Order))
+        {
+            var stored = FindJobInput(parameter.Key);
+            var storedTag = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.TagName?.Trim() ?? "" : "";
+            var storedReference = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.SourceReference?.Trim() ?? "" : "";
+            var sourceText = storedReference.Length > 0 ? storedReference : storedTag;
+
+             // runtimeValue объявляем заранее.
+             // Это необходимо потому, что при storedTag.Length == 0 правая часть выражения && не выполняется вообще.
+             // В таком случае out-параметр TryGetRuntimeNumber() не получает значение, и C# справедливо считает runtimeValue потенциально неинициализированным.
+            double runtimeValue = 0d;
+            var hasRuntimeValue = storedTag.Length > 0 && TryGetRuntimeNumber(State?.LastInputs, parameter.Key, out runtimeValue);
+
+            _processBindings.Add(new ContentProcessBindingEditor
+            {
+                Parameter = parameter,
+                SourceText = sourceText,
+                ResolvedTagName = storedTag,
+                ValidatedSourceText = hasRuntimeValue ? sourceText : "",
+                CurrentValue = hasRuntimeValue ? runtimeValue : null,
+                Resolution = hasRuntimeValue ? "Saved Runtime input" : "",
+                MaxAgeSeconds = stored?.SourceType == CalcInputSourceTypeDto.Tag ? stored.MaxAgeSeconds : null,
+                CheckState = hasRuntimeValue ? ContentBindingCheckState.Linked : ContentBindingCheckState.NotChecked
+            });
+        }
+    }
+
+    private async Task ValidateStoredProcessBindingsAsync()
+    {
+        foreach (var binding in _processBindings.Where(binding => !binding.IsLinked && !string.IsNullOrWhiteSpace(binding.SourceText)))
+        {
+            await ResolveProcessBindingAsync(binding);
+        }
+    }
+
+    private async Task CheckProcessBindingsAsync()
+    {
+        if (_isCheckingBindings)
+            return;
+
+        _isCheckingBindings = true;
+
+        try
+        {
+            foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
+                await ResolveProcessBindingAsync(binding);
+
+            NotificationService.Notify(
+                IsProcessBindingsReady ? NotificationSeverity.Success : NotificationSeverity.Warning,
+                "Content",
+                IsProcessBindingsReady
+                    ? "Required Content process bindings are valid."
+                    : "Some Content process bindings were not resolved.",
+                4000);
+        }
+        finally
+        {
+            _isCheckingBindings = false;
+        }
+    }
+
+    private async Task ResolveProcessBindingAsync(ContentProcessBindingEditor binding)
+    {
+        var source = binding.SourceText.Trim();
+
+        binding.ResolvedTagName = "";
+        binding.ValidatedSourceText = "";
+        binding.CurrentValue = null;
+        binding.Resolution = "";
+        binding.Message = "";
+
+        if (source.Length == 0)
+        {
+            binding.CheckState = ContentBindingCheckState.NotFound;
+            binding.Message = "Source is required.";
+            return;
+        }
+
+        binding.CheckState = ContentBindingCheckState.Checking;
+
+        var resolution = await ProcessInputResolver.ResolveAsync(source, EquipmentCatalog);
+
+        if (!resolution.Success || string.IsNullOrWhiteSpace(resolution.ResolvedTagName) || !resolution.CurrentValue.HasValue)
+        {
+            binding.CheckState = ContentBindingCheckState.NotFound;
+            binding.Message = resolution.Message ?? "Process input was not resolved.";
+            return;
+        }
+
+        binding.ResolvedTagName = resolution.ResolvedTagName.Trim();
+        binding.ValidatedSourceText = source;
+        binding.CurrentValue = resolution.CurrentValue.Value;
+        binding.Resolution = resolution.Resolution ?? "";
+        binding.CheckState = ContentBindingCheckState.Linked;
+    }
+
+    private static void OnProcessSourceChanged(ContentProcessBindingEditor binding, string? value)
+    {
+        binding.SourceText = value ?? "";
+        binding.ResolvedTagName = "";
+        binding.ValidatedSourceText = "";
+        binding.CurrentValue = null;
+        binding.Resolution = "";
+        binding.Message = "";
+        binding.CheckState = ContentBindingCheckState.NotChecked;
+    }
+
+
+    // ============================================================
+    // Outputs
+    // ============================================================
+
+    private void BuildOutputBindings(bool restoreSavedMappings)
+    {
+        _outputBindings.Clear();
+
+        if (Definition is null)
+            return;
+
+        foreach (var output in Definition.Outputs.OrderBy(output => output.Order))
+        {
+            string? targetTag = null;
+
+            if (restoreSavedMappings)
+            {
+                targetTag = Job?.Outputs
+                    .FirstOrDefault(item => string.Equals(item.OutputKey, output.Key, StringComparison.OrdinalIgnoreCase))
+                    ?.TagName;
+            }
+
+            _outputBindings.Add(new ContentOutputBindingEditor
+            {
+                Output = output,
+                TargetTagName = targetTag?.Trim() ?? ""
+            });
+        }
+    }
+
+    /// <summary>
+    /// Показываем реальные ITEM -> TAG текущего Content Equipment.
+    ///
+    /// Никаких предположений вида "Water всегда ValCalc" здесь нет.
+    /// </summary>
+    private IReadOnlyList<ContentOutputTargetOption> GetOutputTargetOptions(ContentOutputBindingEditor editor)
+    {
+        var result = Model.ItemTags
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
+            .Select(pair => new ContentOutputTargetOption(
+                pair.Key,
+                pair.Value,
+                $"{pair.Key}  →  {pair.Value}"))
+            .OrderBy(item => item.ItemName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(editor.TargetTagName)
+            && !result.Any(item => string.Equals(item.TagName, editor.TargetTagName, StringComparison.OrdinalIgnoreCase)))
+        {
+            result.Add(new ContentOutputTargetOption(
+                "Saved",
+                editor.TargetTagName,
+                $"Saved tag  →  {editor.TargetTagName}"));
+        }
+
+        return result;
+    }
+
+    private string OutputMappingError
+    {
+        get
+        {
+            var mappedTags = _outputBindings
+                .Select(output => output.TargetTagName?.Trim() ?? "")
+                .Where(tag => tag.Length > 0)
+                .ToArray();
+
+            var duplicate = mappedTags
+                .GroupBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault(group => group.Count() > 1);
+
+            return duplicate is null
+                ? ""
+                : $"SCADA tag '{duplicate.Key}' is mapped to more than one Content output.";
+        }
+    }
+
+
+    // ============================================================
+    // Save
+    // ============================================================
+
+    private async Task CreateJobAsync()
+    {
+        if (Definition is null || !IsConfigurationReady)
+            return;
+
+        _isSaving = true;
+
+        try
+        {
+            var allowWrites = _allowOutputWrites && HasMappedOutput;
+
+            var request = new CalcJobSaveRequest
+            {
+                EquipmentName = Model.Name,
+                Name = $"{Model.Name} Content",
+                Description = Model.Description,
+                DefinitionCode = Definition.Code,
+                DefinitionVersion = Definition.Version,
+                Enabled = _enabled,
+                PeriodMs = 5000,
+                WriteEnabled = allowWrites,
+                SortOrder = 0,
+                ExpectedRevision = null,
+                Inputs = BuildContentInputs(),
+                Outputs = BuildContentOutputs(allowWrites)
+            };
+
+            await CalcApi.CreateJobAsync(request);
+
+            NotificationService.Notify(
+                NotificationSeverity.Success,
+                "Calculations",
+                $"Content Job created for {Model.Name}.",
+                4000);
+
+            await JobChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(
+                NotificationSeverity.Error,
+                "Calculations",
+                ex.Message,
+                6000);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveJobAsync()
+    {
+        if (Job is null || Definition is null || !IsConfigurationReady)
+            return;
+
+        _isSaving = true;
+
+        try
+        {
+            var allowWrites = _allowOutputWrites && HasMappedOutput;
+
+            var request = new CalcJobSaveRequest
+            {
+                EquipmentName = Job.EquipmentName,
+                Name = Job.Name,
+                Description = Job.Description,
+                DefinitionCode = Definition.Code,
+                DefinitionVersion = Definition.Version,
+                Enabled = _enabled,
+                PeriodMs = Job.PeriodMs,
+                WriteEnabled = allowWrites,
+                SortOrder = Job.SortOrder,
+                ExpectedRevision = Job.Revision,
+                Inputs = BuildContentInputs(),
+                Outputs = BuildContentOutputs(allowWrites)
+            };
+
+            await CalcApi.UpdateJobAsync(Job.Id, request);
+
+            NotificationService.Notify(
+                NotificationSeverity.Success,
+                "Calculations",
+                $"Content configuration saved for {Model.Name}.",
+                4000);
+
+            await JobChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(
+                NotificationSeverity.Error,
+                "Calculations",
+                ex.Message,
+                6000);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private List<CalcJobInputSaveDto> BuildContentInputs()
+    {
+        if (Definition is null || !_configurationCode.HasValue)
+            return [];
+
+        var result = new List<CalcJobInputSaveDto>();
+
+        foreach (var binding in _processBindings.Where(binding => binding.IsLinked))
+        {
+            result.Add(new CalcJobInputSaveDto
+            {
+                ParameterKey = binding.Parameter.Key,
+                SourceType = CalcInputSourceTypeDto.Tag,
+                TagName = binding.ResolvedTagName,
+                SourceReference = binding.SourceText.Trim(),
+                MaxAgeSeconds = binding.MaxAgeSeconds,
+                SortOrder = binding.Parameter.Order
+            });
+        }
+
+        var configuration = Definition.Parameters.Single(parameter =>
+            string.Equals(parameter.Key, "configurationCode", StringComparison.OrdinalIgnoreCase));
+
+        result.Add(new CalcJobInputSaveDto
+        {
+            ParameterKey = configuration.Key,
+            SourceType = CalcInputSourceTypeDto.Constant,
+            ConstantValue = JsonSerializer.SerializeToElement(_configurationCode.Value),
+            SortOrder = configuration.Order
+        });
+
+        return result
+            .OrderBy(input => input.SortOrder)
+            .ToList();
+    }
+
+    private List<CalcJobOutputSaveDto> BuildContentOutputs(bool allowWrites)
+    {
+        return _outputBindings
+            .Where(editor => !string.IsNullOrWhiteSpace(editor.TargetTagName))
+            .Select(editor => new CalcJobOutputSaveDto
+            {
+                OutputKey = editor.Output.Key,
+                TagName = editor.TargetTagName.Trim(),
+                WriteEnabled = allowWrites,
+                Scale = 1d,
+                Offset = 0d,
+                SortOrder = editor.Output.Order
+            })
+            .OrderBy(output => output.SortOrder)
+            .ToList();
+    }
+
+
+    // ============================================================
+    // Unsaved state
+    // ============================================================
+
+    private string BuildEditorSignature()
+    {
+        var parts = new List<string>
+        {
+            $"definition={_definitionCode}",
+            $"enabled={_enabled}",
+            $"writes={_allowOutputWrites}",
+            $"configuration={_configurationCode?.ToString(CultureInfo.InvariantCulture) ?? ""}"
+        };
+
+        foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
+            parts.Add($"input:{binding.Parameter.Key}={binding.SourceText.Trim()}");
+
+        foreach (var output in _outputBindings.OrderBy(output => output.Output.Order))
+            parts.Add($"output:{output.Output.Key}={output.TargetTagName?.Trim() ?? ""}");
+
+        return string.Join("|", parts);
+    }
+
+    private void CaptureSavedEditorState()
+    {
+        _savedEditorSignature = BuildEditorSignature();
+    }
+
+
+    // ============================================================
+    // Definition / Job helpers
+    // ============================================================
+
+    private CalcJobInputDto? FindJobInput(string key)
+    {
+        return Job?.Inputs.FirstOrDefault(input =>
+            string.Equals(input.ParameterKey, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private int? ReadStoredConfigurationCode()
+    {
+        var input = FindJobInput("configurationCode");
+
+        if (input?.SourceType != CalcInputSourceTypeDto.Constant
+            || !input.ConstantValue.HasValue
+            || input.ConstantValue.Value.ValueKind != JsonValueKind.Number
+            || !input.ConstantValue.Value.TryGetInt32(out var value))
+        {
+            return null;
+        }
+
+        return value;
+    }
+
+
+    // ============================================================
+    // Runtime values
+    // ============================================================
+
+    private double? GetLastOutputNumber(string key)
+    {
+        return TryGetRuntimeNumber(State?.LastOutputs, key, out var value)
+            ? value
+            : null;
+    }
+
+    private double? GetProcessCurrentValue(ContentProcessBindingEditor binding)
+    {
+        if (TryGetRuntimeNumber(State?.LastInputs, binding.Parameter.Key, out var runtimeValue))
+            return runtimeValue;
+
+        return binding.CurrentValue;
+    }
+
+    private static bool TryGetRuntimeNumber(JsonElement? json, string key, out double value)
+    {
+        value = 0d;
+
+        if (!json.HasValue || json.Value.ValueKind != JsonValueKind.Object)
+            return false;
+
+        foreach (var property in json.Value.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, key, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (property.Value.ValueKind == JsonValueKind.Number
+                && property.Value.TryGetDouble(out value)
+                && double.IsFinite(value))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
+
+    // ============================================================
+    // UI helpers
+    // ============================================================
+
+    private static string GetBindingBadgeText(ContentProcessBindingEditor binding)
+    {
+        return binding.CheckState switch
+        {
+            ContentBindingCheckState.Checking => "CHECKING",
+            ContentBindingCheckState.Linked => "LINKED",
+            ContentBindingCheckState.NotFound => "NOT FOUND",
+            _ => "NOT CHECKED"
+        };
+    }
+
+    private static BadgeStyle GetBindingBadgeStyle(ContentProcessBindingEditor binding)
+    {
+        return binding.CheckState switch
+        {
+            ContentBindingCheckState.Checking => BadgeStyle.Info,
+            ContentBindingCheckState.Linked => BadgeStyle.Success,
+            ContentBindingCheckState.NotFound => BadgeStyle.Danger,
+            _ => BadgeStyle.Light
+        };
+    }
+
+    private static string GetBindingDescription(ContentProcessBindingEditor binding)
+    {
+        if (binding.IsLinked)
+            return $"{binding.Resolution}: {binding.ResolvedTagName}";
+
+        if (!string.IsNullOrWhiteSpace(binding.Message))
+            return binding.Message;
+
+        return binding.Parameter.Description ?? "";
+    }
+
+    private static string GetSwitchStateText(bool value)
+    {
+        return value ? "ON" : "OFF";
+    }
+
+    private static string GetSwitchStateClass(bool value)
+    {
+        return value ? "is-on" : "is-off";
+    }
+
+
+    // ============================================================
+    // Editor models
+    // ============================================================
+
+    private sealed class ContentProcessBindingEditor
+    {
+        public CalcParameterDefinitionDto Parameter { get; init; } = default!;
+        public string SourceText { get; set; } = "";
+        public string ResolvedTagName { get; set; } = "";
+        public string ValidatedSourceText { get; set; } = "";
+        public double? CurrentValue { get; set; }
+        public string Resolution { get; set; } = "";
+        public string Message { get; set; } = "";
+        public int? MaxAgeSeconds { get; set; }
+        public ContentBindingCheckState CheckState { get; set; }
+
+        public bool IsLinked =>
+            CheckState == ContentBindingCheckState.Linked
+            && !string.IsNullOrWhiteSpace(ResolvedTagName)
+            && string.Equals(SourceText.Trim(), ValidatedSourceText, StringComparison.Ordinal);
+    }
+
+    private sealed class ContentOutputBindingEditor
+    {
+        public CalcOutputDefinitionDto Output { get; init; } = default!;
+        public string TargetTagName { get; set; } = "";
+    }
+
+    private sealed record ContentOutputTargetOption(
+        string ItemName,
+        string TagName,
+        string DisplayName);
+
+    private enum ContentBindingCheckState
+    {
+        NotChecked,
+        Checking,
+        Linked,
+        NotFound
+    }
+}
