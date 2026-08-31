@@ -13,10 +13,9 @@ namespace TechMES.Calc.Content;
 /// - наружу возвращаются инженерные проценты;
 /// - некорректные значения приводят к CalculationException.
 ///
-/// После Content 3 все production Content-корреляции
-/// выполняются новой архитектурой.
+/// После Content 3 все production Content-корреляции выполняются новой архитектурой.
 ///
-/// ContentCalc остаётся только эталоном для regression-тестов.
+/// Legacy ContentCalc хранится только в TechMES.Calc.Tests и используется исключительно как regression oracle.
 /// </summary>
 public static class ContentPropertyCalculator
 {

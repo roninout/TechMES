@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TechMES.Calc.Content;
 using TechMES.Calc.Thermodynamics;
 
 

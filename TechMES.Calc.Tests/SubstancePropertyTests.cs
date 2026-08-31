@@ -597,7 +597,7 @@ public sealed class SubstancePropertyTests
     [Fact]
     public void AcnWaterPoAboveMaximumPressureWithTemperatureClampReturnsCalculationError()
     {
-        var exception = Assert.Throws<CalculationException>(() => ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(Components: ["ACN", "Water", "PO"], TemperatureC: 80d,PressureBarAbsolute: 3.2d, ConfigurationCode: 10)));
+        var exception = Assert.Throws<CalculationException>(() => ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(Components: ["ACN", "Water", "PO"], TemperatureC: 80d, PressureBarAbsolute: 3.2d, ConfigurationCode: 10)));
 
         Assert.Equal("content.pressure.out-of-range", exception.Code);
     }
