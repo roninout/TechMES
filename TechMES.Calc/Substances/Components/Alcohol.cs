@@ -40,11 +40,18 @@ namespace TechMES.Calc.Substances.Components
 
             if (!this.isSteam) // ---- Liquid ----
             {
-                a0 = 803.07;
-                a1 = -1.0542;
+                //a0 = 803.07;
+                //a1 = -1.0542;
+
+                a0 = 806.35287;
+                a1 = -0.85573105;
+                a2 = 0.000306297;
+                a3 = -7.26E-06;
+                a4 = -2.02E-08;
 
                 //y = a5*x^5 + a4*x^4 + a3*x^3 + a2*x^2 + a1*x + a0
-                density = a5 * Math.Pow(temperature, 5) + a4 * Math.Pow(temperature, 4) + a3 * Math.Pow(temperature, 3) + a2 * Math.Pow(temperature, 2) + a1 * temperature + a0;
+                //density = a5 * Math.Pow(temperature, 5) + a4 * Math.Pow(temperature, 4) + a3 * Math.Pow(temperature, 3) + a2 * Math.Pow(temperature, 2) + a1 * temperature + a0;
+                density = a0 + a1 * temperature + a2 * Math.Pow(temperature, 2) + a3 * Math.Pow(temperature, 3) + a4 * Math.Pow(temperature, 4);
             }
             else // ---- Vapor: ideal gas ----
             {

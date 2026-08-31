@@ -289,19 +289,23 @@ public sealed class CtApiCalcModelCatalogProvider(ICtApiNativeClient nativeClien
         switch (normalized)
         {
             case "TANK":
+            case "TANKSIEMENS":
                 type = CalcModelTypeDto.Tank;
                 return true;
 
             case "DENSITY":
+            case "DENSITYSIEMENS":
             case "DENSITYCICODE":
                 type = CalcModelTypeDto.Density;
                 return true;
 
             case "CAPACITY":
+            case "CAPACITYSIEMENS":
                 type = CalcModelTypeDto.Capacity;
                 return true;
 
             case "CONTENT":
+            case "CONTENTSIEMENS":
                 type = CalcModelTypeDto.Content;
                 return true;
 
