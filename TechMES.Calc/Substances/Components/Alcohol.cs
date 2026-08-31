@@ -40,8 +40,6 @@ namespace TechMES.Calc.Substances.Components
 
             if (!this.isSteam) // ---- Liquid ----
             {
-                //a0 = 803.07;
-                //a1 = -1.0542;
 
                 a0 = 806.35287;
                 a1 = -0.85573105;
@@ -49,8 +47,6 @@ namespace TechMES.Calc.Substances.Components
                 a3 = -7.26E-06;
                 a4 = -2.02E-08;
 
-                //y = a5*x^5 + a4*x^4 + a3*x^3 + a2*x^2 + a1*x + a0
-                //density = a5 * Math.Pow(temperature, 5) + a4 * Math.Pow(temperature, 4) + a3 * Math.Pow(temperature, 3) + a2 * Math.Pow(temperature, 2) + a1 * temperature + a0;
                 density = a0 + a1 * temperature + a2 * Math.Pow(temperature, 2) + a3 * Math.Pow(temperature, 3) + a4 * Math.Pow(temperature, 4);
             }
             else // ---- Vapor: ideal gas ----
@@ -142,18 +138,10 @@ namespace TechMES.Calc.Substances.Components
         public double GetContent(float temperature, float pressureBarAbsolute, ContentSystem system, int configurationCode)
         {
             if (isSteam)
-            {
-                throw new CalculationException(
-                    "content.phase.unsupported",
-                    "ALC Content correlation is defined only for liquid Alcohol.");
-            }
+                throw new CalculationException("content.phase.unsupported", "ALC Content correlation is defined only for liquid Alcohol.");
 
             if (system != ContentSystem.AlcWater)
-            {
-                throw new CalculationException(
-                    "content.system.unsupported",
-                    $"Alcohol Content correlation is not defined for system '{system}'.");
-            }
+                throw new CalculationException("content.system.unsupported", $"Alcohol Content correlation is not defined for system '{system}'.");
 
             double a0 = -0.071728663;
             double a1 = 1.2743981;
@@ -162,28 +150,11 @@ namespace TechMES.Calc.Substances.Components
 
             // Массовое содержание алкоголя.
             //
-            // Формулу намеренно сохраняем в том же виде,
-            // что и в исходном ContentCalc.
-            double alcMass =
-                (temperature - TechLib.TSAT(pressureBarAbsolute)) *
-                100.0 /
-                (
-                    1670.409 /
-                    (
-                        5.37229 -
-                        Math.Log(pressureBarAbsolute * 0.98717) *
-                        0.434294
-                    )
-                    -
-                    232.959
-                    -
-                    TechLib.TSAT(pressureBarAbsolute)
-                );
+            // Формулу намеренно сохраняем в том же виде, что и в исходном ContentCalc.
+            double alcMass = (temperature - TechLib.TSAT(pressureBarAbsolute)) * 100.0 / (1670.409 / (5.37229 - Math.Log(pressureBarAbsolute * 0.98717) * 0.434294) - 232.959 - TechLib.TSAT(pressureBarAbsolute));
 
             // Legacy-ограничение массового содержания.
-            alcMass = Math.Max(
-                0.0,
-                Math.Min(100.0, alcMass));
+            alcMass = Math.Max(0.0, Math.Min(100.0, alcMass));
 
             // Объёмное содержание алкоголя.
             double content =
@@ -196,9 +167,7 @@ namespace TechMES.Calc.Substances.Components
             if (configurationCode % 10 == 1)
                 return content;
 
-            return Math.Max(
-                0.0,
-                Math.Min(100.0, content));
+            return Math.Max(0.0, Math.Min(100.0, content));
         }
 
         #endregion
