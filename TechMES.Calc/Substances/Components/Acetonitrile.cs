@@ -118,12 +118,9 @@ namespace TechMES.Calc.Substances.Components
 
         /// <summary>
         /// Возвращает содержание ACN в указанной Content-системе, %.
+        /// Для Acetonitrile основной production-корреляцией сейчас является исходная ContentCalc.ACN_Water_Content.
         ///
-        /// Для Acetonitrile основной production-корреляцией сейчас является
-        /// исходная ContentCalc.ACN_Water_Content.
-        ///
-        /// Старый одиночный Acetonitrile.GetContent(T,P) больше не используется
-        /// и полностью удалён.
+        /// Старый одиночный Acetonitrile.GetContent(T,P) больше не используется и полностью удалён.
         /// </summary>
         public double GetContent(float temperature, float pressureBarAbsolute, ContentSystem system, int configurationCode)
         {
@@ -141,19 +138,7 @@ namespace TechMES.Calc.Substances.Components
 
         /// <summary>
         /// Основная Content-корреляция ACN в системе ACN + Water.
-        ///
-        /// Математика и коэффициенты переносятся 1:1 из
-        /// ContentCalc.ACN_Water_Content.
-        ///
-        /// Отличается только транспортный формат результата:
-        ///
-        /// legacy:
-        ///     10000 = 100.00%
-        ///
-        /// TechMES.Calc:
-        ///     100 = 100.00%
-        ///
-        /// Поэтому этот метод сразу возвращает инженерные проценты.
+        /// Математика и коэффициенты переносятся 1:1 из ContentCalc.ACN_Water_Content.
         /// </summary>
         private static double CalculateAcnWaterContent(float temperature, float pressureBarAbsolute, int configurationCode)
         {
@@ -164,11 +149,9 @@ namespace TechMES.Calc.Substances.Components
             List<double> lowPressureList = new List<double> { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.90, 0.95, 1.0, 1.05, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0 }; //22
             List<double> highPressureList = new List<double> { 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 4.0, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 5.0 }; //21
 
-
             //Определяем коэффициенты для полинома при разных давлениях
             List<CoefSet> coefListLowPressure = new List<CoefSet>();  //Для давлений от 0.8bar до 1.5bar
             List<CoefSet> coefListHighPressure = new List<CoefSet>(); //Для давлений от 3.5bar до 4.5bar
-
 
             #region Coefs for Polynom for Low Pressure
             coefListLowPressure.Add(new CoefSet { a0 = 8.2013578000, a1 = -1.1992905000, a2 = 0.0786533790, a3 = -0.0025684228, a4 = 0.0000415490, a5 = -0.0000002696 });   //0
@@ -247,6 +230,7 @@ namespace TechMES.Calc.Substances.Components
 
 
             #endregion
+
             //Определяем по формулам какого давления (Low Pressure - Колонна Т04 или High Pressure - Колонна Т05) производим расчеты
             //var pressureList = _press < 2.9 ? lowPressureList : highPressureList;
             //var coefList = _press < 2.9 ? coefListLowPressure : coefListHighPressure;
@@ -315,8 +299,6 @@ namespace TechMES.Calc.Substances.Components
                 content = tmpcount_1 + (tmpcount_2 - tmpcount_1) * deviation;
             }
 
-            // ContentCalc возвращал сотые доли процента: 10000 = 100.00%.
-            // В новом Content Core SCADA scaling отсутствует, поэтому сразу возвращаем обычные инженерные проценты.
             return Math.Max(0.0, Math.Min(100.0, content * 100.0));
         }
 

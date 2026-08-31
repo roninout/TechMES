@@ -10,8 +10,7 @@ namespace TechMES.Calc.Content;
 ///
 /// Его ответственность:
 /// - определить физическую систему по упорядоченному набору компонентов;
-/// - найти компонент с основной Content-корреляцией;
-/// - вычислить зависимые компоненты через материальный баланс;
+/// - выбрать способ расчёта системы;
 /// - вернуть результаты в том же порядке, в котором компоненты заданы в Job.
 /// </summary>
 internal static class ContentCombinationCalculator
@@ -31,6 +30,8 @@ internal static class ContentCombinationCalculator
         result = definition.Kind switch
         {
             ContentCombinationKind.BinaryComplement => CalculateBinaryComplement(definition, components, temperature, pressureBarAbsolute, configurationCode),
+            ContentCombinationKind.MultiComponent => CalculateMultiComponent(definition, components, temperature, pressureBarAbsolute, configurationCode),
+
             _ => throw new CalculationException("content.combination.unsupported", $"Content combination kind '{definition.Kind}' is not implemented.")
         };
 
@@ -38,18 +39,15 @@ internal static class ContentCombinationCalculator
     }
 
     /// <summary>
-    /// Расчёт бинарной смеси.
-    ///
-    /// Корреляция рассчитывает содержание основного компонента,
-    /// содержание второго компонента определяется материальным балансом:
+    /// Бинарная смесь:
     ///
     /// Secondary = 100 - Primary.
-    ///
-    /// После этого значения переставляются в том порядке,
-    /// в котором компоненты были указаны в Calculation Job.
     /// </summary>
-    private static IReadOnlyList<double> CalculateBinaryComplement(ContentCombinationDefinition definition, IReadOnlyList<string> requestedOrder, float temperature,float pressureBarAbsolute, int configurationCode)
+    private static IReadOnlyList<double> CalculateBinaryComplement(ContentCombinationDefinition definition, IReadOnlyList<string> requestedOrder, float temperature, float pressureBarAbsolute, int configurationCode)
     {
+        if (definition.PrimaryComponentCode is null || definition.SecondaryComponentCode is null)
+            throw new CalculationException("content.combination.invalid-definition", $"Binary Content system '{definition.System}' does not define primary and secondary components.");
+
         var model = SubstanceCatalog.CreateRequiredModel(definition.PrimaryComponentCode);
 
         if (model is not IContentSubstanceModel contentModel)
@@ -57,6 +55,7 @@ internal static class ContentCombinationCalculator
 
         var primaryContent = contentModel.GetContent(temperature, pressureBarAbsolute, definition.System, configurationCode);
         var secondaryContent = 100.0 - primaryContent;
+
         var values = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
         {
             [definition.PrimaryComponentCode] = primaryContent,
@@ -67,79 +66,65 @@ internal static class ContentCombinationCalculator
     }
 
     /// <summary>
-    /// Список реально поддерживаемых комбинаций Content.
+    /// Многокомпонентная Content-система.
     ///
-    /// Важно:
-    /// ContentSystem описывает физическую систему.
-    /// Порядок компонентов описывается ключами Definitions.
-    ///
-    /// Например:
-    ///     PO + P
-    ///     P + PO
-    ///
-    /// используют одну физическую корреляцию PoPropylene,
-    /// но возвращают результаты в разном порядке.
+    /// В отличие от BinaryComplement здесь одна корреляция возвращает сразу содержания всех компонентов системы.
     /// </summary>
-    private static IReadOnlyDictionary<string, ContentCombinationDefinition>CreateDefinitions()
+    private static IReadOnlyList<double> CalculateMultiComponent(ContentCombinationDefinition definition, IReadOnlyList<string> requestedOrder, float temperature, float pressureBarAbsolute, int configurationCode)
+    {
+        IReadOnlyDictionary<string, double> values = definition.System switch
+        {
+            ContentSystem.AcnWaterPo => AcnWaterPoContentModel.CalculatePercent(temperature, pressureBarAbsolute, configurationCode),
+
+            _ => throw new CalculationException("content.system.unsupported", $"Multi-component Content correlation is not defined for system '{definition.System}'.")
+        };
+
+        return requestedOrder.Select(code => values[code]).ToArray();
+    }
+
+    private static IReadOnlyDictionary<string, ContentCombinationDefinition> CreateDefinitions()
     {
         var result = new Dictionary<string, ContentCombinationDefinition>(StringComparer.OrdinalIgnoreCase);
 
         void AddBinary(ContentSystem system, string primaryComponentCode, string secondaryComponentCode, params string[][] supportedOrders)
         {
-            var definition = new ContentCombinationDefinition(
-                System: system,
-                Kind: ContentCombinationKind.BinaryComplement,
-                PrimaryComponentCode: primaryComponentCode,
-                SecondaryComponentCode: secondaryComponentCode);
+            var definition = new ContentCombinationDefinition(System: system, Kind: ContentCombinationKind.BinaryComplement, PrimaryComponentCode: primaryComponentCode, SecondaryComponentCode: secondaryComponentCode);
 
             foreach (var order in supportedOrders)
                 result.Add(BuildKey(order), definition);
         }
 
-        // ACN + Water
-        //
-        // Основная корреляция рассчитывает ACN.
-        AddBinary(ContentSystem.AcnWater,
-            "ACN",
-            "Water",
+        void AddMultiComponent(ContentSystem system, params string[][] supportedOrders)
+        {
+            var definition = new ContentCombinationDefinition(System: system, Kind: ContentCombinationKind.MultiComponent, PrimaryComponentCode: null, SecondaryComponentCode: null);
+
+            foreach (var order in supportedOrders)
+                result.Add(BuildKey(order), definition);
+        }
+
+        AddBinary(ContentSystem.AcnWater, "ACN", "Water",
             ["ACN", "Water"],
             ["Water", "ACN"]);
 
-        // PO + Propylene
-        //
-        // Основная корреляция рассчитывает PO.
-        AddBinary(ContentSystem.PoPropylene,
-            "PO",
-            "P",
+        AddBinary(ContentSystem.PoPropylene, "PO", "P",
             ["PO", "P"],
             ["P", "PO"]);
 
-        // PO + Water
-        //
-        // Основная корреляция рассчитывает PO.
-        AddBinary(ContentSystem.PoWater,
-            "PO",
-            "Water",
+        AddBinary(ContentSystem.PoWater, "PO", "Water",
             ["PO", "Water"],
             ["Water", "PO"]);
 
-        // Acetaldehyde + PO
-        //
-        // Основная корреляция рассчитывает ACA.
-        AddBinary(ContentSystem.AcaPo,
-            "ACA",
-            "PO",
+        AddBinary(ContentSystem.AcaPo, "ACA", "PO",
             ["ACA", "PO"],
             ["PO", "ACA"]);
 
-        // Alcohol + Water
-        //
-        // В исходном ContentCalc существует только порядок ALC + Water.
-        // Поэтому искусственно добавлять Water + ALC не нужно.
-        AddBinary(ContentSystem.AlcWater,
-            "ALC",
-            "Water",
+        AddBinary(ContentSystem.AlcWater, "ALC", "Water",
             ["ALC", "Water"]);
+
+        // В старом TechDotNetLib были реализованы именно эти два порядка. Остальные перестановки трёх компонентов не добавляем искусственно.
+        AddMultiComponent(ContentSystem.AcnWaterPo,
+            ["ACN", "Water", "PO"],
+            ["PO", "Water", "ACN"]);
 
         return result;
     }
@@ -149,10 +134,11 @@ internal static class ContentCombinationCalculator
         return string.Join("|", components.Select(component => component.Trim()));
     }
 
-    private sealed record ContentCombinationDefinition(ContentSystem System, ContentCombinationKind Kind, string PrimaryComponentCode, string SecondaryComponentCode);
+    private sealed record ContentCombinationDefinition(ContentSystem System, ContentCombinationKind Kind, string? PrimaryComponentCode, string? SecondaryComponentCode);
 
     private enum ContentCombinationKind
     {
-        BinaryComplement = 1
+        BinaryComplement = 1,
+        MultiComponent = 2
     }
 }

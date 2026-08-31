@@ -13,10 +13,10 @@ namespace TechMES.Calc.Content;
 /// - наружу возвращаются инженерные проценты;
 /// - некорректные значения приводят к CalculationException.
 ///
-/// После Content 2 все бинарные системы выполняются новой архитектурой.
+/// После Content 3 все production Content-корреляции
+/// выполняются новой архитектурой.
 ///
-/// Временный legacy fallback остаётся только для тройной системы
-/// ACN + Water + PO до этапа Content 3.
+/// ContentCalc остаётся только эталоном для regression-тестов.
 /// </summary>
 public static class ContentPropertyCalculator
 {
@@ -32,49 +32,17 @@ public static class ContentPropertyCalculator
             throw new CalculationException("content.pressure.invalid", "Content absolute pressure must be greater than zero.");
 
         var components = NormalizeAndValidateComponents(request.Components);
-
         var temperature = (float)request.TemperatureC;
         var pressure = (float)request.PressureBarAbsolute;
-        var configurationCode = request.ConfigurationCode;
 
-        // Новые Content-модели.
-        if (ContentCombinationCalculator.TryCalculatePercent(components, temperature, pressure,configurationCode, out var migratedResult))
-            return ValidateResult(migratedResult, components.Length);
-
-        // ------------------------------------------------------------
-        // ВРЕМЕННЫЙ LEGACY FALLBACK
-        // ------------------------------------------------------------
-        // После Content 2 здесь остаётся только тройная система.
-        // После Content 3 этот блок должен быть полностью удалён.
-        // ------------------------------------------------------------
-
-        double[]? raw = null;
-
-        if (Match(components, "ACN", "Water", "PO"))
-        {
-            raw = ContentCalc.ACN_Water_PO_Content(temperature, pressure, configurationCode);
-        }
-        else if (Match(components, "PO", "Water", "ACN"))
-        {
-            raw = ContentCalc.PO_Water_ACN_Content(temperature, pressure, configurationCode);
-        }
-
-        if (raw is null)
+        if (!ContentCombinationCalculator.TryCalculatePercent(components, temperature, pressure, request.ConfigurationCode, out var result))
             throw new CalculationException("content.components.unsupported", $"Content correlation is not defined for [{string.Join(", ", components)}].");
-
-        if (raw.Length < components.Length)
-            throw new CalculationException("content.result.invalid-count", $"Content correlation returned {raw.Length} values for {components.Length} configured components.");
-
-        var result = raw.Take(components.Length).Select(value => value / 100d).ToArray();
 
         return ValidateResult(result, components.Length);
     }
 
     /// <summary>
-    /// Проверяет результат как новой Content-модели, так и временного legacy fallback.
-    /// Это также закрывает проблему Content 1:
-    /// после double -> float очень большое конечное double может превратиться в Infinity.
-    /// Поэтому результат корреляции обязательно проверяется непосредственно перед возвратом наружу.
+    /// Общая проверка результата любой Content-корреляции.
     /// </summary>
     private static IReadOnlyList<double> ValidateResult(IReadOnlyList<double> source, int expectedCount)
     {
@@ -114,19 +82,5 @@ public static class ContentPropertyCalculator
         }
 
         return result;
-    }
-
-    private static bool Match(IReadOnlyList<string> actual, params string[] expected)
-    {
-        if (actual.Count != expected.Length)
-            return false;
-
-        for (var index = 0; index < expected.Length; index++)
-        {
-            if (!string.Equals(actual[index], expected[index], StringComparison.OrdinalIgnoreCase))
-                return false;
-        }
-
-        return true;
     }
 }
