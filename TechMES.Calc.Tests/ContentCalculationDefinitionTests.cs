@@ -49,17 +49,20 @@ public sealed class ContentCalculationDefinitionTests
         {
             Assert.Equal(3, definition.Parameters.Count);
 
-            var temperature = Assert.Single(definition.Parameters.Where(parameter => parameter.Key == "temperatureC"));
+            var temperature = Assert.Single(definition.Parameters, parameter => parameter.Key == "temperatureC");
+
             Assert.Equal(CalculationParameterType.Number, temperature.Type);
             Assert.Equal(CalculationParameterRole.ProcessInput, temperature.Role);
             Assert.Equal("°C", temperature.Unit);
 
-            var pressure = Assert.Single(definition.Parameters.Where(parameter => parameter.Key == "pressureBarAbsolute"));
+            var pressure = Assert.Single(definition.Parameters, parameter => parameter.Key == "pressureBarAbsolute");
+
             Assert.Equal(CalculationParameterType.Number, pressure.Type);
             Assert.Equal(CalculationParameterRole.ProcessInput, pressure.Role);
             Assert.Equal("bar(abs)", pressure.Unit);
 
-            var configuration = Assert.Single(definition.Parameters.Where(parameter => parameter.Key == "configurationCode"));
+            var configuration = Assert.Single(definition.Parameters, parameter => parameter.Key == "configurationCode");
+
             Assert.Equal(CalculationParameterType.Integer, configuration.Type);
             Assert.Equal(CalculationParameterRole.Configuration, configuration.Role);
         }
