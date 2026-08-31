@@ -1,0 +1,118 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{E9458EA1-FE28-4381-9DAA-BE5AE902E0FC}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>TechDotNetLib</RootNamespace>
+    <AssemblyName>TechDotNetLib</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <RegisterForComInterop>true</RegisterForComInterop>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.ValueTuple, Version=4.0.3.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.ValueTuple.4.5.0\lib\net461\System.ValueTuple.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ActiveX\RectangleActiveX\RectangleActiveXForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="ActiveX\RectangleActiveX\RectangleActiveXForm.Designer.cs">
+      <DependentUpon>RectangleActiveXForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="ActiveX\RectangleActiveX\RectangleActiveXUI.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="ActiveX\RectangleActiveX\RectangleActiveXUI.Designer.cs">
+      <DependentUpon>RectangleActiveXUI.cs</DependentUpon>
+    </Compile>
+    <Compile Include="ActiveX\TestAX\ITestAX.cs" />
+    <Compile Include="ActiveX\TestAX\ITestAXEvents.cs" />
+    <Compile Include="Lab\Substances\Acetaldehyde.cs" />
+    <Compile Include="Lab\Substances\Fusel.cs" />
+    <Compile Include="Lab\Substances\Methan.cs" />
+    <Compile Include="Lab\Substances\HCL.cs" />
+    <Compile Include="Lab\Substances\NaOH.cs" />
+    <Compile Include="Lab\Substances\Diesel.cs" />
+    <Compile Include="Lab\Substances\Alcohol.cs" />
+    <Compile Include="Lab\Substances\Acetonitrile.cs" />
+    <Compile Include="Lab\Substances\Butadiene_1_2.cs" />
+    <Compile Include="Lab\Substances\Butadiene_1_3.cs" />
+    <Compile Include="Lab\Substances\Butene_1.cs" />
+    <Compile Include="Lab\Substances\Cis_2_Butene.cs" />
+    <Compile Include="Lab\Substances\ContentCalculation\ContentCalc.cs" />
+    <Compile Include="Lab\Substances\Ethane.cs" />
+    <Compile Include="Lab\Substances\Ethanol.cs" />
+    <Compile Include="Lab\Substances\Ethylene.cs" />
+    <Compile Include="Lab\Substances\Freezium.cs" />
+    <Compile Include="Lab\Substances\HydrohenPeroxyde.cs" />
+    <Compile Include="Lab\Substances\Isobutane.cs" />
+    <Compile Include="Lab\Substances\Methyl_Acetylene.cs" />
+    <Compile Include="Lab\Substances\Mix.cs" />
+    <Compile Include="Lab\Substances\Nitrogen.cs" />
+    <Compile Include="Lab\Substances\N_Butane.cs" />
+    <Compile Include="Lab\Substances\N_Pentane.cs" />
+    <Compile Include="Lab\Substances\Oxygen.cs" />
+    <Compile Include="Lab\Substances\Propadiene.cs" />
+    <Compile Include="Lab\Substances\Propane.cs" />
+    <Compile Include="Lab\Substances\Propylene.cs" />
+    <Compile Include="Lab\Substances\PropyleneOxyde.cs" />
+    <Compile Include="Lab\Substances\Substance.cs" />
+    <Compile Include="Lab\Substances\Sug.cs" />
+    <Compile Include="Lab\Substances\Thermodynamics\TechLib.cs" />
+    <Compile Include="Lab\Substances\Trans_2_Butene.cs" />
+    <Compile Include="Lab\Substances\UnknownSubstance.cs" />
+    <Compile Include="Lab\Substances\Vinylacetylene.cs" />
+    <Compile Include="Lab\Substances\Water.cs" />
+    <Compile Include="Lab\Substances\WaterSteemProLib\WspLib.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ActiveX\RectangleActiveX\IRectangleActiveX.cs" />
+    <Compile Include="ActiveX\RectangleActiveX\IRectangleActiveXEvents.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+    <None Include="TechDotNetLib.pfx" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="ActiveX\RectangleActiveX\RectangleActiveXForm.resx">
+      <DependentUpon>RectangleActiveXForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ActiveX\RectangleActiveX\RectangleActiveXUI.resx">
+      <DependentUpon>RectangleActiveXUI.cs</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
