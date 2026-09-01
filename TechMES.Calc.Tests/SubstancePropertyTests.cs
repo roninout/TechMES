@@ -658,13 +658,21 @@ public sealed class SubstancePropertyTests
     [Fact]
     public void FuselDensityConvertsNormalizedTechMesUnitsToLegacyNativeUnits()
     {
-        // 20 °C -> 293.15 K
-        // 1.01325 bar(abs) -> 101325 Pa
+        // Нормализованный TechMES contract:
         //
-        // Это reference point самой legacy Fusel-корреляции,
-        // поэтому должна получиться ровно rhoRef = 975 kg/m³.
+        // 20 °C
+        // 1.01325 bar(abs)
+        //
+        // адаптируется в native TechDotNet contract:
+        //
+        // ~293.15 K
+        // 101325 Pa
+        //
+        // Исходная Fusel-модель использует float,
+        // поэтому 293.15 K представляется с небольшой float-погрешностью.
+        // Физически это reference point rhoRef = 975 kg/m³.
 
         var density = MixturePropertyCalculator.CalculateDensityKgPerM3([new MixtureComponent("Fusel", 100d)], temperatureC: 20d, pressureBarAbsolute: 1.01325d);
-        Assert.Equal(975d, density, precision: 6);
+        Assert.Equal(975d, density, precision: 5);
     }
 }
