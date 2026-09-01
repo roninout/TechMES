@@ -306,17 +306,9 @@
                                ================================================= *@
                             <div class="content-value-row">
 
-                                <div class="content-selection-title @(IsCalculatedValueSelected == false ? "is-selected" : "")">
+                                <div class="content-selection-title">
 
-                                    <div class="content-selection-mark">
-
-                                        @if (IsCalculatedValueSelected == false)
-                                        {
-                                            <RadzenIcon Icon="check"
-                                                        class="content-selection-icon" />
-                                        }
-
-                                    </div>
+                                    <div class="content-selection-mark"></div>
 
                                     <span>
                                         Current value
@@ -328,7 +320,7 @@
                                 <div class="content-value-controls">
 
                                     <RadzenFormField AllowFloatingLabel="false"
-                                                     Text="ValHmi"
+                                                     Text="Value"
                                                      Variant="Variant.Outlined"
                                                      class="content-main-form-field">
 
@@ -336,7 +328,7 @@
                                                        Value="@CurrentContentHmi"
                                                        ReadOnly="true"
                                                        ShowUpDown="false"
-                                                       Format="0.###' %'"
+                                                       Format="0.##' %'"
                                                        class="content-main-value-input" />
 
                                     </RadzenFormField>
@@ -356,17 +348,9 @@
                                ================================================= *@
                             <div class="content-value-row">
 
-                                <div class="content-selection-title @(IsCalculatedValueSelected == true ? "is-selected" : "")">
+                                <div class="content-selection-title">
 
-                                    <div class="content-selection-mark">
-
-                                        @if (IsCalculatedValueSelected == true)
-                                        {
-                                            <RadzenIcon Icon="check"
-                                                        class="content-selection-icon" />
-                                        }
-
-                                    </div>
+                                    <div class="content-selection-mark"></div>
 
                                     <span>
                                         Calculated value
@@ -378,7 +362,7 @@
                                 <div class="content-value-controls">
 
                                     <RadzenFormField AllowFloatingLabel="false"
-                                                     Text="ValCalc"
+                                                     Text="@CurrentCalculatedItemName"
                                                      Variant="Variant.Outlined"
                                                      class="content-main-form-field">
 
@@ -386,7 +370,7 @@
                                                        Value="@CurrentContentCalcEngineering"
                                                        ReadOnly="true"
                                                        ShowUpDown="false"
-                                                       Format="0.###' %'"
+                                                       Format="0.##' %'"
                                                        class="content-main-value-input" />
 
                                     </RadzenFormField>
@@ -640,9 +624,9 @@
                                                  class="content-code-field">
 
                                     <RadzenNumeric TValue="int?"
-                                                   @bind-Value="_configurationCode"
-                                                   ShowUpDown="true"
-                                                   Disabled="@_isSaving"
+                                                   Value="@CurrentConfigurationCode"
+                                                   ReadOnly="true"
+                                                   ShowUpDown="false"
                                                    class="content-code-value" />
 
                                 </RadzenFormField>
@@ -722,9 +706,9 @@
 
                                         <RadzenNumeric TValue="double?"
                                                        Value="@GetContentParam(index)"
-                                                       Disabled="true"
+                                                       ReadOnly="true"
                                                        ShowUpDown="false"
-                                                       Format="0.###' %'"
+                                                       Format="0.##' %'"
                                                        class="content-component-percent" />
 
                                     </div>
@@ -773,15 +757,15 @@
                         </div>
 
 
-                        @if (!IsFixedOutputBindingReady)
+                        @if (!IsFixedContentStructureReady)
                         {
                             <RadzenAlert AlertStyle="AlertStyle.Danger"
                                          AllowClose="false"
                                          ShowIcon="true"
                                          class="content-settings-warning">
 
-                                Content Equipment does not contain a valid ValCalc / Sel output structure.
-                                Output writes cannot be enabled.
+                                Content Equipment does not contain the required
+                                Select / Value / ParamN / Config structure.
 
                             </RadzenAlert>
                         }
@@ -879,7 +863,6 @@
     // ============================================================
 
     private string _definitionCode = "";
-    private int? _configurationCode;
 
     private string _contextKey = "";
     private string _savedEditorSignature = "";
@@ -933,13 +916,40 @@
 
     // ============================================================
     // SCADA ITEM mapping
+    //
+    // Реальная фиксированная структура Content Equipment:
+    //
+    //     Select
+    //     Value
+    //
+    //     Param0 ... Param4
+    //     Param0_Dp ... Param4_Dp
+    //     Param0_Dt ... Param4_Dt
+    //
+    //     Config
+    //
+    // Select:
+    //     0 -> Param0
+    //     1 -> Param1
+    //     ...
+    //     4 -> Param4
+    //
+    // Value:
+    //     текущее значение Content.
+    //
+    // ParamN:
+    //     рассчитанное значение соответствующего компонента.
+    //
+    // ParamN имеют legacy scale:
+    //     100 = 1 %
     // ============================================================
 
-    private string? ContentHmiTag => GetItemTag(Model, "ValHmi");
-    private string? ContentCalcTag => GetItemTag(Model, "ValCalc");
-    private string? ContentSelTag => GetItemTag(Model, "Sel");
-
     private const int MaxContentItemCount = 5;
+    private const double ContentPercentScale = 100d;
+
+    private string? ContentValueTag => GetItemTag(Model, "Value");
+    private string? ContentSelectTag => GetItemTag(Model, "Select");
+    private string? ContentConfigTag => GetItemTag(Model, "Config");
 
     private string? GetContentParamTag(int index)
     {
@@ -956,75 +966,156 @@
         return GetItemTag(Model, $"Param{index}_Dt");
     }
 
+
+    // ============================================================
+    // Fixed SCADA values
+    // ============================================================
+
     /// <summary>
-    /// Sel у Content — индекс выбранного компонента.
+    /// Select является индексом активного Content-компонента.
     ///
     ///     0 -> Param0
     ///     1 -> Param1
     ///     ...
     ///     4 -> Param4
-    ///
-    /// Sel является read-only SCADA ITEM.
     /// </summary>
     private int? SelectedContentItemIndex
     {
         get
         {
-            var value = GetLiveScadaValue("Sel");
+            var value = GetLiveScadaValue("Select");
 
             if (!value.HasValue || !double.IsFinite(value.Value))
                 return null;
 
             var index = (int)Math.Round(value.Value);
 
-            // Sel должен быть именно целым индексом.
             if (Math.Abs(value.Value - index) > 0.001d)
                 return null;
 
-            return index is >= 0 and < MaxContentItemCount
-                ? index
-                : null;
+            return index is >= 0 and < MaxContentItemCount ? index : null;
         }
     }
 
-    private double? GetContentParam(int index)
+    /// <summary>
+    /// Config является read-only SCADA ITEM.
+    /// Его текущее значение используется как configurationCode Calc Job.
+    /// </summary>
+    private int? CurrentConfigurationCode
     {
-        return GetLiveScadaValue($"Param{index}");
+        get
+        {
+            var value = GetLiveScadaValue("Config");
+
+            if (!value.HasValue || !double.IsFinite(value.Value))
+                return null;
+
+            var configuration = (int)Math.Round(value.Value);
+
+            return Math.Abs(value.Value - configuration) <= 0.001d ? configuration : null;
+        }
+    }
+
+
+    // ============================================================
+    // Component values
+    // ============================================================
+
+    private static double? ConvertContentRawToPercent(double? rawValue)
+    {
+        if (!rawValue.HasValue || !double.IsFinite(rawValue.Value))
+            return null;
+
+        return rawValue.Value / ContentPercentScale;
     }
 
     /// <summary>
-    /// В legacy Content название ITEM исторически обратное
-    /// отображаемому назначению поля:
+    /// ParamN хранится в legacy hundredths-of-percent.
     ///
-    ///     UI dP -> ParamN_Dt
-    ///     UI dT -> ParamN_Dp
-    ///
-    /// Не менять местами без изменения SCADA Equipment Type.
+    ///     10011 -> 100.11 %
+    ///       -10 ->  -0.10 %
     /// </summary>
-    private double? GetContentDp(int index)
+    private double? GetContentParam(int index)
     {
-        return GetLiveScadaValue($"Param{index}_Dt");
+        return ConvertContentRawToPercent(GetLiveScadaValue($"Param{index}"));
     }
 
-    private double? GetContentDt(int index)
+    /// <summary>
+    /// ParamN_Dp — Delta P, bar.
+    /// </summary>
+    private double? GetContentDp(int index)
     {
         return GetLiveScadaValue($"Param{index}_Dp");
     }
 
+    /// <summary>
+    /// ParamN_Dt — Delta T, °C.
+    /// </summary>
+    private double? GetContentDt(int index)
+    {
+        return GetLiveScadaValue($"Param{index}_Dt");
+    }
+
+
+    // ============================================================
+    // Fixed Content output
+    // ============================================================
+
+    private CalcOutputDefinitionDto? GetSelectedContentOutput(CalcDefinitionDto? definition)
+    {
+        if (definition is null || !SelectedContentItemIndex.HasValue)
+            return null;
+
+        return definition.Outputs
+            .OrderBy(output => output.Order)
+            .ElementAtOrDefault(SelectedContentItemIndex.Value);
+    }
+
+    private CalcOutputDefinitionDto? SelectedContentOutput => GetSelectedContentOutput(Definition);
+    private CalcOutputDefinitionDto? SelectedLiveContentOutput => GetSelectedContentOutput(LiveDefinition);
+
+
+    /// <summary>
+    /// Проверяет существование фиксированных ParamN для всех outputs
+    /// текущей Content Definition.
+    /// </summary>
+    private bool IsFixedOutputBindingReady
+    {
+        get
+        {
+            if (Definition is null || Definition.Outputs.Count == 0 || Definition.Outputs.Count > MaxContentItemCount)
+                return false;
+
+            return Enumerable.Range(0, Definition.Outputs.Count)
+                .All(index => !string.IsNullOrWhiteSpace(GetContentParamTag(index)));
+        }
+    }
+
+
+    /// <summary>
+    /// Проверяет обязательную фиксированную структуру Content Equipment.
+    /// </summary>
+    private bool IsFixedContentStructureReady =>
+        Definition is not null
+        && !string.IsNullOrWhiteSpace(ContentValueTag)
+        && !string.IsNullOrWhiteSpace(ContentSelectTag)
+        && !string.IsNullOrWhiteSpace(ContentConfigTag)
+        && IsFixedOutputBindingReady;
+
+
     // ============================================================
     // Configuration readiness
-    //
-    // Пока оставляем существующий полный backend contract.
-    //
-    // configurationCode и output bindings временно скрыты из UI,
-    // но не удалены из Job-модели.
     // ============================================================
 
     private bool IsProcessBindingsReady => _processBindings.Count > 0 && _processBindings.All(binding => binding.IsLinked);
 
-    private bool IsBaseConfigurationReady => Definition is not null && IsProcessBindingsReady && _configurationCode.HasValue;
+    private bool IsBaseConfigurationReady =>
+        Definition is not null
+        && IsProcessBindingsReady
+        && CurrentConfigurationCode.HasValue
+        && IsFixedContentStructureReady;
 
-    private bool IsConfigurationReady => IsBaseConfigurationReady && (!_allowOutputWrites || IsFixedOutputBindingReady);
+    private bool IsConfigurationReady => IsBaseConfigurationReady;
 
     private bool HasDefinitionVersionChange =>
         Job is not null
@@ -1160,8 +1251,6 @@
 
         _enabled = Job?.Enabled == true;
         _allowOutputWrites = Job?.WriteEnabled == true;
-
-        _configurationCode = ReadStoredConfigurationCode();
 
         BuildProcessBindings();
 
@@ -1409,7 +1498,7 @@
 
     private List<CalcJobInputSaveDto> BuildContentInputs()
     {
-        if (Definition is null || !_configurationCode.HasValue)
+        if (Definition is null || string.IsNullOrWhiteSpace(ContentConfigTag))
             return [];
 
         var result = new List<CalcJobInputSaveDto>();
@@ -1427,13 +1516,15 @@
             });
         }
 
-        var configuration = Definition.Parameters.Single(parameter => string.Equals(parameter.Key, "configurationCode", StringComparison.OrdinalIgnoreCase));
+        var configuration = Definition.Parameters.Single(parameter =>
+            string.Equals(parameter.Key, "configurationCode", StringComparison.OrdinalIgnoreCase));
 
         result.Add(new CalcJobInputSaveDto
         {
             ParameterKey = configuration.Key,
-            SourceType = CalcInputSourceTypeDto.Constant,
-            ConstantValue = JsonSerializer.SerializeToElement(_configurationCode.Value),
+            SourceType = CalcInputSourceTypeDto.Tag,
+            TagName = ContentConfigTag,
+            SourceReference = $"{Model.Name}.Config",
             SortOrder = configuration.Order
         });
 
@@ -1442,23 +1533,37 @@
 
     private List<CalcJobOutputSaveDto> BuildContentOutputs(bool allowWrites)
     {
-        var output = SelectedContentOutput;
-
-        if (output is null || string.IsNullOrWhiteSpace(ContentCalcTag))
+        if (Definition is null)
             return [];
 
-        return
-        [
-            new CalcJobOutputSaveDto
+        var outputs = Definition.Outputs
+            .OrderBy(output => output.Order)
+            .Take(MaxContentItemCount)
+            .ToList();
+
+        var result = new List<CalcJobOutputSaveDto>(outputs.Count);
+
+        for (var index = 0; index < outputs.Count; index++)
         {
-            OutputKey = output.Key,
-            TagName = ContentCalcTag,
-            WriteEnabled = allowWrites,
-            Scale = 1d,
-            Offset = 0d,
-            SortOrder = output.Order
+            var tagName = GetContentParamTag(index);
+
+            if (string.IsNullOrWhiteSpace(tagName))
+                return [];
+
+            var output = outputs[index];
+
+            result.Add(new CalcJobOutputSaveDto
+            {
+                OutputKey = output.Key,
+                TagName = tagName,
+                WriteEnabled = allowWrites,
+                Scale = ContentPercentScale,
+                Offset = 0d,
+                SortOrder = output.Order
+            });
         }
-        ];
+
+        return result;
     }
 
     // ============================================================
@@ -1468,18 +1573,14 @@
     private string BuildEditorSignature()
     {
         var parts = new List<string>
-    {
-        $"definition={_definitionCode}",
-        $"enabled={_enabled}",
-        $"writes={_allowOutputWrites}",
-        $"configuration={_configurationCode?.ToString(CultureInfo.InvariantCulture) ?? ""}"
-    };
+        {
+            $"definition={_definitionCode}",
+            $"enabled={_enabled}",
+            $"writes={_allowOutputWrites}"
+        };
 
         foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
-        {
-            parts.Add(
-                $"input:{binding.Parameter.Key}={binding.SourceText.Trim()}");
-        }
+            parts.Add($"input:{binding.Parameter.Key}={binding.SourceText.Trim()}");
 
         return string.Join("|", parts);
     }
@@ -1496,21 +1597,6 @@
     private CalcJobInputDto? FindJobInput(string key)
     {
         return Job?.Inputs.FirstOrDefault(input => string.Equals(input.ParameterKey, key, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private int? ReadStoredConfigurationCode()
-    {
-        var input = FindJobInput("configurationCode");
-
-        if (input?.SourceType != CalcInputSourceTypeDto.Constant
-            || !input.ConstantValue.HasValue
-            || input.ConstantValue.Value.ValueKind != JsonValueKind.Number
-            || !input.ConstantValue.Value.TryGetInt32(out var value))
-        {
-            return null;
-        }
-
-        return value;
     }
 
     // ============================================================
@@ -1565,167 +1651,61 @@
     // ============================================================
 
     /// <summary>
-    /// Находит сохранённый Calculation output,
-    /// который реально записывается в ITEM ValCalc
-    /// текущего Content Equipment.
+    /// Рассчитанное самим TechMES значение выбранного компонента.
     ///
-    /// Это принципиально важно для Content:
+    /// Select выбирает output той же позиции:
     ///
-    /// content.acn-water, например, возвращает одновременно:
-    ///
-    ///     acnPercent
-    ///     waterPercent
-    ///
-    /// Но конкретный Content Equipment может представлять
-    /// только один из этих результатов.
-    ///
-    /// Поэтому нельзя просто брать первый output Definition.
-    /// </summary>
-    private CalcJobOutputDto? FindValCalcJobOutput()
-    {
-        if (Job is null || string.IsNullOrWhiteSpace(ContentCalcTag))
-            return null;
-
-        return Job.Outputs.FirstOrDefault(output => string.Equals(output.TagName, ContentCalcTag, StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>
-    /// Возвращает Content output, соответствующий ITEM ValCalc.
-    ///
-    /// Для уже сохранённого Job сначала используем реально сохранённый output.
-    ///
-    /// Для нового Job output определяется фиксированной Content-структурой:
-    ///
-    ///     Sel = 0 -> Definition.Outputs[0]
-    ///     Sel = 1 -> Definition.Outputs[1]
+    ///     Select = 0 -> Outputs[0]
+    ///     Select = 1 -> Outputs[1]
     ///     ...
-    ///
-    /// Никакого пользовательского output mapping в Content нет.
-    /// </summary>
-    private string? GetValCalcOutputKey()
-    {
-        // ------------------------------------------------------------
-        // 1. Существующий Job.
-        //
-        // Если Job уже сохранён, используем именно его output.
-        // Это позволяет верхней Runtime-панели показывать реально
-        // работающую конфигурацию, а не состояние редактора.
-        // ------------------------------------------------------------
-        var savedOutput = FindValCalcJobOutput();
-
-        if (!string.IsNullOrWhiteSpace(savedOutput?.OutputKey))
-            return savedOutput.OutputKey;
-
-
-        // ------------------------------------------------------------
-        // 2. Новый Job.
-        //
-        // Content имеет фиксированную структуру.
-        // Sel является индексом компонента.
-        // ------------------------------------------------------------
-        var selectedOutput = SelectedContentOutput;
-
-        if (!string.IsNullOrWhiteSpace(selectedOutput?.Key))
-            return selectedOutput.Key;
-
-
-        // ------------------------------------------------------------
-        // 3. Безопасный fallback на случай будущего Content Definition
-        // с одним единственным output.
-        // ------------------------------------------------------------
-        if (LiveDefinition?.Outputs.Count == 1)
-            return LiveDefinition.Outputs[0].Key;
-
-
-        return null;
-    }
-
-    /// <summary>
-    /// Собственный рассчитанный TechMES Content.
-    ///
-    /// Берём только output, соответствующий ValCalc текущего Equipment.
     /// </summary>
     private double? CurrentTechMesContent
     {
         get
         {
-            var outputKey = GetValCalcOutputKey();
+            var output = SelectedLiveContentOutput;
 
-            return string.IsNullOrWhiteSpace(outputKey)
-                ? null
-                : GetLastOutputNumber(outputKey);
+            return output is null ? null : GetLastOutputNumber(output.Key);
         }
     }
 
     /// <summary>
-    /// Текущее ручное / HMI значение Content.
+    /// Value — текущее Content значение из SCADA.
+    ///
+    /// Value, как и ParamN, хранится в hundredths-of-percent.
     /// </summary>
-    private double? CurrentContentHmi => GetLiveScadaValue("ValHmi");
+    private double? CurrentContentHmi => ConvertContentRawToPercent(GetLiveScadaValue("Value"));
 
     /// <summary>
-    /// Фактическое значение ValCalc из SCADA,
-    /// приведённое обратно в engineering value через Scale / Offset Job.
+    /// SCADA calculated value выбранного компонента.
     ///
-    /// Для Content штатный contract:
+    ///     Select = N
+    ///          ↓
+    ///       ParamN
     ///
-    ///     Scale = 1
-    ///     Offset = 0
-    ///
-    /// Но UI не хардкодит это предположение.
+    /// ParamN хранится в hundredths-of-percent.
     /// </summary>
     private double? CurrentContentCalcEngineering
     {
         get
         {
-            var scadaValue = GetLiveScadaValue("ValCalc");
-
-            if (!scadaValue.HasValue)
+            if (!SelectedContentItemIndex.HasValue)
                 return null;
 
-
-            var output = FindValCalcJobOutput();
-
-            var scale = output?.Scale ?? 1d;
-            var offset = output?.Offset ?? 0d;
-
-
-            if (!double.IsFinite(scale) || Math.Abs(scale) < double.Epsilon || !double.IsFinite(offset))
-                return null;
-
-            return (scadaValue.Value - offset) / scale;
+            return GetContentParam(SelectedContentItemIndex.Value);
         }
     }
 
     /// <summary>
-    /// Показывает, используется ли сейчас SCADA calculated value.
-    ///
-    /// Контракт аналогичен Capacity:
-    ///
-    ///     Sel = 0 -> ValHmi
-    ///     Sel = 1 -> ValCalc
-    ///
-    /// Это read-only состояние.
-    /// TechMES Sel не изменяет.
+    /// Имя текущего calculated ITEM для верхней панели.
     /// </summary>
-    private bool? IsCalculatedValueSelected
-    {
-        get
-        {
-            var value = GetLiveScadaValue("Sel");
-
-            if (!value.HasValue || !double.IsFinite(value.Value))
-                return null;
-
-            return value.Value >= 0.5d;
-        }
-    }
+    private string CurrentCalculatedItemName => SelectedContentItemIndex.HasValue ? $"Param{SelectedContentItemIndex.Value}" : "Param";
 
     /// <summary>
-    /// Галочка около "TechMES calculated value"
-    /// показывает фактически сохранённое Runtime состояние,
-    /// а не несохранённый переключатель редактора.
+    /// Галочка около TechMES calculated value показывает,
+    /// что сохранённый Job действительно имеет разрешённую запись outputs.
     /// </summary>
-    private bool IsTechMesOutputWriteEnabled => Job?.WriteEnabled == true && FindValCalcJobOutput() is not null;
+    private bool IsTechMesOutputWriteEnabled => Job?.WriteEnabled == true;
 
     // ============================================================
     // Content own SCADA values
@@ -1770,11 +1750,11 @@
         try
         {
             var itemsToRead = new List<string>
-            {
-                "ValHmi",
-                "ValCalc",
-                "Sel"
-            };
+        {
+            "Select",
+            "Value",
+            "Config"
+        };
 
             for (var index = 0; index < MaxContentItemCount; index++)
             {
@@ -1786,9 +1766,7 @@
             var reads = await Task.WhenAll(itemsToRead.Select(ReadContentScadaItemAsync));
 
             foreach (var read in reads)
-            {
                 _liveScadaValues[read.ItemName] = read.Success ? read.Value : null;
-            }
 
             await RefreshLinkedAiSnapshotsAsync();
         }
