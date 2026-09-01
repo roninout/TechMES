@@ -2261,18 +2261,4 @@
         NotFound
     }
 
-    private CalcOutputDefinitionDto? SelectedContentOutput
-    {
-        get
-        {
-            if (Definition is null || !SelectedContentItemIndex.HasValue)
-                return null;
-
-            return Definition.Outputs
-                .OrderBy(output => output.Order)
-                .ElementAtOrDefault(SelectedContentItemIndex.Value);
-        }
-    }
-
-    private bool IsFixedOutputBindingReady => !string.IsNullOrWhiteSpace(ContentCalcTag) && SelectedContentOutput is not null;
 }
