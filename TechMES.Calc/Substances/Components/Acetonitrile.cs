@@ -43,15 +43,10 @@ namespace TechMES.Calc.Substances.Components
                 a0 = 803.07;
                 a1 = -1.0542;
 
-                //y = a5*x^5 + a4*x^4 + a3*x^3 + a2*x^2 + a1*x + a0
                 density = a5 * Math.Pow(temperature, 5) + a4 * Math.Pow(temperature, 4) + a3 * Math.Pow(temperature, 3) + a2 * Math.Pow(temperature, 2) + a1 * temperature + a0;
             }
             else //Газ
             {
-                //Плотность газа = P * 10^2/R/T(K)
-                //R = 8.314
-                //T(K) = t(Cels) + 273.15
-
                 try
                 {
                     density = pressure * Math.Pow(10, 2) / (R / MolarMass) / (temperature + 273.15);
@@ -77,15 +72,14 @@ namespace TechMES.Calc.Substances.Components
 
             double capacity = 0.0;
 
-            if (!this.isSteam)
-            { //Жидкость
-                //y = a2*x^2 + a1*x + a0
+            if (!this.isSteam) //Жидкость
+            { 
                 a0 = 2.1864307;
                 a1 = 0.0015649999;
                 a2 = 0.0000083021163;                
             }
-            else
-            {//Газ
+            else //Газ
+            {
 
                 a0 = 1.2125728;
                 a1 = 0.0022147106;
@@ -97,23 +91,6 @@ namespace TechMES.Calc.Substances.Components
 
             capacity = a5 * Math.Pow(temperature, 5) + a4 * Math.Pow(temperature, 4) + a3 * Math.Pow(temperature, 3) + a2 * Math.Pow(temperature, 2) + a1 * temperature + a0;
             return capacity;
-        }
-
-        //Расчет давления насыщенного пара при заданной температуре, бар, абс.
-        private double GetPressure(double temperature)
-        {
-            //y = a5*x^5 + a4*x^4 + a3*x^3 + a2*x^2 + a1*x + a0
-
-            double a0 = 0.036484162;
-            double a1 = 0.0013598701;
-            double a2 = 0.000067036419;
-            double a3 = 0.000000064375591;
-            double a4 = 8.6595042E-09;
-            double a5 = 0.0;
-
-            double pressureSaturation = a5 * Math.Pow(temperature, 5) + a4 * Math.Pow(temperature, 4) + a3 * Math.Pow(temperature, 3) + a2 * Math.Pow(temperature, 2) + a1 * temperature + a0;
-            
-            return pressureSaturation;
         }
 
         #endregion

@@ -13,20 +13,30 @@ public sealed class SubstancePropertyTests
     public void CatalogContainsLegacyAndExtendedCodes()
     {
         Assert.Equal(55, SubstanceCatalog.Items.Count);
-
         Assert.Equal(SubstancePhase.Liquid, SubstanceCatalog.GetRequired("ACN").Phase);
         Assert.Equal(SubstancePhase.Vapor, SubstanceCatalog.GetRequired("ACNS").Phase);
         Assert.Equal("Ethanol", SubstanceCatalog.GetRequired("Ethanol").Name);
-
-        // DryMatter является новым TechMES-компонентом, восстановленным из старой PLC ICUMSA-корреляции.
+        // DryMatter является новым TechMES-компонентом, восстановленным из PLC ICUMSA-корреляции.
         Assert.Equal(SubstancePhase.Liquid, SubstanceCatalog.GetRequired("DryMatter").Phase);
         Assert.Equal("Dry matter", SubstanceCatalog.GetRequired("DryMatter").Name);
-
         Assert.True(SubstanceCatalog.GetRequired("ACN").Supports(SubstancePropertySupport.SpecificHeatCapacity));
         Assert.True(SubstanceCatalog.GetRequired("DryMatter").Supports(SubstancePropertySupport.SpecificHeatCapacity));
-        Assert.False(SubstanceCatalog.GetRequired("Fusel").Supports(SubstancePropertySupport.SpecificHeatCapacity));
+
+        // ACA имеет только рабочую Content-корреляцию.
+        var aca = SubstanceCatalog.GetRequired("ACA");
+
+        Assert.False(aca.Supports(SubstancePropertySupport.Density));
+        Assert.False(aca.Supports(SubstancePropertySupport.SpecificHeatCapacity));
+        Assert.True(aca.Supports(SubstancePropertySupport.Content));
+        // ACAS не имеет рабочего Production свойства.
+        Assert.Equal(SubstancePropertySupport.None, SubstanceCatalog.GetRequired("ACAS").SupportedProperties);
+        // Methan / Fusel остаются Density-моделями, но Capacity для них не поддерживается.
+        Assert.True(SubstanceCatalog.GetRequired("Methan").Supports(SubstancePropertySupport.Density));
+        Assert.True(SubstanceCatalog.GetRequired("Fusel").Supports(SubstancePropertySupport.Density));
         Assert.False(SubstanceCatalog.GetRequired("Methan").Supports(SubstancePropertySupport.SpecificHeatCapacity));
-        Assert.Equal(53,SubstanceCatalog.GetSupported(SubstancePropertySupport.SpecificHeatCapacity).Count);
+        Assert.False(SubstanceCatalog.GetRequired("Fusel").Supports(SubstancePropertySupport.SpecificHeatCapacity));
+        Assert.Equal(53,SubstanceCatalog.GetSupported(SubstancePropertySupport.Density).Count);
+        Assert.Equal(37,SubstanceCatalog.GetSupported(SubstancePropertySupport.SpecificHeatCapacity).Count);
     }
 
     [Fact]
@@ -124,19 +134,13 @@ public sealed class SubstancePropertyTests
 
     [Theory]
     [InlineData("Freezium", 20d, 1d)]
-    [InlineData("Methan", 298.15d, 3050000d)]
-    [InlineData("Fusel", 293.15d, 101325d)]
     [InlineData("HCL", 20d, 1d)]
     [InlineData("HCLS", 20d, 1d)]
     [InlineData("NaOH", 20d, 1d)]
     [InlineData("NaOHS", 20d, 1d)]
     public void LegacyDensityModelsAreExecutedWithoutArtificialBlockList(string code, double temperature, double pressure)
     {
-        var density = MixturePropertyCalculator.CalculateDensityKgPerM3(
-            [new MixtureComponent(code, 100d)],
-            temperatureC: temperature,
-            pressureBarAbsolute: pressure);
-
+        var density =MixturePropertyCalculator.CalculateDensityKgPerM3([new MixtureComponent(code, 100d)], temperatureC: temperature, pressureBarAbsolute: pressure);
         Assert.True(double.IsFinite(density));
         Assert.True(density > 0d);
     }
@@ -632,5 +636,35 @@ public sealed class SubstancePropertyTests
 
             _ => throw new InvalidOperationException($"Legacy binary Content combination '{component0} + {component1}' is not defined.")
         };
+    }
+
+    [Fact]
+    public void MethanDensityConvertsNormalizedTechMesUnitsToLegacyNativeUnits()
+    {
+        // 25 °C -> 298.15 K
+        // 30.5 bar(abs) -> 3.05 MPa
+        //
+        // Это центральная reference point исходной Methan-корреляции:
+        //
+        // x = 0
+        // y = 0
+        //
+        // поэтому Z = 0.9358613118902501.
+
+        var density = MixturePropertyCalculator.CalculateDensityKgPerM3([new MixtureComponent("Methan", 100d)], temperatureC: 25d, pressureBarAbsolute: 30.5d);
+        Assert.Equal(21.09072d, density, precision: 5);
+    }
+
+    [Fact]
+    public void FuselDensityConvertsNormalizedTechMesUnitsToLegacyNativeUnits()
+    {
+        // 20 °C -> 293.15 K
+        // 1.01325 bar(abs) -> 101325 Pa
+        //
+        // Это reference point самой legacy Fusel-корреляции,
+        // поэтому должна получиться ровно rhoRef = 975 kg/m³.
+
+        var density = MixturePropertyCalculator.CalculateDensityKgPerM3([new MixtureComponent("Fusel", 100d)], temperatureC: 20d, pressureBarAbsolute: 1.01325d);
+        Assert.Equal(975d, density, precision: 6);
     }
 }

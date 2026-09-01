@@ -17,21 +17,26 @@ public static class SubstanceCatalog
 {
     private const SubstancePropertySupport DefaultPropertySupport = SubstancePropertySupport.Density | SubstancePropertySupport.SpecificHeatCapacity;
 
+    private const SubstancePropertySupport DensityOnly = SubstancePropertySupport.Density;
+
+    private const SubstancePropertySupport ContentOnly = SubstancePropertySupport.Content;
+
     private sealed record Entry(SubstanceDescriptor Descriptor, Func<LegacySubstance> Factory);
 
     private static readonly IReadOnlyDictionary<string, Entry> Entries = CreateEntries();
 
-    public static IReadOnlyList<SubstanceDescriptor> Items { get; } = Entries.Values
-        .Select(entry => entry.Descriptor)
-        .OrderBy(item => item.Code, StringComparer.OrdinalIgnoreCase)
-        .ToArray();
+    public static IReadOnlyList<SubstanceDescriptor> Items { get; } =
+        Entries.Values
+            .Select(entry => entry.Descriptor)
+            .OrderBy(item => item.Code, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
     /// <summary>
-    /// Возвращает только вещества, явно разрешённые для указанного свойства.
+    /// Возвращает только вещества, явно разрешённые
+    /// для указанного физического свойства.
     ///
-    /// Это основной источник options для property-specific Calculation Definition.
-    /// Благодаря этому WEB не должен угадывать поддержку вещества по имени,
-    /// фазе или пробному выполнению legacy-формулы.
+    /// Наличие legacy GetDensity/GetCapacity само по себе не означает,
+    /// что вещество должно быть доступно Production Calculation Definition.
     /// </summary>
     public static IReadOnlyList<SubstanceDescriptor> GetSupported(SubstancePropertySupport property)
     {
@@ -78,90 +83,397 @@ public static class SubstanceCatalog
             result.Add(code, new Entry(new SubstanceDescriptor(code, name, phase, supportedProperties), factory));
         }
 
-        Add("ALC", "Alcohol", SubstancePhase.Liquid, () => new Alcohol(false), DefaultPropertySupport | SubstancePropertySupport.Content);
-        Add("ALCS", "Alcohol", SubstancePhase.Vapor, () => new Alcohol(true));
+        // ------------------------------------------------------------
+        // Основные технологические вещества
+        // ------------------------------------------------------------
 
-        Add("ACA", "Acetaldehyde", SubstancePhase.Liquid, () => new Acetaldehyde(false), DefaultPropertySupport | SubstancePropertySupport.Content);
-        Add("ACAS", "Acetaldehyde", SubstancePhase.Vapor, () => new Acetaldehyde(true));
+        Add(
+            "ALC",
+            "Alcohol",
+            SubstancePhase.Liquid,
+            () => new Alcohol(false),
+            DefaultPropertySupport |
+            SubstancePropertySupport.Content);
 
-        Add("ACN", "Acetonitrile", SubstancePhase.Liquid, () => new Acetonitrile(false), DefaultPropertySupport | SubstancePropertySupport.Content);
-        Add("ACNS", "Acetonitrile", SubstancePhase.Vapor, () => new Acetonitrile(true));
+        Add(
+            "ALCS",
+            "Alcohol",
+            SubstancePhase.Vapor,
+            () => new Alcohol(true));
 
-        Add("HP", "Hydrogen peroxide", SubstancePhase.Liquid, () => new HydrohenPeroxyde(false));
-        Add("HPS", "Hydrogen peroxide", SubstancePhase.Vapor, () => new HydrohenPeroxyde(true));
+        // TechDotNet Acetaldehyde.GetDensity/GetCapacity возвращают 0.
+        // Поэтому ACA разрешён только для реально реализованной Content-системы.
+        Add(
+            "ACA",
+            "Acetaldehyde",
+            SubstancePhase.Liquid,
+            () => new Acetaldehyde(false),
+            ContentOnly);
 
-        Add("N", "Nitrogen", SubstancePhase.Vapor, () => new Nitrogen());
-        Add("O2", "Oxygen", SubstancePhase.Vapor, () => new Oxygen());
+        // Для vapor Acetaldehyde в эталоне нет рабочего
+        // Density / Capacity / Content расчёта.
+        Add(
+            "ACAS",
+            "Acetaldehyde",
+            SubstancePhase.Vapor,
+            () => new Acetaldehyde(true),
+            SubstancePropertySupport.None);
 
-        Add("P", "Propylene", SubstancePhase.Liquid, () => new Propylene(false), DefaultPropertySupport | SubstancePropertySupport.Content);
-        Add("PS", "Propylene", SubstancePhase.Vapor, () => new Propylene(true));
+        Add(
+            "ACN",
+            "Acetonitrile",
+            SubstancePhase.Liquid,
+            () => new Acetonitrile(false),
+            DefaultPropertySupport |
+            SubstancePropertySupport.Content);
 
-        Add("PO", "Propylene oxide", SubstancePhase.Liquid, () => new PropyleneOxyde(false), DefaultPropertySupport | SubstancePropertySupport.Content);
-        Add("POS", "Propylene oxide", SubstancePhase.Vapor, () => new PropyleneOxyde(true));
+        Add(
+            "ACNS",
+            "Acetonitrile",
+            SubstancePhase.Vapor,
+            () => new Acetonitrile(true));
 
-        Add("Water", "Water", SubstancePhase.Liquid, () => new Water(false), DefaultPropertySupport | SubstancePropertySupport.Content);
-        Add("WaterS", "Water", SubstancePhase.Vapor, () => new Water(true));
+        Add(
+            "HP",
+            "Hydrogen peroxide",
+            SubstancePhase.Liquid,
+            () => new HydrohenPeroxyde(false));
 
-        Add("DryMatter", "Dry matter", SubstancePhase.Liquid, () => new DryMatter(), SubstancePropertySupport.Density | SubstancePropertySupport.SpecificHeatCapacity);
+        Add(
+            "HPS",
+            "Hydrogen peroxide",
+            SubstancePhase.Vapor,
+            () => new HydrohenPeroxyde(true));
 
-        Add("Butadiene_1_2", "1,2-Butadiene", SubstancePhase.Liquid, () => new Butadiene_1_2(false));
-        Add("Butadiene_1_2S", "1,2-Butadiene", SubstancePhase.Vapor, () => new Butadiene_1_2(true));
+        Add(
+            "N",
+            "Nitrogen",
+            SubstancePhase.Vapor,
+            () => new Nitrogen());
 
-        Add("Butadiene_1_3", "1,3-Butadiene", SubstancePhase.Liquid, () => new Butadiene_1_3(false));
-        Add("Butadiene_1_3S", "1,3-Butadiene", SubstancePhase.Vapor, () => new Butadiene_1_3(true));
+        Add(
+            "O2",
+            "Oxygen",
+            SubstancePhase.Vapor,
+            () => new Oxygen());
 
-        Add("Butene_1", "1-Butene", SubstancePhase.Liquid, () => new Butene_1(false));
-        Add("Butene_1S", "1-Butene", SubstancePhase.Vapor, () => new Butene_1(true));
+        Add(
+            "P",
+            "Propylene",
+            SubstancePhase.Liquid,
+            () => new Propylene(false),
+            DefaultPropertySupport |
+            SubstancePropertySupport.Content);
 
-        Add("Cis-2-Butene", "cis-2-Butene", SubstancePhase.Liquid, () => new Cis_2_Butene(false));
-        Add("Cis-2-ButeneS", "cis-2-Butene", SubstancePhase.Vapor, () => new Cis_2_Butene(true));
+        Add(
+            "PS",
+            "Propylene",
+            SubstancePhase.Vapor,
+            () => new Propylene(true));
 
-        Add("Ethane", "Ethane", SubstancePhase.Liquid, () => new Ethane(false));
-        Add("EthaneS", "Ethane", SubstancePhase.Vapor, () => new Ethane(true));
+        Add(
+            "PO",
+            "Propylene oxide",
+            SubstancePhase.Liquid,
+            () => new PropyleneOxyde(false),
+            DefaultPropertySupport |
+            SubstancePropertySupport.Content);
 
-        Add("Ethylene", "Ethylene", SubstancePhase.Liquid, () => new Ethylene(false));
-        Add("EthyleneS", "Ethylene", SubstancePhase.Vapor, () => new Ethylene(true));
+        Add(
+            "POS",
+            "Propylene oxide",
+            SubstancePhase.Vapor,
+            () => new PropyleneOxyde(true));
 
-        Add("Isobutane", "Isobutane", SubstancePhase.Liquid, () => new Isobutane(false));
-        Add("IsobutaneS", "Isobutane", SubstancePhase.Vapor, () => new Isobutane(true));
+        Add(
+            "Water",
+            "Water",
+            SubstancePhase.Liquid,
+            () => new Water(false),
+            DefaultPropertySupport |
+            SubstancePropertySupport.Content);
 
-        Add("Methyl-Acetylene", "Methyl acetylene", SubstancePhase.Liquid, () => new Methyl_Acetylene(false));
-        Add("Methyl-AcetyleneS", "Methyl acetylene", SubstancePhase.Vapor, () => new Methyl_Acetylene(true));
+        Add(
+            "WaterS",
+            "Water",
+            SubstancePhase.Vapor,
+            () => new Water(true));
 
-        Add("n-Butane", "n-Butane", SubstancePhase.Liquid, () => new N_Butane(false));
-        Add("n-ButaneS", "n-Butane", SubstancePhase.Vapor, () => new N_Butane(true));
+        Add(
+            "DryMatter",
+            "Dry matter",
+            SubstancePhase.Liquid,
+            () => new DryMatter(),
+            SubstancePropertySupport.Density |
+            SubstancePropertySupport.SpecificHeatCapacity);
 
-        Add("n-Pentane", "n-Pentane", SubstancePhase.Liquid, () => new N_Pentane(false));
-        Add("n-PentaneS", "n-Pentane", SubstancePhase.Vapor, () => new N_Pentane(true));
+        // ------------------------------------------------------------
+        // C4 / hydrocarbon legacy models
+        // ------------------------------------------------------------
 
-        Add("Propadiene", "Propadiene", SubstancePhase.Liquid, () => new Propadiene(false));
-        Add("PropadieneS", "Propadiene", SubstancePhase.Vapor, () => new Propadiene(true));
+        Add(
+            "Butadiene_1_2",
+            "1,2-Butadiene",
+            SubstancePhase.Liquid,
+            () => new Butadiene_1_2(false));
 
-        Add("Pr", "Propane", SubstancePhase.Liquid, () => new Propane(false));
-        Add("PrS", "Propane", SubstancePhase.Vapor, () => new Propane(true));
+        Add(
+            "Butadiene_1_2S",
+            "1,2-Butadiene",
+            SubstancePhase.Vapor,
+            () => new Butadiene_1_2(true),
+            DensityOnly);
 
-        Add("Trans-2-Butene", "trans-2-Butene", SubstancePhase.Liquid, () => new Trans_2_Butene(false));
-        Add("Trans-2-ButeneS", "trans-2-Butene", SubstancePhase.Vapor, () => new Trans_2_Butene(true));
+        Add(
+            "Butadiene_1_3",
+            "1,3-Butadiene",
+            SubstancePhase.Liquid,
+            () => new Butadiene_1_3(false));
 
-        Add("Vinylacetylene", "Vinylacetylene", SubstancePhase.Liquid, () => new Vinylacetylene(false));
-        Add("VinylacetyleneS", "Vinylacetylene", SubstancePhase.Vapor, () => new Vinylacetylene(true));
+        Add(
+            "Butadiene_1_3S",
+            "1,3-Butadiene",
+            SubstancePhase.Vapor,
+            () => new Butadiene_1_3(true),
+            DensityOnly);
 
-        Add("Freezium", "Freezium", SubstancePhase.Liquid, () => new Freezium(false));
-        Add("Ethanol", "Ethanol", SubstancePhase.Liquid, () => new Ethanol(false));
-        Add("Addition", "Addition (legacy Ethanol model)", SubstancePhase.Liquid, () => new Ethanol(false));
-        Add("Diesel", "Diesel", SubstancePhase.Liquid, () => new Diesel(false));
+        Add(
+            "Butene_1",
+            "1-Butene",
+            SubstancePhase.Liquid,
+            () => new Butene_1(false));
 
-        Add("NaOH", "Sodium hydroxide", SubstancePhase.Liquid, () => new NaOH(false));
-        Add("NaOHS", "Sodium hydroxide", SubstancePhase.Vapor, () => new NaOH(true));
+        Add(
+            "Butene_1S",
+            "1-Butene",
+            SubstancePhase.Vapor,
+            () => new Butene_1(true),
+            DensityOnly);
 
-        Add("HCL", "Hydrochloric acid", SubstancePhase.Liquid, () => new HCL(false));
-        Add("HCLS", "Hydrochloric acid", SubstancePhase.Vapor, () => new HCL(true));
+        Add(
+            "Cis-2-Butene",
+            "cis-2-Butene",
+            SubstancePhase.Liquid,
+            () => new Cis_2_Butene(false));
 
-        // Methan Capacity использует собственный legacy temperature contract (K), а Fusel.GetCapacity возвращает legacy sentinel -1.
-        // Density пока оставляем доступной для обратной совместимости существующего
-        // Density ядра и regression-тестов. Capacity Definition эти два вещества больше не показывает и Calculation Core их явно отклоняет.
-        Add("Methan", "Methane (legacy native K/Pa model)", SubstancePhase.Vapor, () => new Methan(true), SubstancePropertySupport.Density);
-        Add("Fusel", "Fusel oil (legacy native K/Pa model)", SubstancePhase.Liquid, () => new Fusel(false), SubstancePropertySupport.Density);
+        Add(
+            "Cis-2-ButeneS",
+            "cis-2-Butene",
+            SubstancePhase.Vapor,
+            () => new Cis_2_Butene(true),
+            DensityOnly);
+
+        Add(
+            "Ethane",
+            "Ethane",
+            SubstancePhase.Liquid,
+            () => new Ethane(false));
+
+        Add(
+            "EthaneS",
+            "Ethane",
+            SubstancePhase.Vapor,
+            () => new Ethane(true),
+            DensityOnly);
+
+        Add(
+            "Ethylene",
+            "Ethylene",
+            SubstancePhase.Liquid,
+            () => new Ethylene(false));
+
+        Add(
+            "EthyleneS",
+            "Ethylene",
+            SubstancePhase.Vapor,
+            () => new Ethylene(true),
+            DensityOnly);
+
+        Add(
+            "Isobutane",
+            "Isobutane",
+            SubstancePhase.Liquid,
+            () => new Isobutane(false));
+
+        Add(
+            "IsobutaneS",
+            "Isobutane",
+            SubstancePhase.Vapor,
+            () => new Isobutane(true),
+            DensityOnly);
+
+        Add(
+            "Methyl-Acetylene",
+            "Methyl acetylene",
+            SubstancePhase.Liquid,
+            () => new Methyl_Acetylene(false));
+
+        Add(
+            "Methyl-AcetyleneS",
+            "Methyl acetylene",
+            SubstancePhase.Vapor,
+            () => new Methyl_Acetylene(true),
+            DensityOnly);
+
+        Add(
+            "n-Butane",
+            "n-Butane",
+            SubstancePhase.Liquid,
+            () => new N_Butane(false));
+
+        Add(
+            "n-ButaneS",
+            "n-Butane",
+            SubstancePhase.Vapor,
+            () => new N_Butane(true),
+            DensityOnly);
+
+        Add(
+            "n-Pentane",
+            "n-Pentane",
+            SubstancePhase.Liquid,
+            () => new N_Pentane(false));
+
+        Add(
+            "n-PentaneS",
+            "n-Pentane",
+            SubstancePhase.Vapor,
+            () => new N_Pentane(true),
+            DensityOnly);
+
+        Add(
+            "Propadiene",
+            "Propadiene",
+            SubstancePhase.Liquid,
+            () => new Propadiene(false));
+
+        Add(
+            "PropadieneS",
+            "Propadiene",
+            SubstancePhase.Vapor,
+            () => new Propadiene(true),
+            DensityOnly);
+
+        Add(
+            "Pr",
+            "Propane",
+            SubstancePhase.Liquid,
+            () => new Propane(false));
+
+        Add(
+            "PrS",
+            "Propane",
+            SubstancePhase.Vapor,
+            () => new Propane(true),
+            DensityOnly);
+
+        Add(
+            "Trans-2-Butene",
+            "trans-2-Butene",
+            SubstancePhase.Liquid,
+            () => new Trans_2_Butene(false));
+
+        Add(
+            "Trans-2-ButeneS",
+            "trans-2-Butene",
+            SubstancePhase.Vapor,
+            () => new Trans_2_Butene(true),
+            DensityOnly);
+
+        Add(
+            "Vinylacetylene",
+            "Vinylacetylene",
+            SubstancePhase.Liquid,
+            () => new Vinylacetylene(false));
+
+        Add(
+            "VinylacetyleneS",
+            "Vinylacetylene",
+            SubstancePhase.Vapor,
+            () => new Vinylacetylene(true),
+            DensityOnly);
+
+        // ------------------------------------------------------------
+        // Остальные legacy-модели
+        // ------------------------------------------------------------
+
+        Add(
+            "Freezium",
+            "Freezium",
+            SubstancePhase.Liquid,
+            () => new Freezium(false));
+
+        Add(
+            "Ethanol",
+            "Ethanol",
+            SubstancePhase.Liquid,
+            () => new Ethanol(false));
+
+        Add(
+            "Addition",
+            "Addition (legacy Ethanol model)",
+            SubstancePhase.Liquid,
+            () => new Ethanol(false));
+
+        Add(
+            "Diesel",
+            "Diesel",
+            SubstancePhase.Liquid,
+            () => new Diesel(false));
+
+        Add(
+            "NaOH",
+            "Sodium hydroxide",
+            SubstancePhase.Liquid,
+            () => new NaOH(false));
+
+        Add(
+            "NaOHS",
+            "Sodium hydroxide",
+            SubstancePhase.Vapor,
+            () => new NaOH(true));
+
+        Add(
+            "HCL",
+            "Hydrochloric acid",
+            SubstancePhase.Liquid,
+            () => new HCL(false));
+
+        Add(
+            "HCLS",
+            "Hydrochloric acid",
+            SubstancePhase.Vapor,
+            () => new HCL(true));
+
+        // Methan и Fusel используют внутри оригинальных TechDotNet
+        // Density-формул собственный native contract K / Pa.
+        //
+        // Нормализованный TechMES contract остаётся:
+        //
+        //     Temperature = °C
+        //     Pressure    = bar(abs)
+        //
+        // Адаптация выполняется внутри соответствующих моделей,
+        // поэтому для Density эти вещества полностью разрешены.
+        //
+        // Capacity для Methan не включаем: legacy Capacity имеет
+        // собственный K-contract и сейчас не входит в нормализованный
+        // Production Capacity.
+        //
+        // Capacity для Fusel не включаем: legacy GetCapacity возвращает -1.
+        Add(
+            "Methan",
+            "Methane",
+            SubstancePhase.Vapor,
+            () => new Methan(true),
+            DensityOnly);
+
+        Add(
+            "Fusel",
+            "Fusel oil",
+            SubstancePhase.Liquid,
+            () => new Fusel(false),
+            DensityOnly);
 
         return result;
     }

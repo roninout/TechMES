@@ -37,15 +37,39 @@ public sealed class DensityCapacityDefinitionTests
     public void CapacityComponentOptionsExposeOnlySupportedHeatCapacityModels()
     {
         var definition = new CapacityCalculationDefinition();
-
         var componentParameter = definition.Parameters.Single(parameter => string.Equals(parameter.Key, "component0Code", StringComparison.OrdinalIgnoreCase));
         var options = componentParameter.Options!;
 
+        Assert.Equal(37, options.Count);
         Assert.Contains(options, option => string.Equals(option.Value, "ACN", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(options, option => string.Equals(option.Value, "DryMatter", StringComparison.OrdinalIgnoreCase));
 
-        Assert.DoesNotContain(options, option => string.Equals(option.Value, "Fusel", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(options, option => string.Equals(option.Value, "Methan", StringComparison.OrdinalIgnoreCase));
+        string[] unsupportedCodes =
+        [
+            "ACA",
+            "ACAS",
+
+            "Butadiene_1_2S",
+            "Butadiene_1_3S",
+            "Butene_1S",
+            "Cis-2-ButeneS",
+            "EthaneS",
+            "EthyleneS",
+            "IsobutaneS",
+            "Methyl-AcetyleneS",
+            "n-ButaneS",
+            "n-PentaneS",
+            "PropadieneS",
+            "PrS",
+            "Trans-2-ButeneS",
+            "VinylacetyleneS",
+
+            "Methan",
+            "Fusel"
+        ];
+
+        foreach (var code in unsupportedCodes)
+            Assert.DoesNotContain(options, option => string.Equals(option.Value, code, StringComparison.OrdinalIgnoreCase));
 
         var acn = options.Single(option => string.Equals(option.Value, "ACN", StringComparison.OrdinalIgnoreCase));
         var acnVapor = options.Single(option => string.Equals(option.Value, "ACNS", StringComparison.OrdinalIgnoreCase));
@@ -448,5 +472,21 @@ public sealed class DensityCapacityDefinitionTests
     {
         return result.Outputs.Single(item =>
             string.Equals(item.Key, key, StringComparison.OrdinalIgnoreCase)).Value;
+    }
+
+    [Fact]
+    public void DensityComponentOptionsExposeOnlySupportedDensityModels()
+    {
+        var definition = new DensityCalculationDefinition();
+        var componentParameter = definition.Parameters.Single(parameter => string.Equals(parameter.Key, "component0Code", StringComparison.OrdinalIgnoreCase));
+        var options = componentParameter.Options!;
+
+        Assert.Equal(53, options.Count);
+        // Acetaldehyde Density в TechDotNet является заглушкой 0, поэтому эти коды больше не должны появляться в Density.
+        Assert.DoesNotContain(options, option => string.Equals(option.Value, "ACA", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(options, option => string.Equals(option.Value, "ACAS", StringComparison.OrdinalIgnoreCase));
+        // Methan / Fusel остаются доступными: их native K / Pa contract адаптируется внутри модели.
+        Assert.Contains(options, option => string.Equals(option.Value, "Methan", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(options, option => string.Equals(option.Value, "Fusel",StringComparison.OrdinalIgnoreCase));
     }
 }

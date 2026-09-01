@@ -82,12 +82,6 @@ namespace TechMES.Calc.Substances.Components
 
             if (!this.isSteam) // ---- Liquid ----
             { 
-                //y = a2*x^2 + a1*x + a0
-                //a0 = 2.1864307;
-                //a1 = 0.0015649999;
-                //a2 = 0.0000083021163;
-
-                //y = a0 + a1 * x + a2 * x^2
                 a0 = 2.2891429;
                 a1 = 0.0095564286;
                 a2 = 0.000026964286;
@@ -108,26 +102,6 @@ namespace TechMES.Calc.Substances.Components
                 capacity = a5 * Math.Pow(temperature, 5) + a4 * Math.Pow(temperature, 4) + a3 * Math.Pow(temperature, 3) + a2 * Math.Pow(temperature, 2) + a1 * temperature + a0;
                 return capacity;
             }
-
-            //capacity = a5 * Math.Pow(temperature, 5) + a4 * Math.Pow(temperature, 4) + a3 * Math.Pow(temperature, 3) + a2 * Math.Pow(temperature, 2) + a1 * temperature + a0;
-            //return capacity;
-        }
-
-        //Расчет давления насыщенного пара при заданной температуре, бар, абс.
-        private double GetPressure(double temperature)
-        {
-            //y = a5*x^5 + a4*x^4 + a3*x^3 + a2*x^2 + a1*x + a0
-
-            double a0 = 0.036484162;
-            double a1 = 0.0013598701;
-            double a2 = 0.000067036419;
-            double a3 = 0.000000064375591;
-            double a4 = 8.6595042E-09;
-            double a5 = 0.0;
-
-            double pressureSaturation = a5 * Math.Pow(temperature, 5) + a4 * Math.Pow(temperature, 4) + a3 * Math.Pow(temperature, 3) + a2 * Math.Pow(temperature, 2) + a1 * temperature + a0;
-            
-            return pressureSaturation;
         }
 
         /// <summary>

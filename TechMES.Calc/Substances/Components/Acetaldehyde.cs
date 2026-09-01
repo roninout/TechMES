@@ -9,7 +9,6 @@ internal class Acetaldehyde : LegacySubstance, IContentSubstanceModel
     #region fields & props
 
     private const double molarMass = 44.0;
-
     public override double MolarMass => molarMass;
     public override bool IsSteam => isSteam;
 

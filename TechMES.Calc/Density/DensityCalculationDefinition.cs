@@ -2,6 +2,7 @@ using TechMES.Calc.Constants;
 using TechMES.Calc.Mixtures;
 using TechMES.Calc.Parameters;
 using TechMES.Calc.Results;
+using TechMES.Calc.Substances;
 
 namespace TechMES.Calc.Density;
 
@@ -98,7 +99,7 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
             Role: CalculationParameterRole.Configuration)
     ];
 
-    private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions = CreateMixtureParameters(PropertyParameterDefinitions);
+    private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions = CreateMixtureParameters(PropertyParameterDefinitions, SubstancePropertySupport.Density);
 
     private static readonly IReadOnlyList<CalculationOutputDefinition> OutputDefinitions =
     [
@@ -135,12 +136,12 @@ public sealed class DensityCalculationDefinition : MixtureCalculationDefinitionB
     public override string Name => "Mixture density";
     public override string Category => "Density";
 
-    // Version 3:
-    // - CompN/Perc/DeltaD поступают из SCADA;
-    // - Pressure ProcessInput хранит gauge pressure;
-    // - absolute pressure формируется внутри Density так же, как в TechParamsCalc;
-    // - отсутствующий Pressure означает 0 bar(g).
-    public override string Version => "3";
+    // Version 4:
+    // - Density options фильтруются по SubstancePropertySupport.Density;
+    // - ACA / ACAS с отсутствующей legacy Density больше не предлагаются;
+    // - Methan / Fusel используют нормализованный TechMES contract °C / bar(abs)
+    //   с внутренней адаптацией в native TechDotNet K / Pa.
+    public override string Version => "4";
 
     public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
     public override IReadOnlyList<CalculationOutputDefinition> Outputs => OutputDefinitions;

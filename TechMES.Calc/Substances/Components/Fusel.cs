@@ -54,6 +54,32 @@ namespace TechMES.Calc.Substances.Components
             return density;
         }
 
+        /// <summary>
+        /// Адаптер нормализованного TechMES Density contract
+        /// к исходному native contract Fusel из TechDotNetLib.
+        ///
+        /// Внешний TechMES contract:
+        ///     temperature = °C
+        ///     pressure    = bar(abs)
+        ///
+        /// Исходная Fusel.GetDensity ожидает:
+        ///     temperature = K
+        ///     pressure    = Pa
+        ///
+        /// Сам legacy GetDensity(float temperature, float pressure)
+        /// выше намеренно не изменяется.
+        /// </summary>
+        public override double GetDensity(float temperature, float pressure, IReadOnlyDictionary<string, double>? additionalParameters)
+        {
+            const float celsiusToKelvinOffset = 273.15f;
+            const float pascalsPerBar = 100_000f;
+
+            var temperatureKelvin = temperature + celsiusToKelvinOffset;
+            var pressurePa = pressure * pascalsPerBar;
+
+            return GetDensity(temperatureKelvin, pressurePa);
+        }
+
         //Метод для определения теплоемкости вещества при 100% концентрации, кДж/кг/грК       
         public override double GetCapacity(float temperature)
         {
