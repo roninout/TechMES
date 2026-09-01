@@ -573,7 +573,28 @@
                         @* ==================================================
                            CONTENT SYSTEM
 
-                           Пока это последний элемент Settings.
+                           Content имеет фиксированную SCADA-структуру:
+
+                               Sel
+
+                               Param0
+                               Param0_Dp
+                               Param0_Dt
+
+                               ...
+
+                               Param4
+                               Param4_Dp
+                               Param4_Dt
+
+                           Sel = индекс выбранного компонента:
+
+                               0 -> Param0
+                               1 -> Param1
+                               ...
+                               4 -> Param4
+
+                           Все Param* в Settings только ReadOnly.
                            ================================================== *@
                         <section class="content-system-settings">
 
@@ -592,6 +613,9 @@
                             </div>
 
 
+                            @* ==================================================
+                               SYSTEM + CONFIGURATION CODE
+                               ================================================== *@
                             <div class="content-system-row">
 
                                 <div class="content-system-icon">
@@ -610,13 +634,157 @@
                                                 class="content-system-dropdown" />
 
 
-                                <div class="content-system-name">
-                                    @Definition.Name
+                                <RadzenFormField AllowFloatingLabel="false"
+                                                 Text="code"
+                                                 Variant="Variant.Outlined"
+                                                 class="content-code-field">
+
+                                    <RadzenNumeric TValue="int?"
+                                                   @bind-Value="_configurationCode"
+                                                   ShowUpDown="true"
+                                                   Disabled="@_isSaving"
+                                                   class="content-code-value" />
+
+                                </RadzenFormField>
+
+                            </div>
+
+
+                            @* ==================================================
+                               FIXED CONTENT COMPONENTS
+                               ================================================== *@
+                            @if (Definition is not null)
+                            {
+                                var outputs = Definition.Outputs
+                                    .OrderBy(output => output.Order)
+                                    .Take(MaxContentItemCount)
+                                    .ToList();
+
+                                @for (var index = 0; index < outputs.Count; index++)
+                                {
+                                    var output = outputs[index];
+                                    var selected = SelectedContentItemIndex == index;
+
+                                    <div class="content-component-row @(selected ? "is-selected" : "")">
+
+                                        <div class="content-component-selected">
+
+                                            @if (selected)
+                                            {
+                                                <RadzenIcon Icon="check"
+                                                            class="content-component-selected-icon" />
+                                            }
+
+                                        </div>
+
+
+                                        <div class="content-settings-index">
+                                            @(index + 1)
+                                        </div>
+
+
+                                        <div class="content-component-name">
+                                            @GetContentComponentCaption(output)
+                                        </div>
+
+
+                                        @* По твоему legacy-контракту: dP отображает ParamN_Dt. *@
+                                        <RadzenFormField AllowFloatingLabel="false"
+                                                         Text="dP"
+                                                         Variant="Variant.Outlined"
+                                                         class="content-component-delta-field">
+
+                                            <RadzenNumeric TValue="double?"
+                                                           Value="@GetContentDp(index)"
+                                                           ReadOnly="true"
+                                                           ShowUpDown="false"
+                                                           Format="0.###' bar'"
+                                                           class="content-component-delta-value" />
+
+                                        </RadzenFormField>
+
+
+                                        @* По твоему legacy-контракту: dT отображает ParamN_Dp. *@
+                                        <RadzenFormField AllowFloatingLabel="false"
+                                                         Text="dT"
+                                                         Variant="Variant.Outlined"
+                                                         class="content-component-delta-field">
+
+                                            <RadzenNumeric TValue="double?"
+                                                           Value="@GetContentDt(index)"
+                                                           ReadOnly="true"
+                                                           ShowUpDown="false"
+                                                           Format="0.###' °C'"
+                                                           class="content-component-delta-value" />
+
+                                        </RadzenFormField>
+
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@GetContentParam(index)"
+                                                       Disabled="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###' %'"
+                                                       class="content-component-percent" />
+
+                                    </div>
+                                }
+                            }
+
+                        </section>
+
+
+                        <div class="content-settings-separator"></div>
+
+
+                        @* ==================================================
+                           OUTPUT WRITES
+                           Полностью повторяем визуальный стиль Capacity.
+                           ================================================== *@
+                        <div class="content-write-settings">
+
+                            <div>
+
+                                <div class="content-write-title">
+                                    Allow output writes
+                                </div>
+
+                                <div class="content-write-description">
+                                    Write calculated Content to SCADA ValCalc
                                 </div>
 
                             </div>
 
-                        </section>
+
+                            <div class="content-write-switch">
+
+                                <span class="content-switch-state @GetSwitchStateClass(_allowOutputWrites)">
+                                    @GetSwitchStateText(_allowOutputWrites)
+                                </span>
+
+                                <RadzenSwitch @bind-Value="_allowOutputWrites"
+                                              Disabled="@(_isSaving ||
+                                                                  (!_allowOutputWrites &&
+                                                                   (!IsBaseConfigurationReady ||
+                                                                    !IsFixedOutputBindingReady)))" />
+
+                            </div>
+
+                        </div>
+
+
+                        @if (!IsFixedOutputBindingReady)
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Danger"
+                                         AllowClose="false"
+                                         ShowIcon="true"
+                                         class="content-settings-warning">
+
+                                Content Equipment does not contain a valid ValCalc / Sel output structure.
+                                Output writes cannot be enabled.
+
+                            </RadzenAlert>
+                        }
 
 
                     </div>
@@ -682,7 +850,6 @@
 
     private readonly List<CalcDefinitionDto> _contentDefinitions = [];
     private readonly List<ContentProcessBindingEditor> _processBindings = [];
-    private readonly List<ContentOutputBindingEditor> _outputBindings = [];
 
     // ============================================================
     // Live SCADA state
@@ -772,6 +939,78 @@
     private string? ContentCalcTag => GetItemTag(Model, "ValCalc");
     private string? ContentSelTag => GetItemTag(Model, "Sel");
 
+    private const int MaxContentItemCount = 5;
+
+    private string? GetContentParamTag(int index)
+    {
+        return GetItemTag(Model, $"Param{index}");
+    }
+
+    private string? GetContentParamDpTag(int index)
+    {
+        return GetItemTag(Model, $"Param{index}_Dp");
+    }
+
+    private string? GetContentParamDtTag(int index)
+    {
+        return GetItemTag(Model, $"Param{index}_Dt");
+    }
+
+    /// <summary>
+    /// Sel у Content — индекс выбранного компонента.
+    ///
+    ///     0 -> Param0
+    ///     1 -> Param1
+    ///     ...
+    ///     4 -> Param4
+    ///
+    /// Sel является read-only SCADA ITEM.
+    /// </summary>
+    private int? SelectedContentItemIndex
+    {
+        get
+        {
+            var value = GetLiveScadaValue("Sel");
+
+            if (!value.HasValue || !double.IsFinite(value.Value))
+                return null;
+
+            var index = (int)Math.Round(value.Value);
+
+            // Sel должен быть именно целым индексом.
+            if (Math.Abs(value.Value - index) > 0.001d)
+                return null;
+
+            return index is >= 0 and < MaxContentItemCount
+                ? index
+                : null;
+        }
+    }
+
+    private double? GetContentParam(int index)
+    {
+        return GetLiveScadaValue($"Param{index}");
+    }
+
+    /// <summary>
+    /// В legacy Content название ITEM исторически обратное
+    /// отображаемому назначению поля:
+    ///
+    ///     UI dP -> ParamN_Dt
+    ///     UI dT -> ParamN_Dp
+    ///
+    /// Не менять местами без изменения SCADA Equipment Type.
+    /// </summary>
+    private double? GetContentDp(int index)
+    {
+        return GetLiveScadaValue($"Param{index}_Dt");
+    }
+
+    private double? GetContentDt(int index)
+    {
+        return GetLiveScadaValue($"Param{index}_Dp");
+    }
+
     // ============================================================
     // Configuration readiness
     //
@@ -783,14 +1022,9 @@
 
     private bool IsProcessBindingsReady => _processBindings.Count > 0 && _processBindings.All(binding => binding.IsLinked);
 
-    private bool HasMappedOutput => _outputBindings.Any(output => !string.IsNullOrWhiteSpace(output.TargetTagName));
+    private bool IsBaseConfigurationReady => Definition is not null && IsProcessBindingsReady && _configurationCode.HasValue;
 
-    private bool IsConfigurationReady =>
-        Definition is not null
-        && IsProcessBindingsReady
-        && _configurationCode.HasValue
-        && string.IsNullOrWhiteSpace(OutputMappingError)
-        && (!_allowOutputWrites || HasMappedOutput);
+    private bool IsConfigurationReady => IsBaseConfigurationReady && (!_allowOutputWrites || IsFixedOutputBindingReady);
 
     private bool HasDefinitionVersionChange =>
         Job is not null
@@ -930,7 +1164,6 @@
         _configurationCode = ReadStoredConfigurationCode();
 
         BuildProcessBindings();
-        BuildOutputBindings(restoreSavedMappings: true);
 
         return true;
     }
@@ -969,10 +1202,6 @@
             binding.CheckState = previous.CheckState;
             binding.MaxAgeSeconds = previous.MaxAgeSeconds;
         }
-
-        var restoreSavedMappings = Job is not null && string.Equals(Job.DefinitionCode, Definition.Code, StringComparison.OrdinalIgnoreCase);
-
-        BuildOutputBindings(restoreSavedMappings);
     }
 
     // ============================================================
@@ -1089,68 +1318,6 @@
     }
 
     // ============================================================
-    // Outputs
-    // ============================================================
-
-    private void BuildOutputBindings(bool restoreSavedMappings)
-    {
-        _outputBindings.Clear();
-
-        if (Definition is null)
-            return;
-
-        foreach (var output in Definition.Outputs.OrderBy(output => output.Order))
-        {
-            string? targetTag = null;
-
-            if (restoreSavedMappings)
-                targetTag = Job?.Outputs.FirstOrDefault(item => string.Equals(item.OutputKey, output.Key, StringComparison.OrdinalIgnoreCase))?.TagName;
-
-            _outputBindings.Add(new ContentOutputBindingEditor
-            {
-                Output = output,
-                TargetTagName = targetTag?.Trim() ?? ""
-            });
-        }
-    }
-
-    /// <summary>
-    /// Показываем реальные ITEM -> TAG текущего Content Equipment.
-    ///
-    /// Никаких предположений вида "Water всегда ValCalc" здесь нет.
-    /// </summary>
-    private IReadOnlyList<ContentOutputTargetOption> GetOutputTargetOptions(ContentOutputBindingEditor editor)
-    {
-        var result = Model.ItemTags
-            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
-            .Select(pair => new ContentOutputTargetOption(pair.Key, pair.Value, $"{pair.Key}  →  {pair.Value}"))
-            .OrderBy(item => item.ItemName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (!string.IsNullOrWhiteSpace(editor.TargetTagName) && !result.Any(item => string.Equals(item.TagName, editor.TargetTagName, StringComparison.OrdinalIgnoreCase)))
-            result.Add(new ContentOutputTargetOption("Saved", editor.TargetTagName, $"Saved tag  →  {editor.TargetTagName}"));
-
-        return result;
-    }
-
-    private string OutputMappingError
-    {
-        get
-        {
-            var mappedTags = _outputBindings
-                .Select(output => output.TargetTagName?.Trim() ?? "")
-                .Where(tag => tag.Length > 0)
-                .ToArray();
-
-            var duplicate = mappedTags
-                .GroupBy(tag => tag, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault(group => group.Count() > 1);
-
-            return duplicate is null ? "" : $"SCADA tag '{duplicate.Key}' is mapped to more than one Content output.";
-        }
-    }
-
-    // ============================================================
     // Save
     // ============================================================
 
@@ -1163,7 +1330,7 @@
 
         try
         {
-            var allowWrites = _allowOutputWrites && HasMappedOutput;
+            var allowWrites = _allowOutputWrites && IsFixedOutputBindingReady;
 
             var request = new CalcJobSaveRequest
             {
@@ -1206,7 +1373,7 @@
 
         try
         {
-            var allowWrites = _allowOutputWrites && HasMappedOutput;
+            var allowWrites = _allowOutputWrites && IsFixedOutputBindingReady;
 
             var request = new CalcJobSaveRequest
             {
@@ -1275,19 +1442,23 @@
 
     private List<CalcJobOutputSaveDto> BuildContentOutputs(bool allowWrites)
     {
-        return _outputBindings
-            .Where(editor => !string.IsNullOrWhiteSpace(editor.TargetTagName))
-            .Select(editor => new CalcJobOutputSaveDto
-            {
-                OutputKey = editor.Output.Key,
-                TagName = editor.TargetTagName.Trim(),
-                WriteEnabled = allowWrites,
-                Scale = 1d,
-                Offset = 0d,
-                SortOrder = editor.Output.Order
-            })
-            .OrderBy(output => output.SortOrder)
-            .ToList();
+        var output = SelectedContentOutput;
+
+        if (output is null || string.IsNullOrWhiteSpace(ContentCalcTag))
+            return [];
+
+        return
+        [
+            new CalcJobOutputSaveDto
+        {
+            OutputKey = output.Key,
+            TagName = ContentCalcTag,
+            WriteEnabled = allowWrites,
+            Scale = 1d,
+            Offset = 0d,
+            SortOrder = output.Order
+        }
+        ];
     }
 
     // ============================================================
@@ -1297,18 +1468,18 @@
     private string BuildEditorSignature()
     {
         var parts = new List<string>
-        {
-            $"definition={_definitionCode}",
-            $"enabled={_enabled}",
-            $"writes={_allowOutputWrites}",
-            $"configuration={_configurationCode?.ToString(CultureInfo.InvariantCulture) ?? ""}"
-        };
+    {
+        $"definition={_definitionCode}",
+        $"enabled={_enabled}",
+        $"writes={_allowOutputWrites}",
+        $"configuration={_configurationCode?.ToString(CultureInfo.InvariantCulture) ?? ""}"
+    };
 
         foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
-            parts.Add($"input:{binding.Parameter.Key}={binding.SourceText.Trim()}");
-
-        foreach (var output in _outputBindings.OrderBy(output => output.Output.Order))
-            parts.Add($"output:{output.Output.Key}={output.TargetTagName?.Trim() ?? ""}");
+        {
+            parts.Add(
+                $"input:{binding.Parameter.Key}={binding.SourceText.Trim()}");
+        }
 
         return string.Join("|", parts);
     }
@@ -1366,6 +1537,29 @@
             : null;
     }
 
+    private static string GetContentComponentCaption(CalcOutputDefinitionDto output)
+    {
+        var name = output.Name?.Trim() ?? output.Key;
+
+        const string contentSuffix = " content";
+
+        if (name.EndsWith(contentSuffix, StringComparison.OrdinalIgnoreCase))
+            name = name[..^contentSuffix.Length];
+
+        var code = output.Key;
+
+        const string percentSuffix = "Percent";
+
+        if (code.EndsWith(percentSuffix, StringComparison.OrdinalIgnoreCase))
+            code = code[..^percentSuffix.Length];
+
+        code = code.Equals("water", StringComparison.OrdinalIgnoreCase)
+            ? "Water"
+            : code.ToUpperInvariant();
+
+        return $"{code} — {name} (liquid)";
+    }
+
     // ============================================================
     // Main Content values
     // ============================================================
@@ -1396,37 +1590,52 @@
     }
 
     /// <summary>
-    /// Возвращает output key, соответствующий ValCalc.
+    /// Возвращает Content output, соответствующий ITEM ValCalc.
     ///
-    /// Сначала используем сохранённый Job.
+    /// Для уже сохранённого Job сначала используем реально сохранённый output.
     ///
-    /// Для нового / редактируемого Job дополнительно смотрим
-    /// текущее состояние Output editor.
+    /// Для нового Job output определяется фиксированной Content-структурой:
+    ///
+    ///     Sel = 0 -> Definition.Outputs[0]
+    ///     Sel = 1 -> Definition.Outputs[1]
+    ///     ...
+    ///
+    /// Никакого пользовательского output mapping в Content нет.
     /// </summary>
     private string? GetValCalcOutputKey()
     {
+        // ------------------------------------------------------------
+        // 1. Существующий Job.
+        //
+        // Если Job уже сохранён, используем именно его output.
+        // Это позволяет верхней Runtime-панели показывать реально
+        // работающую конфигурацию, а не состояние редактора.
+        // ------------------------------------------------------------
         var savedOutput = FindValCalcJobOutput();
 
         if (!string.IsNullOrWhiteSpace(savedOutput?.OutputKey))
             return savedOutput.OutputKey;
 
 
-        if (!string.IsNullOrWhiteSpace(ContentCalcTag))
-        {
-            var editor = _outputBindings.FirstOrDefault(output =>
-                string.Equals(output.TargetTagName, ContentCalcTag, StringComparison.OrdinalIgnoreCase));
-
-            if (!string.IsNullOrWhiteSpace(editor?.Output.Key))
-                return editor.Output.Key;
-        }
-
-
-        // Content Definitions сейчас многовыходные.
+        // ------------------------------------------------------------
+        // 2. Новый Job.
         //
-        // Но оставляем безопасную поддержку возможного будущего
-        // Definition с одним единственным output.
+        // Content имеет фиксированную структуру.
+        // Sel является индексом компонента.
+        // ------------------------------------------------------------
+        var selectedOutput = SelectedContentOutput;
+
+        if (!string.IsNullOrWhiteSpace(selectedOutput?.Key))
+            return selectedOutput.Key;
+
+
+        // ------------------------------------------------------------
+        // 3. Безопасный fallback на случай будущего Content Definition
+        // с одним единственным output.
+        // ------------------------------------------------------------
         if (LiveDefinition?.Outputs.Count == 1)
             return LiveDefinition.Outputs[0].Key;
+
 
         return null;
     }
@@ -1560,12 +1769,19 @@
 
         try
         {
-            var itemsToRead = new[]
+            var itemsToRead = new List<string>
             {
                 "ValHmi",
                 "ValCalc",
                 "Sel"
             };
+
+            for (var index = 0; index < MaxContentItemCount; index++)
+            {
+                itemsToRead.Add($"Param{index}");
+                itemsToRead.Add($"Param{index}_Dp");
+                itemsToRead.Add($"Param{index}_Dt");
+            }
 
             var reads = await Task.WhenAll(itemsToRead.Select(ReadContentScadaItemAsync));
 
@@ -2027,14 +2243,6 @@
         public bool IsLinked => CheckState == ContentBindingCheckState.Linked && !string.IsNullOrWhiteSpace(ResolvedTagName) && string.Equals(SourceText.Trim(), ValidatedSourceText, StringComparison.Ordinal);
     }
 
-    private sealed class ContentOutputBindingEditor
-    {
-        public CalcOutputDefinitionDto Output { get; init; } = default!;
-        public string TargetTagName { get; set; } = "";
-    }
-
-    private sealed record ContentOutputTargetOption(string ItemName, string TagName, string DisplayName);
-
     /// <summary>
     /// Один bargraph Temperature / Pressure.
     /// Структура намеренно аналогична CapacityProcessBarView.
@@ -2074,4 +2282,19 @@
         Linked,
         NotFound
     }
+
+    private CalcOutputDefinitionDto? SelectedContentOutput
+    {
+        get
+        {
+            if (Definition is null || !SelectedContentItemIndex.HasValue)
+                return null;
+
+            return Definition.Outputs
+                .OrderBy(output => output.Order)
+                .ElementAtOrDefault(SelectedContentItemIndex.Value);
+        }
+    }
+
+    private bool IsFixedOutputBindingReady => !string.IsNullOrWhiteSpace(ContentCalcTag) && SelectedContentOutput is not null;
 }

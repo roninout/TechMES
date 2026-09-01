@@ -852,3 +852,117 @@
         grid-template-columns: 28px minmax(0, 1fr);
     }
 }
+
+
+/* ============================================================
+   Content system row
+   ============================================================ */
+
+.content-system-row {
+    display: grid;
+    grid-template-columns: 36px minmax(260px, 365px) minmax(40px, 1fr) 92px;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+}
+
+::deep .content-system-dropdown {
+    grid-column: 2;
+    width: 100%;
+}
+
+::deep .content-code-field {
+    grid-column: 4;
+    width: 92px;
+    justify-self: end;
+}
+
+::deep .content-code-value {
+    width: 100%;
+}
+
+
+/* ============================================================
+   Fixed Content components
+   ============================================================ */
+
+.content-component-row {
+    display: grid;
+    grid-template-columns: 24px 36px minmax(240px, 1fr) 92px 92px 130px;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+}
+
+.content-component-selected {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+::deep .content-component-selected-icon {
+    color: var(--rz-success);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.content-component-name {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 14px;
+    font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.content-component-row.is-selected .content-component-name {
+    font-weight: 700;
+}
+
+::deep .content-component-delta-field {
+    width: 92px;
+}
+
+::deep .content-component-delta-value {
+    width: 100%;
+}
+
+::deep .content-component-percent {
+    width: 92px;
+    justify-self: end;
+}
+
+
+/* ============================================================
+   Output write
+   ============================================================ */
+
+.content-write-settings {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 62px;
+}
+
+.content-write-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.content-write-description {
+    margin-top: 3px;
+    color: var(--rz-text-secondary-color);
+    font-size: 12px;
+}
+
+.content-write-switch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+}
+
+.content-settings-warning {
+    margin-top: 8px;
+}
