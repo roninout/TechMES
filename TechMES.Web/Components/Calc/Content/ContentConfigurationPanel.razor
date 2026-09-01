@@ -1,23 +1,48 @@
 ﻿@using System.Globalization
 @using System.Text.Json
+@using TechMES.Contracts.Equipment
+@using TechMES.Contracts.Param
 @inject CalcApiClient CalcApi
+@inject ParamApiClient ParamApi
 @inject CalcProcessInputResolver ProcessInputResolver
 @inject NotificationService NotificationService
+
 
 <div class="content-configuration-host">
 
     @if (_isLoadingDefinitions)
     {
-        <TechMesLoadingBar Label="Loading Content configuration" />
+        <div class="content-loading">
+
+            <TechMesLoadingBar Label="Loading Content configuration" />
+
+            <div class="content-loading-content">
+
+                <RadzenIcon Icon="hourglass_top"
+                            class="content-loading-icon" />
+
+                <div class="content-loading-title">
+                    Loading Content configuration...
+                </div>
+
+                <div class="content-loading-model">
+                    @Model.Name
+                </div>
+
+            </div>
+
+        </div>
     }
-    else if (_contentDefinitions.Count == 0)
+    else if (_contentDefinitions.Count == 0 || Definition is null)
     {
         <RadzenAlert AlertStyle="AlertStyle.Danger"
                      ShowIcon="true"
                      AllowClose="false">
+
             @(_loadError.Length > 0
                 ? _loadError
                 : "Content calculation definitions are not available.")
+
         </RadzenAlert>
     }
     else
@@ -25,395 +50,609 @@
         <div class="content-configuration">
 
             @* ============================================================
-               ВЕРХНЯЯ ПАНЕЛЬ
+               ВЕРХНЯЯ LIVE-ПАНЕЛЬ
+
+               По структуре повторяет Capacity:
+
+                   LEFT
+                       Temperature
+                       Pressure
+
+                   CENTER
+                       TechMES calculated value
+                       Current value / ValHmi
+                       Calculated value / ValCalc
+
+                   RIGHT
+                       Pie по рассчитанному Content.
+
+               Отличия Content:
+
+                   - Delta отсутствует полностью;
+                   - Pie показывает процент каждого компонента;
+                   - физическая система берётся из Content Definition.
                ============================================================ *@
-            <div class="content-header">
 
-                <div class="content-definition-area">
+            @{
+                var primaryProcessBars = BuildPrimaryProcessBars();
+                var processBarCount = primaryProcessBars.Count;
+                var pieItems = BuildLivePieItems();
+            }
 
-                    <div class="content-section-caption">
-                        Content system
+            <div class="content-live-panel">
+
+                @* ========================================================
+                   HEADER
+                   ======================================================== *@
+                <div class="content-live-header">
+
+                    <div class="content-live-title">
+
+                        <RadzenIcon Icon="science"
+                                    class="content-live-title-icon" />
+
+                        <span>
+                            @GetLiveContentTitle()
+                        </span>
+
                     </div>
 
-                    <RadzenDropDown TValue="string"
-                                    Data="@_contentDefinitions"
-                                    TextProperty="@nameof(CalcDefinitionDto.Name)"
-                                    ValueProperty="@nameof(CalcDefinitionDto.Code)"
-                                    @bind-Value="_definitionCode"
-                                    Change="@(_ => OnDefinitionChanged())"
-                                    Disabled="@_isSaving"
-                                    Style="width:100%;" />
 
-                    @if (Definition is not null)
-                    {
-                        <div class="content-definition-code">
-                            @Definition.Code · Version @Definition.Version
-                        </div>
-                    }
+                    <div class="content-toolbar-enabled">
+
+                        <span class="content-switch-state @GetSwitchStateClass(_enabled)">
+                            @GetSwitchStateText(_enabled)
+                        </span>
+
+                        <RadzenSwitch @bind-Value="_enabled"
+                                      Disabled="@(_isSaving || (!_enabled && !IsConfigurationReady))" />
+
+                        <span class="content-switch-label">
+                            Enabled
+                        </span>
+
+                    </div>
 
                 </div>
 
 
-                <div class="content-switch-area">
+                <div class="content-panel-separator"></div>
 
-                    <span class="content-switch-state @GetSwitchStateClass(_enabled)">
-                        @GetSwitchStateText(_enabled)
-                    </span>
 
-                    <RadzenSwitch @bind-Value="_enabled"
-                                  Disabled="@(_isSaving || (!_enabled && !IsConfigurationReady))" />
+                @* ========================================================
+                   RUNTIME STATUS
+                   ======================================================== *@
+                @if (HasUnsavedChanges)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                 Variant="Variant.Flat"
+                                 Shade="Shade.Lighter"
+                                 AllowClose="false"
+                                 ShowIcon="true"
+                                 class="content-live-status-alert">
 
-                    <span>Enabled</span>
+                        Unsaved changes. Runtime continues using the last saved configuration.
+
+                    </RadzenAlert>
+                }
+                else if (State?.Status == CalcJobStateStatusDto.Error)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger"
+                                 Variant="Variant.Flat"
+                                 Shade="Shade.Lighter"
+                                 AllowClose="false"
+                                 ShowIcon="true"
+                                 class="content-live-status-alert">
+
+                        @(State.ReasonMessage ?? "Content calculation failed.")
+
+                    </RadzenAlert>
+                }
+                else if (State?.Status == CalcJobStateStatusDto.Skipped)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Warning"
+                                 Variant="Variant.Flat"
+                                 Shade="Shade.Lighter"
+                                 AllowClose="false"
+                                 ShowIcon="true"
+                                 class="content-live-status-alert">
+
+                        @(State.ReasonMessage ?? "Content calculation was skipped.")
+
+                    </RadzenAlert>
+                }
+
+
+                @* ========================================================
+                   MAIN LIVE AREA
+                   ======================================================== *@
+                <div class="content-live-layout content-live-layout-bars-@processBarCount">
+
+
+                    @* ====================================================
+                       LEFT — TEMPERATURE / PRESSURE
+
+                       Полностью повторяем принцип Capacity:
+                       bargraph появляется только для успешно LINKED
+                       Equipment.ITEM AI-параметра, для которого можем
+                       получить Min/Max.
+                       ==================================================== *@
+                    @if (primaryProcessBars.Count > 0)
+                    {
+                        <div class="content-process-bars content-process-bars-@processBarCount">
+
+                            @foreach (var bar in primaryProcessBars)
+                            {
+                                <div class="content-process-meter">
+
+                                    <div class="content-process-meter-readout">
+
+                                        <RadzenFormField AllowFloatingLabel="false"
+                                                         Text="@bar.ItemName"
+                                                         Variant="Variant.Outlined"
+                                                         class="content-process-form-field">
+
+                                            <RadzenNumeric TValue="double?"
+                                                           Value="@bar.Value"
+                                                           ReadOnly="true"
+                                                           ShowUpDown="false"
+                                                           Format="0.###"
+                                                           class="content-process-top-value" />
+
+                                        </RadzenFormField>
+
+                                    </div>
+
+
+                                    <div class="content-process-meter-body">
+
+                                        <ParamGraphVerticalBar Label="@bar.ItemName"
+                                                               Value="@bar.Value"
+                                                               Min="@bar.Min"
+                                                               Max="@bar.Max"
+                                                               FillColor="@bar.FillColor" />
+
+                                    </div>
+
+
+                                    <div class="content-process-meter-unit">
+                                        @(string.IsNullOrWhiteSpace(bar.Unit) ? "-" : bar.Unit)
+                                    </div>
+
+
+                                    <div class="content-process-meter-title">
+                                        @bar.Name
+                                    </div>
+
+
+                                    <div class="content-process-meter-source"
+                                         title="@bar.Source">
+
+                                        @bar.Source
+
+                                    </div>
+
+                                </div>
+                            }
+
+                        </div>
+                    }
+
+
+                    @* ====================================================
+                       CENTER
+                       ==================================================== *@
+                    <div class="content-live-center">
+
+                        <div class="content-main-card">
+
+
+                            @* =================================================
+                               TECHMES CALCULATED VALUE
+
+                               Показываем не произвольный первый output,
+                               а именно тот Definition output, который
+                               сохранён на ITEM ValCalc этого Content Equipment.
+                               ================================================= *@
+                            <div class="content-value-row">
+
+                                <div class="content-selection-title content-selection-title-techmes @(IsTechMesOutputWriteEnabled ? "is-selected" : "")">
+
+                                    <div class="content-selection-mark">
+
+                                        @if (IsTechMesOutputWriteEnabled)
+                                        {
+                                            <RadzenIcon Icon="check"
+                                                        class="content-selection-icon" />
+                                        }
+
+                                    </div>
+
+                                    <span>
+                                        TechMES calculated value
+                                    </span>
+
+                                </div>
+
+
+                                <div class="content-value-controls">
+
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="Content"
+                                                     Variant="Variant.Outlined"
+                                                     class="content-main-form-field content-result-form-field">
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@CurrentTechMesContent"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###' %'"
+                                                       class="content-main-value-input content-result-value-input" />
+
+                                    </RadzenFormField>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="content-card-separator"></div>
+
+
+                            @* =================================================
+                               CURRENT VALUE / ValHmi
+
+                               Sel = 0 -> текущим значением SCADA является ValHmi.
+                               ================================================= *@
+                            <div class="content-value-row">
+
+                                <div class="content-selection-title @(IsCalculatedValueSelected == false ? "is-selected" : "")">
+
+                                    <div class="content-selection-mark">
+
+                                        @if (IsCalculatedValueSelected == false)
+                                        {
+                                            <RadzenIcon Icon="check"
+                                                        class="content-selection-icon" />
+                                        }
+
+                                    </div>
+
+                                    <span>
+                                        Current value
+                                    </span>
+
+                                </div>
+
+
+                                <div class="content-value-controls">
+
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="ValHmi"
+                                                     Variant="Variant.Outlined"
+                                                     class="content-main-form-field">
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@CurrentContentHmi"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###' %'"
+                                                       class="content-main-value-input" />
+
+                                    </RadzenFormField>
+
+                                </div>
+
+                            </div>
+
+
+                            @* =================================================
+                               CALCULATED VALUE / ValCalc
+
+                               В Content Delta нет вообще.
+                               Никакого placeholder под Delta также не оставляем.
+
+                               Sel = 1 -> текущим значением SCADA является ValCalc.
+                               ================================================= *@
+                            <div class="content-value-row">
+
+                                <div class="content-selection-title @(IsCalculatedValueSelected == true ? "is-selected" : "")">
+
+                                    <div class="content-selection-mark">
+
+                                        @if (IsCalculatedValueSelected == true)
+                                        {
+                                            <RadzenIcon Icon="check"
+                                                        class="content-selection-icon" />
+                                        }
+
+                                    </div>
+
+                                    <span>
+                                        Calculated value
+                                    </span>
+
+                                </div>
+
+
+                                <div class="content-value-controls">
+
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="ValCalc"
+                                                     Variant="Variant.Outlined"
+                                                     class="content-main-form-field">
+
+                                        <RadzenNumeric TValue="double?"
+                                                       Value="@CurrentContentCalcEngineering"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       Format="0.###' %'"
+                                                       class="content-main-value-input" />
+
+                                    </RadzenFormField>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    @* ====================================================
+                       RIGHT — CONTENT PIE
+
+                       Размер сектора = рассчитанный процент компонента.
+
+                       Внутри сектора отображаем только:
+                           72.5%
+                           27.5%
+
+                       Никаких дополнительных физических величин,
+                       как у Capacity, здесь нет.
+                       ==================================================== *@
+                    <div class="content-pie-column">
+
+                        @if (pieItems.Count > 0)
+                        {
+                            <div class="content-pie-shell">
+
+                                <RadzenChart class="content-pie-chart">
+
+                                    <TechMesPieSeries TItem="ContentPieItem"
+                                                      Data="@pieItems"
+                                                      CategoryProperty="@nameof(ContentPieItem.LegendText)"
+                                                      ValueProperty="@nameof(ContentPieItem.Percent)"
+                                                      DataLabelText="@FormatPieItemPercent"
+                                                      StartAngle="90"
+                                                      StrokeWidth="2"
+                                                      ShowTooltipOnLegend="true">
+
+                                        <ChildContent>
+
+                                            <RadzenSeriesDataLabels Visible="true"
+                                                                    Position="DataLabelPosition.Inside"
+                                                                    Appearance="DataLabelAppearance.Chip"
+                                                                    AllowOverlap="true" />
+
+                                        </ChildContent>
+
+                                        <TooltipTemplate Context="item">
+
+                                            <div class="content-pie-tooltip">
+
+                                                <strong>
+                                                    @item.Name
+                                                </strong>
+
+                                                <div>
+                                                    @item.Percent.ToString("0.###", CultureInfo.InvariantCulture) %
+                                                </div>
+
+                                            </div>
+
+                                        </TooltipTemplate>
+
+                                    </TechMesPieSeries>
+
+                                    <RadzenLegend Position="LegendPosition.Bottom" />
+
+                                </RadzenChart>
+
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="content-pie-empty">
+                                Content data is not available.
+                            </div>
+                        }
+
+                    </div>
+
 
                 </div>
 
             </div>
-
-
-            @if (HasUnsavedChanges)
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Warning"
-                             Variant="Variant.Flat"
-                             Shade="Shade.Lighter"
-                             ShowIcon="true"
-                             AllowClose="false">
-                    Unsaved changes. Runtime continues using the last saved configuration.
-                </RadzenAlert>
-            }
-            else if (State?.Status == CalcJobStateStatusDto.Error)
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Danger"
-                             Variant="Variant.Flat"
-                             Shade="Shade.Lighter"
-                             ShowIcon="true"
-                             AllowClose="false">
-                    @(State.ReasonMessage ?? "Content calculation failed.")
-                </RadzenAlert>
-            }
-            else if (State?.Status == CalcJobStateStatusDto.Skipped)
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Warning"
-                             Variant="Variant.Flat"
-                             Shade="Shade.Lighter"
-                             ShowIcon="true"
-                             AllowClose="false">
-                    @(State.ReasonMessage ?? "Content calculation was skipped.")
-                </RadzenAlert>
-            }
-
-
-            @* ============================================================
-               LIVE OUTPUTS
-
-               Здесь показываем все outputs физической системы.
-               Например ACN / Water одновременно даёт:
-                   acnPercent
-                   waterPercent
-               ============================================================ *@
-            @if (Definition is not null)
-            {
-                <div class="content-live-outputs">
-
-                    @foreach (var output in Definition.Outputs.OrderBy(output => output.Order))
-                    {
-                        var value = GetLastOutputNumber(output.Key);
-
-                        <div class="content-output-card">
-
-                            <div class="content-output-name">
-                                @output.Name
-                            </div>
-
-                            <div class="content-output-value">
-                                @(value.HasValue
-                                    ? value.Value.ToString($"F{output.Decimals}", CultureInfo.InvariantCulture)
-                                    : "—")
-
-                                @if (!string.IsNullOrWhiteSpace(output.Unit))
-                                {
-                                    <span class="content-output-unit">
-                                        @output.Unit
-                                    </span>
-                                }
-                            </div>
-
-                            <div class="content-output-key">
-                                @output.Key
-                            </div>
-
-                        </div>
-                    }
-
-                </div>
-            }
 
 
             @* ============================================================
                SETTINGS
+
+               Первый этап:
+
+                   1. Temperature
+                   2. Pressure
+
+                   separator
+
+                   Content system ComboBox
+
+               На этом пока заканчиваем.
+
+               configurationCode / output mappings / writes здесь
+               сейчас специально НЕ отображаем — добавим следующим этапом.
+               Существующую backend-логику пока не удаляем.
                ============================================================ *@
-            <ParamAiPanel Title="Settings"
-                          Icon="settings"
-                          InitiallyCollapsed="false">
+            <section class="content-settings-column">
 
-                <div class="content-settings">
+                <ParamAiPanel Title="Settings"
+                              Icon="settings"
+                              InitiallyCollapsed="true">
 
-                    @* ====================================================
-                       PROCESS INPUTS
-                       ==================================================== *@
-                    <section>
+                    <div class="content-settings-body">
 
-                        <div class="content-section-title">
-                            Process inputs
-                        </div>
 
-                        <div class="content-section-description">
-                            Temperature and absolute pressure are resolved to real numeric SCADA tags.
-                        </div>
+                        @* ==================================================
+                           PROCESS INPUT BINDINGS
+                           ================================================== *@
+                        <section class="content-process-settings">
 
-                        @foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
-                        {
-                            <div class="content-process-row">
+                            @{
+                                var visibleBindings = _processBindings
+                                    .OrderBy(binding => binding.Parameter.Order)
+                                    .Take(2)
+                                    .ToList();
+                            }
 
-                                <div class="content-process-info">
+                            @for (var index = 0; index < visibleBindings.Count; index++)
+                            {
+                                var binding = visibleBindings[index];
+
+                                <div class="content-process-row">
+
+                                    <div class="content-settings-index">
+                                        @(index + 1)
+                                    </div>
+
+
+                                    <RadzenTextBox Value="@binding.SourceText"
+                                                   Change="@((string value) => OnProcessSourceChanged(binding, value))"
+                                                   Placeholder="Equipment.ITEM or SCADA tag"
+                                                   Disabled="@(_isSaving || _isCheckingBindings)"
+                                                   class="content-process-tag" />
+
+
+                                    <div class="content-process-status">
+
+                                        <RadzenBadge Text="@GetBindingBadgeText(binding)"
+                                                     BadgeStyle="@GetBindingBadgeStyle(binding)" />
+
+                                    </div>
+
 
                                     <div class="content-process-name">
-                                        @binding.Parameter.Name
+                                        @GetProcessDisplayName(binding)
                                     </div>
 
-                                    <div class="content-process-unit">
-                                        @binding.Parameter.Unit
+
+                                    <div class="content-process-action">
+
+                                        @if (index == 1)
+                                        {
+                                            <RadzenButton Text="Check"
+                                                          Icon="manage_search"
+                                                          ButtonStyle="ButtonStyle.Light"
+                                                          Disabled="@(_isSaving || _isCheckingBindings)"
+                                                          Click="@CheckProcessBindingsAsync"
+                                                          class="content-process-check" />
+                                        }
+
                                     </div>
 
-                                </div>
-
-
-                                <RadzenTextBox Value="@binding.SourceText"
-                                               Change="@((string value) => OnProcessSourceChanged(binding, value))"
-                                               Placeholder="Equipment.ITEM or SCADA tag"
-                                               Disabled="@(_isSaving || _isCheckingBindings)"
-                                               Style="width:100%;" />
-
-
-                                <RadzenBadge Text="@GetBindingBadgeText(binding)"
-                                             BadgeStyle="@GetBindingBadgeStyle(binding)" />
-
-
-                                <div class="content-process-current">
-                                    @if (GetProcessCurrentValue(binding) is { } currentValue)
-                                    {
-                                        @currentValue.ToString("0.###", CultureInfo.InvariantCulture)
-                                    }
-                                    else
-                                    {
-                                        <span>—</span>
-                                    }
-                                </div>
-
-                            </div>
-
-                            @if (!string.IsNullOrWhiteSpace(GetBindingDescription(binding)))
-                            {
-                                <div class="content-binding-description">
-                                    @GetBindingDescription(binding)
                                 </div>
                             }
-                        }
 
-                        <div class="content-process-actions">
-
-                            <RadzenButton Text="Check"
-                                          Icon="manage_search"
-                                          ButtonStyle="ButtonStyle.Light"
-                                          Disabled="@(_isSaving || _isCheckingBindings)"
-                                          Click="@CheckProcessBindingsAsync" />
-
-                        </div>
-
-                    </section>
+                        </section>
 
 
-                    <div class="content-separator"></div>
+                        <div class="content-settings-separator"></div>
 
 
-                    @* ====================================================
-                       CONFIGURATION CODE
-                       ==================================================== *@
-                    <section>
+                        @* ==================================================
+                           CONTENT SYSTEM
 
-                        <div class="content-section-title">
-                            Correlation configuration
-                        </div>
+                           Пока это последний элемент Settings.
+                           ================================================== *@
+                        <section class="content-system-settings">
 
-                        <div class="content-configuration-code-row">
+                            <div class="content-system-header">
 
-                            <div>
+                                <div class="content-system-title">
 
-                                <div class="content-process-name">
-                                    Configuration code
-                                </div>
+                                    <RadzenIcon Icon="science" />
 
-                                <div class="content-section-description">
-                                    Legacy-compatible CONF value used by the selected physical correlation.
+                                    <span>
+                                        Content system
+                                    </span>
+
                                 </div>
 
                             </div>
 
-                            <RadzenNumeric TValue="int?"
-                                           @bind-Value="_configurationCode"
-                                           Step="1"
-                                           ShowUpDown="true"
-                                           Disabled="@_isSaving"
-                                           Style="width:150px;" />
 
-                        </div>
+                            <div class="content-system-row">
 
-                    </section>
-
-
-                    <div class="content-separator"></div>
-
-
-                    @* ====================================================
-                       OUTPUT BINDINGS
-
-                       Здесь нет предположений о SCADA Content Equipment.
-
-                       Definition output:
-                           acnPercent
-                           waterPercent
-                           poPercent
-                           ...
-
-                       пользователь явно связывает с ITEM текущего
-                       Content Equipment.
-
-                       Поэтому один content.acn-water одинаково пригоден
-                       и для ACN, и для Water результата.
-                       ==================================================== *@
-                    <section>
-
-                        <div class="content-section-title">
-                            Output bindings
-                        </div>
-
-                        <div class="content-section-description">
-                            Select which SCADA ITEM receives each calculated component. Unmapped outputs remain available in Runtime diagnostics.
-                        </div>
-
-                        @foreach (var output in _outputBindings.OrderBy(output => output.Output.Order))
-                        {
-                            <div class="content-output-binding-row">
-
-                                <div>
-
-                                    <div class="content-process-name">
-                                        @output.Output.Name
-                                    </div>
-
-                                    <div class="content-output-key">
-                                        @output.Output.Key
-                                    </div>
-
+                                <div class="content-system-icon">
+                                    <RadzenIcon Icon="percent" />
                                 </div>
 
 
                                 <RadzenDropDown TValue="string"
-                                                Data="@GetOutputTargetOptions(output)"
-                                                TextProperty="@nameof(ContentOutputTargetOption.DisplayName)"
-                                                ValueProperty="@nameof(ContentOutputTargetOption.TagName)"
-                                                @bind-Value="output.TargetTagName"
-                                                AllowClear="true"
-                                                Placeholder="Not mapped"
+                                                Data="@_contentDefinitions"
+                                                TextProperty="@nameof(CalcDefinitionDto.Name)"
+                                                ValueProperty="@nameof(CalcDefinitionDto.Code)"
+                                                @bind-Value="_definitionCode"
+                                                Change="@(_ => OnDefinitionChanged())"
+                                                Placeholder="Select Content system..."
                                                 Disabled="@_isSaving"
-                                                Style="width:100%;" />
+                                                class="content-system-dropdown" />
+
+
+                                <div class="content-system-name">
+                                    @Definition.Name
+                                </div>
 
                             </div>
-                        }
 
-                        @if (!string.IsNullOrWhiteSpace(OutputMappingError))
-                        {
-                            <RadzenAlert AlertStyle="AlertStyle.Danger"
-                                         ShowIcon="true"
-                                         AllowClose="false">
-                                @OutputMappingError
-                            </RadzenAlert>
-                        }
+                        </section>
 
-                    </section>
-
-
-                    <div class="content-separator"></div>
-
-
-                    @* ====================================================
-                       WRITE PERMISSION
-                       ==================================================== *@
-                    <div class="content-write-row">
-
-                        <div>
-
-                            <div class="content-process-name">
-                                Allow output writes
-                            </div>
-
-                            <div class="content-section-description">
-                                Runtime may write mapped Content outputs to SCADA.
-                            </div>
-
-                        </div>
-
-
-                        <div class="content-switch-area">
-
-                            <span class="content-switch-state @GetSwitchStateClass(_allowOutputWrites)">
-                                @GetSwitchStateText(_allowOutputWrites)
-                            </span>
-
-                            <RadzenSwitch @bind-Value="_allowOutputWrites"
-                                          Disabled="@(_isSaving || (!_allowOutputWrites && !HasMappedOutput))" />
-
-                        </div>
 
                     </div>
 
+                </ParamAiPanel>
 
-                    @if (_allowOutputWrites && !HasMappedOutput)
+
+                @* ========================================================
+                   ACTIONS
+
+                   Оставляем существующие Create / Save.
+                   Саму конфигурацию следующими шагами ещё дополним.
+                   ======================================================== *@
+                <div class="content-actions">
+
+                    @if (Job is null)
                     {
-                        <RadzenAlert AlertStyle="AlertStyle.Warning"
-                                     ShowIcon="true"
-                                     AllowClose="false">
-                            At least one Content output must be mapped before SCADA writes can be enabled.
-                        </RadzenAlert>
+                        <RadzenButton Text="Create job"
+                                      Icon="add"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@(_isSaving || !IsConfigurationReady)"
+                                      Click="@CreateJobAsync" />
+                    }
+                    else
+                    {
+                        <RadzenButton Text="Save"
+                                      Icon="save"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@(_isSaving || !HasUnsavedChanges || !IsConfigurationReady)"
+                                      Click="@SaveJobAsync" />
                     }
 
                 </div>
 
-            </ParamAiPanel>
+            </section>
 
-
-            @* ============================================================
-               ACTIONS
-               ============================================================ *@
-            <div class="content-actions">
-
-                @if (Job is null)
-                {
-                    <RadzenButton Text="Create job"
-                                  Icon="add"
-                                  ButtonStyle="ButtonStyle.Primary"
-                                  Disabled="@(_isSaving || !IsConfigurationReady)"
-                                  Click="@CreateJobAsync" />
-                }
-                else
-                {
-                    <RadzenButton Text="Save"
-                                  Icon="save"
-                                  ButtonStyle="ButtonStyle.Primary"
-                                  Disabled="@(_isSaving || !HasUnsavedChanges || !IsConfigurationReady)"
-                                  Click="@SaveJobAsync" />
-                }
-
-            </div>
 
         </div>
     }
@@ -437,10 +676,40 @@
     [Parameter]
     public EventCallback JobChanged { get; set; }
 
+    // ============================================================
+    // Definition / editor state
+    // ============================================================
 
     private readonly List<CalcDefinitionDto> _contentDefinitions = [];
     private readonly List<ContentProcessBindingEditor> _processBindings = [];
     private readonly List<ContentOutputBindingEditor> _outputBindings = [];
+
+    // ============================================================
+    // Live SCADA state
+    //
+    // Как и в Capacity, собственные ITEM Content Equipment
+    // читаем отдельно от Calculation State.
+    //
+    // Это прежде всего:
+    //
+    //     ValHmi
+    //     ValCalc
+    //     Sel
+    //
+    // ProcessInput Temperature / Pressure продолжают приходить
+    // через Calc Job / ProcessInputResolver.
+    // ============================================================
+
+    private readonly Dictionary<string, double?> _liveScadaValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ParamSnapshotResponse> _linkedAiSnapshots = new(StringComparer.OrdinalIgnoreCase);
+
+    private DateTimeOffset _nextScadaRefreshUtc = DateTimeOffset.MinValue;
+
+    private string _scadaRefreshModelName = "";
+
+    // ============================================================
+    // Editable values
+    // ============================================================
 
     private string _definitionCode = "";
     private int? _configurationCode;
@@ -455,11 +724,62 @@
     private bool _isLoadingDefinitions;
     private bool _isSaving;
     private bool _isCheckingBindings;
+    private bool _isReadingScada;
 
+    // ============================================================
+    // Current Definition
+    // ============================================================
 
-    private CalcDefinitionDto? Definition => _contentDefinitions.FirstOrDefault(
-        definition => string.Equals(definition.Code, _definitionCode, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// Definition, который сейчас выбран пользователем в Settings.
+    ///
+    /// Он может отличаться от реально работающего Definition,
+    /// если пользователь изменил ComboBox, но ещё не нажал Save.
+    /// </summary>
+    private CalcDefinitionDto? Definition => _contentDefinitions.FirstOrDefault(definition => string.Equals(definition.Code, _definitionCode, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// Definition, с которым реально работает сохранённый Job.
+    ///
+    /// Верхняя live-панель должна отображать именно Runtime configuration,
+    /// а не несохранённое состояние ComboBox.
+    ///
+    /// Для нового Job сохранённой конфигурации ещё нет,
+    /// поэтому используем текущий Definition редактора.
+    /// </summary>
+    private CalcDefinitionDto? LiveDefinition
+    {
+        get
+        {
+            if (Job is not null)
+            {
+                var storedDefinition = _contentDefinitions.FirstOrDefault(definition =>
+                    string.Equals(definition.Code, Job.DefinitionCode, StringComparison.OrdinalIgnoreCase));
+
+                if (storedDefinition is not null)
+                    return storedDefinition;
+            }
+
+            return Definition;
+        }
+    }
+
+    // ============================================================
+    // SCADA ITEM mapping
+    // ============================================================
+
+    private string? ContentHmiTag => GetItemTag(Model, "ValHmi");
+    private string? ContentCalcTag => GetItemTag(Model, "ValCalc");
+    private string? ContentSelTag => GetItemTag(Model, "Sel");
+
+    // ============================================================
+    // Configuration readiness
+    //
+    // Пока оставляем существующий полный backend contract.
+    //
+    // configurationCode и output bindings временно скрыты из UI,
+    // но не удалены из Job-модели.
+    // ============================================================
 
     private bool IsProcessBindingsReady => _processBindings.Count > 0 && _processBindings.All(binding => binding.IsLinked);
 
@@ -478,12 +798,9 @@
         && string.Equals(Job.DefinitionCode, Definition.Code, StringComparison.OrdinalIgnoreCase)
         && !string.Equals(Job.DefinitionVersion, Definition.Version, StringComparison.Ordinal);
 
-    private bool HasUnsavedChanges =>
-        HasDefinitionVersionChange
-        || !string.Equals(_savedEditorSignature, BuildEditorSignature(), StringComparison.Ordinal);
+    private bool HasUnsavedChanges => HasDefinitionVersionChange || !string.Equals(_savedEditorSignature, BuildEditorSignature(), StringComparison.Ordinal);
 
     public bool HasPendingChanges => Definition is not null && HasUnsavedChanges;
-
 
     // ============================================================
     // Lifecycle
@@ -497,9 +814,25 @@
             return;
 
         SynchronizeConfiguration(force: true);
+
+        // Это восстановленное состояние, а не изменение пользователя.
         CaptureSavedEditorState();
 
+        // Сначала читаем собственные SCADA ITEM Content:
+        //
+        //     ValHmi
+        //     ValCalc
+        //     Sel
+        //
+        // Они не являются Calculation ProcessInput.
+        await RefreshContentScadaValuesAsync(force: true);
+
+        // Проверяем сохранённые Temperature / Pressure bindings.
         await ValidateStoredProcessBindingsAsync();
+
+        // После LINKED сразу получаем Min/Max AI,
+        // чтобы bargraph появились уже при первом открытии.
+        await RefreshLinkedAiSnapshotsAsync();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -509,13 +842,26 @@
 
         var contextChanged = SynchronizeConfiguration();
 
-        if (!contextChanged)
-            return;
+        if (contextChanged)
+        {
+            // Новый Equipment / Job только что восстановлен
+            // из сохранённой конфигурации.
+            //
+            // Это не Unsaved change.
+            CaptureSavedEditorState();
+        }
 
-        CaptureSavedEditorState();
-        await ValidateStoredProcessBindingsAsync();
+        // State страницы обновляется регулярно.
+        // SCADA ITEM читаем с собственным 5-секундным throttling,
+        // как сделано в Capacity.
+        await RefreshContentScadaValuesAsync();
+
+        if (contextChanged)
+        {
+            await ValidateStoredProcessBindingsAsync();
+            await RefreshLinkedAiSnapshotsAsync();
+        }
     }
-
 
     /// <summary>
     /// Content Definitions загружаются из Runtime.
@@ -551,7 +897,6 @@
         }
     }
 
-
     /// <summary>
     /// Восстанавливает редактор из сохранённого Calc Job.
     ///
@@ -575,11 +920,9 @@
 
         var storedDefinition = Job is null
             ? null
-            : _contentDefinitions.FirstOrDefault(definition =>
-                string.Equals(definition.Code, Job.DefinitionCode, StringComparison.OrdinalIgnoreCase));
+            : _contentDefinitions.FirstOrDefault(definition => string.Equals(definition.Code, Job.DefinitionCode, StringComparison.OrdinalIgnoreCase));
 
-        _definitionCode = storedDefinition?.Code
-            ?? _contentDefinitions.First().Code;
+        _definitionCode = storedDefinition?.Code ?? _contentDefinitions.First().Code;
 
         _enabled = Job?.Enabled == true;
         _allowOutputWrites = Job?.WriteEnabled == true;
@@ -591,7 +934,6 @@
 
         return true;
     }
-
 
     /// <summary>
     /// При смене физической Content-системы ProcessInput сохраняем:
@@ -628,12 +970,10 @@
             binding.MaxAgeSeconds = previous.MaxAgeSeconds;
         }
 
-        var restoreSavedMappings = Job is not null
-            && string.Equals(Job.DefinitionCode, Definition.Code, StringComparison.OrdinalIgnoreCase);
+        var restoreSavedMappings = Job is not null && string.Equals(Job.DefinitionCode, Definition.Code, StringComparison.OrdinalIgnoreCase);
 
         BuildOutputBindings(restoreSavedMappings);
     }
-
 
     // ============================================================
     // ProcessInput
@@ -693,13 +1033,8 @@
             foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order))
                 await ResolveProcessBindingAsync(binding);
 
-            NotificationService.Notify(
-                IsProcessBindingsReady ? NotificationSeverity.Success : NotificationSeverity.Warning,
-                "Content",
-                IsProcessBindingsReady
-                    ? "Required Content process bindings are valid."
-                    : "Some Content process bindings were not resolved.",
-                4000);
+            NotificationService.Notify(IsProcessBindingsReady ? NotificationSeverity.Success : NotificationSeverity.Warning, "Content", IsProcessBindingsReady
+                    ? "Required Content process bindings are valid." : "Some Content process bindings were not resolved.", 4000);
         }
         finally
         {
@@ -753,7 +1088,6 @@
         binding.CheckState = ContentBindingCheckState.NotChecked;
     }
 
-
     // ============================================================
     // Outputs
     // ============================================================
@@ -770,11 +1104,7 @@
             string? targetTag = null;
 
             if (restoreSavedMappings)
-            {
-                targetTag = Job?.Outputs
-                    .FirstOrDefault(item => string.Equals(item.OutputKey, output.Key, StringComparison.OrdinalIgnoreCase))
-                    ?.TagName;
-            }
+                targetTag = Job?.Outputs.FirstOrDefault(item => string.Equals(item.OutputKey, output.Key, StringComparison.OrdinalIgnoreCase))?.TagName;
 
             _outputBindings.Add(new ContentOutputBindingEditor
             {
@@ -793,21 +1123,12 @@
     {
         var result = Model.ItemTags
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
-            .Select(pair => new ContentOutputTargetOption(
-                pair.Key,
-                pair.Value,
-                $"{pair.Key}  →  {pair.Value}"))
+            .Select(pair => new ContentOutputTargetOption(pair.Key, pair.Value, $"{pair.Key}  →  {pair.Value}"))
             .OrderBy(item => item.ItemName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        if (!string.IsNullOrWhiteSpace(editor.TargetTagName)
-            && !result.Any(item => string.Equals(item.TagName, editor.TargetTagName, StringComparison.OrdinalIgnoreCase)))
-        {
-            result.Add(new ContentOutputTargetOption(
-                "Saved",
-                editor.TargetTagName,
-                $"Saved tag  →  {editor.TargetTagName}"));
-        }
+        if (!string.IsNullOrWhiteSpace(editor.TargetTagName) && !result.Any(item => string.Equals(item.TagName, editor.TargetTagName, StringComparison.OrdinalIgnoreCase)))
+            result.Add(new ContentOutputTargetOption("Saved", editor.TargetTagName, $"Saved tag  →  {editor.TargetTagName}"));
 
         return result;
     }
@@ -825,12 +1146,9 @@
                 .GroupBy(tag => tag, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault(group => group.Count() > 1);
 
-            return duplicate is null
-                ? ""
-                : $"SCADA tag '{duplicate.Key}' is mapped to more than one Content output.";
+            return duplicate is null ? "" : $"SCADA tag '{duplicate.Key}' is mapped to more than one Content output.";
         }
     }
-
 
     // ============================================================
     // Save
@@ -865,21 +1183,13 @@
 
             await CalcApi.CreateJobAsync(request);
 
-            NotificationService.Notify(
-                NotificationSeverity.Success,
-                "Calculations",
-                $"Content Job created for {Model.Name}.",
-                4000);
+            NotificationService.Notify(NotificationSeverity.Success, "Calculations", $"Content Job created for {Model.Name}.", 4000);
 
             await JobChanged.InvokeAsync();
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(
-                NotificationSeverity.Error,
-                "Calculations",
-                ex.Message,
-                6000);
+            NotificationService.Notify(NotificationSeverity.Error, "Calculations", ex.Message, 6000);
         }
         finally
         {
@@ -916,21 +1226,13 @@
 
             await CalcApi.UpdateJobAsync(Job.Id, request);
 
-            NotificationService.Notify(
-                NotificationSeverity.Success,
-                "Calculations",
-                $"Content configuration saved for {Model.Name}.",
-                4000);
+            NotificationService.Notify(NotificationSeverity.Success, "Calculations", $"Content configuration saved for {Model.Name}.", 4000);
 
             await JobChanged.InvokeAsync();
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(
-                NotificationSeverity.Error,
-                "Calculations",
-                ex.Message,
-                6000);
+            NotificationService.Notify(NotificationSeverity.Error, "Calculations", ex.Message, 6000);
         }
         finally
         {
@@ -958,8 +1260,7 @@
             });
         }
 
-        var configuration = Definition.Parameters.Single(parameter =>
-            string.Equals(parameter.Key, "configurationCode", StringComparison.OrdinalIgnoreCase));
+        var configuration = Definition.Parameters.Single(parameter => string.Equals(parameter.Key, "configurationCode", StringComparison.OrdinalIgnoreCase));
 
         result.Add(new CalcJobInputSaveDto
         {
@@ -969,9 +1270,7 @@
             SortOrder = configuration.Order
         });
 
-        return result
-            .OrderBy(input => input.SortOrder)
-            .ToList();
+        return result.OrderBy(input => input.SortOrder).ToList();
     }
 
     private List<CalcJobOutputSaveDto> BuildContentOutputs(bool allowWrites)
@@ -990,7 +1289,6 @@
             .OrderBy(output => output.SortOrder)
             .ToList();
     }
-
 
     // ============================================================
     // Unsaved state
@@ -1020,15 +1318,13 @@
         _savedEditorSignature = BuildEditorSignature();
     }
 
-
     // ============================================================
     // Definition / Job helpers
     // ============================================================
 
     private CalcJobInputDto? FindJobInput(string key)
     {
-        return Job?.Inputs.FirstOrDefault(input =>
-            string.Equals(input.ParameterKey, key, StringComparison.OrdinalIgnoreCase));
+        return Job?.Inputs.FirstOrDefault(input => string.Equals(input.ParameterKey, key, StringComparison.OrdinalIgnoreCase));
     }
 
     private int? ReadStoredConfigurationCode()
@@ -1046,16 +1342,13 @@
         return value;
     }
 
-
     // ============================================================
     // Runtime values
     // ============================================================
 
     private double? GetLastOutputNumber(string key)
     {
-        return TryGetRuntimeNumber(State?.LastOutputs, key, out var value)
-            ? value
-            : null;
+        return TryGetRuntimeNumber(State?.LastOutputs, key, out var value) ? value : null;
     }
 
     private double? GetProcessCurrentValue(ContentProcessBindingEditor binding)
@@ -1065,6 +1358,582 @@
 
         return binding.CurrentValue;
     }
+
+    private double? GetLiveScadaValue(string itemName)
+    {
+        return _liveScadaValues.TryGetValue(itemName, out var value)
+            ? value
+            : null;
+    }
+
+    // ============================================================
+    // Main Content values
+    // ============================================================
+
+    /// <summary>
+    /// Находит сохранённый Calculation output,
+    /// который реально записывается в ITEM ValCalc
+    /// текущего Content Equipment.
+    ///
+    /// Это принципиально важно для Content:
+    ///
+    /// content.acn-water, например, возвращает одновременно:
+    ///
+    ///     acnPercent
+    ///     waterPercent
+    ///
+    /// Но конкретный Content Equipment может представлять
+    /// только один из этих результатов.
+    ///
+    /// Поэтому нельзя просто брать первый output Definition.
+    /// </summary>
+    private CalcJobOutputDto? FindValCalcJobOutput()
+    {
+        if (Job is null || string.IsNullOrWhiteSpace(ContentCalcTag))
+            return null;
+
+        return Job.Outputs.FirstOrDefault(output => string.Equals(output.TagName, ContentCalcTag, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Возвращает output key, соответствующий ValCalc.
+    ///
+    /// Сначала используем сохранённый Job.
+    ///
+    /// Для нового / редактируемого Job дополнительно смотрим
+    /// текущее состояние Output editor.
+    /// </summary>
+    private string? GetValCalcOutputKey()
+    {
+        var savedOutput = FindValCalcJobOutput();
+
+        if (!string.IsNullOrWhiteSpace(savedOutput?.OutputKey))
+            return savedOutput.OutputKey;
+
+
+        if (!string.IsNullOrWhiteSpace(ContentCalcTag))
+        {
+            var editor = _outputBindings.FirstOrDefault(output =>
+                string.Equals(output.TargetTagName, ContentCalcTag, StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrWhiteSpace(editor?.Output.Key))
+                return editor.Output.Key;
+        }
+
+
+        // Content Definitions сейчас многовыходные.
+        //
+        // Но оставляем безопасную поддержку возможного будущего
+        // Definition с одним единственным output.
+        if (LiveDefinition?.Outputs.Count == 1)
+            return LiveDefinition.Outputs[0].Key;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Собственный рассчитанный TechMES Content.
+    ///
+    /// Берём только output, соответствующий ValCalc текущего Equipment.
+    /// </summary>
+    private double? CurrentTechMesContent
+    {
+        get
+        {
+            var outputKey = GetValCalcOutputKey();
+
+            return string.IsNullOrWhiteSpace(outputKey)
+                ? null
+                : GetLastOutputNumber(outputKey);
+        }
+    }
+
+    /// <summary>
+    /// Текущее ручное / HMI значение Content.
+    /// </summary>
+    private double? CurrentContentHmi => GetLiveScadaValue("ValHmi");
+
+    /// <summary>
+    /// Фактическое значение ValCalc из SCADA,
+    /// приведённое обратно в engineering value через Scale / Offset Job.
+    ///
+    /// Для Content штатный contract:
+    ///
+    ///     Scale = 1
+    ///     Offset = 0
+    ///
+    /// Но UI не хардкодит это предположение.
+    /// </summary>
+    private double? CurrentContentCalcEngineering
+    {
+        get
+        {
+            var scadaValue = GetLiveScadaValue("ValCalc");
+
+            if (!scadaValue.HasValue)
+                return null;
+
+
+            var output = FindValCalcJobOutput();
+
+            var scale = output?.Scale ?? 1d;
+            var offset = output?.Offset ?? 0d;
+
+
+            if (!double.IsFinite(scale) || Math.Abs(scale) < double.Epsilon || !double.IsFinite(offset))
+                return null;
+
+            return (scadaValue.Value - offset) / scale;
+        }
+    }
+
+    /// <summary>
+    /// Показывает, используется ли сейчас SCADA calculated value.
+    ///
+    /// Контракт аналогичен Capacity:
+    ///
+    ///     Sel = 0 -> ValHmi
+    ///     Sel = 1 -> ValCalc
+    ///
+    /// Это read-only состояние.
+    /// TechMES Sel не изменяет.
+    /// </summary>
+    private bool? IsCalculatedValueSelected
+    {
+        get
+        {
+            var value = GetLiveScadaValue("Sel");
+
+            if (!value.HasValue || !double.IsFinite(value.Value))
+                return null;
+
+            return value.Value >= 0.5d;
+        }
+    }
+
+    /// <summary>
+    /// Галочка около "TechMES calculated value"
+    /// показывает фактически сохранённое Runtime состояние,
+    /// а не несохранённый переключатель редактора.
+    /// </summary>
+    private bool IsTechMesOutputWriteEnabled => Job?.WriteEnabled == true && FindValCalcJobOutput() is not null;
+
+    // ============================================================
+    // Content own SCADA values
+    // ============================================================
+
+    /// <summary>
+    /// Читает собственные read-only ITEM Content Equipment:
+    ///
+    ///     ValHmi
+    ///     ValCalc
+    ///     Sel
+    ///
+    /// Частота ограничена пятью секундами,
+    /// как в CapacityConfigurationPanel.
+    ///
+    /// Параллельно обновляет AI snapshots,
+    /// необходимые для Temperature / Pressure bargraph.
+    /// </summary>
+    private async Task RefreshContentScadaValuesAsync(bool force = false)
+    {
+        if (_isReadingScada)
+            return;
+
+        var modelChanged = !string.Equals(_scadaRefreshModelName, Model.Name, StringComparison.OrdinalIgnoreCase);
+        var now = DateTimeOffset.UtcNow;
+
+        if (modelChanged)
+        {
+            _scadaRefreshModelName = Model.Name;
+            _liveScadaValues.Clear();
+            _linkedAiSnapshots.Clear();
+
+            force = true;
+        }
+
+        if (!force && now < _nextScadaRefreshUtc)
+            return;
+
+        _nextScadaRefreshUtc = now.AddSeconds(5);
+        _isReadingScada = true;
+
+        try
+        {
+            var itemsToRead = new[]
+            {
+                "ValHmi",
+                "ValCalc",
+                "Sel"
+            };
+
+            var reads = await Task.WhenAll(itemsToRead.Select(ReadContentScadaItemAsync));
+
+            foreach (var read in reads)
+            {
+                _liveScadaValues[read.ItemName] = read.Success ? read.Value : null;
+            }
+
+            await RefreshLinkedAiSnapshotsAsync();
+        }
+        finally
+        {
+            _isReadingScada = false;
+        }
+    }
+
+    /// <summary>
+    /// Читает один ITEM текущего Content Equipment
+    /// через его реальный Variable Tag.
+    /// </summary>
+    private async Task<ContentScadaReadResult> ReadContentScadaItemAsync(string itemName)
+    {
+        var tagName = GetItemTag(Model, itemName);
+
+        if (string.IsNullOrWhiteSpace(tagName))
+            return ContentScadaReadResult.Failed(itemName, $"ITEM {itemName} was not found in Calc Model.");
+
+        try
+        {
+            var response = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest
+            {
+                TagName = tagName,
+                RequireTrend = false
+            });
+
+            if (response.Found && response.CurrentValue.HasValue)
+                return ContentScadaReadResult.Successful(itemName, response.CurrentValue.Value);
+
+            return ContentScadaReadResult.Failed(itemName, response.Message ?? "Numeric value was not read.");
+        }
+        catch (Exception ex)
+        {
+            return ContentScadaReadResult.Failed(itemName, ex.Message);
+        }
+    }
+
+    // ============================================================
+    // ProcessInput AI visualization
+    // ============================================================
+
+    /// <summary>
+    /// Получает Param snapshot только для LINKED ProcessInput,
+    /// который был введён как Equipment.ITEM и относится к AI.
+    ///
+    /// Именно из snapshot берём реальные Min / Max для bargraph.
+    /// Direct Variable Tag без Equipment contract в bargraph не показываем.
+    /// </summary>
+    private async Task RefreshLinkedAiSnapshotsAsync()
+    {
+        var equipments = new Dictionary<string, EquipmentDto>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order).Take(2))
+        {
+            if (TryGetLinkedAiEquipment(binding, out var equipment, out _))
+                equipments[equipment.Name] = equipment;
+        }
+
+        var activeNames = equipments.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var oldName in _linkedAiSnapshots.Keys.Where(name => !activeNames.Contains(name)).ToList())
+        {
+            _linkedAiSnapshots.Remove(oldName);
+        }
+
+        if (equipments.Count == 0)
+            return;
+
+        var reads = await Task.WhenAll(equipments.Values.Select(async equipment =>
+            {
+                try
+                {
+                    var snapshot = await ParamApi.GetSnapshotAsync(equipment.Name);
+                    return new ContentAiSnapshotRead(EquipmentName: equipment.Name, Snapshot: snapshot.Supported && snapshot.TypeGroup == EquipmentTypeGroup.AI ? snapshot : null);
+                }
+                catch
+                {
+                    return new ContentAiSnapshotRead(equipment.Name, null);
+                }
+            }));
+
+
+        foreach (var read in reads)
+        {
+            if (read.Snapshot is not null)
+                _linkedAiSnapshots[read.EquipmentName] = read.Snapshot;
+            else
+                _linkedAiSnapshots.Remove(read.EquipmentName);
+        }
+    }
+
+    /// <summary>
+    /// Определяет, что ProcessInput был введён именно
+    /// как Equipment.ITEM AI Equipment.
+    ///
+    /// Например:
+    ///
+    ///     S25.K01.TT01.R
+    ///     S25.K01.PT01.R
+    /// </summary>
+    private bool TryGetLinkedAiEquipment(ContentProcessBindingEditor binding, out EquipmentDto equipment, out string itemName)
+    {
+        equipment = null!;
+        itemName = "";
+
+        if (!binding.IsLinked || string.IsNullOrWhiteSpace(binding.ValidatedSourceText))
+            return false;
+
+        var source = binding.ValidatedSourceText.Trim();
+        var candidate = EquipmentCatalog
+            .Where(item => !item.IsGroup && item.TypeGroup == EquipmentTypeGroup.AI && !string.IsNullOrWhiteSpace(item.Name))
+            .OrderByDescending(item => item.Name.Length)
+            .FirstOrDefault(item => source.StartsWith(item.Name + ".", StringComparison.OrdinalIgnoreCase));
+
+        if (candidate is null)
+            return false;
+
+        var sourceItemName = source[(candidate.Name.Length + 1)..].Trim();
+
+        if (sourceItemName.Length == 0)
+            return false;
+
+        equipment = candidate;
+        itemName = sourceItemName;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Строит только два штатных Content ProcessInput:
+    ///
+    ///     Temperature
+    ///     Pressure.
+    ///
+    /// Принцип полностью такой же, как у Capacity.
+    /// </summary>
+    private IReadOnlyList<ContentProcessBarView> BuildPrimaryProcessBars()
+    {
+        var result = new List<ContentProcessBarView>(2);
+
+        foreach (var binding in _processBindings.OrderBy(binding => binding.Parameter.Order).Take(2))
+        {
+            var bar = BuildLiveProcessBar(binding);
+
+            if (bar is not null)
+                result.Add(bar);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Создаёт один bargraph.
+    ///
+    /// Bar существует только если:
+    ///
+    ///     - binding LINKED;
+    ///     - source = Equipment.ITEM;
+    ///     - Equipment = AI;
+    ///     - snapshot содержит Min / Max;
+    ///     - есть текущее числовое значение.
+    /// </summary>
+    private ContentProcessBarView? BuildLiveProcessBar(ContentProcessBindingEditor binding)
+    {
+        if (!TryGetLinkedAiEquipment(binding, out var equipment, out var itemName))
+            return null;
+
+        if (!_linkedAiSnapshots.TryGetValue(equipment.Name, out var snapshot))
+            return null;
+
+        if (!TryGetAiBounds(snapshot, itemName, out var min, out var max))
+            return null;
+
+        var value = GetProcessCurrentValue(binding);
+
+        if (!value.HasValue)
+            return null;
+
+
+        return new ContentProcessBarView(
+            ParameterKey: binding.Parameter.Key,
+            Name: GetProcessDisplayName(binding),
+            Source: binding.ValidatedSourceText,
+            ItemName: itemName,
+            Value: value.Value,
+            Min: min,
+            Max: max,
+            Unit: string.IsNullOrWhiteSpace(snapshot.Unit)
+                ? binding.Parameter.Unit ?? ""
+                : snapshot.Unit.Trim(),
+            FillColor: GetProcessBarColor(binding));
+    }
+
+    /// <summary>
+    /// Определяет Min / Max AI ITEM.
+    ///
+    /// R:
+    ///     MinR / MaxR
+    ///
+    /// Value:
+    ///     Min / Max
+    ///
+    /// Остальные:
+    ///     MinITEM / MaxITEM.
+    /// </summary>
+    private static bool TryGetAiBounds(ParamSnapshotResponse snapshot, string itemName, out double min, out double max)
+    {
+        min = 0d;
+        max = 0d;
+
+        double? minValue;
+        double? maxValue;
+
+        if (itemName.Equals("R", StringComparison.OrdinalIgnoreCase))
+        {
+            minValue = GetSnapshotNumber(snapshot, "MinR");
+            maxValue = GetSnapshotNumber(snapshot, "MaxR");
+        }
+        else if (itemName.Equals("Value", StringComparison.OrdinalIgnoreCase))
+        {
+            minValue = GetSnapshotNumber(snapshot, "Min");
+            maxValue = GetSnapshotNumber(snapshot, "Max");
+        }
+        else
+        {
+            minValue = GetSnapshotNumber(snapshot, $"Min{itemName}");
+            maxValue = GetSnapshotNumber(snapshot, $"Max{itemName}");
+        }
+
+        if (!minValue.HasValue || !maxValue.HasValue || !double.IsFinite(minValue.Value) || !double.IsFinite(maxValue.Value))
+            return false;
+
+        if (Math.Abs(maxValue.Value - minValue.Value) < double.Epsilon)
+            return false;
+
+        min = minValue.Value;
+        max = maxValue.Value;
+
+        return true;
+    }
+
+    private static double? GetSnapshotNumber(ParamSnapshotResponse snapshot, params string[] names)
+    {
+        var item = snapshot.Items.FirstOrDefault(candidate => names.Any(name => candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+
+        if (item is null)
+            return null;
+
+        if (item.NumericValue.HasValue)
+            return item.NumericValue.Value;
+
+        if (double.TryParse(item.ValueText?.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+            return parsed;
+
+        return null;
+    }
+
+    private static string GetProcessDisplayName(ContentProcessBindingEditor binding)
+    {
+        return binding.Parameter.Order switch
+        {
+            1 => "Temperature",
+            2 => "Pressure",
+            _ => binding.Parameter.Name
+        };
+    }
+
+    private static string GetProcessBarColor(ContentProcessBindingEditor binding)
+    {
+        return binding.Parameter.Order switch
+        {
+            1 => "#4f81bd",
+            2 => "#4f9a50",
+            _ => "#4f81bd"
+        };
+    }
+
+    // ============================================================
+    // Content Pie
+    // ============================================================
+
+    /// <summary>
+    /// Pie строится по ВСЕМ рассчитанным outputs физической системы.
+    ///
+    /// Например content.acn-water:
+    ///
+    ///     acnPercent   = 72.4
+    ///     waterPercent = 27.6
+    ///
+    /// Размер каждого сектора = процент.
+    ///
+    /// В отличие от Capacity никаких дополнительных значений
+    /// внутри Pie нет.
+    /// </summary>
+    private IReadOnlyList<ContentPieItem> BuildLivePieItems()
+    {
+        if (LiveDefinition is null)
+            return [];
+
+        var result = new List<ContentPieItem>();
+
+        foreach (var output in LiveDefinition.Outputs.OrderBy(output => output.Order))
+        {
+            var value = GetLastOutputNumber(output.Key);
+
+            if (!value.HasValue || !double.IsFinite(value.Value) || value.Value <= 0d)
+                continue;
+
+            result.Add(new ContentPieItem(
+                Key: output.Key,
+                Name: output.Name,
+                LegendText: $"{output.Name} {value.Value:0.#}%",
+                Percent: value.Value));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Текст непосредственно внутри Pie sector.
+    ///
+    /// Только процент.
+    /// </summary>
+    private static string FormatPieItemPercent(ContentPieItem item)
+    {
+        return $"{item.Percent.ToString("0.#", CultureInfo.InvariantCulture)}%";
+    }
+
+    /// <summary>
+    /// Заголовок верхней Runtime-панели.
+    ///
+    /// Для существующего Job отображаем реально сохранённую
+    /// физическую систему, а не несохранённый выбор Settings.
+    /// </summary>
+    private string GetLiveContentTitle()
+    {
+        return LiveDefinition?.Name ?? "Content";
+    }
+
+    // ============================================================
+    // SCADA ITEM helper
+    // ============================================================
+
+    private static string? GetItemTag(CalcModelDto? model, string itemName)
+    {
+        if (model?.ItemTags is null || model.ItemTags.Count == 0 || string.IsNullOrWhiteSpace(itemName))
+            return null;
+
+        if (model.ItemTags.TryGetValue(itemName, out var tagName) && !string.IsNullOrWhiteSpace(tagName))
+            return tagName.Trim();
+
+        var item = model.ItemTags.FirstOrDefault(pair => string.Equals(pair.Key, itemName, StringComparison.OrdinalIgnoreCase));
+
+        return !string.IsNullOrWhiteSpace(item.Value) ? item.Value.Trim() : null;
+    }
+
+    // ============================================================
+    // Runtime JSON helper
+    // ============================================================
 
     private static bool TryGetRuntimeNumber(JsonElement? json, string key, out double value)
     {
@@ -1078,12 +1947,8 @@
             if (!string.Equals(property.Name, key, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            if (property.Value.ValueKind == JsonValueKind.Number
-                && property.Value.TryGetDouble(out value)
-                && double.IsFinite(value))
-            {
+            if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetDouble(out value) && double.IsFinite(value))
                 return true;
-            }
 
             return false;
         }
@@ -1091,9 +1956,8 @@
         return false;
     }
 
-
     // ============================================================
-    // UI helpers
+    // Binding UI
     // ============================================================
 
     private static string GetBindingBadgeText(ContentProcessBindingEditor binding)
@@ -1131,14 +1995,13 @@
 
     private static string GetSwitchStateText(bool value)
     {
-        return value ? "ON" : "OFF";
+        return value ? "on" : "off";
     }
 
     private static string GetSwitchStateClass(bool value)
     {
         return value ? "is-on" : "is-off";
     }
-
 
     // ============================================================
     // Editor models
@@ -1147,19 +2010,21 @@
     private sealed class ContentProcessBindingEditor
     {
         public CalcParameterDefinitionDto Parameter { get; init; } = default!;
+
         public string SourceText { get; set; } = "";
         public string ResolvedTagName { get; set; } = "";
         public string ValidatedSourceText { get; set; } = "";
+
         public double? CurrentValue { get; set; }
+
         public string Resolution { get; set; } = "";
         public string Message { get; set; } = "";
+
         public int? MaxAgeSeconds { get; set; }
+
         public ContentBindingCheckState CheckState { get; set; }
 
-        public bool IsLinked =>
-            CheckState == ContentBindingCheckState.Linked
-            && !string.IsNullOrWhiteSpace(ResolvedTagName)
-            && string.Equals(SourceText.Trim(), ValidatedSourceText, StringComparison.Ordinal);
+        public bool IsLinked => CheckState == ContentBindingCheckState.Linked && !string.IsNullOrWhiteSpace(ResolvedTagName) && string.Equals(SourceText.Trim(), ValidatedSourceText, StringComparison.Ordinal);
     }
 
     private sealed class ContentOutputBindingEditor
@@ -1168,10 +2033,39 @@
         public string TargetTagName { get; set; } = "";
     }
 
-    private sealed record ContentOutputTargetOption(
-        string ItemName,
-        string TagName,
-        string DisplayName);
+    private sealed record ContentOutputTargetOption(string ItemName, string TagName, string DisplayName);
+
+    /// <summary>
+    /// Один bargraph Temperature / Pressure.
+    /// Структура намеренно аналогична CapacityProcessBarView.
+    /// </summary>
+    private sealed record ContentProcessBarView(string ParameterKey, string Name, string Source, string ItemName, double Value, double Min, double Max, string Unit, string FillColor);
+
+    /// <summary>
+    /// Один сектор Content Pie.
+    /// </summary>
+    private sealed record ContentPieItem(string Key, string Name, string LegendText, double Percent);
+
+    /// <summary>
+    /// Результат чтения одного собственного SCADA ITEM Content.
+    /// </summary>
+    private sealed record ContentScadaReadResult(string ItemName, bool Success, double? Value, string? Message)
+    {
+        public static ContentScadaReadResult Successful(string itemName, double value)
+        {
+            return new ContentScadaReadResult(itemName, true, value, null);
+        }
+
+        public static ContentScadaReadResult Failed(string itemName, string? message)
+        {
+            return new ContentScadaReadResult(itemName, false, null, message);
+        }
+    }
+
+    /// <summary>
+    /// Результат чтения Param snapshot одного AI Equipment.
+    /// </summary>
+    private sealed record ContentAiSnapshotRead(string EquipmentName, ParamSnapshotResponse? Snapshot);
 
     private enum ContentBindingCheckState
     {

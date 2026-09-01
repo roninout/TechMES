@@ -1,227 +1,854 @@
 .content-configuration-host {
     width: 100%;
+    min-width: 0;
 }
+
 
 .content-configuration {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 20px;
+    margin-top: 18px;
+    min-width: 0;
 }
 
-.content-header {
+
+/* ============================================================
+   Loading
+   ============================================================ */
+
+.content-loading {
+    min-height: 280px;
+}
+
+
+.content-loading-content {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 24px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+    gap: 8px;
 }
 
-.content-definition-area {
-    flex: 1 1 520px;
-    max-width: 680px;
+
+::deep .content-loading-icon {
+    font-size: 36px;
 }
 
-.content-section-caption {
-    margin-bottom: 6px;
-    font-size: 0.78rem;
+
+.content-loading-title {
+    font-size: 16px;
     font-weight: 600;
-    opacity: 0.7;
 }
 
-.content-definition-code {
-    margin-top: 5px;
-    font-size: 0.75rem;
-    opacity: 0.6;
+
+.content-loading-model {
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
 }
 
-.content-switch-area {
+
+/* ============================================================
+   Верхняя live panel
+   ============================================================ */
+
+.content-live-panel {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    padding: 18px;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    border-radius: 2px;
+    background: transparent;
+    /*
+     * Responsive рассчитываем относительно реальной ширины
+     * самой Content-панели.
+     *
+     * Это повторяет принцип CapacityConfigurationPanel.
+     */
+    container-name: content-live;
+    container-type: inline-size;
+}
+
+
+.content-live-header {
     display: flex;
     align-items: center;
-    gap: 9px;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 42px;
+}
+
+
+.content-live-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 700;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.content-switch-state {
-    min-width: 28px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-align: right;
+
+::deep .content-live-title-icon {
+    flex: 0 0 auto;
+    color: var(--rz-primary);
+    font-size: 26px;
 }
+
+
+.content-toolbar-enabled {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 9px;
+    flex: 0 0 auto;
+    min-height: 38px;
+    white-space: nowrap;
+}
+
+
+.content-switch-state {
+    width: 24px;
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
+    line-height: 1;
+    text-align: right;
+    text-transform: lowercase;
+}
+
 
     .content-switch-state.is-on {
-        opacity: 1;
+        color: var(--rz-text-color);
+        font-weight: 600;
     }
 
-    .content-switch-state.is-off {
-        opacity: 0.55;
-    }
+
+.content-switch-label {
+    color: var(--rz-text-color);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+
+.content-panel-separator {
+    width: 100%;
+    height: 1px;
+    margin: 8px 0 18px;
+    background: var(--rz-border-color, #d7dbe0);
+}
+
+
+.content-live-status-alert {
+    width: 100%;
+    margin: 0 0 16px !important;
+}
 
 
 /* ============================================================
-   LIVE OUTPUTS
+   Основная live-разметка
+
+   Как у Capacity:
+
+       LEFT   = 0 / 128 / 256 px
+       CENTER = всё оставшееся место
+       PIE    = 430 px
    ============================================================ */
 
-.content-live-outputs {
+.content-live-layout {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 12px;
-}
-
-.content-output-card {
+    grid-template-columns: minmax(0, 1fr) 430px;
+    align-items: stretch;
+    width: 100%;
     min-width: 0;
-    padding: 16px;
-    border: 1px solid var(--rz-base-300);
-    border-radius: 8px;
-    background: var(--rz-base-100);
 }
 
-.content-output-name {
-    font-size: 0.82rem;
-    font-weight: 600;
-    opacity: 0.75;
+
+/* Один видимый ProcessInput bargraph. */
+.content-live-layout-bars-1 {
+    grid-template-columns: 128px minmax(0, 1fr) 430px;
 }
 
-.content-output-value {
-    margin-top: 5px;
-    font-size: 1.7rem;
-    font-weight: 600;
-    line-height: 1.2;
-}
 
-.content-output-unit {
-    margin-left: 4px;
-    font-size: 0.9rem;
-    font-weight: 400;
-    opacity: 0.65;
-}
-
-.content-output-key {
-    margin-top: 5px;
-    font-family: Consolas, monospace;
-    font-size: 0.72rem;
-    opacity: 0.5;
+/* Temperature + Pressure. */
+.content-live-layout-bars-2 {
+    grid-template-columns: 256px minmax(0, 1fr) 430px;
 }
 
 
 /* ============================================================
-   SETTINGS
+   Temperature / Pressure bars
    ============================================================ */
 
-.content-settings {
+.content-process-bars {
+    display: grid;
+    align-items: stretch;
+    border-right: 1px solid var(--rz-border-color, #d7dbe0);
+}
+
+
+.content-process-bars-1 {
+    grid-template-columns: 128px;
+    width: 128px;
+    min-width: 128px;
+}
+
+
+.content-process-bars-2 {
+    grid-template-columns: 128px 128px;
+    width: 256px;
+    min-width: 256px;
+}
+
+
+.content-process-meter {
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding-top: 4px;
+    align-items: center;
+    width: 128px;
+    min-width: 128px;
+    padding: 0 10px;
 }
 
-.content-section-title {
-    margin-bottom: 4px;
-    font-size: 0.95rem;
+
+    /* Separator только между двумя реально существующими bars. */
+    .content-process-meter + .content-process-meter {
+        border-left: 1px solid var(--rz-border-color, #d7dbe0);
+    }
+
+
+.content-process-meter-readout {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-height: 48px;
+    margin-bottom: 10px;
+}
+
+
+::deep .content-process-form-field {
+    width: 96px;
+}
+
+
+::deep .content-process-top-value {
+    width: 100%;
+}
+
+
+    ::deep .content-process-top-value .rz-inputtext {
+        text-align: center;
+        font-weight: 400;
+    }
+
+
+.content-process-meter-body {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    width: 96px;
+    height: 290px;
+    min-height: 290px;
+}
+
+
+    .content-process-meter-body ::deep .param-meter {
+        height: 290px;
+        min-height: 290px;
+        /*
+     * Центрируем bar-body под верхним RadzenNumeric
+     * точно по тому же принципу, что Capacity.
+     */
+        margin-inline-end: calc(var(--param-meter-scale-width) + var(--param-meter-scale-gap));
+    }
+
+
+.content-process-meter-unit {
+    min-height: 18px;
+    margin-top: 8px;
+    color: var(--rz-text-color);
+    font-size: 12px;
+    text-align: center;
+}
+
+
+.content-process-meter-title {
+    width: 100%;
+    margin-top: 7px;
+    overflow: hidden;
+    color: var(--rz-text-color);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+.content-process-meter-source {
+    width: 100%;
+    min-height: 16px;
+    margin-top: 3px;
+    overflow: hidden;
+    color: var(--rz-text-secondary-color);
+    font-size: 10px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* ============================================================
+   Center
+   ============================================================ */
+
+.content-live-center {
+    --content-main-field-width: 150px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    padding: 0 18px;
+}
+
+
+/* ============================================================
+   Main card
+   ============================================================ */
+
+.content-main-card {
+    box-sizing: border-box;
+    display: grid;
+    gap: 14px;
+    width: 100%;
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    border-radius: 5px;
+}
+
+
+/* ============================================================
+   Value row
+   ============================================================ */
+
+.content-value-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 28px;
+    width: 100%;
+    min-width: 0;
+}
+
+
+/* ============================================================
+   Selection title
+   ============================================================ */
+
+.content-selection-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: var(--rz-text-color);
+    font-size: 14px;
+    font-weight: 400;
+}
+
+
+    .content-selection-title.is-selected {
+        font-weight: 600;
+    }
+
+
+/*
+ * Отдельное место под check всегда существует,
+ * поэтому текст не сдвигается при Sel = 0 / 1.
+ */
+.content-selection-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 18px;
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+}
+
+
+::deep .content-selection-icon {
+    color: var(--rz-success);
+    font-size: 17px;
+}
+
+
+/* ============================================================
+   Separator внутри main card
+   ============================================================ */
+
+.content-card-separator {
+    width: 100%;
+    height: 1px;
+    background: var(--rz-border-color, #d7dbe0);
+}
+
+
+/* ============================================================
+   Main value fields
+
+   В отличие от Capacity здесь НЕТ второй колонки Delta.
+
+   Поэтому справа остаётся только одно поле:
+       Content
+       ValHmi
+       ValCalc
+   ============================================================ */
+
+.content-value-controls {
+    display: grid;
+    grid-template-columns: var(--content-main-field-width);
+    align-items: center;
+    width: max-content;
+    min-width: 0;
+    justify-self: end;
+}
+
+
+::deep .content-main-form-field {
+    width: var(--content-main-field-width);
+    min-width: var(--content-main-field-width);
+    max-width: var(--content-main-field-width);
+}
+
+
+::deep .content-main-value-input {
+    width: 100%;
+}
+
+
+    ::deep .content-main-value-input .rz-inputtext {
+        text-align: right;
+        font-weight: 400;
+    }
+
+
+/* ============================================================
+   Pie
+
+   Размер и положение повторяют Capacity.
+   ============================================================ */
+
+.content-pie-column {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 430px;
+    min-width: 430px;
+    max-width: 430px;
+    padding-left: 16px;
+    border-left: 1px solid var(--rz-border-color, #d7dbe0);
+}
+
+
+.content-pie-shell {
+    width: 100%;
+    height: 360px;
+    min-width: 0;
+}
+
+
+::deep .content-pie-chart {
+    width: 100%;
+    height: 100%;
+}
+
+
+.content-pie-tooltip {
+    display: grid;
+    gap: 3px;
+    min-width: 110px;
+}
+
+
+.content-pie-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 280px;
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
+}
+
+
+/* ============================================================
+   Live panel — narrow layout
+   ============================================================ */
+
+@media (max-width: 760px) {
+
+    .content-live-layout,
+    .content-live-layout-bars-1,
+    .content-live-layout-bars-2 {
+        grid-template-columns: 1fr;
+    }
+
+
+    .content-process-bars {
+        margin: 0 auto 18px;
+        border-right: 0;
+    }
+
+
+    .content-live-center {
+        padding: 0;
+    }
+
+
+    .content-value-row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+
+    .content-value-controls {
+        grid-template-columns: minmax(0, var(--content-main-field-width));
+        width: 100%;
+    }
+
+
+    ::deep .content-main-form-field {
+        width: 100%;
+        min-width: 0;
+        max-width: var(--content-main-field-width);
+    }
+}
+
+
+/* ============================================================
+   Pie visibility
+
+   Те же пороги, что у Capacity.
+
+   Два bars:
+       256px + center + 430px Pie.
+
+   Если рабочая область становится слишком узкой,
+   Pie скрывается, а center не сжимается до нечитаемого размера.
+   ============================================================ */
+
+@container content-live (max-width: 1240px) {
+
+    .content-live-layout-bars-2 {
+        grid-template-columns: 256px minmax(0, 1fr);
+    }
+
+
+        .content-live-layout-bars-2 .content-pie-column {
+            display: none;
+        }
+}
+
+
+@container content-live (max-width: 1110px) {
+
+    .content-live-layout-bars-1 {
+        grid-template-columns: 128px minmax(0, 1fr);
+    }
+
+
+        .content-live-layout-bars-1 .content-pie-column {
+            display: none;
+        }
+}
+
+
+@container content-live (max-width: 980px) {
+
+    .content-live-layout-bars-0 {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+
+        .content-live-layout-bars-0 .content-pie-column {
+            display: none;
+        }
+}
+
+
+/* ============================================================
+   Settings
+   ============================================================ */
+
+.content-settings-column {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: 100%;
+    min-width: 0;
+}
+
+
+.content-settings-body {
+    display: grid;
+    align-content: start;
+    width: 100%;
+    max-width: 1100px;
+    min-width: 0;
+    margin: 0 auto;
+    padding: 28px 34px 22px;
+}
+
+
+.content-settings-separator {
+    width: 100%;
+    height: 1px;
+    margin: 20px 0;
+    background: var(--rz-border-color, #d7dbe0);
+}
+
+
+.content-settings-index {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
     font-weight: 600;
 }
 
-.content-section-description {
-    font-size: 0.78rem;
-    line-height: 1.4;
-    opacity: 0.65;
+
+/* ============================================================
+   Process inputs
+
+   Сетка такая же, как у Capacity:
+       index
+       source
+       status
+       name
+       action
+   ============================================================ */
+
+.content-process-settings {
+    display: grid;
+    gap: 10px;
 }
 
-.content-separator {
-    height: 1px;
-    background: var(--rz-base-300);
-}
 
 .content-process-row {
     display: grid;
-    grid-template-columns: minmax(130px, 180px) minmax(260px, 1fr) 105px 90px;
+    grid-template-columns: 36px minmax(260px, 1fr) 88px minmax(180px, 1fr) 130px;
     align-items: center;
-    gap: 10px;
-    margin-top: 10px;
+    gap: 12px;
+    min-height: 48px;
 }
 
-.content-process-info {
-    min-width: 0;
+
+::deep .content-process-tag {
+    width: 100%;
 }
+
+
+.content-process-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 
 .content-process-name {
-    font-size: 0.84rem;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 14px;
     font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.content-process-unit {
-    margin-top: 2px;
-    font-size: 0.72rem;
-    opacity: 0.55;
-}
 
-.content-process-current {
-    text-align: right;
-    font-family: Consolas, monospace;
-    font-size: 0.82rem;
-}
-
-.content-binding-description {
-    margin-top: 3px;
-    padding-left: 190px;
-    font-size: 0.72rem;
-    opacity: 0.55;
-    overflow-wrap: anywhere;
-}
-
-.content-process-actions {
+.content-process-action {
     display: flex;
     justify-content: flex-end;
-    margin-top: 12px;
 }
 
-.content-configuration-code-row,
-.content-write-row {
+
+::deep .content-process-check {
+    min-width: 92px;
+}
+
+
+/* ============================================================
+   Content system
+   ============================================================ */
+
+.content-system-settings {
+    display: grid;
+    gap: 10px;
+}
+
+
+.content-system-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 24px;
-    margin-top: 10px;
+    gap: 18px;
+    min-height: 42px;
 }
 
-.content-output-binding-row {
-    display: grid;
-    grid-template-columns: minmax(190px, 260px) minmax(300px, 1fr);
+
+.content-system-title {
+    display: flex;
     align-items: center;
-    gap: 16px;
-    margin-top: 10px;
+    gap: 10px;
+    color: var(--rz-text-color);
+    font-size: 15px;
+    font-weight: 600;
 }
+
+
+::deep .content-system-title .rz-icon {
+    font-size: 20px;
+}
+
+
+.content-system-row {
+    display: grid;
+    grid-template-columns: 36px minmax(260px, 1fr) 88px minmax(180px, 1fr) 130px;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+}
+
+
+.content-system-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--rz-text-secondary-color);
+}
+
+
+::deep .content-system-icon .rz-icon {
+    font-size: 20px;
+}
+
+
+::deep .content-system-dropdown {
+    grid-column: 2 / 4;
+    width: 100%;
+}
+
+
+.content-system-name {
+    grid-column: 4 / 6;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--rz-text-secondary-color);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* ============================================================
+   Actions
+   ============================================================ */
 
 .content-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 10px;
+    width: 100%;
+    margin-top: 2px;
 }
 
 
-@media (max-width: 900px) {
-    .content-header {
-        flex-direction: column;
-    }
+/* ============================================================
+   Settings responsive
+   ============================================================ */
 
-    .content-definition-area {
-        width: 100%;
-        max-width: none;
-    }
+@media (max-width: 900px) {
 
     .content-process-row {
-        grid-template-columns: 1fr;
+        grid-template-columns: 32px minmax(0, 1fr) 88px;
     }
 
-    .content-binding-description {
-        padding-left: 0;
+
+    .content-process-name {
+        grid-column: 2;
     }
 
-    .content-output-binding-row {
-        grid-template-columns: 1fr;
+
+    .content-process-action {
+        grid-column: 3;
     }
 
-    .content-configuration-code-row,
-    .content-write-row {
+
+    .content-system-row {
+        grid-template-columns: 32px minmax(0, 1fr);
+    }
+
+
+    ::deep .content-system-dropdown {
+        grid-column: 2;
+    }
+
+
+    .content-system-name {
+        grid-column: 2;
+    }
+}
+
+
+@media (max-width: 650px) {
+
+    .content-settings-body {
+        padding: 18px 14px;
+    }
+
+
+    .content-live-header {
         align-items: flex-start;
         flex-direction: column;
+        gap: 10px;
+    }
+
+
+    .content-toolbar-enabled {
+        justify-content: flex-start;
+    }
+
+
+    .content-process-row {
+        grid-template-columns: 28px minmax(0, 1fr);
+    }
+
+
+    .content-process-status {
+        grid-column: 2;
+        justify-content: flex-start;
+    }
+
+
+    .content-process-name {
+        grid-column: 2;
+    }
+
+
+    .content-process-action {
+        grid-column: 2;
+        justify-content: flex-start;
+    }
+
+
+    .content-system-row {
+        grid-template-columns: 28px minmax(0, 1fr);
     }
 }
