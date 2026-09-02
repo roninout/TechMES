@@ -1763,6 +1763,14 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
                 dto.ValueText = boolValue ? "true" : "false";
             }
         }
+        else if (definition.Kind == ParamValueKind.Integer)
+        {
+            if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer))
+            {
+                dto.NumericValue = integer;
+                dto.ValueText = integer.ToString(CultureInfo.InvariantCulture);
+            }
+        }
         else if (definition.Kind == ParamValueKind.Number)
         {
             if (TryParseDouble(raw, out var number))
@@ -1880,13 +1888,9 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
 
     /// <summary>
     /// Приводит пользовательское значение к формату, который безопасно отдавать в CtApi TagWrite.
-    /// Boolean пишется как 1/0, number - invariant string без лишнего double-хвоста.
+    /// Boolean пишется как 1/0, integer и number - invariant string без локального разделителя и лишнего double-хвоста.
     /// </summary>
-    private static bool TryNormalizeWriteValue(
-        string? raw,
-        ParamValueKind kind,
-        out string value,
-        out string error)
+    private static bool TryNormalizeWriteValue(string? raw, ParamValueKind kind, out string value, out string error)
     {
         value = "";
         error = "";
@@ -1907,6 +1911,18 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
             }
 
             error = "Boolean write value must be one of: 1, 0, true, false, on, off.";
+            return false;
+        }
+
+        if (kind == ParamValueKind.Integer)
+        {
+            if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer))
+            {
+                value = integer.ToString(CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            error = "Integer write value is invalid.";
             return false;
         }
 
@@ -2287,7 +2303,16 @@ internal static class ParamDefinitions
                 N("TClose"), N("HashCode")
             ],
             [T("Man", "CornflowerBlue", 0, 1.1), T("Mode", "Green", 0, 1.5), T("AlarmOpen", "Red", 0, 2), T("AlarmClose", "Orange", 0, 2.5)],
-            [ParamPageKind.Plc, ParamPageKind.DiDo, ParamPageKind.Alarm])
+            [ParamPageKind.Plc, ParamPageKind.DiDo, ParamPageKind.Alarm]),
+
+        [EquipmentTypeGroup.Content] = new(
+            EquipmentTypeGroup.Content,
+            [
+                I("Conf"), N("Param0_Dp"), N("Param0_Dt"), N("Param1_Dp"), N("Param1_Dt"), N("Param2_Dp"), N("Param2_Dt"),
+                N("Param3_Dp"), N("Param3_Dt"), N("Param4_Dp"), N("Param4_Dt")
+            ],
+            [],
+            [])
     };
 
     public static bool TryGet(EquipmentTypeGroup typeGroup, out ParamDefinition definition)
@@ -2298,6 +2323,8 @@ internal static class ParamDefinitions
     private static ParamItemDefinition B(string name) => new(name, ParamValueKind.Boolean);
 
     private static ParamItemDefinition N(string name) => new(name, ParamValueKind.Number);
+
+    private static ParamItemDefinition I(string name) => new(name, ParamValueKind.Integer);
 
     private static ParamTrendItemDefinition T(string name, string color, double? nativeMin = null, double? nativeMax = null) =>
         new(name, color, nativeMin, nativeMax);
@@ -2357,7 +2384,10 @@ internal static class ParamWriteDefinitions
             "Man", "TimeOpening", "OutMin", "OutMax"),
 
         [EquipmentTypeGroup.VGD] = Names(
-            "Mode", "Man", "AlarmEn", "TOpen", "TClose")
+            "Mode", "Man", "AlarmEn", "TOpen", "TClose"),
+
+        [EquipmentTypeGroup.Content] = Names(
+            "Conf", "Param0_Dp", "Param0_Dt", "Param1_Dp", "Param1_Dt", "Param2_Dp", "Param2_Dt", "Param3_Dp", "Param3_Dt", "Param4_Dp", "Param4_Dt")
     };
 
     public static bool CanWrite(EquipmentTypeGroup typeGroup, string itemName)

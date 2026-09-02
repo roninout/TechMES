@@ -23,5 +23,11 @@ public enum ParamValueKind
     /// <summary>
     /// Произвольный текст.
     /// </summary>
-    Text = 3
+    Text = 3,
+
+    /// <summary>
+    /// Целое числовое значение.
+    /// Использует тот же numeric editor, но Runtime отклоняет дробные значения.
+    /// </summary>
+    Integer = 4
 }

@@ -4,6 +4,7 @@
 @using TechMES.Contracts.Param
 @inject CalcApiClient CalcApi
 @inject ParamApiClient ParamApi
+@inject ParamWriteCoordinator ParamWriteCoordinator
 @inject CalcProcessInputResolver ProcessInputResolver
 @inject NotificationService NotificationService
 
@@ -301,12 +302,12 @@
 
 
                             @* =================================================
-                               CONTENT COMPONENTS
+   CONTENT COMPONENTS
 
-                               Показываем фактические SCADA ParamN и их поправки.
-                               Физический dP хранится в legacy ParamN_Dt.
-                               Физический dT хранится в legacy ParamN_Dp.
-                               ================================================= *@
+   Показываем фактические SCADA ParamN и их поправки.
+   Физический dP хранится в ParamN_Dp.
+   Физический dT хранится в ParamN_Dt.
+   ================================================= *@
                             @if (LiveDefinition is not null)
                             {
                                 var outputs = LiveDefinition.Outputs.OrderBy(output => output.Order).Take(MaxContentItemCount).ToList();
@@ -346,33 +347,45 @@
 
                                         <div class="content-component-live-fields">
 
-                                            <RadzenFormField AllowFloatingLabel="false"
-                                                             Text="dP"
-                                                             Variant="Variant.Outlined"
-                                                             class="content-component-live-delta-field">
+                                            <div class="@GetContentWriteFieldClass($"Param{itemIndex}_Dp")"
+                                                 title="@GetContentWriteFieldTitle($"Param{itemIndex}_Dp")"
+                                                 @onclick="@(() => RequestContentWriteAsync($"Param{itemIndex}_Dp", pressureDelta, ParamValueKind.Number, "bar"))">
 
-                                                <RadzenNumeric TValue="double?"
-                                                               Value="@pressureDelta"
-                                                               ReadOnly="true"
-                                                               ShowUpDown="false"
-                                                               Format="0.###' bar'"
-                                                               class="content-component-live-value" />
+                                                <RadzenFormField AllowFloatingLabel="false"
+                                                                 Text="dP"
+                                                                 Variant="Variant.Outlined"
+                                                                 class="content-component-live-delta-field">
 
-                                            </RadzenFormField>
+                                                    <RadzenNumeric TValue="double?"
+                                                                   Value="@pressureDelta"
+                                                                   ReadOnly="true"
+                                                                   ShowUpDown="false"
+                                                                   Format="0.###' bar'"
+                                                                   class="content-component-live-value" />
 
-                                            <RadzenFormField AllowFloatingLabel="false"
-                                                             Text="dT"
-                                                             Variant="Variant.Outlined"
-                                                             class="content-component-live-delta-field">
+                                                </RadzenFormField>
 
-                                                <RadzenNumeric TValue="double?"
-                                                               Value="@temperatureDelta"
-                                                               ReadOnly="true"
-                                                               ShowUpDown="false"
-                                                               Format="0.###' °C'"
-                                                               class="content-component-live-value" />
+                                            </div>
 
-                                            </RadzenFormField>
+                                            <div class="@GetContentWriteFieldClass($"Param{itemIndex}_Dt")"
+                                                 title="@GetContentWriteFieldTitle($"Param{itemIndex}_Dt")"
+                                                 @onclick="@(() => RequestContentWriteAsync($"Param{itemIndex}_Dt", temperatureDelta, ParamValueKind.Number, "°C"))">
+
+                                                <RadzenFormField AllowFloatingLabel="false"
+                                                                 Text="dT"
+                                                                 Variant="Variant.Outlined"
+                                                                 class="content-component-live-delta-field">
+
+                                                    <RadzenNumeric TValue="double?"
+                                                                   Value="@temperatureDelta"
+                                                                   ReadOnly="true"
+                                                                   ShowUpDown="false"
+                                                                   Format="0.###' °C'"
+                                                                   class="content-component-live-value" />
+
+                                                </RadzenFormField>
+
+                                            </div>
 
                                             <RadzenFormField AllowFloatingLabel="false"
                                                              Text="@GetContentComponentCode(output)"
@@ -592,7 +605,7 @@
                                ...
                                4 -> Param4
 
-                           Все Param* в Settings только ReadOnly.
+                           ParamN остаются ReadOnly, а dP/dT и Conf записываются через общий Param write-dialog.
                            ================================================== *@
                         <section class="content-system-settings">
 
@@ -626,18 +639,24 @@
                                                 Disabled="@_isSaving"
                                                 class="content-system-dropdown" />
 
-                                <RadzenFormField AllowFloatingLabel="false"
-                                                 Text="code"
-                                                 Variant="Variant.Outlined"
-                                                 class="content-code-field">
+                                <div class="@GetContentWriteFieldClass("Conf", "content-code-write-field")"
+                                     title="@GetContentWriteFieldTitle("Conf")"
+                                     @onclick="@(() => RequestContentWriteAsync("Conf", (double?)CurrentConfigurationCode, ParamValueKind.Integer, null))">
 
-                                    <RadzenNumeric TValue="int?"
-                                                   Value="@CurrentConfigurationCode"
-                                                   ReadOnly="true"
-                                                   ShowUpDown="false"
-                                                   class="content-code-value" />
+                                    <RadzenFormField AllowFloatingLabel="false"
+                                                     Text="code"
+                                                     Variant="Variant.Outlined"
+                                                     class="content-code-field">
 
-                                </RadzenFormField>
+                                        <RadzenNumeric TValue="int?"
+                                                       Value="@CurrentConfigurationCode"
+                                                       ReadOnly="true"
+                                                       ShowUpDown="false"
+                                                       class="content-code-value" />
+
+                                    </RadzenFormField>
+
+                                </div>
 
                             </div>
 
@@ -800,6 +819,7 @@
     private bool _isSaving;
     private bool _isCheckingBindings;
     private bool _isReadingScada;
+    private bool _isWritingContentItem;
 
     // ============================================================
     // Current Definition
@@ -906,6 +926,78 @@
     private string? GetContentTemperatureDeltaTag(int index)
     {
         return GetContentParamDtTag(index);
+    }
+
+    // ============================================================
+    // Common Param write-flow
+    // ============================================================
+
+    /// <summary>
+    /// Открывает существующий Param write-dialog для Content ITEM.
+    /// WEB передаёт только Equipment + ITEM + текущее значение; Runtime повторно проверяет Calc Catalog, allow-list, Windows user, tag и CtApi write settings.
+    /// </summary>
+    private async Task RequestContentWriteAsync(string itemName, double? currentValue, ParamValueKind kind, string? unit)
+    {
+        if (_isSaving || _isWritingContentItem)
+            return;
+
+        var tagName = GetItemTag(Model, itemName);
+        if (string.IsNullOrWhiteSpace(tagName))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Param write", $"Content ITEM '{itemName}' was not found.", 4000);
+            return;
+        }
+
+        var item = new ParamItemDto
+        {
+            Name = itemName,
+            Kind = kind,
+            ValueText = FormatContentWriteValue(currentValue, kind),
+            NumericValue = currentValue,
+            Unit = unit,
+            TagName = tagName,
+            CanWrite = true
+        };
+
+        _isWritingContentItem = true;
+
+        try
+        {
+            var response = await ParamWriteCoordinator.WriteAsync(Model.Name, item);
+            if (response?.Success != true)
+                return;
+
+            await RefreshContentScadaValuesAsync(force: true);
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _isWritingContentItem = false;
+        }
+    }
+
+    private string GetContentWriteFieldClass(string itemName, string? additionalClass = null)
+    {
+        var stateClass = !_isSaving && !_isWritingContentItem && !string.IsNullOrWhiteSpace(GetItemTag(Model, itemName)) ? "is-writable" : "is-disabled";
+        return string.IsNullOrWhiteSpace(additionalClass) ? $"content-write-field-shell {stateClass}" : $"content-write-field-shell {additionalClass} {stateClass}";
+    }
+
+    private string GetContentWriteFieldTitle(string itemName)
+    {
+        if (string.IsNullOrWhiteSpace(GetItemTag(Model, itemName)))
+            return $"Content ITEM '{itemName}' was not found";
+
+        return _isWritingContentItem ? "Param write is in progress" : $"Write {itemName}";
+    }
+
+    private static string? FormatContentWriteValue(double? value, ParamValueKind kind)
+    {
+        if (!value.HasValue || !double.IsFinite(value.Value))
+            return null;
+
+        return kind == ParamValueKind.Integer
+            ? Math.Round(value.Value).ToString("0", CultureInfo.InvariantCulture)
+            : value.Value.ToString("0.###############", CultureInfo.InvariantCulture);
     }
 
     // ============================================================

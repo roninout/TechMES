@@ -892,6 +892,13 @@
     width: 100%;
 }
 
+.content-code-write-field {
+    grid-column: 4;
+    width: 92px;
+    min-width: 0;
+    justify-self: end;
+}
+
 
 /* ============================================================
    Output write
@@ -958,6 +965,26 @@
     justify-self: end;
 }
 
+.content-write-field-shell {
+    width: 92px;
+    min-width: 0;
+}
+
+.content-write-field-shell.is-writable {
+    cursor: pointer;
+}
+
+.content-write-field-shell.is-disabled {
+    cursor: default;
+    opacity: 0.72;
+}
+
+.content-write-field-shell.is-writable ::deep .rz-form-field,
+.content-write-field-shell.is-writable ::deep .rz-numeric,
+.content-write-field-shell.is-writable ::deep .rz-inputtext {
+    cursor: pointer;
+}
+
 ::deep .content-component-live-delta-field {
     width: 92px;
 }
@@ -970,7 +997,7 @@
     width: 100%;
 }
 
-    ::deep .content-component-live-value .rz-inputtext {
-        text-align: right;
-        font-weight: 400;
-    }
+::deep .content-component-live-value .rz-inputtext {
+    text-align: right;
+    font-weight: 400;
+}

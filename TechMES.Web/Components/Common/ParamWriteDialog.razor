@@ -27,6 +27,14 @@
                                   Name="param-write-switch" />
                 </RadzenStack>
             }
+            else if (Item.Kind == ParamValueKind.Integer)
+            {
+                <RadzenNumeric TValue="int?"
+                               @bind-Value="_integerValue"
+                               Step="1"
+                               Placeholder="New value..."
+                               Style="width: 100%;" />
+            }
             else if (Item.Kind == ParamValueKind.Number)
             {
                 <RadzenNumeric TValue="double?"
@@ -58,7 +66,7 @@
 @code {
     /// <summary>
     /// Param item, для которого диалог предлагает ввести новое значение.
-    /// Сама запись в Runtime.Service выполняется в EquipmentParamPanel.
+    /// Сама запись в Runtime.Service выполняется parent-компонентом либо общим ParamWriteCoordinator.
     /// </summary>
     [Parameter]
     public ParamItemDto? Item { get; set; }
@@ -71,7 +79,7 @@
     public bool? InitialBooleanValue { get; set; }
 
     /// <summary>
-    /// Текстовое значение для number/text Param item.
+    /// Текстовое представление текущего number/integer/text Param item.
     /// </summary>
     private string _valueText = "";
 
@@ -84,6 +92,12 @@
     /// Числовое значение для RadzenNumeric; хранится отдельно от текста, чтобы компонент не показывал двоичные хвосты double вроде 5.4800000000000004.
     /// </summary>
     private double? _numericValue;
+
+    /// <summary>
+    /// Целое значение для ITEM вроде Content.Conf.
+    /// Отдельный int editor не позволяет отправить дробное значение ещё до серверной проверки.
+    /// </summary>
+    private int? _integerValue;
 
     /// <summary>
     /// Блокирует повторное нажатие Write, пока Radzen Dialog закрывается.
@@ -106,6 +120,13 @@
             return;
         }
 
+        if (Item.Kind == ParamValueKind.Integer)
+        {
+            _integerValue = TryParseInteger(Item.NumericValue, Item.ValueText);
+            _valueText = _integerValue?.ToString(CultureInfo.InvariantCulture) ?? "";
+            return;
+        }
+
         if (Item.Kind == ParamValueKind.Number)
         {
             _numericValue = Item.NumericValue ?? TryParseNumber(Item.ValueText);
@@ -123,12 +144,13 @@
     /// <summary>
     /// true, когда диалог может вернуть новое значение в parent-компонент.
     /// </summary>
-    private bool CanSubmit =>
-        Item is not null
-        && (Item.Kind == ParamValueKind.Boolean
-            || (Item.Kind == ParamValueKind.Number
-                ? _numericValue.HasValue
-                : !string.IsNullOrWhiteSpace(_valueText)));
+    private bool CanSubmit => Item is not null && (Item.Kind switch
+    {
+        ParamValueKind.Boolean => true,
+        ParamValueKind.Integer => _integerValue.HasValue,
+        ParamValueKind.Number => _numericValue.HasValue,
+        _ => !string.IsNullOrWhiteSpace(_valueText)
+    });
 
     /// <summary>
     /// Закрывает диалог с введенным значением.
@@ -142,6 +164,7 @@
         var value = Item.Kind switch
         {
             ParamValueKind.Boolean => _booleanValue ? "1" : "0",
+            ParamValueKind.Integer => _integerValue?.ToString(CultureInfo.InvariantCulture) ?? "",
             ParamValueKind.Number => _numericValue.HasValue ? FormatWriteNumber(_numericValue.Value) : "",
             _ => _valueText.Trim()
         };
@@ -213,5 +236,19 @@
             return currentCultureValue;
 
         return null;
+    }
+
+    /// <summary>
+    /// Пытается получить целое значение из numeric/text представления snapshot без неявного округления дробей.
+    /// </summary>
+    private static int? TryParseInteger(double? numericValue, string? valueText)
+    {
+        if (numericValue.HasValue && double.IsFinite(numericValue.Value) && Math.Abs(numericValue.Value - Math.Round(numericValue.Value)) <= 0.0000001d && numericValue.Value >= int.MinValue && numericValue.Value <= int.MaxValue)
+            return (int)Math.Round(numericValue.Value);
+
+        if (int.TryParse(valueText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var invariantValue))
+            return invariantValue;
+
+        return int.TryParse(valueText, NumberStyles.Integer, CultureInfo.CurrentCulture, out var currentValue) ? currentValue : null;
     }
 }

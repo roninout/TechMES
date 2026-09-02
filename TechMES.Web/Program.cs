@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Net.Http.Headers;
 using TechMES.Web.Clients;
 using TechMES.Web.Components;
+using TechMES.Web.Components.Common;
 using TechMES.Web.Logging;
 using TechMES.Web.Security;
 using TechMES.Web.Settings;
@@ -93,6 +94,9 @@ builder.Services.AddScoped<InfoApiClient>();
 
 // Клиент Param-модуля. WEB вызывает Runtime.Service, а детали CtApi остаются за границей backend-а.
 builder.Services.AddScoped<ParamApiClient>();
+
+// Общая WEB-точка входа в существующий Param write-dialog/API flow для Calc-панелей.
+builder.Services.AddScoped<ParamWriteCoordinator>();
 
 // Общий WEB-resolver ProcessInput: Runtime Equipment.ITEM -> fallback на прямой numeric Variable Tag.
 builder.Services.AddScoped<CalcProcessInputResolver>();

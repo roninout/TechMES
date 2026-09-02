@@ -1,5 +1,7 @@
-﻿using TechMES.Application.Equipment;
+﻿using TechMES.Application.Calc;
+using TechMES.Application.Equipment;
 using TechMES.Application.Param;
+using TechMES.Contracts.Calc;
 using TechMES.Contracts.Equipment;
 using TechMES.Contracts.Param;
 using TechMES.Runtime.Service.Runtime;
@@ -218,11 +220,7 @@ public static class ParamEndpoints
     /// <summary>
     /// Возвращает DryRun reference page и связанные DI-узлы.
     /// </summary>
-    private static async Task<IResult> GetDryRunAsync(
-        string equipmentName,
-        IEquipmentCatalogProvider equipmentCatalog,
-        IEquipmentParamProvider paramProvider,
-        CancellationToken ct)
+    private static async Task<IResult> GetDryRunAsync(string equipmentName, IEquipmentCatalogProvider equipmentCatalog, IEquipmentParamProvider paramProvider, CancellationToken ct)
     {
         var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
 
@@ -230,10 +228,7 @@ public static class ParamEndpoints
             return Results.NotFound();
 
         var catalog = await equipmentCatalog.GetEquipmentListAsync(ct);
-        var result = await paramProvider.GetDryRunAsync(
-            equipment,
-            catalog.Equipments,
-            ct);
+        var result = await paramProvider.GetDryRunAsync(equipment, catalog.Equipments, ct);
 
         return Results.Ok(result);
     }
@@ -241,11 +236,7 @@ public static class ParamEndpoints
     /// <summary>
     /// Возвращает связанную ATV page, если оборудование имеет ссылку на частотник.
     /// </summary>
-    private static async Task<IResult> GetAtvRefAsync(
-        string equipmentName,
-        IEquipmentCatalogProvider equipmentCatalog,
-        IEquipmentParamProvider paramProvider,
-        CancellationToken ct)
+    private static async Task<IResult> GetAtvRefAsync(string equipmentName, IEquipmentCatalogProvider equipmentCatalog, IEquipmentParamProvider paramProvider, CancellationToken ct)
     {
         var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
 
@@ -253,10 +244,7 @@ public static class ParamEndpoints
             return Results.NotFound();
 
         var catalog = await equipmentCatalog.GetEquipmentListAsync(ct);
-        var result = await paramProvider.GetAtvRefAsync(
-            equipment,
-            catalog.Equipments,
-            ct);
+        var result = await paramProvider.GetAtvRefAsync(equipment, catalog.Equipments, ct);
 
         return Results.Ok(result);
     }
@@ -265,16 +253,12 @@ public static class ParamEndpoints
     /// Выполняет запись одного Param item.
     /// Endpoint намеренно повторно разрешает оборудование по имени и не доверяет только данным WEB.
     /// </summary>
-    private static async Task<IResult> WriteAsync(
-        string equipmentName,
-        ParamWriteRequest request,
-        IEquipmentCatalogProvider equipmentCatalog,
-        IEquipmentParamProvider paramProvider,
-        IAppRuntimeContext runtimeContext,
-        IOptions<ParamWriteOptions> writeOptions,
-        CancellationToken ct)
+    private static async Task<IResult> WriteAsync(string equipmentName, ParamWriteRequest request, IEquipmentCatalogProvider equipmentCatalog, ICalcModelCatalogProvider calcModelCatalog, IEquipmentParamProvider paramProvider, IAppRuntimeContext runtimeContext, IOptions<ParamWriteOptions> writeOptions, CancellationToken ct)
     {
         var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
+
+        if (equipment is null)
+            equipment = await TryResolveContentEquipmentAsync(equipmentName, request.ItemName, calcModelCatalog, ct);
 
         if (equipment is null)
         {
@@ -312,62 +296,61 @@ public static class ParamEndpoints
     }
 
     /// <summary>
+    /// Разрешает Content только из уже проверенного Calc Catalog.
+    /// Content не добавляется в обычное Equipment tree, но после этой проверки использует общий Param write-flow.
+    /// </summary>
+    private static async Task<EquipmentDto?> TryResolveContentEquipmentAsync(string equipmentName, string itemName, ICalcModelCatalogProvider calcModelCatalog, CancellationToken ct)
+    {
+        var catalog = await calcModelCatalog.GetSnapshotAsync(ct);
+        var model = catalog.Items.FirstOrDefault(item => item.Type == CalcModelTypeDto.Content && item.Name.Equals(equipmentName, StringComparison.OrdinalIgnoreCase));
+
+        if (model is null || !model.ItemTags.Keys.Any(key => key.Equals(itemName, StringComparison.OrdinalIgnoreCase)))
+            return null;
+
+        return new EquipmentDto
+        {
+            Name = model.Name,
+            DisplayName = model.Name,
+            Description = model.Description,
+            Station = model.Station,
+            TypeName = CalcModelTypeDto.Content.ToString(),
+            TypeGroup = EquipmentTypeGroup.Content,
+            IsGroup = false
+        };
+    }
+
+    /// <summary>
     /// Выполняет Runtime-side enforcement Windows-пользователей и групп.
     /// WEB передает Actor/ActorGroups из Windows identity, но окончательное решение всегда остается здесь.
     /// </summary>
-    private static ParamWriteResponse? AuthorizeWrite(
-        EquipmentDto equipment,
-        ParamWriteRequest request,
-        ParamWriteOptions options)
+    private static ParamWriteResponse? AuthorizeWrite(EquipmentDto equipment, ParamWriteRequest request, ParamWriteOptions options)
     {
         var authorization = options.Authorization;
         if (!authorization.Enabled)
             return null;
 
         if (authorization.RequireWindowsUser && string.IsNullOrWhiteSpace(request.Actor))
-        {
-            return BuildAuthorizationFailure(
-                equipment,
-                request,
-                "Param write is denied: Windows user was not provided.");
-        }
+            return BuildAuthorizationFailure(equipment, request, "Param write is denied: Windows user was not provided.");
 
         var allowedUsers = SplitAllowList(authorization.AllowedUsers);
         var allowedGroups = SplitAllowList(authorization.AllowedGroups);
 
         if (allowedUsers.Count == 0 && allowedGroups.Count == 0)
-        {
-            return BuildAuthorizationFailure(
-                equipment,
-                request,
-                "Param write is denied: Windows authorization is enabled, but allowed users/groups are empty.");
-        }
+            return BuildAuthorizationFailure(equipment, request, "Param write is denied: Windows authorization is enabled, but allowed users/groups are empty.");
 
-        if (!string.IsNullOrWhiteSpace(request.Actor)
-            && allowedUsers.Any(allowedUser => PrincipalMatches(request.Actor, allowedUser)))
-        {
+        if (!string.IsNullOrWhiteSpace(request.Actor) && allowedUsers.Any(allowedUser => PrincipalMatches(request.Actor, allowedUser)))
             return null;
-        }
 
-        if (request.ActorGroups.Any(actorGroup =>
-                allowedGroups.Any(allowedGroup => PrincipalMatches(actorGroup, allowedGroup))))
-        {
+        if (request.ActorGroups.Any(actorGroup => allowedGroups.Any(allowedGroup => PrincipalMatches(actorGroup, allowedGroup))))
             return null;
-        }
 
-        return BuildAuthorizationFailure(
-            equipment,
-            request,
-            $"Param write is denied for Windows user '{request.Actor}'.");
+        return BuildAuthorizationFailure(equipment, request, $"Param write is denied for Windows user '{request.Actor}'.");
     }
 
     /// <summary>
     /// Формирует единый ответ отказа, чтобы WEB показывал оператору ту же структуру, что и при CtApi-ошибках.
     /// </summary>
-    private static ParamWriteResponse BuildAuthorizationFailure(
-        EquipmentDto equipment,
-        ParamWriteRequest request,
-        string error)
+    private static ParamWriteResponse BuildAuthorizationFailure(EquipmentDto equipment, ParamWriteRequest request, string error)
     {
         return new ParamWriteResponse
         {

@@ -276,16 +276,11 @@ public static class ContentCalculationDefinitions
             // ------------------------------------------------------------
             // Коррекции активного Content ParamN.
             //
-            // На уровне Calculation Definition параметры уже имеют
-            // нормальный физический смысл:
+            // На уровне Calculation Definition и в SCADA ITEM используется
+            // одинаковый физический смысл:
             //
-            //     PressureDelta    = dP
-            //     TemperatureDelta = dT
-            //
-            // Legacy SCADA mapping выполняет WEB:
-            //
-            //     dP <- ParamN_Dt
-            //     dT <- ParamN_Dp
+            //     PressureDelta    = dP <- ParamN_Dp
+            //     TemperatureDelta = dT <- ParamN_Dt
             // ------------------------------------------------------------
 
             var pressureDeltaBar = parameters.GetDouble(PressureDeltaKey(selectedContentItemIndex), 0d);

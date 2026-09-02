@@ -54,6 +54,12 @@ public enum EquipmentTypeGroup
     VGA_EL = 22,
 
     /// <summary>
+    /// Расчётное Content-оборудование.
+    /// В обычное дерево Equipment не добавляется; используется только общим Param write-flow после проверки Calc Catalog.
+    /// </summary>
+    Content = 30,
+
+    /// <summary>
     /// Групповой узел Equipment.
     /// </summary>
     Equipment = 100
