@@ -1,6 +1,7 @@
 ﻿using TechMES.Calc.Abstractions;
 using TechMES.Calc.Parameters;
 using TechMES.Calc.Results;
+using TechMES.Calc.Constants;
 
 namespace TechMES.Calc.Content;
 
@@ -26,36 +27,45 @@ public static class ContentCalculationDefinitions
     public const string AcnWaterPoCode = "content.acn-water-po";
 
     private const string TemperatureKey = "temperatureC";
-    private const string PressureKey = "pressureBarAbsolute";
+    private const string PressureKey = "pressureBarGauge";
     private const string ConfigurationCodeKey = "configurationCode";
 
     /// <summary>
     /// Общие входные параметры всех Content-корреляций.
     ///
-    /// Temperature и Pressure являются фактическими ProcessInput.
-    /// ConfigurationCode является настройкой самого алгоритма и поэтому хранится как Configuration Calc Job.
-    /// На configurationCode специально не накладываем общий диапазон: разные legacy Content-системы используют его разряды по-разному.
-    /// Корректность конкретного значения проверяет сама физическая модель.
+    /// Temperature:
+    ///     фактическая температура процесса, °C.
+    ///
+    /// Pressure:
+    ///     измеренное SCADA Pressure.R, bar(g).
+    ///
+    /// Перед вызовом физической Content-корреляции давление переводится
+    /// в абсолютное тем же способом, что и в Density:
+    ///
+    ///     P(abs) = P(g) + Patm.
+    ///
+    /// ConfigurationCode:
+    ///     read-only Content.Conf.
     /// </summary>
     private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions =
     [
         new CalculationParameterDefinition(
-            Key: TemperatureKey, Name: "Temperature", Type: CalculationParameterType.Number, Unit: "°C",
-            IsRequired: true, Step: 0.1, Decimals: 2, Order: 1,
-            Description: "Process temperature used by the Content correlation.",
-            Role: CalculationParameterRole.ProcessInput),
+        Key: TemperatureKey, Name: "Temperature", Type: CalculationParameterType.Number, Unit: "°C",
+        IsRequired: true, Step: 0.1, Decimals: 2, Order: 1,
+        Description: "Process temperature used by the Content correlation.",
+        Role: CalculationParameterRole.ProcessInput),
 
-        new CalculationParameterDefinition(
-            Key: PressureKey, Name: "Absolute pressure", Type: CalculationParameterType.Number, Unit: "bar(abs)",
-            IsRequired: true, Step: 0.01, Decimals: 4, Order: 2,
-            Description: "Absolute process pressure used by the Content correlation.",
-            Role: CalculationParameterRole.ProcessInput),
+    new CalculationParameterDefinition(
+        Key: PressureKey, Name: "Pressure", Type: CalculationParameterType.Number, Unit: "bar(g)",
+        IsRequired: true, Step: 0.01, Decimals: 4, Order: 2,
+        Description: "Gauge process pressure. Absolute pressure is calculated by adding atmospheric pressure before the Content correlation.",
+        Role: CalculationParameterRole.ProcessInput),
 
-        new CalculationParameterDefinition(
-            Key: ConfigurationCodeKey, Name: "Configuration code", Type: CalculationParameterType.Integer,
-            IsRequired: true, Order: 3,
-            Description: "Legacy-compatible Content correlation configuration code.",
-            Role: CalculationParameterRole.Configuration)
+    new CalculationParameterDefinition(
+        Key: ConfigurationCodeKey, Name: "Configuration code", Type: CalculationParameterType.Integer,
+        IsRequired: true, Order: 3,
+        Description: "Legacy-compatible Content correlation configuration code.",
+        Role: CalculationParameterRole.Configuration)
     ];
 
     /// <summary>
@@ -161,7 +171,7 @@ public static class ContentCalculationDefinitions
         public override string Code => _code;
         public override string Name => _name;
         public override string Category => "Content";
-        public override string Version => "2";
+        public override string Version => "3";
 
         public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
         public override IReadOnlyList<CalculationOutputDefinition> Outputs => _outputDefinitions;
@@ -169,14 +179,15 @@ public static class ContentCalculationDefinitions
         protected override CalculationResult CalculateCore(CalculationParameterSet parameters, bool includeTrace)
         {
             var temperatureC = parameters.GetRequiredDouble(TemperatureKey);
-            var pressureBarAbsolute = parameters.GetRequiredDouble(PressureKey);
+            var pressureBarGauge = parameters.GetRequiredDouble(PressureKey);
+            var pressureBarAbsolute = pressureBarGauge + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute;
             var configurationCode = parameters.GetRequiredInt(ConfigurationCodeKey);
 
             var percentages = ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(
-                    Components: _componentCodes,
-                    TemperatureC: temperatureC,
-                    PressureBarAbsolute: pressureBarAbsolute,
-                    ConfigurationCode: configurationCode));
+                Components: _componentCodes,
+                TemperatureC: temperatureC,
+                PressureBarAbsolute: pressureBarAbsolute,
+                ConfigurationCode: configurationCode));
 
             var outputs = new CalculationOutput[_components.Length];
 
@@ -195,11 +206,12 @@ public static class ContentCalculationDefinitions
                 return CalculationResult.Success(outputs);
 
             var trace = new List<CalculationTraceItem>
-            {
-                new("temperatureC", "Temperature", Format(temperatureC), "°C"),
-                new("pressureBarAbsolute", "Absolute pressure", Format(pressureBarAbsolute), "bar(abs)"),
-                new("configurationCode", "Configuration code", configurationCode.ToString(), null)
-            };
+                {
+                    new("temperatureC", "Temperature", Format(temperatureC), "°C"),
+                    new("pressureBarGauge", "Pressure", Format(pressureBarGauge), "bar(g)"),
+                    new("pressureBarAbsolute", "Absolute pressure", Format(pressureBarAbsolute), "bar(abs)"),
+                    new("configurationCode", "Configuration code", configurationCode.ToString(), null)
+                };
 
             for (var index = 0; index < _components.Length; index++)
             {

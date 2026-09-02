@@ -15,5 +15,5 @@ public static class CalculationPhysicalConstants
     ///
     /// P(abs) = P(g) + AtmosphericPressureBarAbsolute.
     /// </summary>
-    public const double AtmosphericPressureBarAbsolute = 1.01325d;
+    public const double AtmosphericPressureBarAbsolute = 1.0d; // 1.01325d
 }

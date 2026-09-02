@@ -1,6 +1,7 @@
 ﻿using TechMES.Calc.Abstractions;
 using TechMES.Calc.Content;
 using TechMES.Calc.Parameters;
+using TechMES.Calc.Constants;
 
 namespace TechMES.Calc.Tests;
 
@@ -55,11 +56,11 @@ public sealed class ContentCalculationDefinitionTests
             Assert.Equal(CalculationParameterRole.ProcessInput, temperature.Role);
             Assert.Equal("°C", temperature.Unit);
 
-            var pressure = Assert.Single(definition.Parameters, parameter => parameter.Key == "pressureBarAbsolute");
+            var pressure = Assert.Single(definition.Parameters, parameter => parameter.Key == "pressureBarGauge");
 
             Assert.Equal(CalculationParameterType.Number, pressure.Type);
             Assert.Equal(CalculationParameterRole.ProcessInput, pressure.Role);
-            Assert.Equal("bar(abs)", pressure.Unit);
+            Assert.Equal("bar(g)", pressure.Unit);
 
             var configuration = Assert.Single(definition.Parameters, parameter => parameter.Key == "configurationCode");
 
@@ -75,26 +76,25 @@ public sealed class ContentCalculationDefinitionTests
     [InlineData(ContentCalculationDefinitions.AcaPoCode, 50d, 0.725d, 10)]
     [InlineData(ContentCalculationDefinitions.AlcWaterCode, 80d, 1.0d, 10)]
     [InlineData(ContentCalculationDefinitions.AcnWaterPoCode, 60d, 1.0d, 20)]
-    public void ContentDefinitionMatchesContentFacade(string definitionCode, double temperatureC, double pressureBarAbsolute, int configurationCode)
+    public void ContentDefinitionMatchesContentFacade(string definitionCode, double temperatureC, double pressureBarGauge, int configurationCode)
     {
         var definition = BuiltInCalculationCatalog.Create().GetRequired(definitionCode);
         var components = GetComponents(definitionCode);
+        var pressureBarAbsolute = pressureBarGauge + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute;
 
-        var expected = ContentPropertyCalculator.CalculatePercent(
-            new ContentCalculationRequest(
-                Components: components,
-                TemperatureC: temperatureC,
-                PressureBarAbsolute: pressureBarAbsolute,
-                ConfigurationCode: configurationCode));
+        var expected = ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(
+            Components: components,
+            TemperatureC: temperatureC,
+            PressureBarAbsolute: pressureBarAbsolute,
+            ConfigurationCode: configurationCode));
 
-        var result = definition.Calculate(
-            new CalculationParameterSet(
-                new Dictionary<string, object?>
-                {
-                    ["temperatureC"] = temperatureC,
-                    ["pressureBarAbsolute"] = pressureBarAbsolute,
-                    ["configurationCode"] = configurationCode
-                }));
+        var result = definition.Calculate(new CalculationParameterSet(
+            new Dictionary<string, object?>
+            {
+                ["temperatureC"] = temperatureC,
+                ["pressureBarGauge"] = pressureBarGauge,
+                ["configurationCode"] = configurationCode
+            }));
 
         Assert.True(result.IsSuccess, result.ErrorMessage);
         Assert.Equal(expected.Count, result.Outputs.Count);
@@ -139,20 +139,24 @@ public sealed class ContentCalculationDefinitionTests
     }
 
     [Fact]
-    public void AlcoholWaterContentAllowsZeroPressureLikeLegacyController()
+    public void AlcoholWaterContentMatchesLegacyControllerAtZeroGaugePressure()
     {
         var definition = BuiltInCalculationCatalog.Create().GetRequired(ContentCalculationDefinitions.AlcWaterCode);
 
         var result = definition.Calculate(new CalculationParameterSet(
             new Dictionary<string, object?>
             {
-                ["temperatureC"] = 36d,
-                ["pressureBarAbsolute"] = 0d,
+                ["temperatureC"] = 36.1d,
+                ["pressureBarGauge"] = 0d,
                 ["configurationCode"] = 11
             }));
 
         Assert.True(result.IsSuccess, result.ErrorMessage);
-        Assert.Equal(2, result.Outputs.Count);
-        Assert.All(result.Outputs, output => Assert.True(double.IsFinite(output.Value)));
+
+        var alcohol = Assert.Single(result.Outputs, output => output.Key == "alcPercent");
+        var water = Assert.Single(result.Outputs, output => output.Key == "waterPercent");
+
+        Assert.Equal(100.105351337d, alcohol.Value, precision: 9);
+        Assert.Equal(-0.105351337d, water.Value, precision: 9);
     }
 }
