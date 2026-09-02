@@ -966,3 +966,10 @@
 .content-settings-warning {
     margin-top: 8px;
 }
+
+.content-techmes-values {
+    display: grid;
+    grid-template-columns: var(--content-main-field-width);
+    gap: 10px;
+    width: var(--content-main-field-width);
+}

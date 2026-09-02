@@ -29,9 +29,15 @@ public static class ContentCalculationDefinitions
     private const string TemperatureKey = "temperatureC";
     private const string PressureKey = "pressureBarGauge";
     private const string ConfigurationCodeKey = "configurationCode";
+    private const string SelectedContentItemIndexKey = "selectedContentItemIndex";
+
+    private const int MaxContentItemCount = 5;
+
+    private static string PressureDeltaKey(int index) => $"component{index}PressureDelta";
+    private static string TemperatureDeltaKey(int index) => $"component{index}TemperatureDelta";
 
     /// <summary>
-    /// Общие входные параметры всех Content-корреляций.
+    /// Параметры Content.
     ///
     /// Temperature:
     ///     фактическая температура процесса, °C.
@@ -39,34 +45,115 @@ public static class ContentCalculationDefinitions
     /// Pressure:
     ///     измеренное SCADA Pressure.R, bar(g).
     ///
-    /// Перед вызовом физической Content-корреляции давление переводится
-    /// в абсолютное тем же способом, что и в Density:
+    /// configurationCode:
+    ///     Content.Conf.
     ///
-    ///     P(abs) = P(g) + Patm.
+    /// selectedContentItemIndex:
+    ///     Content.Select:
     ///
-    /// ConfigurationCode:
-    ///     read-only Content.Conf.
+    ///         0 -> Param0
+    ///         1 -> Param1
+    ///         ...
+    ///         4 -> Param4
+    ///
+    /// Для выбранного ParamN используются соответствующие:
+    ///
+    ///     ParamN_Dp
+    ///     ParamN_Dt
+    ///
+    /// После чего физические входы Content-корреляции формируются:
+    ///
+    ///     T(calc) = T + dT
+    ///
+    ///     P(corrected,g) = P(g) + dP
+    ///
+    ///     P(abs) = P(corrected,g)
+    ///              + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute
+    ///
+    /// Атмосферное давление нигде локально не дублируется.
     /// </summary>
-    private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions =
-    [
-        new CalculationParameterDefinition(
-        Key: TemperatureKey, Name: "Temperature", Type: CalculationParameterType.Number, Unit: "°C",
-        IsRequired: true, Step: 0.1, Decimals: 2, Order: 1,
-        Description: "Process temperature used by the Content correlation.",
-        Role: CalculationParameterRole.ProcessInput),
+    private static readonly IReadOnlyList<CalculationParameterDefinition> ParameterDefinitions = CreateParameterDefinitions();
 
-    new CalculationParameterDefinition(
-        Key: PressureKey, Name: "Pressure", Type: CalculationParameterType.Number, Unit: "bar(g)",
-        IsRequired: true, Step: 0.01, Decimals: 4, Order: 2,
-        Description: "Gauge process pressure. Absolute pressure is calculated by adding atmospheric pressure before the Content correlation.",
-        Role: CalculationParameterRole.ProcessInput),
+    private static IReadOnlyList<CalculationParameterDefinition> CreateParameterDefinitions()
+    {
+        var result = new List<CalculationParameterDefinition>
+        {
+            new(
+                Key: TemperatureKey,
+                Name: "Temperature",
+                Type: CalculationParameterType.Number,
+                Unit: "°C",
+                IsRequired: true,
+                Step: 0.1,
+                Decimals: 2,
+                Order: 1,
+                Description: "Process temperature before Content dT correction.",
+                Role: CalculationParameterRole.ProcessInput),
 
-    new CalculationParameterDefinition(
-        Key: ConfigurationCodeKey, Name: "Configuration code", Type: CalculationParameterType.Integer,
-        IsRequired: true, Order: 3,
-        Description: "Legacy-compatible Content correlation configuration code.",
-        Role: CalculationParameterRole.Configuration)
-    ];
+            new(
+                Key: PressureKey,
+                Name: "Pressure",
+                Type: CalculationParameterType.Number,
+                Unit: "bar(g)",
+                IsRequired: true,
+                Step: 0.01,
+                Decimals: 4,
+                Order: 2,
+                Description: "Gauge process pressure before Content dP correction.",
+                Role: CalculationParameterRole.ProcessInput),
+
+            new(
+                Key: ConfigurationCodeKey,
+                Name: "Configuration code",
+                Type: CalculationParameterType.Integer,
+                IsRequired: true,
+                Order: 3,
+                Description: "Content.Conf legacy correlation configuration code.",
+                Role: CalculationParameterRole.Configuration),
+
+            new(
+                Key: SelectedContentItemIndexKey,
+                Name: "Selected Content item",
+                Type: CalculationParameterType.Integer,
+                IsRequired: true,
+                Minimum: 0d,
+                Maximum: MaxContentItemCount - 1d,
+                Order: 4,
+                Description: "Content.Select. Selects ParamN and its ParamN_Dp / ParamN_Dt corrections.",
+                Role: CalculationParameterRole.Configuration)
+        };
+
+        for (var index = 0; index < MaxContentItemCount; index++)
+        {
+            result.Add(new CalculationParameterDefinition(
+                Key: PressureDeltaKey(index),
+                Name: $"Param{index} dP",
+                Type: CalculationParameterType.Number,
+                Unit: "bar",
+                IsRequired: false,
+                DefaultValue: 0d,
+                Step: 0.01,
+                Decimals: 2,
+                Order: 10 + index * 2,
+                Description: $"Pressure correction read from Content.Param{index}_Dp.",
+                Role: CalculationParameterRole.Configuration));
+
+            result.Add(new CalculationParameterDefinition(
+                Key: TemperatureDeltaKey(index),
+                Name: $"Param{index} dT",
+                Type: CalculationParameterType.Number,
+                Unit: "°C",
+                IsRequired: false,
+                DefaultValue: 0d,
+                Step: 0.1,
+                Decimals: 1,
+                Order: 11 + index * 2,
+                Description: $"Temperature correction read from Content.Param{index}_Dt.",
+                Role: CalculationParameterRole.Configuration));
+        }
+
+        return result;
+    }
 
     /// <summary>
     /// Создаёт все встроенные Content Definitions.
@@ -171,7 +258,7 @@ public static class ContentCalculationDefinitions
         public override string Code => _code;
         public override string Name => _name;
         public override string Category => "Content";
-        public override string Version => "3";
+        public override string Version => "4";
 
         public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
         public override IReadOnlyList<CalculationOutputDefinition> Outputs => _outputDefinitions;
@@ -180,48 +267,76 @@ public static class ContentCalculationDefinitions
         {
             var temperatureC = parameters.GetRequiredDouble(TemperatureKey);
             var pressureBarGauge = parameters.GetRequiredDouble(PressureKey);
-            var pressureBarAbsolute = pressureBarGauge + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute;
             var configurationCode = parameters.GetRequiredInt(ConfigurationCodeKey);
+            var selectedContentItemIndex = parameters.GetRequiredInt(SelectedContentItemIndexKey);
 
-            var percentages = ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(
-                Components: _componentCodes,
-                TemperatureC: temperatureC,
-                PressureBarAbsolute: pressureBarAbsolute,
-                ConfigurationCode: configurationCode));
+            if (selectedContentItemIndex < 0 || selectedContentItemIndex >= _components.Length)
+                return CalculationResult.Failure("content.select.invalid", $"Content.Select={selectedContentItemIndex} is outside the current Content system range 0..{_components.Length - 1}.");
 
+            // ------------------------------------------------------------
+            // Коррекции активного Content ParamN.
+            // Select = N:
+            //     dP = ParamN_Dp
+            //     dT = ParamN_Dt
+            // ------------------------------------------------------------
+
+            var pressureDeltaBar = parameters.GetDouble(PressureDeltaKey(selectedContentItemIndex), 0d);
+            var temperatureDeltaC = parameters.GetDouble(TemperatureDeltaKey(selectedContentItemIndex), 0d);
+
+            // ------------------------------------------------------------
+            // Скорректированные технологические параметры.
+            // ------------------------------------------------------------
+
+            var effectiveTemperatureC = temperatureC + temperatureDeltaC;
+            var effectivePressureBarGauge = pressureBarGauge + pressureDeltaBar;
+            var effectivePressureBarAbsolute = effectivePressureBarGauge + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute;
+
+            // ------------------------------------------------------------
+            // Физический Content calculation.
+            // ------------------------------------------------------------
+
+            var percentages = ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(Components: _componentCodes, TemperatureC: effectiveTemperatureC, PressureBarAbsolute: effectivePressureBarAbsolute, ConfigurationCode: configurationCode));
             var outputs = new CalculationOutput[_components.Length];
 
             for (var index = 0; index < _components.Length; index++)
             {
                 var component = _components[index];
-
-                outputs[index] = new CalculationOutput(
-                    Key: component.OutputKey,
-                    Name: $"{component.OutputName} content",
-                    Value: percentages[index],
-                    Unit: "%");
+                outputs[index] = new CalculationOutput(Key: component.OutputKey, Name: $"{component.OutputName} content", Value: percentages[index], Unit: "%");
             }
 
             if (!includeTrace)
                 return CalculationResult.Success(outputs);
 
+            // ------------------------------------------------------------
+            // Trace специально делаем подробным.
+            //
+            // Тогда сразу увидим:
+            //
+            //     Pressure.R
+            //     Atmospheric Pressure
+            //     dP
+            //     конечный P(abs)
+            //
+            // и то же самое для Temperature.
+            // ------------------------------------------------------------
+
             var trace = new List<CalculationTraceItem>
-                {
-                    new("temperatureC", "Temperature", Format(temperatureC), "°C"),
-                    new("pressureBarGauge", "Pressure", Format(pressureBarGauge), "bar(g)"),
-                    new("pressureBarAbsolute", "Absolute pressure", Format(pressureBarAbsolute), "bar(abs)"),
-                    new("configurationCode", "Configuration code", configurationCode.ToString(), null)
-                };
+            {
+                new("temperatureC", "Temperature", Format(temperatureC), "°C"),
+                new("temperatureDeltaC", $"Param{selectedContentItemIndex} dT", Format(temperatureDeltaC), "°C"),
+                new("effectiveTemperatureC", "Effective temperature", Format(effectiveTemperatureC), "°C"),
+                new("pressureBarGauge", "Pressure", Format(pressureBarGauge), "bar(g)"),
+                new("pressureDeltaBar", $"Param{selectedContentItemIndex} dP", Format(pressureDeltaBar), "bar"),
+                new("atmosphericPressureBarAbsolute", "Atmospheric pressure", Format(CalculationPhysicalConstants.AtmosphericPressureBarAbsolute), "bar"),
+                new("effectivePressureBarAbsolute", "Effective absolute pressure", Format(effectivePressureBarAbsolute), "bar(abs)"),
+                new("selectedContentItemIndex", "Content Select", selectedContentItemIndex.ToString(), null),
+                new("configurationCode", "Configuration code", configurationCode.ToString(), null)
+            };
 
             for (var index = 0; index < _components.Length; index++)
             {
                 var component = _components[index];
-
-                trace.Add(new CalculationTraceItem(
-                    component.OutputKey,
-                    $"{component.OutputName} content",
-                    Format(percentages[index]),
-                    "%"));
+                trace.Add(new CalculationTraceItem(component.OutputKey, $"{component.OutputName} content", Format(percentages[index]), "%"));
             }
 
             return CalculationResult.Success(outputs, trace: trace);

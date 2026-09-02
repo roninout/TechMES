@@ -250,9 +250,7 @@
                             @* =================================================
                                TECHMES CALCULATED VALUE
 
-                               Показываем не произвольный первый output,
-                               а именно тот Definition output, который
-                               сохранён на ITEM ValCalc этого Content Equipment.
+                               Показываем не произвольный первый output, а именно тот Definition output, который сохранён на ITEM ValCalc этого Content Equipment.
                                ================================================= *@
                             <div class="content-value-row">
 
@@ -275,21 +273,24 @@
                                 </div>
 
 
-                                <div class="content-value-controls">
+                                <div class="content-value-controls content-techmes-values">
 
-                                    <RadzenFormField AllowFloatingLabel="false"
-                                                     Text="Content"
-                                                     Variant="Variant.Outlined"
-                                                     class="content-main-form-field content-result-form-field">
+                                    @foreach (var value in BuildTechMesCalculatedValues())
+                                    {
+                                        <RadzenFormField AllowFloatingLabel="false"
+                                                         Text="@value.Name"
+                                                         Variant="Variant.Outlined"
+                                                         class="content-main-form-field content-result-form-field">
 
-                                        <RadzenNumeric TValue="double?"
-                                                       Value="@CurrentTechMesContent"
-                                                       ReadOnly="true"
-                                                       ShowUpDown="false"
-                                                       Format="0.###' %'"
-                                                       class="content-main-value-input content-result-value-input" />
+                                            <RadzenNumeric TValue="double?"
+                                                           Value="@value.Value"
+                                                           ReadOnly="true"
+                                                           ShowUpDown="false"
+                                                           Format="0.0' %'"
+                                                           class="content-main-value-input content-result-value-input" />
 
-                                    </RadzenFormField>
+                                        </RadzenFormField>
+                                    }
 
                                 </div>
 
@@ -340,9 +341,6 @@
 
                             @* =================================================
                                CALCULATED VALUE / ValCalc
-
-                               В Content Delta нет вообще.
-                               Никакого placeholder под Delta также не оставляем.
 
                                Sel = 1 -> текущим значением SCADA является ValCalc.
                                ================================================= *@
@@ -1083,12 +1081,32 @@
         }
     }
 
+    private bool IsFixedDeltaBindingReady
+    {
+        get
+        {
+            if (Definition is null
+                || Definition.Outputs.Count == 0
+                || Definition.Outputs.Count > MaxContentItemCount)
+            {
+                return false;
+            }
+
+            return Enumerable
+                .Range(0, Definition.Outputs.Count)
+                .All(index =>
+                    !string.IsNullOrWhiteSpace(GetContentParamDpTag(index))
+                    && !string.IsNullOrWhiteSpace(GetContentParamDtTag(index)));
+        }
+    }
+
     private bool IsFixedContentStructureReady =>
         Definition is not null
         && !string.IsNullOrWhiteSpace(ContentValueTag)
         && !string.IsNullOrWhiteSpace(ContentSelectTag)
         && !string.IsNullOrWhiteSpace(ContentConfTag)
-        && IsFixedOutputBindingReady;
+        && IsFixedOutputBindingReady
+        && IsFixedDeltaBindingReady;
 
 
     // ============================================================
@@ -1486,10 +1504,17 @@
 
     private List<CalcJobInputSaveDto> BuildContentInputs()
     {
-        if (Definition is null || string.IsNullOrWhiteSpace(ContentConfTag))
+        if (Definition is null || string.IsNullOrWhiteSpace(ContentConfTag) || string.IsNullOrWhiteSpace(ContentSelectTag))
             return [];
 
         var result = new List<CalcJobInputSaveDto>();
+
+        // ------------------------------------------------------------
+        // ProcessInput:
+        //
+        // Temperature
+        // Pressure
+        // ------------------------------------------------------------
 
         foreach (var binding in _processBindings.Where(binding => binding.IsLinked))
         {
@@ -1504,6 +1529,10 @@
             });
         }
 
+        // ------------------------------------------------------------
+        // Content.Conf
+        // ------------------------------------------------------------
+
         var configuration = Definition.Parameters.Single(parameter => string.Equals(parameter.Key, "configurationCode", StringComparison.OrdinalIgnoreCase));
 
         result.Add(new CalcJobInputSaveDto
@@ -1514,6 +1543,60 @@
             SourceReference = $"{Model.Name}.Conf",
             SortOrder = configuration.Order
         });
+
+        // ------------------------------------------------------------
+        // Content.Select
+        // ------------------------------------------------------------
+
+        var selectedContentItem = Definition.Parameters.Single(parameter => string.Equals(parameter.Key, "selectedContentItemIndex", StringComparison.OrdinalIgnoreCase));
+
+        result.Add(new CalcJobInputSaveDto
+        {
+            ParameterKey = selectedContentItem.Key,
+            SourceType = CalcInputSourceTypeDto.Tag,
+            TagName = ContentSelectTag,
+            SourceReference = $"{Model.Name}.Select",
+            SortOrder = selectedContentItem.Order
+        });
+
+        // ------------------------------------------------------------
+        // ParamN_Dp / ParamN_Dt
+        //
+        // Добавляем только существующие компоненты выбранной
+        // Content Definition.
+        // ------------------------------------------------------------
+
+        var contentItemCount = Math.Min(Definition.Outputs.Count, MaxContentItemCount);
+
+        for (var index = 0; index < contentItemCount; index++)
+        {
+            var pressureDeltaTag = GetContentParamDpTag(index);
+            var temperatureDeltaTag = GetContentParamDtTag(index);
+
+            if (string.IsNullOrWhiteSpace(pressureDeltaTag) || string.IsNullOrWhiteSpace(temperatureDeltaTag))
+                return [];
+
+            var pressureDeltaParameter = Definition.Parameters.Single(parameter => string.Equals(parameter.Key, $"component{index}PressureDelta", StringComparison.OrdinalIgnoreCase));
+            var temperatureDeltaParameter = Definition.Parameters.Single(parameter => string.Equals(parameter.Key, $"component{index}TemperatureDelta", StringComparison.OrdinalIgnoreCase));
+
+            result.Add(new CalcJobInputSaveDto
+            {
+                ParameterKey = pressureDeltaParameter.Key,
+                SourceType = CalcInputSourceTypeDto.Tag,
+                TagName = pressureDeltaTag,
+                SourceReference = $"{Model.Name}.Param{index}_Dp",
+                SortOrder = pressureDeltaParameter.Order
+            });
+
+            result.Add(new CalcJobInputSaveDto
+            {
+                ParameterKey = temperatureDeltaParameter.Key,
+                SourceType = CalcInputSourceTypeDto.Tag,
+                TagName = temperatureDeltaTag,
+                SourceReference = $"{Model.Name}.Param{index}_Dt",
+                SortOrder = temperatureDeltaParameter.Order
+            });
+        }
 
         return result.OrderBy(input => input.SortOrder).ToList();
     }
@@ -1619,36 +1702,29 @@
         if (name.EndsWith(contentSuffix, StringComparison.OrdinalIgnoreCase))
             name = name[..^contentSuffix.Length];
 
-        var code = output.Key;
+        var code = GetContentComponentCode(output);
+
+        return $"{code} — {name} (liquid)";
+    }
+
+    private static string GetContentComponentCode(CalcOutputDefinitionDto output)
+    {
+        var code = output.Key?.Trim() ?? "";
 
         const string percentSuffix = "Percent";
 
         if (code.EndsWith(percentSuffix, StringComparison.OrdinalIgnoreCase))
             code = code[..^percentSuffix.Length];
 
-        code = code.Equals("water", StringComparison.OrdinalIgnoreCase)
-            ? "Water"
-            : code.ToUpperInvariant();
+        if (code.Equals("water", StringComparison.OrdinalIgnoreCase))
+            return "Water";
 
-        return $"{code} — {name} (liquid)";
+        return code.ToUpperInvariant();
     }
 
     // ============================================================
     // Main Content values
     // ============================================================
-
-    /// <summary>
-    /// Значение выбранного компонента, рассчитанное TechMES.
-    /// </summary>
-    private double? CurrentTechMesContent
-    {
-        get
-        {
-            var output = SelectedLiveContentOutput;
-
-            return output is null ? null : GetLastOutputNumber(output.Key);
-        }
-    }
 
     /// <summary>
     /// Value уже хранит текущее Content в инженерных процентах.
@@ -2056,11 +2132,8 @@
             if (!value.HasValue || !double.IsFinite(value.Value) || value.Value <= 0d)
                 continue;
 
-            result.Add(new ContentPieItem(
-                Key: output.Key,
-                Name: output.Name,
-                LegendText: $"{output.Name} {value.Value:0.#}%",
-                Percent: value.Value));
+            var name = GetContentComponentCode(output);
+            result.Add(new ContentPieItem(Key: output.Key, Name: name, LegendText: $"{name} {value.Value:0.#}%", Percent: value.Value));
         }
 
         return result;
@@ -2084,7 +2157,21 @@
     /// </summary>
     private string GetLiveContentTitle()
     {
-        return LiveDefinition?.Name ?? "Content";
+        if (LiveDefinition is null)
+            return "Content";
+
+        var outputs = LiveDefinition.Outputs
+            .OrderBy(output => output.Order)
+            .Take(MaxContentItemCount)
+            .ToList();
+
+        return string.Join(" - ", outputs.Select((output, index) =>
+            {
+                var name = GetContentComponentCode(output);
+                var value = GetContentParam(index);
+
+                return value.HasValue ? $"{name} ({value.Value:0.#}%)" : name;
+            }));
     }
 
     // ============================================================
@@ -2239,5 +2326,20 @@
         Linked,
         NotFound
     }
+
+    private IReadOnlyList<ContentCalculatedValueView> BuildTechMesCalculatedValues()
+    {
+        if (LiveDefinition is null)
+            return [];
+
+        return LiveDefinition.Outputs
+            .OrderBy(output => output.Order)
+            .Select(output => new ContentCalculatedValueView(
+                Name: GetContentComponentCode(output),
+                Value: GetLastOutputNumber(output.Key)))
+            .ToArray();
+    }
+
+    private sealed record ContentCalculatedValueView(string Name, double? Value);
 
 }
