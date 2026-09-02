@@ -137,4 +137,22 @@ public sealed class ContentCalculationDefinitionTests
                 $"Unknown Content definition '{definitionCode}'.")
         };
     }
+
+    [Fact]
+    public void AlcoholWaterContentAllowsZeroPressureLikeLegacyController()
+    {
+        var definition = BuiltInCalculationCatalog.Create().GetRequired(ContentCalculationDefinitions.AlcWaterCode);
+
+        var result = definition.Calculate(new CalculationParameterSet(
+            new Dictionary<string, object?>
+            {
+                ["temperatureC"] = 36d,
+                ["pressureBarAbsolute"] = 0d,
+                ["configurationCode"] = 11
+            }));
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        Assert.Equal(2, result.Outputs.Count);
+        Assert.All(result.Outputs, output => Assert.True(double.IsFinite(output.Value)));
+    }
 }

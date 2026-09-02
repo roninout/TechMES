@@ -161,7 +161,7 @@ public static class ContentCalculationDefinitions
         public override string Code => _code;
         public override string Name => _name;
         public override string Category => "Content";
-        public override string Version => "1";
+        public override string Version => "2";
 
         public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
         public override IReadOnlyList<CalculationOutputDefinition> Outputs => _outputDefinitions;

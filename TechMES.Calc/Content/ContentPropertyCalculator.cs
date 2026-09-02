@@ -27,8 +27,8 @@ public static class ContentPropertyCalculator
         if (!double.IsFinite(request.TemperatureC))
             throw new CalculationException("content.temperature.invalid", "Content temperature must be a finite number.");
 
-        if (!double.IsFinite(request.PressureBarAbsolute) || request.PressureBarAbsolute <= 0d)
-            throw new CalculationException("content.pressure.invalid", "Content absolute pressure must be greater than zero.");
+        if (!double.IsFinite(request.PressureBarAbsolute))
+            throw new CalculationException("content.pressure.invalid", "Content pressure must be a finite number.");
 
         var components = NormalizeAndValidateComponents(request.Components);
         var temperature = (float)request.TemperatureC;
