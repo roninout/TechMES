@@ -135,7 +135,7 @@ public static class ContentCalculationDefinitions
                 Step: 0.01,
                 Decimals: 2,
                 Order: 10 + index * 2,
-                Description: $"Pressure correction read from Content.Param{index}_Dp.",
+                Description: $"Pressure correction read from legacy Content.Param{index}_Dt.",
                 Role: CalculationParameterRole.Configuration));
 
             result.Add(new CalculationParameterDefinition(
@@ -148,7 +148,7 @@ public static class ContentCalculationDefinitions
                 Step: 0.1,
                 Decimals: 1,
                 Order: 11 + index * 2,
-                Description: $"Temperature correction read from Content.Param{index}_Dt.",
+                Description: $"Temperature correction read from legacy Content.Param{index}_Dp.",
                 Role: CalculationParameterRole.Configuration));
         }
 
@@ -258,7 +258,7 @@ public static class ContentCalculationDefinitions
         public override string Code => _code;
         public override string Name => _name;
         public override string Category => "Content";
-        public override string Version => "4";
+        public override string Version => "5";
 
         public override IReadOnlyList<CalculationParameterDefinition> Parameters => ParameterDefinitions;
         public override IReadOnlyList<CalculationOutputDefinition> Outputs => _outputDefinitions;
@@ -275,9 +275,17 @@ public static class ContentCalculationDefinitions
 
             // ------------------------------------------------------------
             // Коррекции активного Content ParamN.
-            // Select = N:
-            //     dP = ParamN_Dp
-            //     dT = ParamN_Dt
+            //
+            // На уровне Calculation Definition параметры уже имеют
+            // нормальный физический смысл:
+            //
+            //     PressureDelta    = dP
+            //     TemperatureDelta = dT
+            //
+            // Legacy SCADA mapping выполняет WEB:
+            //
+            //     dP <- ParamN_Dt
+            //     dT <- ParamN_Dp
             // ------------------------------------------------------------
 
             var pressureDeltaBar = parameters.GetDouble(PressureDeltaKey(selectedContentItemIndex), 0d);

@@ -48,7 +48,7 @@ public sealed class ContentCalculationDefinitionTests
 
         foreach (var definition in definitions)
         {
-            Assert.Equal(3, definition.Parameters.Count);
+            Assert.Equal(14, definition.Parameters.Count);
 
             var temperature = Assert.Single(definition.Parameters, parameter => parameter.Key == "temperatureC");
 
@@ -93,7 +93,8 @@ public sealed class ContentCalculationDefinitionTests
             {
                 ["temperatureC"] = temperatureC,
                 ["pressureBarGauge"] = pressureBarGauge,
-                ["configurationCode"] = configurationCode
+                ["configurationCode"] = configurationCode,
+                ["selectedContentItemIndex"] = 0
             }));
 
         Assert.True(result.IsSuccess, result.ErrorMessage);
@@ -114,8 +115,9 @@ public sealed class ContentCalculationDefinitionTests
                 new Dictionary<string, object?>
                 {
                     ["temperatureC"] = 80d,
-                    ["pressureBarAbsolute"] = 1.0d,
-                    ["configurationCode"] = 30
+                    ["pressureBarGauge"] = 0d,
+                    ["configurationCode"] = 30,
+                    ["selectedContentItemIndex"] = 0
                 }));
 
         Assert.False(result.IsSuccess);
@@ -148,7 +150,8 @@ public sealed class ContentCalculationDefinitionTests
             {
                 ["temperatureC"] = 36.1d,
                 ["pressureBarGauge"] = 0d,
-                ["configurationCode"] = 11
+                ["configurationCode"] = 11,
+                ["selectedContentItemIndex"] = 0
             }));
 
         Assert.True(result.IsSuccess, result.ErrorMessage);
@@ -158,5 +161,44 @@ public sealed class ContentCalculationDefinitionTests
 
         Assert.Equal(100.105351337d, alcohol.Value, precision: 9);
         Assert.Equal(-0.105351337d, water.Value, precision: 9);
+    }
+
+    [Fact]
+    public void ContentDefinitionAppliesOnlySelectedComponentDeltas()
+    {
+        var definition = BuiltInCalculationCatalog.Create().GetRequired(ContentCalculationDefinitions.AlcWaterCode);
+
+        const double temperatureC = 36.1d;
+        const double pressureBarGauge = 0.32d;
+        const double pressureDeltaBar = 0.08d;
+        const double temperatureDeltaC = 1.5d;
+        const int configurationCode = 11;
+
+        var expected = ContentPropertyCalculator.CalculatePercent(new ContentCalculationRequest(
+            Components: ["ALC", "Water"],
+            TemperatureC: temperatureC + temperatureDeltaC,
+            PressureBarAbsolute: pressureBarGauge + pressureDeltaBar + CalculationPhysicalConstants.AtmosphericPressureBarAbsolute,
+            ConfigurationCode: configurationCode));
+
+        var result = definition.Calculate(new CalculationParameterSet(new Dictionary<string, object?>
+        {
+            ["temperatureC"] = temperatureC,
+            ["pressureBarGauge"] = pressureBarGauge,
+            ["configurationCode"] = configurationCode,
+            ["selectedContentItemIndex"] = 0,
+            ["component0PressureDelta"] = pressureDeltaBar,
+            ["component0TemperatureDelta"] = temperatureDeltaC,
+
+            // Эти значения принадлежат Water и при Select=0
+            // не должны участвовать в расчёте.
+            ["component1PressureDelta"] = 5d,
+            ["component1TemperatureDelta"] = 50d
+        }));
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        Assert.Equal(expected.Count, result.Outputs.Count);
+
+        for (var index = 0; index < expected.Count; index++)
+            Assert.Equal(expected[index], result.Outputs[index].Value, precision: 10);
     }
 }

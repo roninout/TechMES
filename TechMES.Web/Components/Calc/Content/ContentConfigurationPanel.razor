@@ -301,81 +301,93 @@
 
 
                             @* =================================================
-                               CURRENT VALUE / ValHmi
+                               CONTENT COMPONENTS
 
-                               Sel = 0 -> текущим значением SCADA является ValHmi.
+                               Показываем фактические SCADA ParamN и их поправки.
+                               Физический dP хранится в legacy ParamN_Dt.
+                               Физический dT хранится в legacy ParamN_Dp.
                                ================================================= *@
-                            <div class="content-value-row">
+                            @if (LiveDefinition is not null)
+                            {
+                                var outputs = LiveDefinition.Outputs
+                                    .OrderBy(output => output.Order)
+                                    .Take(MaxContentItemCount)
+                                    .ToList();
 
-                                <div class="content-selection-title">
+                                @for (var index = 0; index < outputs.Count; index++)
+                                {
+                                    var output = outputs[index];
+                                    var selected = SelectedContentItemIndex == index;
 
-                                    <div class="content-selection-mark"></div>
+                                    <div class="content-component-live-row @(selected ? "is-selected" : "")">
 
-                                    <span>
-                                        Current value
-                                    </span>
+                                        <div class="content-selection-title @(selected ? "is-selected" : "")">
 
-                                </div>
+                                            <div class="content-selection-mark">
 
+                                                @if (selected)
+                                                {
+                                                    <RadzenIcon Icon="check"
+                                                                class="content-selection-icon" />
+                                                }
 
-                                <div class="content-value-controls">
+                                            </div>
 
-                                    <RadzenFormField AllowFloatingLabel="false"
-                                                     Text="Value"
-                                                     Variant="Variant.Outlined"
-                                                     class="content-main-form-field">
+                                            <span>
+                                                @GetContentComponentCaption(output)
+                                            </span>
 
-                                        <RadzenNumeric TValue="double?"
-                                                       Value="@CurrentContentValue"
-                                                       ReadOnly="true"
-                                                       ShowUpDown="false"
-                                                       Format="0.00' %'"
-                                                       class="content-main-value-input" />
+                                        </div>
 
-                                    </RadzenFormField>
+                                        <div class="content-component-live-fields">
 
-                                </div>
+                                            <RadzenFormField AllowFloatingLabel="false"
+                                                             Text="dP"
+                                                             Variant="Variant.Outlined"
+                                                             class="content-component-live-delta-field">
 
-                            </div>
+                                                <RadzenNumeric TValue="double?"
+                                                               Value="@GetContentDp(index)"
+                                                               ReadOnly="true"
+                                                               ShowUpDown="false"
+                                                               Format="0.###' bar'"
+                                                               class="content-component-live-value" />
 
+                                            </RadzenFormField>
 
-                            @* =================================================
-                               CALCULATED VALUE / ValCalc
+                                            <RadzenFormField AllowFloatingLabel="false"
+                                                             Text="dT"
+                                                             Variant="Variant.Outlined"
+                                                             class="content-component-live-delta-field">
 
-                               Sel = 1 -> текущим значением SCADA является ValCalc.
-                               ================================================= *@
-                            <div class="content-value-row">
+                                                <RadzenNumeric TValue="double?"
+                                                               Value="@GetContentDt(index)"
+                                                               ReadOnly="true"
+                                                               ShowUpDown="false"
+                                                               Format="0.###' °C'"
+                                                               class="content-component-live-value" />
 
-                                <div class="content-selection-title">
+                                            </RadzenFormField>
 
-                                    <div class="content-selection-mark"></div>
+                                            <RadzenFormField AllowFloatingLabel="false"
+                                                             Text="@GetContentComponentCode(output)"
+                                                             Variant="Variant.Outlined"
+                                                             class="content-component-live-percent-field">
 
-                                    <span>
-                                        Calculated value
-                                    </span>
+                                                <RadzenNumeric TValue="double?"
+                                                               Value="@GetContentParam(index)"
+                                                               ReadOnly="true"
+                                                               ShowUpDown="false"
+                                                               Format="0.00' %'"
+                                                               class="content-component-live-value" />
 
-                                </div>
+                                            </RadzenFormField>
 
+                                        </div>
 
-                                <div class="content-value-controls">
-
-                                    <RadzenFormField AllowFloatingLabel="false"
-                                                     Text="@CurrentCalculatedItemName"
-                                                     Variant="Variant.Outlined"
-                                                     class="content-main-form-field">
-
-                                        <RadzenNumeric TValue="double?"
-                                                       Value="@CurrentContentCalcEngineering"
-                                                       ReadOnly="true"
-                                                       ShowUpDown="false"
-                                                       Format="0.00' %'"
-                                                       class="content-main-value-input" />
-
-                                    </RadzenFormField>
-
-                                </div>
-
-                            </div>
+                                    </div>
+                                }
+                            }
 
                         </div>
 
@@ -594,16 +606,11 @@
 
                             </div>
 
-
-                            @* ==================================================
-                               SYSTEM + CONFIGURATION CODE
-                               ================================================== *@
                             <div class="content-system-row">
 
                                 <div class="content-system-icon">
                                     <RadzenIcon Icon="percent" />
                                 </div>
-
 
                                 <RadzenDropDown TValue="string"
                                                 Data="@_contentDefinitions"
@@ -614,7 +621,6 @@
                                                 Placeholder="Select Content system..."
                                                 Disabled="@_isSaving"
                                                 class="content-system-dropdown" />
-
 
                                 <RadzenFormField AllowFloatingLabel="false"
                                                  Text="code"
@@ -630,88 +636,6 @@
                                 </RadzenFormField>
 
                             </div>
-
-
-                            @* ==================================================
-                               FIXED CONTENT COMPONENTS
-                               ================================================== *@
-                            @if (Definition is not null)
-                            {
-                                var outputs = Definition.Outputs
-                                    .OrderBy(output => output.Order)
-                                    .Take(MaxContentItemCount)
-                                    .ToList();
-
-                                @for (var index = 0; index < outputs.Count; index++)
-                                {
-                                    var output = outputs[index];
-                                    var selected = SelectedContentItemIndex == index;
-
-                                    <div class="content-component-row @(selected ? "is-selected" : "")">
-
-                                        <div class="content-component-selected">
-
-                                            @if (selected)
-                                            {
-                                                <RadzenIcon Icon="check"
-                                                            class="content-component-selected-icon" />
-                                            }
-
-                                        </div>
-
-
-                                        <div class="content-settings-index">
-                                            @(index + 1)
-                                        </div>
-
-
-                                        <div class="content-component-name">
-                                            @GetContentComponentCaption(output)
-                                        </div>
-
-
-                                        @* По твоему legacy-контракту: dP отображает ParamN_Dt. *@
-                                        <RadzenFormField AllowFloatingLabel="false"
-                                                         Text="dP"
-                                                         Variant="Variant.Outlined"
-                                                         class="content-component-delta-field">
-
-                                            <RadzenNumeric TValue="double?"
-                                                           Value="@GetContentDp(index)"
-                                                           ReadOnly="true"
-                                                           ShowUpDown="false"
-                                                           Format="0.###' bar'"
-                                                           class="content-component-delta-value" />
-
-                                        </RadzenFormField>
-
-
-                                        @* По твоему legacy-контракту: dT отображает ParamN_Dp. *@
-                                        <RadzenFormField AllowFloatingLabel="false"
-                                                         Text="dT"
-                                                         Variant="Variant.Outlined"
-                                                         class="content-component-delta-field">
-
-                                            <RadzenNumeric TValue="double?"
-                                                           Value="@GetContentDt(index)"
-                                                           ReadOnly="true"
-                                                           ShowUpDown="false"
-                                                           Format="0.###' °C'"
-                                                           class="content-component-delta-value" />
-
-                                        </RadzenFormField>
-
-
-                                        <RadzenNumeric TValue="double?"
-                                                       Value="@GetContentParam(index)"
-                                                       ReadOnly="true"
-                                                       ShowUpDown="false"
-                                                       Format="0.00' %'"
-                                                       class="content-component-percent" />
-
-                                    </div>
-                                }
-                            }
 
                         </section>
 
@@ -964,6 +888,24 @@
         return GetItemTag(Model, $"Param{index}_Dt");
     }
 
+    /// <summary>
+    /// Legacy Content naming не совпадает с физическим смыслом:
+    ///
+    ///     physical dP <- ParamN_Dt
+    ///     physical dT <- ParamN_Dp
+    ///
+    /// В остальном коде используем только эти semantic helpers,
+    /// чтобы больше не перепутать SCADA ITEM.
+    /// </summary>
+    private string? GetContentPressureDeltaTag(int index)
+    {
+        return GetContentParamDtTag(index);
+    }
+
+    private string? GetContentTemperatureDeltaTag(int index)
+    {
+        return GetContentParamDpTag(index);
+    }
 
     // ============================================================
     // Fixed SCADA values
@@ -1039,27 +981,21 @@
     }
 
     /// <summary>
-    /// ParamN_Dp — Delta P, bar.
-    /// Показываем фактическое значение, использованное Calculation Engine.
-    /// До первого Runtime cycle используем прямое SCADA-чтение как fallback.
+    /// Физическая поправка давления dP.
+    /// В legacy Content хранится в ParamN_Dt.
     /// </summary>
     private double? GetContentDp(int index)
     {
-        return TryGetRuntimeNumber(State?.LastInputs, $"component{index}PressureDelta", out var value)
-            ? value
-            : GetLiveScadaValue($"Param{index}_Dp");
+        return GetLiveScadaValue($"Param{index}_Dt");
     }
 
     /// <summary>
-    /// ParamN_Dt — Delta T, °C.
-    /// Показываем фактическое значение, использованное Calculation Engine.
-    /// До первого Runtime cycle используем прямое SCADA-чтение как fallback.
+    /// Физическая поправка температуры dT.
+    /// В legacy Content хранится в ParamN_Dp.
     /// </summary>
     private double? GetContentDt(int index)
     {
-        return TryGetRuntimeNumber(State?.LastInputs, $"component{index}TemperatureDelta", out var value)
-            ? value
-            : GetLiveScadaValue($"Param{index}_Dt");
+        return GetLiveScadaValue($"Param{index}_Dp");
     }
 
 
@@ -1578,8 +1514,8 @@
 
         for (var index = 0; index < contentItemCount; index++)
         {
-            var pressureDeltaTag = GetContentParamDpTag(index);
-            var temperatureDeltaTag = GetContentParamDtTag(index);
+            var pressureDeltaTag = GetContentPressureDeltaTag(index);
+            var temperatureDeltaTag = GetContentTemperatureDeltaTag(index);
 
             if (string.IsNullOrWhiteSpace(pressureDeltaTag) || string.IsNullOrWhiteSpace(temperatureDeltaTag))
                 return [];
@@ -1592,7 +1528,7 @@
                 ParameterKey = pressureDeltaParameter.Key,
                 SourceType = CalcInputSourceTypeDto.Tag,
                 TagName = pressureDeltaTag,
-                SourceReference = $"{Model.Name}.Param{index}_Dp",
+                SourceReference = $"{Model.Name}.Param{index}_Dt",
                 SortOrder = pressureDeltaParameter.Order
             });
 
@@ -1601,7 +1537,7 @@
                 ParameterKey = temperatureDeltaParameter.Key,
                 SourceType = CalcInputSourceTypeDto.Tag,
                 TagName = temperatureDeltaTag,
-                SourceReference = $"{Model.Name}.Param{index}_Dt",
+                SourceReference = $"{Model.Name}.Param{index}_Dp",
                 SortOrder = temperatureDeltaParameter.Order
             });
         }
@@ -1748,25 +1684,6 @@
             return value.HasValue && double.IsFinite(value.Value) ? value.Value : null;
         }
     }
-
-    /// <summary>
-    /// Calculated value берётся из ParamN, выбранного через Select.
-    ///
-    /// ParamN хранится в hundredths-of-percent,
-    /// поэтому здесь используется GetContentParam(), который делает /100.
-    /// </summary>
-    private double? CurrentContentCalcEngineering
-    {
-        get
-        {
-            if (!SelectedContentItemIndex.HasValue)
-                return null;
-
-            return GetContentParam(SelectedContentItemIndex.Value);
-        }
-    }
-
-    private string CurrentCalculatedItemName => SelectedContentItemIndex.HasValue ? $"Param{SelectedContentItemIndex.Value}" : "Param";
 
     private bool IsTechMesOutputWriteEnabled => Job?.WriteEnabled == true;
 

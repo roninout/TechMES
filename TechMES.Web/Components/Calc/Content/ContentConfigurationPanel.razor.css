@@ -530,6 +530,17 @@
         min-width: 0;
         max-width: var(--content-main-field-width);
     }
+
+    .content-component-live-row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .content-component-live-fields {
+        grid-template-columns: 92px 92px minmax(120px, 1fr);
+        width: 100%;
+        justify-self: stretch;
+    }
 }
 
 
@@ -883,57 +894,6 @@
 
 
 /* ============================================================
-   Fixed Content components
-   ============================================================ */
-
-.content-component-row {
-    display: grid;
-    grid-template-columns: 24px 36px minmax(240px, 1fr) 92px 92px 130px;
-    align-items: center;
-    gap: 12px;
-    min-height: 48px;
-}
-
-.content-component-selected {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-::deep .content-component-selected-icon {
-    color: var(--rz-success);
-    font-size: 18px;
-    font-weight: 700;
-}
-
-.content-component-name {
-    min-width: 0;
-    overflow: hidden;
-    font-size: 14px;
-    font-weight: 400;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.content-component-row.is-selected .content-component-name {
-    font-weight: 700;
-}
-
-::deep .content-component-delta-field {
-    width: 92px;
-}
-
-::deep .content-component-delta-value {
-    width: 100%;
-}
-
-::deep .content-component-percent {
-    width: 92px;
-    justify-self: end;
-}
-
-
-/* ============================================================
    Output write
    ============================================================ */
 
@@ -973,3 +933,44 @@
     gap: 10px;
     width: var(--content-main-field-width);
 }
+
+/* ============================================================
+   Live Content components
+   ============================================================ */
+
+.content-component-live-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 28px;
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+}
+
+.content-component-live-fields {
+    display: grid;
+    grid-template-columns: 92px 92px var(--content-main-field-width);
+    align-items: center;
+    gap: 10px;
+    width: max-content;
+    min-width: 0;
+    justify-self: end;
+}
+
+::deep .content-component-live-delta-field {
+    width: 92px;
+}
+
+::deep .content-component-live-percent-field {
+    width: var(--content-main-field-width);
+}
+
+::deep .content-component-live-value {
+    width: 100%;
+}
+
+    ::deep .content-component-live-value .rz-inputtext {
+        text-align: right;
+        font-weight: 400;
+    }
