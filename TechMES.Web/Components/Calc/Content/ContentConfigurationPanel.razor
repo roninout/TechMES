@@ -309,15 +309,20 @@
                                ================================================= *@
                             @if (LiveDefinition is not null)
                             {
-                                var outputs = LiveDefinition.Outputs
-                                    .OrderBy(output => output.Order)
-                                    .Take(MaxContentItemCount)
-                                    .ToList();
+                                var outputs = LiveDefinition.Outputs.OrderBy(output => output.Order).Take(MaxContentItemCount).ToList();
 
                                 @for (var index = 0; index < outputs.Count; index++)
                                 {
-                                    var output = outputs[index];
-                                    var selected = SelectedContentItemIndex == index;
+                                    var itemIndex = index;
+                                    var output = outputs[itemIndex];
+                                    var selected = SelectedContentItemIndex == itemIndex;
+
+                                    // Значения читаем здесь, до создания вложенных RadzenFormField.
+                                    // Это принципиально: дочерние RenderFragment больше не захватывают
+                                    // изменяемый index из @for.
+                                    var pressureDelta = GetContentDp(itemIndex);
+                                    var temperatureDelta = GetContentDt(itemIndex);
+                                    var contentValue = GetContentParam(itemIndex);
 
                                     <div class="content-component-live-row @(selected ? "is-selected" : "")">
 
@@ -347,7 +352,7 @@
                                                              class="content-component-live-delta-field">
 
                                                 <RadzenNumeric TValue="double?"
-                                                               Value="@GetContentDp(index)"
+                                                               Value="@pressureDelta"
                                                                ReadOnly="true"
                                                                ShowUpDown="false"
                                                                Format="0.###' bar'"
@@ -361,7 +366,7 @@
                                                              class="content-component-live-delta-field">
 
                                                 <RadzenNumeric TValue="double?"
-                                                               Value="@GetContentDt(index)"
+                                                               Value="@temperatureDelta"
                                                                ReadOnly="true"
                                                                ShowUpDown="false"
                                                                Format="0.###' °C'"
@@ -375,7 +380,7 @@
                                                              class="content-component-live-percent-field">
 
                                                 <RadzenNumeric TValue="double?"
-                                                               Value="@GetContentParam(index)"
+                                                               Value="@contentValue"
                                                                ReadOnly="true"
                                                                ShowUpDown="false"
                                                                Format="0.00' %'"
@@ -388,7 +393,6 @@
                                     </div>
                                 }
                             }
-
                         </div>
 
                     </div>
@@ -889,22 +893,19 @@
     }
 
     /// <summary>
-    /// Legacy Content naming не совпадает с физическим смыслом:
-    ///
-    ///     physical dP <- ParamN_Dt
-    ///     physical dT <- ParamN_Dp
-    ///
-    /// В остальном коде используем только эти semantic helpers,
-    /// чтобы больше не перепутать SCADA ITEM.
+    /// Физическая поправка давления dP хранится в Content.ParamN_Dp.
     /// </summary>
     private string? GetContentPressureDeltaTag(int index)
     {
-        return GetContentParamDtTag(index);
+        return GetContentParamDpTag(index);
     }
 
+    /// <summary>
+    /// Физическая поправка температуры dT хранится в Content.ParamN_Dt.
+    /// </summary>
     private string? GetContentTemperatureDeltaTag(int index)
     {
-        return GetContentParamDpTag(index);
+        return GetContentParamDtTag(index);
     }
 
     // ============================================================
@@ -981,21 +982,19 @@
     }
 
     /// <summary>
-    /// Физическая поправка давления dP.
-    /// В legacy Content хранится в ParamN_Dt.
+    /// ParamN_Dp — реальная SCADA поправка давления dP, bar.
     /// </summary>
     private double? GetContentDp(int index)
     {
-        return GetLiveScadaValue($"Param{index}_Dt");
+        return GetLiveScadaValue($"Param{index}_Dp");
     }
 
     /// <summary>
-    /// Физическая поправка температуры dT.
-    /// В legacy Content хранится в ParamN_Dp.
+    /// ParamN_Dt — реальная SCADA поправка температуры dT, °C.
     /// </summary>
     private double? GetContentDt(int index)
     {
-        return GetLiveScadaValue($"Param{index}_Dp");
+        return GetLiveScadaValue($"Param{index}_Dt");
     }
 
 
@@ -1528,7 +1527,7 @@
                 ParameterKey = pressureDeltaParameter.Key,
                 SourceType = CalcInputSourceTypeDto.Tag,
                 TagName = pressureDeltaTag,
-                SourceReference = $"{Model.Name}.Param{index}_Dt",
+                SourceReference = $"{Model.Name}.Param{index}_Dp",
                 SortOrder = pressureDeltaParameter.Order
             });
 
@@ -1537,7 +1536,7 @@
                 ParameterKey = temperatureDeltaParameter.Key,
                 SourceType = CalcInputSourceTypeDto.Tag,
                 TagName = temperatureDeltaTag,
-                SourceReference = $"{Model.Name}.Param{index}_Dp",
+                SourceReference = $"{Model.Name}.Param{index}_Dt",
                 SortOrder = temperatureDeltaParameter.Order
             });
         }

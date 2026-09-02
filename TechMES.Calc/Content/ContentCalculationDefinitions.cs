@@ -135,7 +135,7 @@ public static class ContentCalculationDefinitions
                 Step: 0.01,
                 Decimals: 2,
                 Order: 10 + index * 2,
-                Description: $"Pressure correction read from legacy Content.Param{index}_Dt.",
+                Description: $"Pressure correction read from Content.Param{index}_Dp.",
                 Role: CalculationParameterRole.Configuration));
 
             result.Add(new CalculationParameterDefinition(
@@ -148,7 +148,7 @@ public static class ContentCalculationDefinitions
                 Step: 0.1,
                 Decimals: 1,
                 Order: 11 + index * 2,
-                Description: $"Temperature correction read from legacy Content.Param{index}_Dp.",
+                Description: $"Temperature correction read from Content.Param{index}_Dt.",
                 Role: CalculationParameterRole.Configuration));
         }
 
