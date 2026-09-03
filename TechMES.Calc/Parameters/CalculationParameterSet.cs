@@ -170,7 +170,7 @@ public sealed class CalculationParameterSet
 
         if (value is not string text || string.IsNullOrWhiteSpace(text))
         {
-            throw new CalculationException("parameter.invalid-text", "Calculation parameter '{key}' must contain text.");
+            throw new CalculationException("parameter.invalid-text", $"Calculation parameter '{key}' must contain text.");
         }
 
         return text.Trim();
