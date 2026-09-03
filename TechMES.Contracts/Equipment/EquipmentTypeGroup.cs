@@ -60,6 +60,18 @@ public enum EquipmentTypeGroup
     Content = 30,
 
     /// <summary>
+    /// Расчётное Density-оборудование.
+    /// Используется только общим Param write-flow для разрешённых ITEM из Calc Catalog.
+    /// </summary>
+    Density = 31,
+
+    /// <summary>
+    /// Расчётное Capacity-оборудование.
+    /// Используется только общим Param write-flow для разрешённых ITEM из Calc Catalog.
+    /// </summary>
+    Capacity = 32,
+
+    /// <summary>
     /// Групповой узел Equipment.
     /// </summary>
     Equipment = 100

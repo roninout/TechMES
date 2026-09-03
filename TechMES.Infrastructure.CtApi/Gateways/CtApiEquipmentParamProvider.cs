@@ -2312,7 +2312,11 @@ internal static class ParamDefinitions
                 N("Param3_Dp"), N("Param3_Dt"), N("Param4_Dp"), N("Param4_Dt")
             ],
             [],
-            [])
+            []),
+
+        [EquipmentTypeGroup.Density] = new(EquipmentTypeGroup.Density, [N("DeltaD")], [], []),
+
+        [EquipmentTypeGroup.Capacity] = new(EquipmentTypeGroup.Capacity, [N("DeltaC")], [], [])
     };
 
     public static bool TryGet(EquipmentTypeGroup typeGroup, out ParamDefinition definition)
@@ -2379,15 +2383,15 @@ internal static class ParamWriteDefinitions
             "ForceCmd", "Min", "Max", "MinR", "MaxR", "OutMin", "OutMax",
             "Man", "ManForced", "SetLA", "SetLW", "SetHW", "SetHA", "SetHyst"),
 
-        [EquipmentTypeGroup.VGA_EL] = Names(
-            "Mode", "OpenCmd", "CloseCmd", "AlarmEn", "SQEn", "ActuatorEn",
-            "Man", "TimeOpening", "OutMin", "OutMax"),
+        [EquipmentTypeGroup.VGA_EL] = Names("Mode", "OpenCmd", "CloseCmd", "AlarmEn", "SQEn", "ActuatorEn", "Man", "TimeOpening", "OutMin", "OutMax"),
 
-        [EquipmentTypeGroup.VGD] = Names(
-            "Mode", "Man", "AlarmEn", "TOpen", "TClose"),
+        [EquipmentTypeGroup.VGD] = Names("Mode", "Man", "AlarmEn", "TOpen", "TClose"),
 
-        [EquipmentTypeGroup.Content] = Names(
-            "Conf", "Param0_Dp", "Param0_Dt", "Param1_Dp", "Param1_Dt", "Param2_Dp", "Param2_Dt", "Param3_Dp", "Param3_Dt", "Param4_Dp", "Param4_Dt")
+        [EquipmentTypeGroup.Content] = Names("Conf", "Param0_Dp", "Param0_Dt", "Param1_Dp", "Param1_Dt", "Param2_Dp", "Param2_Dt", "Param3_Dp", "Param3_Dt", "Param4_Dp", "Param4_Dt"),
+
+        [EquipmentTypeGroup.Density] = Names("DeltaD"),
+
+        [EquipmentTypeGroup.Capacity] = Names("DeltaC")
     };
 
     public static bool CanWrite(EquipmentTypeGroup typeGroup, string itemName)

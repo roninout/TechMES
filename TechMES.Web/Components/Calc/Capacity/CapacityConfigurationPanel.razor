@@ -4,6 +4,7 @@
 @using TechMES.Contracts.Param
 @inject CalcApiClient CalcApi
 @inject ParamApiClient ParamApi
+@inject ParamWriteCoordinator ParamWriteCoordinator
 @inject CalcProcessInputResolver ProcessInputResolver
 @inject NotificationService NotificationService
 
@@ -372,19 +373,23 @@
 
                                 <div class="capacity-value-controls">
 
-                                    <RadzenFormField AllowFloatingLabel="false"
-                                                     Text="Delta"
-                                                     Variant="Variant.Outlined"
-                                                     class="capacity-delta-form-field">
+                                    <div class="@GetDeltaCWriteFieldClass()" title="@GetDeltaCWriteFieldTitle()" @onclick="@RequestDeltaCWriteAsync">
 
-                                        <RadzenNumeric TValue="double?"
-                                                       Value="@CurrentDeltaC"
-                                                       ReadOnly="true"
-                                                       ShowUpDown="false"
-                                                       Format="0.###"
-                                                       class="capacity-delta-input" />
+                                        <RadzenFormField AllowFloatingLabel="false"
+                                                         Text="Delta"
+                                                         Variant="Variant.Outlined"
+                                                         class="capacity-delta-form-field">
 
-                                    </RadzenFormField>
+                                            <RadzenNumeric TValue="double?"
+                                                           Value="@CurrentDeltaC"
+                                                           ReadOnly="true"
+                                                           ShowUpDown="false"
+                                                           Format="0.###"
+                                                           class="capacity-delta-input" />
+
+                                        </RadzenFormField>
+
+                                    </div>
 
                                     <RadzenFormField AllowFloatingLabel="false"
                                                      Text="ValCalc"
@@ -874,6 +879,7 @@
     private bool _isSaving;
     private bool _isCheckingBindings;
     private bool _isReadingScada;
+    private bool _isWritingDeltaC;
 
     private CalcDefinitionDto? Definition => _definition;
 
@@ -889,6 +895,68 @@
     private string? GetPercTag(int index)
     {
         return GetItemTag(Model, $"Perc{index}");
+    }
+
+    // ============================================================
+    // Common Param write-flow
+    // ============================================================
+
+    /// <summary>
+    /// Открывает общий Param write-dialog для Capacity.DeltaC и после успешной записи перечитывает фактическое значение из SCADA.
+    /// Все окончательные проверки выполняются Runtime: Calc Catalog, ITEM allow-list, Windows user/groups, тип Number, tag resolve и CtApi write settings.
+    /// </summary>
+    private async Task RequestDeltaCWriteAsync()
+    {
+        if (_isSaving || _isWritingDeltaC)
+            return;
+
+        var tagName = DeltaCTag;
+        if (string.IsNullOrWhiteSpace(tagName))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Param write", "Capacity ITEM 'DeltaC' was not found.", 4000);
+            return;
+        }
+
+        var currentValue = CurrentDeltaC;
+        var item = new ParamItemDto
+        {
+            Name = "DeltaC",
+            Kind = ParamValueKind.Number,
+            ValueText = currentValue?.ToString("0.###############", CultureInfo.InvariantCulture),
+            NumericValue = currentValue,
+            Unit = "J/(kg·K)",
+            TagName = tagName,
+            CanWrite = true
+        };
+
+        _isWritingDeltaC = true;
+
+        try
+        {
+            var response = await ParamWriteCoordinator.WriteAsync(Model.Name, item);
+            if (response?.Success != true)
+                return;
+
+            await RefreshCapacityScadaValuesAsync(force: true);
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _isWritingDeltaC = false;
+        }
+    }
+
+    private string GetDeltaCWriteFieldClass()
+    {
+        return !_isSaving && !_isWritingDeltaC && !string.IsNullOrWhiteSpace(DeltaCTag) ? "capacity-delta-write-field is-writable" : "capacity-delta-write-field is-disabled";
+    }
+
+    private string GetDeltaCWriteFieldTitle()
+    {
+        if (string.IsNullOrWhiteSpace(DeltaCTag))
+            return "Capacity ITEM 'DeltaC' was not found";
+
+        return _isWritingDeltaC ? "Param write is in progress" : "Write DeltaC";
     }
 
     /// <summary>
@@ -934,7 +1002,8 @@
         return GetRuntimeTagInputNumber(GetComponentPercentKey(index)) ?? GetLiveScadaValue($"Perc{index}");
     }
 
-    private double? CurrentDeltaC => GetRuntimeTagInputNumber(CorrectionKey) ?? GetLiveScadaValue("DeltaC");
+    // DeltaC является редактируемым SCADA ITEM, поэтому фактическое значение SCADA имеет приоритет над LastInputs работающего Job.
+    private double? CurrentDeltaC => GetLiveScadaValue("DeltaC") ?? GetRuntimeTagInputNumber(CorrectionKey);
 
     // ValHmi Capacity уже находится в инженерных единицах J/(kg·K).
     private double? CurrentCapacityHmi => GetLiveScadaValue("ValHmi");
@@ -1798,14 +1867,14 @@
     // ============================================================
 
     /// <summary>
-    /// Читает read-only SCADA-параметры Capacity и обновляет Param snapshot
+    /// Читает SCADA-параметры Capacity и обновляет Param snapshot
     /// для ProcessInput, связанных с AI Equipment.
     ///
     /// ValHmi и ValCalc всегда читаются отдельно:
     /// они не являются Calculation inputs.
     ///
-    /// CompN/PercN/DeltaC повторно читаются только тогда,
-    /// когда работающий Job ещё не дал их через LastInputs.
+    /// Редактируемый DeltaC всегда перечитывается из SCADA, чтобы после Param write UI не показывал устаревший LastInputs.
+    /// CompN/PercN повторно читаются только тогда, когда работающий Job ещё не дал их через LastInputs.
     /// </summary>
     private async Task RefreshCapacityScadaValuesAsync(bool force = false)
     {
@@ -1836,14 +1905,12 @@
             {
                 "ValHmi",
                 "ValCalc",
-                "Sel"
+                "Sel",
+                "DeltaC"
             };
 
             if (!GetRuntimeTagInputNumber(ComponentCountKey).HasValue)
                 itemsToRead.Add("CompN");
-
-            if (!GetRuntimeTagInputNumber(CorrectionKey).HasValue)
-                itemsToRead.Add("DeltaC");
 
             for (var index = 0; index < MaxComponentCount; index++)
             {

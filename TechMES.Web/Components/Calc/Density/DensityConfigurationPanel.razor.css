@@ -421,6 +421,25 @@
     min-width: var(--density-delta-field-width);
 }
 
+.density-delta-write-field {
+    width: var(--density-delta-field-width);
+    min-width: var(--density-delta-field-width);
+}
+
+.density-delta-write-field.is-writable {
+    cursor: pointer;
+}
+
+.density-delta-write-field.is-disabled {
+    cursor: default;
+    opacity: 0.72;
+}
+
+.density-delta-write-field.is-writable ::deep .rz-form-field,
+.density-delta-write-field.is-writable ::deep .rz-numeric,
+.density-delta-write-field.is-writable ::deep .rz-inputtext {
+    cursor: pointer;
+}
 
 ::deep .density-delta-form-field {
     width: var(--density-delta-field-width);
@@ -536,6 +555,7 @@
     }
 
     .density-delta-placeholder,
+    .density-delta-write-field,
     ::deep .density-delta-form-field {
         width: 76px;
         min-width: 76px;

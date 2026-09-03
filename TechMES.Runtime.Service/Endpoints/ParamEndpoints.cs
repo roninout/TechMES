@@ -258,7 +258,7 @@ public static class ParamEndpoints
         var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
 
         if (equipment is null)
-            equipment = await TryResolveContentEquipmentAsync(equipmentName, request.ItemName, calcModelCatalog, ct);
+            equipment = await TryResolveCalcEquipmentAsync(equipmentName, request.ItemName, calcModelCatalog, ct);
 
         if (equipment is null)
         {
@@ -283,28 +283,35 @@ public static class ParamEndpoints
         if (authorizationFailure is not null)
             return Results.Json(authorizationFailure, statusCode: StatusCodes.Status403Forbidden);
 
-        request.Actor = string.IsNullOrWhiteSpace(requestedActor)
-            ? runtimeContext.DeviceName
-            : requestedActor;
+        request.Actor = string.IsNullOrWhiteSpace(requestedActor) ? runtimeContext.DeviceName : requestedActor;
 
         var result = await paramProvider.WriteAsync(equipment, request, ct);
         result.Actor = request.Actor;
 
-        return result.Success
-            ? Results.Ok(result)
-            : Results.BadRequest(result);
+        return result.Success ? Results.Ok(result) : Results.BadRequest(result);
     }
 
     /// <summary>
-    /// Разрешает Content только из уже проверенного Calc Catalog.
-    /// Content не добавляется в обычное Equipment tree, но после этой проверки использует общий Param write-flow.
+    /// Разрешает поддерживаемое расчётное оборудование только из уже проверенного Calc Catalog.
+    /// Calc-модели не добавляются в обычное Equipment tree, но после этой проверки используют общий Param write-flow.
     /// </summary>
-    private static async Task<EquipmentDto?> TryResolveContentEquipmentAsync(string equipmentName, string itemName, ICalcModelCatalogProvider calcModelCatalog, CancellationToken ct)
+    private static async Task<EquipmentDto?> TryResolveCalcEquipmentAsync(string equipmentName, string itemName, ICalcModelCatalogProvider calcModelCatalog, CancellationToken ct)
     {
         var catalog = await calcModelCatalog.GetSnapshotAsync(ct);
-        var model = catalog.Items.FirstOrDefault(item => item.Type == CalcModelTypeDto.Content && item.Name.Equals(equipmentName, StringComparison.OrdinalIgnoreCase));
+        var model = catalog.Items.FirstOrDefault(item => item.Name.Equals(equipmentName, StringComparison.OrdinalIgnoreCase));
 
         if (model is null || !model.ItemTags.Keys.Any(key => key.Equals(itemName, StringComparison.OrdinalIgnoreCase)))
+            return null;
+
+        var typeGroup = model.Type switch
+        {
+            CalcModelTypeDto.Content => EquipmentTypeGroup.Content,
+            CalcModelTypeDto.Density => EquipmentTypeGroup.Density,
+            CalcModelTypeDto.Capacity => EquipmentTypeGroup.Capacity,
+            _ => EquipmentTypeGroup.Unknown
+        };
+
+        if (typeGroup == EquipmentTypeGroup.Unknown)
             return null;
 
         return new EquipmentDto
@@ -313,8 +320,8 @@ public static class ParamEndpoints
             DisplayName = model.Name,
             Description = model.Description,
             Station = model.Station,
-            TypeName = CalcModelTypeDto.Content.ToString(),
-            TypeGroup = EquipmentTypeGroup.Content,
+            TypeName = model.Type.ToString(),
+            TypeGroup = typeGroup,
             IsGroup = false
         };
     }
