@@ -1,6 +1,7 @@
 ﻿@page "/calculations"
 @using TechMES.Contracts.Calc
 @using TechMES.Contracts.Equipment
+@using TechMES.Web.Components.Calc.Formula
 @inject CalcApiClient CalcApi
 @inject EquipmentApiClient EquipmentApi
 @inject NotificationService NotificationService
@@ -88,12 +89,19 @@
                 }
             </div>
 
-            <RadzenButton Text="Refresh"
-                          Icon="refresh"
-                          ButtonStyle="ButtonStyle.Light"
-                          Disabled="@_isLoading"
-                          class="calc-model-refresh-button"
-                          Click="@RefreshCatalogAsync" />
+            <RadzenButton 
+                Text="Refresh"
+                Icon="refresh"
+                ButtonStyle="ButtonStyle.Light" 
+                Disabled="@(_isLoading || FormulaBusy)" class="calc-model-refresh-button" 
+                Click="@RefreshCatalogAsync" />
+
+            <RadzenButton 
+                Text="New Formula" 
+                Icon="functions" 
+                ButtonStyle="ButtonStyle.Secondary" 
+                Disabled="@(_isLoading || FormulaBusy)" class="calc-model-refresh-button" 
+                Click="@BeginNewFormulaAsync" />
 
             <div class="calc-model-toolbar-spacer"></div>
 
@@ -325,6 +333,15 @@
                                                    EquipmentCatalog="@_equipmentCatalog"
                                                    JobChanged="@ReloadAfterContentJobChangedAsync" />
                     }
+                    else if (_selectedModel.Type == CalcModelTypeDto.Formula)
+                    {
+                        <FormulaConfigurationPanel @ref="_formulaConfigurationPanel" 
+                                                   @key="_selectedModel" 
+                                                   Job="@selectedJob" 
+                                                   State="@selectedState" 
+                                                   EquipmentCatalog="@_equipmentCatalog" 
+                                                   JobChanged="@ReloadAfterFormulaJobChangedAsync" />
+                    }
                     else
                     {
                         <div class="calc-model-placeholder">
@@ -395,7 +412,6 @@
     private string _statusText = "";
     private AlertStyle _statusStyle = AlertStyle.Info;
 
-
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync(refreshCatalog: false);
@@ -408,26 +424,15 @@
         _ = RunRuntimeStateLoopAsync(_runtimeStateTimerCts.Token);
     }
 
-
-    /// <summary>
-    /// Загружает cached Calc Catalog, Equipment Catalog, Jobs и Runtime states.
-    ///
-    /// Equipment Catalog нужен специализированным расчётам Tank:
-    /// Level ищется среди уже известных Runtime AI без дополнительного CtApi scan.
-    /// </summary>
     private async Task LoadAsync(bool refreshCatalog)
     {
-        var previousSelection = _selectedModel?.Name;
-
+        var previousSelection = _selectedModel is null ? null : GetModelKey(_selectedModel);
         _isLoading = true;
         ClearStatus();
 
         try
         {
-            var catalogTask = refreshCatalog
-                ? CalcApi.RefreshModelCatalogAsync()
-                : CalcApi.GetModelCatalogAsync();
-
+            var catalogTask = refreshCatalog ? CalcApi.RefreshModelCatalogAsync() : CalcApi.GetModelCatalogAsync();
             var equipmentTask = EquipmentApi.GetEquipmentListAsync();
             var jobsTask = CalcApi.GetJobsAsync();
             var statesTask = CalcApi.GetStatesAsync();
@@ -435,66 +440,32 @@
             await Task.WhenAll(catalogTask, equipmentTask, jobsTask, statesTask);
 
             _catalog = await catalogTask;
-
             var equipment = await equipmentTask;
             var jobs = await jobsTask;
             var states = await statesTask;
 
             if (!_catalog.IsAvailable)
-            {
                 ShowError(_catalog.ErrorMessage ?? "Calc SCADA catalog provider is unavailable.");
-            }
 
-            _allModels = _catalog.Items
-                .OrderBy(model => model.Station, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(model => model.Type)
-                .ThenBy(model => model.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            _catalogModels = _catalog.Items.OrderBy(model => model.Station, StringComparer.OrdinalIgnoreCase).ThenBy(model => model.Type).ThenBy(model => model.Name, StringComparer.OrdinalIgnoreCase).ToList();
 
-            /*
-             * Для связей LevelTank нужны только реальные root Equipment.
-             *
-             * Одно физическое оборудование может присутствовать в общем
-             * Equipment Catalog второй раз как child-node группы Equipment.
-             * Такие дубли здесь отбрасываем.
-             */
-            _equipmentCatalog = equipment.Equipments
-                .Where(item => !item.IsGroup && !item.IsEquipmentChildNode)
-                .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(group => group.First())
-                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            // Сохраняем прежний отбор root Equipment без дублей дочерних узлов.
+            _equipmentCatalog = equipment.Equipments.Where(item => !item.IsGroup && !item.IsEquipmentChildNode)
+                .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase).Select(group => group.First())
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToList();
 
-            _jobsByEquipment = jobs
-                .Where(job => !string.IsNullOrWhiteSpace(job.EquipmentName))
-                .GroupBy(job => job.EquipmentName!, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(
-                    group => group.Key,
-                    group => group.OrderByDescending(job => job.Id).First(),
-                    StringComparer.OrdinalIgnoreCase);
+            _newFormulaModel = null;
+            RebuildJobAndModelIndexes(jobs);
 
-            _statesByJobId = states
-                .GroupBy(state => state.JobId)
-                .ToDictionary(group => group.Key, group => group.First());
+            _statesByJobId = states.GroupBy(state => state.JobId).ToDictionary(group => group.Key, group => group.First());
 
             BuildFilterItems();
             ApplyFilters();
 
-            if (!string.IsNullOrWhiteSpace(previousSelection))
-            {
-                _selectedModel = _filteredModels.FirstOrDefault(model =>
-                    string.Equals(model.Name, previousSelection, StringComparison.OrdinalIgnoreCase));
-            }
-
-            _selectedModel ??= _filteredModels.FirstOrDefault();
+            _selectedModel = _filteredModels.FirstOrDefault(model => string.Equals(GetModelKey(model), previousSelection, StringComparison.OrdinalIgnoreCase)) ?? _filteredModels.FirstOrDefault();
 
             if (_catalog.IsLoaded && refreshCatalog)
-            {
-                Notify(
-                    NotificationSeverity.Success,
-                    "Calculations",
-                    $"Calc Catalog refreshed. Models: {_catalog.TotalCount}.");
-            }
+                Notify(NotificationSeverity.Success, "Calculations", $"Calc Catalog refreshed. Models: {_catalog.TotalCount}.");
         }
         catch (Exception ex)
         {
@@ -506,18 +477,14 @@
         }
     }
 
-
-    private Task RefreshCatalogAsync()
+    private async Task RefreshCatalogAsync()
     {
-        return LoadAsync(refreshCatalog: true);
+        if (await ConfirmDiscardAsync())
+            await LoadAsync(refreshCatalog: true);
     }
 
-
     /// <summary>
-    /// После сохранения Tank Job обновляем только Job и его Runtime state.
-    ///
-    /// Calc Catalog и Equipment Catalog не изменились,
-    /// поэтому повторно загружать их и заново resolve Level.R не нужно.
+    /// После сохранения Tank перечитываем только Jobs и States.
     /// </summary>
     private Task ReloadAfterTankJobChangedAsync()
     {
@@ -525,12 +492,7 @@
     }
 
     /// <summary>
-    /// После создания или сохранения Density Job повторно читаем
-    /// только Jobs и Runtime States.
-    ///
-    /// Calc Model Catalog не изменился:
-    /// ITEM -> TAG структура Density остаётся той же.
-    /// Поэтому выполнять новый CtApi catalog scan здесь не требуется.
+    /// После сохранения Density перечитываем только Jobs и States.
     /// </summary>
     private Task ReloadAfterDensityJobChangedAsync()
     {
@@ -538,11 +500,7 @@
     }
 
     /// <summary>
-    /// После создания или сохранения Capacity Job повторно читаем
-    /// только Jobs и Runtime States.
-    ///
-    /// Calc Model Catalog и Equipment Catalog не изменились,
-    /// поэтому новый CtApi scan здесь не требуется.
+    /// После сохранения Capacity перечитываем только Jobs и States.
     /// </summary>
     private Task ReloadAfterCapacityJobChangedAsync()
     {
@@ -550,11 +508,7 @@
     }
 
     /// <summary>
-    /// После создания или сохранения Content Job перечитываем
-    /// только Jobs и Runtime States.
-    ///
-    /// Content Definition и Calc Model Catalog не изменяются,
-    /// поэтому повторный CtApi scan не нужен.
+    /// После сохранения Content перечитываем только Jobs и States.
     /// </summary>
     private Task ReloadAfterContentJobChangedAsync()
     {
@@ -562,15 +516,12 @@
     }
 
     /// <summary>
-    /// Перечитывает Jobs и States после изменения конфигурации.
-    ///
-    /// Не трогает Calc Catalog и Equipment Catalog.
-    /// Поэтому Tank Level/Density links остаются стабильными.
+    /// Обновляет конфигурации и состояния без нового CtApi catalog scan.
+    /// Для Formula восстанавливает выбранный расчёт по Job.Id.
     /// </summary>
-    private async Task ReloadJobsAndStatesAsync(CancellationToken ct = default)
+    private async Task ReloadJobsAndStatesAsync(CancellationToken ct = default, long? selectFormulaJobId = null)
     {
-        if (_jobsAndStatesReloadInProgress)
-            return;
+        if (_jobsAndStatesReloadInProgress) return;
 
         _jobsAndStatesReloadInProgress = true;
 
@@ -583,27 +534,32 @@
 
             var jobs = await jobsTask;
             var states = await statesTask;
+            var selectionKey = _selectedModel is null ? null : GetModelKey(_selectedModel);
 
-            _jobsByEquipment = jobs
-                .Where(job => !string.IsNullOrWhiteSpace(job.EquipmentName))
-                .GroupBy(job => job.EquipmentName!, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(
-                    group => group.Key,
-                    group => group.OrderByDescending(job => job.Id).First(),
-                    StringComparer.OrdinalIgnoreCase);
+            if (selectFormulaJobId.HasValue)
+            {
+                _newFormulaModel = null;
+                _selectedStation = AllStationsText;
+                _selectedType = CalcModelTypeDto.Formula.ToString();
+                _searchText = "";
+                selectionKey = $"formula:{selectFormulaJobId.Value}";
+            }
 
-            _statesByJobId = states
-                .GroupBy(state => state.JobId)
-                .ToDictionary(
-                    group => group.Key,
-                    group => group.First());
+            RebuildJobAndModelIndexes(jobs);
+
+            _statesByJobId = states.GroupBy(state => state.JobId).ToDictionary(group => group.Key, group => group.First());
+
+            BuildFilterItems();
+            ApplyFilters();
+
+            _selectedModel = _filteredModels.FirstOrDefault(model => string.Equals(GetModelKey(model), selectionKey, StringComparison.OrdinalIgnoreCase)) ?? _filteredModels.FirstOrDefault();
         }
         finally
         {
             _jobsAndStatesReloadInProgress = false;
         }
     }
-
+    
     /// <summary>
     /// Периодически перечитывает только Runtime states.
     ///
@@ -765,69 +721,35 @@
         ApplyFilters();
     }
 
-
     private async Task SelectModelAsync(CalcModelDto model)
     {
-        if (_selectedModel is not null && string.Equals(_selectedModel.Name, model.Name, StringComparison.OrdinalIgnoreCase))
+        if (_selectedModel is not null && GetModelKey(_selectedModel) == GetModelKey(model))
             return;
 
-        var hasPendingChanges =
-            _tankConfigurationPanel?.HasPendingChanges == true
-            || _densityConfigurationPanel?.HasPendingChanges == true
-            || _capacityConfigurationPanel?.HasPendingChanges == true
-            || _contentConfigurationPanel?.HasPendingChanges == true;
-
-        if (hasPendingChanges)
-        {
-            var confirmed = await DialogService.Confirm("The current calculation configuration contains unsaved changes. Discard them and open another calculation?", "Unsaved changes",
-                new ConfirmOptions
-                {
-                    OkButtonText = "Discard",
-                    CancelButtonText = "Stay"
-                });
-
-            if (confirmed != true)
-                return;
-        }
-
-        _selectedModel = model;
+        if (await ConfirmDiscardAsync())
+            _selectedModel = model;
     }
-
 
     private CalcJobDto? GetJob(CalcModelDto model)
     {
-        return _jobsByEquipment.TryGetValue(
-            model.Name,
-            out var job)
-            ? job
-            : null;
-    }
+        if (model.Type == CalcModelTypeDto.Formula)
+            return _formulaJobsByModel.TryGetValue(model, out var formulaJob) ? formulaJob : null;
 
+        return _jobsByEquipment.TryGetValue(model.Name, out var job) ? job : null;
+    }
 
     private CalcJobStateDto? GetState(CalcJobDto? job)
     {
         if (job is null)
             return null;
 
-        return _statesByJobId.TryGetValue(
-            job.Id,
-            out var state)
-            ? state
-            : null;
+        return _statesByJobId.TryGetValue(job.Id, out var state) ? state : null;
     }
-
 
     private string GetModelRowCss(CalcModelDto model)
     {
-        return _selectedModel is not null
-            && string.Equals(
-                _selectedModel.Name,
-                model.Name,
-                StringComparison.OrdinalIgnoreCase)
-            ? "calc-model-row selected"
-            : "calc-model-row";
+        return _selectedModel is not null && GetModelKey(_selectedModel) == GetModelKey(model) ? "calc-model-row selected" : "calc-model-row";
     }
-
 
     private static string GetTypeBadge(CalcModelTypeDto type)
     {
@@ -837,10 +759,10 @@
             CalcModelTypeDto.Density => "D",
             CalcModelTypeDto.Capacity => "Cp",
             CalcModelTypeDto.Content => "Cn",
+            CalcModelTypeDto.Formula => "Fx",
             _ => "?"
         };
     }
-
 
     private static BadgeStyle GetTypeBadgeStyle(CalcModelTypeDto type)
     {
@@ -850,13 +772,13 @@
             CalcModelTypeDto.Density => BadgeStyle.Info,
             CalcModelTypeDto.Capacity => BadgeStyle.Warning,
             CalcModelTypeDto.Content => BadgeStyle.Success,
+            CalcModelTypeDto.Formula => BadgeStyle.Secondary,
             _ => BadgeStyle.Light
         };
     }
-
+    
     /// <summary>
-    /// Преобразует значение Type-filter в Calc model type.
-    /// Для специального пункта All types возвращает false.
+    /// Преобразует значение Type-filter в Calc model type. Для специального пункта All types возвращает false.
     /// </summary>
     private static bool TryGetCalcModelType(string? value, out CalcModelTypeDto type)
     {
@@ -881,20 +803,17 @@
         };
     }
 
-
     private void ShowError(string message)
     {
         _statusText = message;
         _statusStyle = AlertStyle.Danger;
     }
 
-
     private void ClearStatus()
     {
         _statusText = "";
         _statusStyle = AlertStyle.Info;
     }
-
 
     private void Notify(NotificationSeverity severity, string summary, string detail)
     {
@@ -939,7 +858,6 @@
             ? "Enabled"
             : "Disabled";
     }
-
 
     private static string GetRuntimeStatusIcon(CalcJobStateStatusDto status)
     {
