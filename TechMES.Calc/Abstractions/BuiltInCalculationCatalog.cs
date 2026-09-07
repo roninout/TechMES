@@ -1,6 +1,7 @@
 ﻿using TechMES.Calc.Capacity;
 using TechMES.Calc.Content;
 using TechMES.Calc.Density;
+using TechMES.Calc.Formula;
 using TechMES.Calc.Tanks.Types;
 
 namespace TechMES.Calc.Abstractions;
@@ -12,7 +13,8 @@ namespace TechMES.Calc.Abstractions;
 /// - Tank Type 1..8;
 /// - Density многокомпонентной смеси;
 /// - Capacity многокомпонентной смеси;
-/// - все поддерживаемые Content-системы.
+/// - все поддерживаемые Content-системы;
+/// - универсальный Formula Job.
 ///
 /// Добавление нового Calculation Definition не требует изменения
 /// CalculationCatalog, Runtime или PostgreSQL.
@@ -34,7 +36,8 @@ public static class BuiltInCalculationCatalog
             new TankType8VolumeDefinition(),
 
             new DensityCalculationDefinition(),
-            new CapacityCalculationDefinition()
+            new CapacityCalculationDefinition(),
+            new FormulaCalculationDefinition()
         };
 
         definitions.AddRange(ContentCalculationDefinitions.CreateAll());

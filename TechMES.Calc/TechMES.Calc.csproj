@@ -10,4 +10,8 @@
 		<InternalsVisibleTo Include="TechMES.Calc.Tests" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<PackageReference Include="NCalc.Core" Version="7.1.0" />
+	</ItemGroup>
+
 </Project>

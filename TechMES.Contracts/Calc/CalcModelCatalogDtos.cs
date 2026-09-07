@@ -3,8 +3,9 @@
 namespace TechMES.Contracts.Calc;
 
 /// <summary>
-/// Тип SCADA calculation model.
-/// Значение соответствует Equipment Type в Plant SCADA.
+/// Тип calculation model на production-странице.
+/// Tank/Density/Capacity/Content соответствуют Equipment Type в Plant SCADA.
+/// Formula является виртуальной моделью, построенной из независимого Calc Job.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum CalcModelTypeDto
@@ -12,7 +13,8 @@ public enum CalcModelTypeDto
     Tank,
     Density,
     Capacity,
-    Content
+    Content,
+    Formula
 }
 
 /// <summary>
