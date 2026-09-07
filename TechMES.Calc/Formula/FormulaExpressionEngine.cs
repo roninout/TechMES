@@ -125,17 +125,13 @@ public static class FormulaExpressionEngine
 
     private static Expression CreateExpression(string normalizedExpression)
     {
-        var configuration = ExpressionConfiguration.FromOptions(
-            ExpressionOptions.IgnoreCaseAtBuiltInFunctions |
-            ExpressionOptions.OverflowProtection);
+        var configuration = ExpressionConfiguration.FromOptions(ExpressionOptions.IgnoreCaseAtBuiltInFunctions | ExpressionOptions.OverflowProtection);
+        var expression = new Expression(normalizedExpression, configuration, cultureInfo: CultureInfo.InvariantCulture);
 
-        var expression = new Expression(
-            normalizedExpression,
-            configuration,
-            cultureInfo: CultureInfo.InvariantCulture);
-
-        expression.Parameters["pi"] = Math.PI;
-        expression.Parameters["e"] = Math.E;
+        // Константы получают отдельные внутренние имена, чтобы переменная [e]
+        // не могла подменить число Эйлера в выражениях вроде [e] + ln(e).
+        expression.Parameters["__constant_pi"] = Math.PI;
+        expression.Parameters["__constant_e"] = Math.E;
         expression.Functions["Clamp"] = EvaluateClamp;
         expression.Functions["FormulaRound"] = EvaluateRound;
 
@@ -389,7 +385,7 @@ public static class FormulaExpressionEngine
 
         if (string.Equals(identifier, "pi", StringComparison.OrdinalIgnoreCase) || string.Equals(identifier, "e", StringComparison.OrdinalIgnoreCase))
         {
-            normalized.Append('[').Append(identifier.ToLowerInvariant()).Append(']');
+            normalized.Append("[__constant_").Append(identifier.ToLowerInvariant()).Append(']');
             return index;
         }
 

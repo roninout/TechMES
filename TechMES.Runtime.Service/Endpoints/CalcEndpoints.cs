@@ -1,7 +1,9 @@
 ﻿using Microsoft.Extensions.Options;
 using TechMES.Application.Calc;
+using TechMES.Application.Param;
 using TechMES.Calc.Abstractions;
 using TechMES.Calc.Exceptions;
+using TechMES.Calc.Formula;
 using TechMES.Contracts.Calc;
 using TechMES.Runtime.Service.Calc;
 using TechMES.Runtime.Service.Runtime;
@@ -223,9 +225,9 @@ public static class CalcEndpoints
     }
 
     /// <summary>
-    /// Создаёт новое задание в shadow/read-only режиме.
+    /// Создаёт задание после общей проверки и проверки Formula tags.
     /// </summary>
-    private static async Task<IResult> CreateJobAsync(CalcJobSaveRequest? request, ICalcJobStore store, CalcJobValidator validator, CalcDependencyGraphValidator dependencyValidator, HttpContext httpContext, IAppRuntimeContext runtime, IOptions<CalcConfigurationOptions> options, CancellationToken ct)
+    private static async Task<IResult> CreateJobAsync(CalcJobSaveRequest? request, ICalcJobStore store, CalcJobValidator validator, CalcDependencyGraphValidator dependencyValidator, IEquipmentParamProvider paramProvider, HttpContext httpContext, IAppRuntimeContext runtime, IOptions<CalcConfigurationOptions> options, CancellationToken ct)
     {
         if (!options.Value.EditingEnabled)
             return EditingDisabled();
@@ -241,6 +243,11 @@ public static class CalcEndpoints
         if (!dependencyValidation.IsValid)
             return BadRequest(dependencyValidation.ErrorCode!, dependencyValidation.ErrorMessage!);
 
+        var tagValidation = await ValidateFormulaTagsAsync(request!, paramProvider, ct);
+
+        if (tagValidation is not null)
+            return BadRequest(tagValidation.ErrorCode, tagValidation.ErrorMessage);
+
         try
         {
             var job = await store.CreateAsync(request!, ResolveActor(httpContext, runtime), ct);
@@ -255,7 +262,7 @@ public static class CalcEndpoints
     /// <summary>
     /// Обновляет задание при совпадении ExpectedRevision.
     /// </summary>
-    private static async Task<IResult> UpdateJobAsync(long id, CalcJobSaveRequest? request, ICalcJobStore store, CalcJobValidator validator, CalcDependencyGraphValidator dependencyValidator, HttpContext httpContext, IAppRuntimeContext runtime, IOptions<CalcConfigurationOptions> options, CancellationToken ct)
+    private static async Task<IResult> UpdateJobAsync(long id, CalcJobSaveRequest? request, ICalcJobStore store, CalcJobValidator validator, CalcDependencyGraphValidator dependencyValidator, IEquipmentParamProvider paramProvider, HttpContext httpContext, IAppRuntimeContext runtime, IOptions<CalcConfigurationOptions> options, CancellationToken ct)
     {
         if (!options.Value.EditingEnabled)
             return EditingDisabled();
@@ -270,6 +277,11 @@ public static class CalcEndpoints
 
         if (!dependencyValidation.IsValid)
             return BadRequest(dependencyValidation.ErrorCode!, dependencyValidation.ErrorMessage!);
+
+        var tagValidation = await ValidateFormulaTagsAsync(request!, paramProvider, ct);
+
+        if (tagValidation is not null)
+            return BadRequest(tagValidation.ErrorCode, tagValidation.ErrorMessage);
 
         try
         {
@@ -456,6 +468,59 @@ public static class CalcEndpoints
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(source.ToString()));
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Проверяет теги активного Formula Job через существующий Param provider.
+    /// Для выключенного Job сетевые проверки пропускаются: недоступная SCADA
+    /// не должна мешать отключению расчёта или сохранению черновика.
+    /// </summary>
+    private static async Task<CalcApiErrorResponse?> ValidateFormulaTagsAsync(CalcJobSaveRequest request, IEquipmentParamProvider paramProvider, CancellationToken ct)
+    {
+        if (!string.Equals(request.DefinitionCode?.Trim(), FormulaCalculationDefinition.DefinitionCode, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        if (!request.Enabled && !request.WriteEnabled)
+            return null;
+
+        try
+        {
+            // Последовательные вызовы сохраняют существующую сериализацию CtApi.
+            foreach (var input in (request.Inputs ?? []).Where(input => input.SourceType == CalcInputSourceTypeDto.Tag))
+            {
+                var tagName = input.TagName?.Trim() ?? "";
+                var result = await paramProvider.CheckNumericTagAsync(tagName, requireTrend: false, ct: ct);
+
+                if (!result.Found || !result.CurrentValue.HasValue || !double.IsFinite(result.CurrentValue.Value))
+                {
+                    return ApiError("formula.input-tag-invalid", $"Formula input [{input.ParameterKey?.Trim()}] tag '{tagName}' is not a readable numeric SCADA tag. {result.Message}".Trim());
+                }
+            }
+
+            var output = (request.Outputs ?? []).FirstOrDefault(item => string.Equals(item.OutputKey?.Trim(), FormulaCalculationDefinition.ResultOutputKey, StringComparison.OrdinalIgnoreCase));
+            var outputTag = output?.TagName?.Trim() ?? "";
+
+            // Расчёт без записи может работать без выходного тега.
+            if (outputTag.Length == 0)
+                return null;
+
+            var outputResult = await paramProvider.CheckNumericTagAsync(outputTag, requireTrend: true, ct: ct);
+
+            if (!outputResult.Found || !outputResult.TrendFound || !outputResult.CurrentValue.HasValue || !double.IsFinite(outputResult.CurrentValue.Value))
+            {
+                return ApiError("formula.output-trend-tag-invalid", $"Formula output tag '{outputTag}' must be a readable numeric SCADA tag with a trend reference. {outputResult.Message}".Trim());
+            }
+
+            return null;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return ApiError("formula.tag-validation-failed", "Formula SCADA tag validation failed: " + exception.Message);
+        }
     }
 
     /// <summary>
