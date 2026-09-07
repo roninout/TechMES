@@ -491,10 +491,13 @@ public static class CalcEndpoints
                 var tagName = input.TagName?.Trim() ?? "";
                 var result = await paramProvider.CheckNumericTagAsync(tagName, requireTrend: false, ct: ct);
 
-                if (!result.Found || !result.CurrentValue.HasValue || !double.IsFinite(result.CurrentValue.Value))
+                if (!result.Found || !result.CurrentValue.HasValue || !double.IsFinite(result.CurrentValue.Value) || string.IsNullOrWhiteSpace(result.TagName))
                 {
                     return ApiError("formula.input-tag-invalid", $"Formula input [{input.ParameterKey?.Trim()}] tag '{tagName}' is not a readable numeric SCADA tag. {result.Message}".Trim());
                 }
+
+                // API также сохраняет разрешённое имя, даже если запрос пришёл не из WEB.
+                input.TagName = result.TagName.Trim();
             }
 
             var output = (request.Outputs ?? []).FirstOrDefault(item => string.Equals(item.OutputKey?.Trim(), FormulaCalculationDefinition.ResultOutputKey, StringComparison.OrdinalIgnoreCase));
@@ -506,11 +509,12 @@ public static class CalcEndpoints
 
             var outputResult = await paramProvider.CheckNumericTagAsync(outputTag, requireTrend: true, ct: ct);
 
-            if (!outputResult.Found || !outputResult.TrendFound || !outputResult.CurrentValue.HasValue || !double.IsFinite(outputResult.CurrentValue.Value))
+            if (!outputResult.Found || !outputResult.TrendFound || !outputResult.CurrentValue.HasValue || !double.IsFinite(outputResult.CurrentValue.Value) || string.IsNullOrWhiteSpace(outputResult.TagName))
             {
                 return ApiError("formula.output-trend-tag-invalid", $"Formula output tag '{outputTag}' must be a readable numeric SCADA tag with a trend reference. {outputResult.Message}".Trim());
             }
 
+            output!.TagName = outputResult.TagName.Trim();
             return null;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

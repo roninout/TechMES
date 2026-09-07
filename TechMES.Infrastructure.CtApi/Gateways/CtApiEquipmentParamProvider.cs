@@ -66,11 +66,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         new("DryRunTimeToOff", ParamValueKind.Number)
     ];
 
-    public CtApiEquipmentParamProvider(
-        ICtApiNativeClient nativeClient,
-        IOptions<CtApiOptions> options,
-        IOptions<ParamWriteOptions> writeOptions,
-        ILogger<CtApiEquipmentParamProvider> logger)
+    public CtApiEquipmentParamProvider(ICtApiNativeClient nativeClient, IOptions<CtApiOptions> options, IOptions<ParamWriteOptions> writeOptions, ILogger<CtApiEquipmentParamProvider> logger)
     {
         _nativeClient = nativeClient;
         _options = options;
@@ -78,9 +74,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         _logger = logger;
     }
 
-    public async Task<ParamSnapshotResponse> GetSnapshotAsync(
-        EquipmentDto equipment,
-        CancellationToken ct = default)
+    public async Task<ParamSnapshotResponse> GetSnapshotAsync(EquipmentDto equipment, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(equipment);
 
@@ -158,12 +152,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return response;
     }
 
-    public async Task<ParamTrendResponse> GetTrendAsync(
-        EquipmentDto equipment,
-        int windowMinutes = 30,
-        DateTime? fromUtc = null,
-        DateTime? toUtc = null,
-        CancellationToken ct = default)
+    public async Task<ParamTrendResponse> GetTrendAsync(EquipmentDto equipment, int windowMinutes = 30, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(equipment);
 
@@ -260,62 +249,81 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
     }
 
     /// <summary>
-    /// Проверяет произвольный числовой Plant SCADA Variable Tag.
-    ///
-    /// Никакой логики конкретного WEB-модуля здесь нет.
-    ///
-    /// requireTrend = false:
-    /// достаточно успешного numeric TagRead.
-    ///
-    /// requireTrend = true:
-    /// кроме numeric TagRead обязательно должен разрешиться trend-reference.
-    ///
-    /// Внутри используются уже существующие общие CtApi-механизмы:
-    /// TryReadNumericTagAsync и ResolveRawTrendRefAsync.
-    /// Поэтому PID Tune, Density и будущие расчёты используют один
-    /// и тот же способ проверки Plant SCADA tags.
+    /// Проверяет числовой Variable Tag тем же способом, что PID Tune.
+    /// Если прямое чтение не удалось, разрешает Equipment.ITEM через TagInfo.
+    /// Каталог и типы оборудования WEB для этого не требуются.
+    /// TagName в ответе содержит имя, использованное для успешного чтения.
+    /// requireTrend сохраняет существующий механизм разрешения trend-reference.
     /// </summary>
     public async Task<ParamTagCheckResponse> CheckNumericTagAsync(string tagName, bool requireTrend, CancellationToken ct = default)
     {
-        var normalized = (tagName ?? "").Trim();
+        var source = (tagName ?? "").Trim();
+        var resolvedTag = source;
 
-        if (string.IsNullOrWhiteSpace(normalized))
+        if (source.Length == 0)
         {
             return new ParamTagCheckResponse
             {
                 TagName = "",
                 Found = false,
                 TrendRequired = requireTrend,
-                TrendFound = false,
-                Message = requireTrend ? "Trend tag name is empty." : "Numeric tag name is empty."
+                Message = "Numeric tag or Equipment.ITEM reference is required."
             };
         }
 
-        // Читаем текущее значение тем же низкоуровневым методом
-        var currentValue = await TryReadNumericTagAsync(normalized, ct);
+        // Сначала прежний путь PID Tune / Test Kp: прямое чтение Variable Tag.
+        // Наличие тега в WEB Equipment Catalog здесь не требуется.
+        var currentValue = await TryReadNumericTagAsync(resolvedTag, ct);
+        ct.ThrowIfCancellationRequested();
 
-        // Trend lookup выполняем только по явному запросу вызывающего кода.
-        // Для Test Kp и будущих Density Temperature/Pressure он не нужен.
-        var trendRef = requireTrend ? await ResolveRawTrendRefAsync(normalized, ct) : null;
+        if ((!currentValue.HasValue || !double.IsFinite(currentValue.Value)) && source.Contains('.'))
+        {
+            // Если это Equipment.ITEM, реальное имя узнаём у SCADA через TagInfo.
+            // Точки не заменяем подчёркиваниями и не проверяем тип Equipment.
+            try
+            {
+                var escapedSource = EscapeCicodeString(source);
+                var candidate = CleanRefValue(await _nativeClient.CicodeAsync($"TagInfo(\"{escapedSource}\", 0)", ct));
+                ct.ThrowIfCancellationRequested();
+
+                if (IsReadableTagName(candidate) && !string.Equals(candidate, source, StringComparison.OrdinalIgnoreCase))
+                {
+                    resolvedTag = candidate;
+                    currentValue = await TryReadNumericTagAsync(resolvedTag, ct);
+                    ct.ThrowIfCancellationRequested();
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception, "Numeric tag reference resolution failed. Source={Source}", source);
+            }
+        }
+
+        var numericFound = currentValue.HasValue && double.IsFinite(currentValue.Value);
+        var trendRef = requireTrend && numericFound ? await ResolveRawTrendRefAsync(resolvedTag, ct) : null;
+        ct.ThrowIfCancellationRequested();
+
         var trendFound = trendRef is not null;
-        var found = currentValue.HasValue && (!requireTrend || trendFound);
+        var found = numericFound && (!requireTrend || trendFound);
 
-        string message;
+        var message = !numericFound ? $"Cannot read '{source}' as a numeric SCADA tag or resolve it as Equipment.ITEM."
+            : !found ? "Numeric tag found, but trend reference was not resolved."
+            : requireTrend ? "Numeric tag and trend reference resolved." : "Online numeric tag found.";
 
-        if (found)
-            message = requireTrend ? "Numeric tag and trend reference found." : "Online numeric tag found.";
-        else if (!currentValue.HasValue)
-            message = "Tag was not read as numeric value.";
-        else
-            message = "Tag was read as numeric value, but trend reference was not resolved.";
+        if (numericFound && !string.Equals(source, resolvedTag, StringComparison.OrdinalIgnoreCase))
+            message = $"{source} -> {resolvedTag}. {message}";
 
         return new ParamTagCheckResponse
         {
-            TagName = normalized,
+            TagName = resolvedTag,
             Found = found,
             TrendRequired = requireTrend,
             TrendFound = trendFound,
-            CurrentValue = currentValue,
+            CurrentValue = numericFound ? currentValue : null,
             Message = message
         };
     }
@@ -636,10 +644,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return response;
     }
 
-    public async Task<ParamDiDoRefsResponse> GetDiDoRefsAsync(
-        EquipmentDto equipment,
-        IReadOnlyList<EquipmentDto> equipmentCatalog,
-        CancellationToken ct = default)
+    public async Task<ParamDiDoRefsResponse> GetDiDoRefsAsync(EquipmentDto equipment, IReadOnlyList<EquipmentDto> equipmentCatalog, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(equipment);
 
@@ -706,10 +711,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return response;
     }
 
-    public async Task<ParamDryRunResponse> GetDryRunAsync(
-        EquipmentDto equipment,
-        IReadOnlyList<EquipmentDto> equipmentCatalog,
-        CancellationToken ct = default)
+    public async Task<ParamDryRunResponse> GetDryRunAsync(EquipmentDto equipment, IReadOnlyList<EquipmentDto> equipmentCatalog, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(equipment);
 
@@ -764,10 +766,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return response;
     }
 
-    public async Task<ParamAtvRefResponse> GetAtvRefAsync(
-        EquipmentDto equipment,
-        IReadOnlyList<EquipmentDto> equipmentCatalog,
-        CancellationToken ct = default)
+    public async Task<ParamAtvRefResponse> GetAtvRefAsync(EquipmentDto equipment, IReadOnlyList<EquipmentDto> equipmentCatalog, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(equipment);
 
@@ -832,10 +831,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return response;
     }
 
-    public async Task<ParamWriteResponse> WriteAsync(
-        EquipmentDto equipment,
-        ParamWriteRequest request,
-        CancellationToken ct = default)
+    public async Task<ParamWriteResponse> WriteAsync(EquipmentDto equipment, ParamWriteRequest request, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(equipment);
         ArgumentNullException.ThrowIfNull(request);
@@ -971,10 +967,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return response;
     }
 
-    private async Task<ParamDiDoRefDto?> TryResolveDryRunDiAsync(
-        string dryRunEquipmentName,
-        IReadOnlyDictionary<string, EquipmentDto> catalogLookup,
-        CancellationToken ct)
+    private async Task<ParamDiDoRefDto?> TryResolveDryRunDiAsync(string dryRunEquipmentName, IReadOnlyDictionary<string, EquipmentDto> catalogLookup, CancellationToken ct)
     {
         var winRef = await GetWinOpenedRefAsync(
             dryRunEquipmentName,
@@ -995,10 +988,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
             : null;
     }
 
-    private async Task<ParamLinkedParamDto?> TryResolveDryRunAiAsync(
-        string dryRunEquipmentName,
-        IReadOnlyDictionary<string, EquipmentDto> catalogLookup,
-        CancellationToken ct)
+    private async Task<ParamLinkedParamDto?> TryResolveDryRunAiAsync(string dryRunEquipmentName, IReadOnlyDictionary<string, EquipmentDto> catalogLookup, CancellationToken ct)
     {
         var winRef = await GetWinOpenedRefAsync(
             dryRunEquipmentName,
@@ -1019,11 +1009,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
             : null;
     }
 
-    private async Task<EquipmentRef?> GetWinOpenedRefAsync(
-        string equipmentName,
-        string equipmentItem,
-        string assocExpected,
-        CancellationToken ct)
+    private async Task<EquipmentRef?> GetWinOpenedRefAsync(string equipmentName, string equipmentItem, string assocExpected, CancellationToken ct)
     {
         var refs = await BrowseEquipmentRefsAsync(
             equipmentName,
@@ -1049,11 +1035,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return null;
     }
 
-    private async Task<ParamLinkedParamDto> ReadLinkedItemsAsync(
-        EquipmentDto? equipment,
-        string equipmentName,
-        IReadOnlyList<ParamItemDefinition> definitions,
-        CancellationToken ct)
+    private async Task<ParamLinkedParamDto> ReadLinkedItemsAsync(EquipmentDto? equipment, string equipmentName, IReadOnlyList<ParamItemDefinition> definitions, CancellationToken ct)
     {
         var dto = new ParamLinkedParamDto
         {
@@ -1106,12 +1088,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return dto;
     }
 
-    private async Task<List<Dictionary<string, string>>> BrowseEquipmentRefsAsync(
-        string equipmentName,
-        string category,
-        string equipmentItem,
-        IReadOnlyList<string> fields,
-        CancellationToken ct)
+    private async Task<List<Dictionary<string, string>>> BrowseEquipmentRefsAsync(string equipmentName, string category, string equipmentItem, IReadOnlyList<string> fields, CancellationToken ct)
     {
         var result = new List<Dictionary<string, string>>();
         var cluster = await ResolveClusterWithFallbackAsync(equipmentName, equipmentItem, ct);
@@ -1192,10 +1169,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return result;
     }
 
-    private async Task<string> ResolveClusterWithFallbackAsync(
-        string equipmentName,
-        string preferredItem,
-        CancellationToken ct)
+    private async Task<string> ResolveClusterWithFallbackAsync(string equipmentName, string preferredItem, CancellationToken ct)
     {
         foreach (var item in new[] { preferredItem, "STW", "State", "Value", "R" }
             .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -1213,9 +1187,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return "";
     }
 
-    private async Task<Dictionary<string, string?>> TagReadManyAsync(
-        IReadOnlyList<string> tagNames,
-        CancellationToken ct)
+    private async Task<Dictionary<string, string?>> TagReadManyAsync(IReadOnlyList<string> tagNames, CancellationToken ct)
     {
         var maxConcurrency = Math.Max(1, _options.Value.TagReadParallelism);
         var result = new ConcurrentDictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -1244,9 +1216,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return new Dictionary<string, string?>(result, StringComparer.OrdinalIgnoreCase);
     }
 
-    private static ParamDiDoRefDto BuildDiDoRef(
-        EquipmentDto equipment,
-        ParamSnapshotResponse snapshot)
+    private static ParamDiDoRefDto BuildDiDoRef(EquipmentDto equipment, ParamSnapshotResponse snapshot)
     {
         var value = FindItem(snapshot, "Value");
         var valueForced = FindItem(snapshot, "ValueForced");
@@ -1270,9 +1240,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         };
     }
 
-    private static ParamLinkedParamDto BuildLinkedParam(
-        EquipmentDto equipment,
-        ParamSnapshotResponse snapshot)
+    private static ParamLinkedParamDto BuildLinkedParam(EquipmentDto equipment, ParamSnapshotResponse snapshot)
     {
         return new ParamLinkedParamDto
         {
@@ -1288,8 +1256,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         };
     }
 
-    private static Dictionary<string, EquipmentDto> BuildEquipmentLookup(
-        IReadOnlyList<EquipmentDto> equipmentCatalog)
+    private static Dictionary<string, EquipmentDto> BuildEquipmentLookup(IReadOnlyList<EquipmentDto> equipmentCatalog)
     {
         return equipmentCatalog
             .Where(item => !item.IsGroup)
@@ -1302,18 +1269,14 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
                 StringComparer.OrdinalIgnoreCase);
     }
 
-    private static EquipmentDto? FindEquipment(
-        IReadOnlyDictionary<string, EquipmentDto> equipmentCatalog,
-        string equipmentName)
+    private static EquipmentDto? FindEquipment(IReadOnlyDictionary<string, EquipmentDto> equipmentCatalog, string equipmentName)
     {
         return equipmentCatalog.TryGetValue(equipmentName, out var equipment)
             ? equipment
             : null;
     }
 
-    private static ParamItemDto? FindItem(
-        ParamSnapshotResponse snapshot,
-        string name)
+    private static ParamItemDto? FindItem(ParamSnapshotResponse snapshot, string name)
     {
         return snapshot.Items.FirstOrDefault(item =>
             string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
@@ -1556,17 +1519,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return await TryReadNumericTagAsync(tagName, ct);
     }
 
-    private async Task AppendTuneTrendPointsAsync(
-        ParamTrendResponse response,
-        string seriesName,
-        TrendRef? trendRef,
-        DateTime fromUtc,
-        DateTime toUtc,
-        double nativeMin,
-        double nativeMax,
-        double axisMin,
-        double axisMax,
-        CancellationToken ct)
+    private async Task AppendTuneTrendPointsAsync(ParamTrendResponse response, string seriesName, TrendRef? trendRef, DateTime fromUtc, DateTime toUtc, double nativeMin, double nativeMax, double axisMin, double axisMax, CancellationToken ct)
     {
         if (trendRef is null)
             return;
@@ -1598,11 +1551,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
     /// а Citect trend часто называется TREND_... или использует подчеркивания вместо точек.
     /// Поэтому пробуем несколько безопасных вариантов и берем первый, который вернул данные.
     /// </summary>
-    private async Task<List<TrendRow>> QueryTuneTrendRowsWithFallbackAsync(
-        TrendRef trendRef,
-        DateTime fromUtc,
-        DateTime toUtc,
-        CancellationToken ct)
+    private async Task<List<TrendRow>> QueryTuneTrendRowsWithFallbackAsync(TrendRef trendRef, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
         foreach (var candidate in BuildTuneTrendCandidates(trendRef))
         {
@@ -1636,11 +1585,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         }
     }
 
-    private async Task<List<TrendRow>> QueryTrendRowsAsync(
-        TrendRef trendRef,
-        DateTime fromUtc,
-        DateTime toUtc,
-        CancellationToken ct)
+    private async Task<List<TrendRow>> QueryTrendRowsAsync(TrendRef trendRef, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
         const float period = 1.0f;
         const int dataMode = 1;
@@ -1809,12 +1754,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
     /// которого нет в WEB-каталоге, поэтому allow-list строится не по TypeGroup, а по фактической
     /// строке TabPLC исходного оборудования: target equipment + REFITEM + writable CUSTOM1.
     /// </summary>
-    private async Task<ParamItemDefinition?> TryGetPlcReferenceWriteDefinitionAsync(
-        string targetEquipmentName,
-        string itemName,
-        string? sourceEquipmentName,
-        ParamValueKind? requestedKind,
-        CancellationToken ct)
+    private async Task<ParamItemDefinition?> TryGetPlcReferenceWriteDefinitionAsync(string targetEquipmentName, string itemName, string? sourceEquipmentName, ParamValueKind? requestedKind, CancellationToken ct)
     {
         targetEquipmentName = (targetEquipmentName ?? "").Trim();
         itemName = (itemName ?? "").Trim();
@@ -1974,14 +1914,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return false;
     }
 
-    private async Task<bool> TrySaveOperatorActionAsync(
-        EquipmentDto equipment,
-        string itemName,
-        string? currentValue,
-        string? newValue,
-        string? description,
-        string? actor,
-        CancellationToken ct)
+    private async Task<bool> TrySaveOperatorActionAsync(EquipmentDto equipment, string itemName, string? currentValue, string? newValue, string? description, string? actor, CancellationToken ct)
     {
         try
         {
@@ -2077,9 +2010,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         };
     }
 
-    private static (double Min, double Max) ResolveBaseRange(
-        ParamTrendItemDefinition baseItem,
-        ParamSnapshotResponse snapshot)
+    private static (double Min, double Max) ResolveBaseRange(ParamTrendItemDefinition baseItem, ParamSnapshotResponse snapshot)
     {
         if (baseItem.NativeMin.HasValue && baseItem.NativeMax.HasValue)
             return NormalizeRange(baseItem.NativeMin.Value, baseItem.NativeMax.Value);
@@ -2093,10 +2024,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return (0, 1);
     }
 
-    private static (double Min, double Max) ResolveNativeRange(
-        ParamTrendItemDefinition item,
-        double baseMin,
-        double baseMax)
+    private static (double Min, double Max) ResolveNativeRange(ParamTrendItemDefinition item, double baseMin, double baseMax)
     {
         if (item.NativeMin.HasValue && item.NativeMax.HasValue)
             return NormalizeRange(item.NativeMin.Value, item.NativeMax.Value);
@@ -2203,19 +2131,11 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
     private readonly record struct EquipmentRef(string RefEquipment, string Assoc, string RefItem);
 }
 
-internal sealed record ParamDefinition(
-    EquipmentTypeGroup TypeGroup,
-    IReadOnlyList<ParamItemDefinition> Items,
-    IReadOnlyList<ParamTrendItemDefinition> TrendItems,
-    IReadOnlyList<ParamPageKind> Pages);
+internal sealed record ParamDefinition(EquipmentTypeGroup TypeGroup, IReadOnlyList<ParamItemDefinition> Items, IReadOnlyList<ParamTrendItemDefinition> TrendItems, IReadOnlyList<ParamPageKind> Pages);
 
 internal sealed record ParamItemDefinition(string Name, ParamValueKind Kind);
 
-internal sealed record ParamTrendItemDefinition(
-    string Name,
-    string Color,
-    double? NativeMin = null,
-    double? NativeMax = null);
+internal sealed record ParamTrendItemDefinition(string Name, string Color, double? NativeMin = null, double? NativeMax = null);
 
 internal static class ParamDefinitions
 {
@@ -2330,8 +2250,7 @@ internal static class ParamDefinitions
 
     private static ParamItemDefinition I(string name) => new(name, ParamValueKind.Integer);
 
-    private static ParamTrendItemDefinition T(string name, string color, double? nativeMin = null, double? nativeMax = null) =>
-        new(name, color, nativeMin, nativeMax);
+    private static ParamTrendItemDefinition T(string name, string color, double? nativeMin = null, double? nativeMax = null) => new(name, color, nativeMin, nativeMax);
 }
 
 /// <summary>

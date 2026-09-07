@@ -279,11 +279,30 @@ public partial class FormulaConfigurationPanel : IDisposable
     private Task CheckOutputAsync() => RunActionAsync(async () =>
     {
         _outputChecked = false;
+        _outputMessage = "";
 
-        var result = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest { TagName = _outputTag.Trim(), RequireTrend = true }, _cts.Token);
+        var source = _outputTag.Trim();
+        var result = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest { TagName = source, RequireTrend = true }, _cts.Token);
 
-        _outputChecked = result.Found && result.TrendFound && result.CurrentValue.HasValue && double.IsFinite(result.CurrentValue.Value);
-        _outputMessage = _outputChecked ? $"Numeric tag and trend found. Value: {FormatNumber(result.CurrentValue)}." : result.Message ?? "Numeric tag with a trend was not found.";
+        _outputChecked = result.Found && result.TrendFound && result.CurrentValue.HasValue && double.IsFinite(result.CurrentValue.Value) && !string.IsNullOrWhiteSpace(result.TagName);
+
+        if (!_outputChecked)
+        {
+            _outputMessage = result.Message ?? "Numeric tag with a trend reference was not resolved.";
+            return;
+        }
+
+        var resolvedTag = result.TagName.Trim();
+
+        // В Job должен попасть реальный Variable Tag, который затем получит TagWrite.
+        // Изменение назначения записи требует повторного теста формулы.
+        if (!string.Equals(_outputTag, resolvedTag, StringComparison.Ordinal))
+        {
+            _outputTag = resolvedTag;
+            InvalidateTest();
+        }
+
+        _outputMessage = $"{source} -> {resolvedTag}. Value: {FormatNumber(result.CurrentValue)}. Trend reference resolved.";
     });
 
     private Task TestAsync() => RunActionAsync(async () =>
