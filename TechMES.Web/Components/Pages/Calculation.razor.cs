@@ -39,6 +39,10 @@ public partial class Calculation
             _formulaJobsByModel.Add(model, job);
         }
 
+        // Пустой редактор существует только в WEB. Job создаётся кнопкой Create job.
+        if (_formulaJobsByModel.Count == 0)
+            _newFormulaModel ??= CreateFormulaDraft();
+
         _allModels = [.. _catalogModels, .. _formulaJobsByModel.Keys];
 
         if (_newFormulaModel is not null)
@@ -57,16 +61,10 @@ public partial class Calculation
 
     private async Task BeginNewFormulaAsync()
     {
+        if (_isLoading || _jobsAndStatesReloadInProgress) return;
         if (!await ConfirmDiscardAsync()) return;
 
-        _newFormulaModel = new CalcModelDto
-        {
-            Name = "New formula",
-            Description = "Mathematical calculation",
-            Station = "",
-            Type = CalcModelTypeDto.Formula,
-            ItemTags = []
-        };
+        _newFormulaModel = CreateFormulaDraft();
 
         _selectedStation = AllStationsText;
         _selectedType = CalcModelTypeDto.Formula.ToString();
@@ -78,6 +76,58 @@ public partial class Calculation
 
         _selectedModel = _newFormulaModel;
     }
+
+    private static CalcModelDto CreateFormulaDraft() => new()
+    {
+        Name = "New formula",
+        Description = "Mathematical calculation",
+        Station = "",
+        Type = CalcModelTypeDto.Formula,
+        ItemTags = []
+    };
+
+    private async Task ChangeTypeAsync(object? value)
+    {
+        var type = value?.ToString() ?? AllTypesText;
+
+        if (_isLoading || string.Equals(type, _selectedType, StringComparison.OrdinalIgnoreCase)) return;
+        if (!await ConfirmDiscardAsync()) return;
+
+        _selectedType = type;
+
+        // Formula не относится к станции. Старый Station/Search не должен скрыть редактор.
+        if (string.Equals(type, CalcModelTypeDto.Formula.ToString(), StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedStation = AllStationsText;
+            _searchText = "";
+        }
+
+        ApplyFilters();
+
+        if (_selectedModel is null || !_filteredModels.Contains(_selectedModel))
+            _selectedModel = _filteredModels.FirstOrDefault();
+    }
+
+    private Task AfterFormulaJobDeletedAsync(long jobId)
+    {
+        // Вызывается только после успешного DELETE. Сразу убираем удалённый Job из UI.
+        var remaining = _jobsByEquipment.Values.Concat(_formulaJobsByModel.Values).Where(job => job.Id != jobId).ToArray();
+
+        _statesByJobId.Remove(jobId);
+        _newFormulaModel = null;
+        _selectedStation = AllStationsText;
+        _selectedType = CalcModelTypeDto.Formula.ToString();
+        _searchText = "";
+
+        RebuildJobAndModelIndexes(remaining);
+        BuildFilterItems();
+        ApplyFilters();
+
+        _selectedModel = _filteredModels.FirstOrDefault();
+        return Task.CompletedTask;
+    }
+
+    private static string GetTypeBadgeCssStyle(CalcModelTypeDto type) => type == CalcModelTypeDto.Formula ? "background-color:var(--rz-base-dark);color:var(--rz-white, #fff);" : "";
 
     private Task ReloadAfterFormulaJobChangedAsync(long jobId)
     {

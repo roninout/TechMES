@@ -18,11 +18,15 @@ public partial class FormulaConfigurationPanel : IDisposable
     [Inject] private ParamApiClient ParamApi { get; set; } = default!;
     [Inject] private CalcProcessInputResolver InputResolver { get; set; } = default!;
     [Inject] private NotificationService Notifications { get; set; } = default!;
+    [Inject] private DialogService Dialogs { get; set; } = default!;
 
     [Parameter] public CalcJobDto? Job { get; set; }
     [Parameter] public CalcJobStateDto? State { get; set; }
     [Parameter] public IReadOnlyList<EquipmentDto> EquipmentCatalog { get; set; } = [];
     [Parameter] public EventCallback<long> JobChanged { get; set; }
+    [Parameter] public EventCallback<long> JobDeleted { get; set; }
+    [Parameter] public EventCallback NewFormulaRequested { get; set; }
+    [Parameter] public bool PageBusy { get; set; }
 
     private readonly CancellationTokenSource _cts = new();
     private readonly List<VariableEditor> _variables = [];
@@ -42,7 +46,7 @@ public partial class FormulaConfigurationPanel : IDisposable
     private DateTimeOffset _nextOutputRead;
     private DateTimeOffset? _outputReadAt;
 
-    public bool IsBusy => _busy || (!_loaded && _error.Length == 0);
+    public bool IsBusy => PageBusy || _busy || (!_loaded && _error.Length == 0);
     public bool HasPendingChanges => _loaded && EditorSignature() != _savedSignature;
 
     private bool InputsReady => _variables.All(item => item.HasTag && item.Checked && item.Value.HasValue);
@@ -363,6 +367,25 @@ public partial class FormulaConfigurationPanel : IDisposable
 
         _testResult = output.Value;
         _testedSignature = ExecutionSignature();
+    });
+
+    private Task DeleteAsync() => RunActionAsync(async () =>
+    {
+        if (_job is null) return;
+
+        var job = _job;
+        var confirmed = await Dialogs.Confirm($"Delete formula job '{job.Name}'? Unsaved changes will also be discarded. The SCADA tag and its history will remain.", "Delete formula", new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+
+        if (confirmed != true || _disposed) return;
+
+        // При отказе API редактор и список сохраняются. Общий RunActionAsync покажет ошибку.
+        await CalcApi.DeleteJobAsync(job.Id, _cts.Token);
+
+        // Удалённый Id больше нельзя отправить через Save даже при ошибке обновления списка.
+        LoadEditor(null);
+
+        Notifications.Notify(NotificationSeverity.Success, "Formula", $"Job '{job.Name}' deleted.", 4000);
+        await JobDeleted.InvokeAsync(job.Id);
     });
 
     private Task SaveAsync() => RunActionAsync(async () =>

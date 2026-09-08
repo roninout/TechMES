@@ -221,8 +221,21 @@
                 </div>
             </ParamAiPanel>
 
-            <div class="formula-save-row">
-                <RadzenButton Text="@(_job is null ? "Create job" : "Save")" Icon="save" Disabled="@(IsBusy || !CanSave || (_job is not null && !HasPendingChanges))" Click="@SaveAsync" />
+            <div class="formula-job-actions">
+                <div class="formula-job-delete">
+                    @if (_job is not null)
+                    {
+                        <RadzenButton Text="Delete" Icon="delete" ButtonStyle="ButtonStyle.Danger" Disabled="@IsBusy" Click="@DeleteAsync" />
+                    }
+                </div>
+
+                <div class="formula-job-new">
+                    <RadzenButton Text="New Formula" Icon="functions" ButtonStyle="ButtonStyle.Secondary" Disabled="@IsBusy" Click="@(() => NewFormulaRequested.InvokeAsync())" />
+                </div>
+
+                <div class="formula-job-save">
+                    <RadzenButton Text="@(_job is null ? "Create job" : "Save")" Icon="save" Disabled="@(IsBusy || !CanSave || (_job is not null && !HasPendingChanges))" Click="@SaveAsync" />
+                </div>
             </div>
         </section>
     }

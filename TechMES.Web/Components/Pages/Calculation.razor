@@ -21,43 +21,28 @@
                             Disabled="@_isLoading"
                             Style="width:100%;" />
 
-            <RadzenDropDown TValue="string"
-                            Data="@_typeItems"
-                            @bind-Value="_selectedType"
-                            Change="@(_ => ApplyFilters())"
-                            Disabled="@_isLoading"
-                            Style="width:100%;">
-
+            <RadzenDropDown TValue="string" Data="@_typeItems" Value="@_selectedType" Change="@ChangeTypeAsync" Disabled="@(_isLoading || FormulaBusy)" Style="width:100%;">
                 <Template Context="typeItem">
                     <div style="display:flex; align-items:center; min-width:0;">
-
                         @if (TryGetCalcModelType(typeItem?.ToString(), out CalcModelTypeDto calcType))
                         {
-                            <RadzenBadge Text="@GetTypeBadge(calcType)"
-                                         BadgeStyle="@GetTypeBadgeStyle(calcType)"
-                                         Style="margin-right:8px; min-width:32px; text-align:center;" />
+                            <RadzenBadge Text="@GetTypeBadge(calcType)" BadgeStyle="@GetTypeBadgeStyle(calcType)" Style="@($"margin-right:8px; min-width:32px; text-align:center; {GetTypeBadgeCssStyle(calcType)}")" />
                         }
 
                         <span>@typeItem</span>
-
                     </div>
                 </Template>
 
                 <ValueTemplate Context="typeItem">
                     <div style="display:flex; align-items:center; min-width:0;">
-
                         @if (TryGetCalcModelType(typeItem?.ToString(), out CalcModelTypeDto calcType))
                         {
-                            <RadzenBadge Text="@GetTypeBadge(calcType)"
-                                         BadgeStyle="@GetTypeBadgeStyle(calcType)"
-                                         Style="margin-right:8px; min-width:32px; text-align:center;" />
+                            <RadzenBadge Text="@GetTypeBadge(calcType)" BadgeStyle="@GetTypeBadgeStyle(calcType)" Style="@($"margin-right:8px; min-width:32px; text-align:center; {GetTypeBadgeCssStyle(calcType)}")" />
                         }
 
                         <span>@typeItem</span>
-
                     </div>
                 </ValueTemplate>
-
             </RadzenDropDown>
         </div>
 
@@ -95,13 +80,6 @@
                 ButtonStyle="ButtonStyle.Light" 
                 Disabled="@(_isLoading || FormulaBusy)" class="calc-model-refresh-button" 
                 Click="@RefreshCatalogAsync" />
-
-            <RadzenButton 
-                Text="New Formula" 
-                Icon="functions" 
-                ButtonStyle="ButtonStyle.Secondary" 
-                Disabled="@(_isLoading || FormulaBusy)" class="calc-model-refresh-button" 
-                Click="@BeginNewFormulaAsync" />
 
             <div class="calc-model-toolbar-spacer"></div>
 
@@ -167,9 +145,7 @@
 
                                 <div class="calc-model-row-header">
 
-                                    <RadzenBadge Text="@GetTypeBadge(model.Type)"
-                                                 BadgeStyle="@GetTypeBadgeStyle(model.Type)"
-                                                 class="calc-model-type-badge" />
+                                    <RadzenBadge Text="@GetTypeBadge(model.Type)" BadgeStyle="@GetTypeBadgeStyle(model.Type)" Style="@GetTypeBadgeCssStyle(model.Type)" class="calc-model-type-badge" />
 
                                     <span class="calc-model-name">@model.Name</span>
 
@@ -266,9 +242,8 @@
 
                         <div>
                             <div class="calc-model-detail-title">
-                                <RadzenBadge Text="@GetTypeBadge(_selectedModel.Type)"
-                                             BadgeStyle="@GetTypeBadgeStyle(_selectedModel.Type)"
-                                             class="calc-model-type-badge" />
+
+                                <RadzenBadge Text="@GetTypeBadge(_selectedModel.Type)" BadgeStyle="@GetTypeBadgeStyle(_selectedModel.Type)" Style="@GetTypeBadgeCssStyle(_selectedModel.Type)" class="calc-model-type-badge" />
 
                                 <span class="calc-model-detail-name">
                                     @_selectedModel.Name
@@ -335,12 +310,15 @@
                     }
                     else if (_selectedModel.Type == CalcModelTypeDto.Formula)
                     {
-                        <FormulaConfigurationPanel @ref="_formulaConfigurationPanel" 
-                                                   @key="_selectedModel" 
-                                                   Job="@selectedJob" 
-                                                   State="@selectedState" 
-                                                   EquipmentCatalog="@_equipmentCatalog" 
-                                                   JobChanged="@ReloadAfterFormulaJobChangedAsync" />
+                        <FormulaConfigurationPanel @ref="_formulaConfigurationPanel"
+                                                   @key="_selectedModel"
+                                                   Job="@selectedJob"
+                                                   State="@selectedState"
+                                                   EquipmentCatalog="@_equipmentCatalog"
+                                                   JobChanged="@ReloadAfterFormulaJobChangedAsync"
+                                                   JobDeleted="@AfterFormulaJobDeletedAsync"
+                                                   NewFormulaRequested="@BeginNewFormulaAsync"
+                                                   PageBusy="@(_isLoading || _jobsAndStatesReloadInProgress)" />
                     }
                     else
                     {
@@ -384,7 +362,7 @@
     private Dictionary<long, CalcJobStateDto> _statesByJobId = [];
 
     private List<string> _stationItems = [AllStationsText];
-    private List<string> _typeItems = [AllTypesText];
+    private List<string> _typeItems = [AllTypesText, nameof(CalcModelTypeDto.Formula)];
 
     private string _selectedStation = AllStationsText;
     private string _selectedType = AllTypesText;
@@ -639,23 +617,16 @@
             AllTypesText,
             .. _allModels
                 .Select(model => model.Type.ToString())
+                .Append(nameof(CalcModelTypeDto.Formula))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(type => type, StringComparer.OrdinalIgnoreCase)
         ];
 
-        if (!_stationItems.Contains(
-                _selectedStation,
-                StringComparer.OrdinalIgnoreCase))
-        {
+        if (!_stationItems.Contains(_selectedStation, StringComparer.OrdinalIgnoreCase))
             _selectedStation = AllStationsText;
-        }
 
-        if (!_typeItems.Contains(
-                _selectedType,
-                StringComparer.OrdinalIgnoreCase))
-        {
+        if (!_typeItems.Contains(_selectedType, StringComparer.OrdinalIgnoreCase))
             _selectedType = AllTypesText;
-        }
     }
 
 

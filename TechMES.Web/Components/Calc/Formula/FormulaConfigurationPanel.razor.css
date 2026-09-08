@@ -296,10 +296,40 @@
     flex-shrink: 0;
 }
 
-.formula-save-row {
-    display: flex;
-    justify-content: flex-end;
+.formula-job-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
     margin-top: 2px;
+}
+
+.formula-job-delete {
+    justify-self: start;
+}
+
+.formula-job-new {
+    justify-self: center;
+}
+
+.formula-job-save {
+    justify-self: end;
+}
+
+@container formula (max-width: 440px) {
+    .formula-job-actions {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .formula-job-new {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+
+    .formula-job-save {
+        grid-column: 2;
+        grid-row: 1;
+    }
 }
 
 @container formula (max-width: 1040px) {
