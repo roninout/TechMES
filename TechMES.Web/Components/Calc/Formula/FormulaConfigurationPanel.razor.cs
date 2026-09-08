@@ -38,7 +38,7 @@ public partial class FormulaConfigurationPanel : IDisposable
     private string _savedSignature = "", _savedExecutionSignature = "", _testedSignature = "";
 
     private int _periodMs = 5000;
-    private double? _minimum, _maximum, _testResult, _outputValue;
+    private double? _minimum, _maximum, _testResult, _outputValue, _checkedOutputValue;
     private DateTimeOffset _nextOutputRead;
     private DateTimeOffset? _outputReadAt;
 
@@ -280,6 +280,7 @@ public partial class FormulaConfigurationPanel : IDisposable
     {
         _outputChecked = false;
         _outputMessage = "";
+        _checkedOutputValue = null;
 
         var source = _outputTag.Trim();
         var result = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest { TagName = source, RequireTrend = true }, _cts.Token);
@@ -302,6 +303,9 @@ public partial class FormulaConfigurationPanel : IDisposable
             InvalidateTest();
         }
 
+        // Значение для строки Settings → Output: последний успешный Check.
+        // Live-чтение сохранённого тега по-прежнему хранится в _outputValue.
+        _checkedOutputValue = result.CurrentValue;
         _outputMessage = $"{source} -> {resolvedTag}. Value: {FormatNumber(result.CurrentValue)}. Trend reference resolved.";
     });
 
