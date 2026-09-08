@@ -266,9 +266,17 @@ public partial class FormulaConfigurationPanel : IDisposable
             InvalidateTest();
     }
 
-    private Task CheckInputAsync(VariableEditor item) => RunActionAsync(() => CheckInputCoreAsync(item));
+    private Task CheckAllAsync() => RunActionAsync(async () =>
+    {
+        // Общая кнопка проверяет входы и выход в рамках одной операции IsBusy.
+        // Старый результат проверки выхода скрываем до начала запросов.
+        _outputChecked = false;
+        _outputMessage = "";
+        _checkedOutputValue = null;
 
-    private Task CheckAllAsync() => RunActionAsync(CheckAllCoreAsync);
+        await CheckAllCoreAsync();
+        await CheckOutputCoreAsync();
+    });
 
     private async Task CheckAllCoreAsync()
     {
@@ -276,13 +284,20 @@ public partial class FormulaConfigurationPanel : IDisposable
             await CheckInputCoreAsync(item);
     }
 
-    private Task CheckOutputAsync() => RunActionAsync(async () =>
+    private async Task CheckOutputCoreAsync()
     {
         _outputChecked = false;
         _outputMessage = "";
         _checkedOutputValue = null;
 
         var source = _outputTag.Trim();
+
+        if (source.Length == 0)
+        {
+            _outputMessage = "Enter an output tag to check the output. Input checks are complete.";
+            return;
+        }
+
         var result = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest { TagName = source, RequireTrend = true }, _cts.Token);
 
         _outputChecked = result.Found && result.TrendFound && result.CurrentValue.HasValue && double.IsFinite(result.CurrentValue.Value) && !string.IsNullOrWhiteSpace(result.TagName);
@@ -307,7 +322,7 @@ public partial class FormulaConfigurationPanel : IDisposable
         // Live-чтение сохранённого тега по-прежнему хранится в _outputValue.
         _checkedOutputValue = result.CurrentValue;
         _outputMessage = $"{source} -> {resolvedTag}. Value: {FormatNumber(result.CurrentValue)}. Trend reference resolved.";
-    });
+    }
 
     private Task TestAsync() => RunActionAsync(async () =>
     {

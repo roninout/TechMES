@@ -102,8 +102,6 @@
 
             <div class="formula-test-row">
                 <div class="formula-test-messages">
-                    <div class="formula-hint">@_outputMessage</div>
-
                     @if (_testMessage.Length > 0)
                     {
                         <div class="formula-error">@_testMessage</div>
@@ -119,13 +117,17 @@
                     <RadzenButton Text="Test formula" Icon="calculate" ButtonStyle="ButtonStyle.Secondary" Disabled="@(IsBusy || ConfigurationError.Length > 0 || _variables.Any(item => item.Source.Length == 0))" Click="@TestAsync" />
                 </div>
             </div>
+
         </section>
 
         <section class="formula-settings-column">
             <ParamAiPanel Title="Settings" Icon="settings" InitiallyCollapsed="false">
                 <div class="formula-settings-body">
                     <div class="formula-input-header">
-                        <h3 class="formula-heading">Input</h3>
+                        <h3 class="formula-heading formula-settings-heading">
+                            <RadzenIcon Icon="input" aria-hidden="true" />
+                            <span>Input</span>
+                        </h3>
 
                         <div class="formula-buttons">
                             <RadzenButton Icon="remove" ButtonStyle="ButtonStyle.Light" Disabled="@(IsBusy || _variables.Count <= 1)" Click="@(() => ChangeVariableCount(false))" title="Remove last input" aria-label="Remove last input" />
@@ -153,14 +155,7 @@
                             </div>
 
                             <div class="formula-binding-value">
-                                <RadzenNumeric TValue="double?" Value="@InputValue(item)" ReadOnly="true" ShowUpDown="false" Format="0.######" class="formula-readonly" Style="width:100%;" />
-                            </div>
-
-                            <div class="formula-binding-action">
-                                @if (index == _variables.Count - 1)
-                                {
-                                    <RadzenButton Text="Check" Icon="manage_search" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@CheckAllAsync" title="Check all inputs" />
-                                }
+                                <RadzenNumeric TValue="double?" Value="@InputValue(item)" ReadOnly="true" ShowUpDown="false" Format="0.######" TextAlign="TextAlign.Right" Style="width:100%;" />
                             </div>
 
                             @if (item.Message.Length > 0)
@@ -172,7 +167,10 @@
 
                     <div class="formula-separator"></div>
 
-                    <h3 class="formula-heading formula-output-heading">Output</h3>
+                    <h3 class="formula-heading formula-settings-heading formula-output-heading">
+                        <RadzenIcon Icon="output" aria-hidden="true" />
+                        <span>Output</span>
+                    </h3>
 
                     <div class="formula-output-row">
                         <div class="formula-source">
@@ -183,22 +181,18 @@
                             <RadzenBadge Text="@(_outputChecked ? "LINKED" : SavedOutputTag.Length > 0 && string.Equals(_outputTag, SavedOutputTag, StringComparison.OrdinalIgnoreCase) ? "SAVED" : "NOT CHECKED")" BadgeStyle="@(_outputChecked ? BadgeStyle.Success : BadgeStyle.Light)" />
                         </div>
 
-                        <div class="formula-output-limits">
-                            <RadzenFormField Text="min" Variant="Variant.Outlined" Style="width:100%;">
-                                <RadzenNumeric TValue="double?" Value="@_minimum" Change="@((double? value) => ChangeRange(value, true))" Disabled="@IsBusy" ShowUpDown="false" Style="width:100%;" />
-                            </RadzenFormField>
-
+                        <div class="formula-output-values">
                             <RadzenFormField Text="max" Variant="Variant.Outlined" Style="width:100%;">
-                                <RadzenNumeric TValue="double?" Value="@_maximum" Change="@((double? value) => ChangeRange(value, false))" Disabled="@IsBusy" ShowUpDown="false" Style="width:100%;" />
+                                <RadzenNumeric TValue="double?" Value="@_maximum" Change="@((double? value) => ChangeRange(value, false))" Disabled="@IsBusy" ShowUpDown="false" TextAlign="TextAlign.Right" Style="width:100%;" />
                             </RadzenFormField>
-                        </div>
 
-                        <div class="formula-binding-value">
-                            <RadzenNumeric TValue="double?" Value="@(_outputChecked ? _checkedOutputValue : null)" ReadOnly="true" ShowUpDown="false" Format="0.######" class="formula-readonly" Style="width:100%;" />
-                        </div>
+                            <RadzenFormField Text="current" Variant="Variant.Outlined" Style="width:100%;">
+                                <RadzenNumeric TValue="double?" Value="@(_outputChecked ? _checkedOutputValue : null)" ReadOnly="true" ShowUpDown="false" Format="0.######" TextAlign="TextAlign.Right" Style="width:100%;" />
+                            </RadzenFormField>
 
-                        <div class="formula-binding-action">
-                            <RadzenButton Text="Check" Icon="manage_search" ButtonStyle="ButtonStyle.Light" Disabled="@(IsBusy || _outputTag.Length == 0)" Click="@CheckOutputAsync" title="Check output" />
+                            <RadzenFormField Text="min" Variant="Variant.Outlined" Style="width:100%;">
+                                <RadzenNumeric TValue="double?" Value="@_minimum" Change="@((double? value) => ChangeRange(value, true))" Disabled="@IsBusy" ShowUpDown="false" TextAlign="TextAlign.Right" Style="width:100%;" />
+                            </RadzenFormField>
                         </div>
                     </div>
 
@@ -210,12 +204,20 @@
                             <div class="formula-hint">Write the calculated result to the configured SCADA output tag.</div>
                         </div>
 
-                        <div class="formula-switch">
-                            <span class="formula-switch-state">@(_allowWrites ? "on" : "off")</span>
-                            <RadzenSwitch Value="@_allowWrites" Change="@((bool value) => _allowWrites = value && CanEnableWrites)" Disabled="@(IsBusy || (!_allowWrites && !CanEnableWrites))" InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Allow output writes" })" />
+                        <div class="formula-settings-actions">
+                            <div class="formula-switch">
+                                <span class="formula-switch-state">@(_allowWrites ? "on" : "off")</span>
+                                <RadzenSwitch Value="@_allowWrites" Change="@((bool value) => _allowWrites = value && CanEnableWrites)" Disabled="@(IsBusy || (!_allowWrites && !CanEnableWrites))" InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Allow output writes" })" />
+                            </div>
+
+                            <RadzenButton Text="Check" Icon="manage_search" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@CheckAllAsync" title="Check all inputs and output" />
                         </div>
                     </div>
 
+                    @if (_outputMessage.Length > 0)
+                    {
+                        <div class="formula-settings-diagnostics formula-hint" role="status">@_outputMessage</div>
+                    }
                 </div>
             </ParamAiPanel>
 
