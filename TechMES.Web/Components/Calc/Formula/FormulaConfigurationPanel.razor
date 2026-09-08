@@ -32,10 +32,26 @@
 
             <div class="formula-separator"></div>
 
-            <div class="formula-field">
-                <RadzenLabel Text="Expression *" Component="FormulaExpression" />
-                <RadzenTextArea Name="FormulaExpression" Value="@_expression" Change="@ChangeExpression" Rows="6" Disabled="@IsBusy" Placeholder="sqrt(pow([a], 2) + pow([b], 2))" class="formula-expression" Style="width:100%; font-family:Consolas, monospace;" />
+            <div class="formula-expression-row">
+                <div class="formula-field">
+                    <RadzenLabel Text="Expression *" Component="FormulaExpression" />
+                    <RadzenTextArea Name="FormulaExpression" Value="@_expression" Change="@ChangeExpression" Rows="6" Disabled="@IsBusy" Placeholder="sqrt(pow([a], 2) + pow([b], 2))" class="formula-expression" Style="width:100%; font-family:Consolas, monospace;" />
+                </div>
+
+                <section class="formula-current">
+                    <h3 class="formula-heading">Current values</h3>
+
+                    <RadzenFormField Text="Last calculated result" Variant="Variant.Outlined" Style="width:100%;">
+                        <RadzenNumeric TValue="double?" Value="@RuntimeResult" ReadOnly="true" ShowUpDown="false" Format="0.######" TextAlign="TextAlign.Right" Style="width:100%;" />
+                    </RadzenFormField>
+
+                    <RadzenFormField Text="Saved output tag value" Variant="Variant.Outlined" Style="width:100%;">
+                        <RadzenNumeric TValue="double?" Value="@_outputValue" ReadOnly="true" ShowUpDown="false" Format="0.######" TextAlign="TextAlign.Right" Style="width:100%;" />
+                    </RadzenFormField>
+                </section>
             </div>
+
+            <div class="formula-separator"></div>
 
             <div class="formula-overview">
                 <section class="formula-overview-column formula-parameters">
@@ -49,8 +65,8 @@
                             <span class="formula-index">@(index + 1)</span>
                             <RadzenBadge Text="@($"[{item.Key}]")" BadgeStyle="BadgeStyle.Info" />
 
-                            <RadzenFormField Text="@($"{item.Key}")" Variant="Variant.Outlined" Style="width:100%;">
-                                <RadzenNumeric TValue="double?" Value="@InputValue(item)" ReadOnly="true" ShowUpDown="false" Format="0.######" Style="width:100%;" TextAlign="TextAlign.Right"/>
+                            <RadzenFormField Text="@item.Key" Variant="Variant.Outlined" Style="width:100%;">
+                                <RadzenNumeric TValue="double?" Value="@InputValue(item)" ReadOnly="true" ShowUpDown="false" Format="0.######" TextAlign="TextAlign.Right" Style="width:100%;" />
                             </RadzenFormField>
                         </div>
                     }
@@ -60,21 +76,6 @@
                     <h3 class="formula-heading">Functions</h3>
                     <div class="formula-hint">abs, min, max, round, floor, ceil, sqrt, pow, exp, ln, log10, logn, sin, cos, tan, asin, acos, atan, atan2, clamp, if.</div>
                     <div class="formula-hint">Variables: [a]..[z]. Constants: pi, e. Decimal separator: dot.</div>
-                </section>
-
-                <section class="formula-overview-column formula-current">
-                    <h3 class="formula-heading">Current values</h3>
-
-                    <RadzenFormField Text="Last calculated result" Variant="Variant.Outlined" Style="width:100%;">
-                        <RadzenNumeric TValue="double?" Value="@RuntimeResult" ReadOnly="true" ShowUpDown="false" Format="0.######" Style="width:100%;" TextAlign="TextAlign.Right"/>
-                    </RadzenFormField>
-
-                    <RadzenFormField Text="Saved output tag value" Variant="Variant.Outlined" Style="width:100%;">
-                        <RadzenNumeric TValue="double?" Value="@_outputValue" ReadOnly="true" ShowUpDown="false" Format="0.######" Style="width:100%;" TextAlign="TextAlign.Right"/>
-                    </RadzenFormField>
-
-                    @*<div class="formula-hint">Status: @(HasCurrentState ? State!.Status.ToString() : "Waiting") · Completed: @FormatTime(HasCurrentState ? State?.LastCompletedAtUtc : null)</div>
-                    <div class="formula-hint">@(SavedOutputTag.Length > 0 ? SavedOutputTag : "Output tag is not configured") · Read: @FormatTime(_outputReadAt)</div>*@
                 </section>
             </div>
 
@@ -93,15 +94,15 @@
                 <div class="formula-error">@ConfigurationError</div>
             }
 
-            @if (HasPendingChanges)
-            {
-                <div class="formula-hint">Unsaved changes. The running calculation uses the last saved settings.</div>
-            }
-
             <div class="formula-separator"></div>
 
             <div class="formula-test-row">
                 <div class="formula-test-messages">
+                    @if (HasPendingChanges)
+                    {
+                        <div class="formula-hint">Unsaved changes. The running calculation uses the last saved settings.</div>
+                    }
+
                     @if (_testMessage.Length > 0)
                     {
                         <div class="formula-error">@_testMessage</div>
@@ -117,7 +118,6 @@
                     <RadzenButton Text="Test formula" Icon="calculate" ButtonStyle="ButtonStyle.Secondary" Disabled="@(IsBusy || ConfigurationError.Length > 0 || _variables.Any(item => item.Source.Length == 0))" Click="@TestAsync" />
                 </div>
             </div>
-
         </section>
 
         <section class="formula-settings-column">
@@ -187,13 +187,18 @@
                             </RadzenFormField>
 
                             <RadzenFormField Text="current" Variant="Variant.Outlined" Style="width:100%;">
-                                <RadzenNumeric TValue="double?" Value="@(_outputChecked ? _checkedOutputValue : null)" ReadOnly="true" ShowUpDown="false" Format="0.######" TextAlign="TextAlign.Right" Style="width:100%;" />
+                                <RadzenNumeric TValue="double?" Value="@CurrentOutputValue" ReadOnly="true" ShowUpDown="false" Format="0.######" TextAlign="TextAlign.Right" Style="width:100%;" />
                             </RadzenFormField>
 
                             <RadzenFormField Text="min" Variant="Variant.Outlined" Style="width:100%;">
                                 <RadzenNumeric TValue="double?" Value="@_minimum" Change="@((double? value) => ChangeRange(value, true))" Disabled="@IsBusy" ShowUpDown="false" TextAlign="TextAlign.Right" Style="width:100%;" />
                             </RadzenFormField>
                         </div>
+
+                        @if (_outputMessage.Length > 0)
+                        {
+                            <div class="formula-output-diagnostics formula-hint" role="status">@_outputMessage</div>
+                        }
                     </div>
 
                     <div class="formula-separator"></div>
@@ -213,11 +218,6 @@
                             <RadzenButton Text="Check" Icon="manage_search" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@CheckAllAsync" title="Check all inputs and output" />
                         </div>
                     </div>
-
-                    @if (_outputMessage.Length > 0)
-                    {
-                        <div class="formula-settings-diagnostics formula-hint" role="status">@_outputMessage</div>
-                    }
                 </div>
             </ParamAiPanel>
 

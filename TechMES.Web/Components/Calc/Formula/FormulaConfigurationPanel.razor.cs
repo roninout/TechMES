@@ -54,6 +54,10 @@ public partial class FormulaConfigurationPanel : IDisposable
     private string SavedOutputTag => _job?.Outputs.FirstOrDefault(item => item.OutputKey == "result")?.TagName?.Trim() ?? "";
     private bool HasCurrentState => _job is not null && State?.JobId == _job.Id && State.ConfigurationRevision == _job.Revision;
 
+    // Для сохранённого адреса показываем циклическое чтение того же выходного тега.
+    // Для нового несохранённого адреса доступен только результат его проверки.
+    private double? CurrentOutputValue => string.Equals(_outputTag.Trim(), SavedOutputTag, StringComparison.OrdinalIgnoreCase) ? _outputValue : _outputChecked ? _checkedOutputValue : null;
+
     private string ConfigurationError
     {
         get
@@ -318,10 +322,10 @@ public partial class FormulaConfigurationPanel : IDisposable
             InvalidateTest();
         }
 
-        // Значение для строки Settings → Output: последний успешный Check.
-        // Live-чтение сохранённого тега по-прежнему хранится в _outputValue.
+        // Значение проверки используется для нового, ещё не сохранённого адреса.
+        // Сохранённый выходной тег отображается через циклическое чтение _outputValue.
         _checkedOutputValue = result.CurrentValue;
-        _outputMessage = $"{source} -> {resolvedTag}. Value: {FormatNumber(result.CurrentValue)}. Trend reference resolved.";
+        _outputMessage = "Trend reference resolved.";
     }
 
     private Task TestAsync() => RunActionAsync(async () =>
