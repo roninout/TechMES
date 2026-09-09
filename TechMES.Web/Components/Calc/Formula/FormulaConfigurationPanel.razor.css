@@ -538,3 +538,27 @@
         justify-content: flex-end;
     }
 }
+
+.formula-functions ::deep .formula-function-list {
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.formula-function-token {
+    display: inline-block;
+    padding: 4px 6px;
+    cursor: grab;
+    user-select: none;
+}
+
+    .formula-function-token:active {
+        cursor: grabbing;
+    }
+
+    .formula-function-token[draggable="false"] {
+        cursor: default;
+    }
+
+.formula-functions ::deep .rz-chip-list-item {
+    max-width: 100%;
+}

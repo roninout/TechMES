@@ -1,4 +1,4 @@
-﻿<div class="formula-panel">
+﻿<div class="formula-panel" data-formula-editor="true">
     @if (!string.IsNullOrWhiteSpace(_error))
     {
         <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@_error</RadzenAlert>
@@ -74,7 +74,21 @@
 
                 <section class="formula-overview-column formula-functions">
                     <h3 class="formula-heading">Functions</h3>
-                    <div class="formula-hint">abs, min, max, round, floor, ceil, sqrt, pow, exp, ln, log10, logn, sin, cos, tan, asin, acos, atan, atan2, clamp, if.</div>
+
+                    <RadzenChipList TValue="string" AllowDelete="false" Disabled="@IsBusy" ChipStyle="BadgeStyle.Base" Variant="Variant.Outlined" Size="ChipSize.Small" Wrap="FlexWrap.Wrap" class="formula-function-list">
+                        <Items>
+                            @foreach (var function in FormulaFunctions)
+                            {
+                                <RadzenChipItem Text="@function.Name" Value="@function.Name">
+                                    <Template>
+                                        <span class="formula-function-token" draggable="@(!IsBusy ? "true" : "false")" data-formula-template="@function.Template" title="@function.Tooltip">@function.Name</span>
+                                    </Template>
+                                </RadzenChipItem>
+                            }
+                        </Items>
+                    </RadzenChipList>
+
+                    <div class="formula-hint">Drag a function into Expression, or click to insert at the caret.</div>
                     <div class="formula-hint">Variables: [a]..[z]. Constants: pi, e. Decimal separator: dot.</div>
                 </section>
             </div>
