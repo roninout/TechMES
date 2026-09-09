@@ -419,13 +419,7 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
         if (referencedVariables.Count == 0)
             return Invalid("formula.variable-required", "Formula must reference at least one process variable [a]..[z].");
 
-        var referencedSet = referencedVariables.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var highestVariable = referencedVariables.Max(variable => variable[0]);
-        var expectedVariables = Enumerable.Range('a', highestVariable - 'a' + 1).Select(code => ((char)code).ToString()).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        if (!referencedSet.SetEquals(expectedVariables))
-            return Invalid("formula.variable-sequence-invalid", "Formula variables must start with [a] and continue without gaps: [a], [b], [c], ...");
-
+        // Допускаем пропуски букв и входы, которые сейчас не используются в формуле. Для включённого Job по-прежнему обязательны привязки всех используемых переменных.
         var variableInputs = inputs.Where(input => IsFormulaVariable(input.ParameterKey)).ToDictionary(input => input.ParameterKey.Trim(), StringComparer.OrdinalIgnoreCase);
 
         foreach (var variable in referencedVariables)
@@ -436,9 +430,6 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
 
         foreach (var input in variableInputs)
         {
-            if (!referencedSet.Contains(input.Key))
-                return Invalid("formula.variable-unused", $"Configured variable [{input.Key}] is not used by the formula.");
-
             if (input.Value.SourceType != CalcInputSourceTypeDto.Tag)
                 return Invalid("formula.variable-tag-required", $"Formula variable [{input.Key}] must be linked to a numeric SCADA tag.");
         }
@@ -460,8 +451,7 @@ internal sealed class CalcJobValidator(CalculationCatalog catalog)
 
         var resultOutput = outputs.FirstOrDefault(output => FormulaKeyEquals(output.OutputKey, FormulaCalculationDefinition.ResultOutputKey));
 
-        // Границы относятся к результату формулы. Дополнительное преобразование
-        // после проверки диапазона могло бы вывести записанное значение за его пределы.
+        // Границы относятся к результату формулы. Дополнительное преобразование после проверки диапазона могло бы вывести записанное значение за его пределы.
         if (resultOutput is not null && (resultOutput.Scale != 1d || resultOutput.Offset != 0d))
             return Invalid("formula.output-transform-not-allowed", "Formula output requires Scale = 1 and Offset = 0. Apply transformations inside the expression.");
 

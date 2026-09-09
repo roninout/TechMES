@@ -108,7 +108,6 @@
     display: grid;
     grid-template-columns: 260px minmax(0, 1fr);
     align-items: start;
-    min-height: 260px;
     margin: 12px 0 4px;
 }
 
@@ -541,6 +540,7 @@
 
 .formula-functions ::deep .formula-function-list {
     gap: 8px;
+    padding-top: 12px;
     margin-bottom: 14px;
 }
 

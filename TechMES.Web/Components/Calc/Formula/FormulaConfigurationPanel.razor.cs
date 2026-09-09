@@ -74,8 +74,12 @@ public partial class FormulaConfigurationPanel : IDisposable
 
             var referenced = ReferencedVariables(_expression);
 
-            if (!referenced.SetEquals(_variables.Select(item => item.Key)))
-                return "Use every displayed variable in the expression. Add fields for additional variables: [a], [b], [c], ...";
+            if (referenced.Count == 0)
+                return "Formula must reference at least one process variable [a]..[z].";
+
+            // Формула может использовать только часть добавленных параметров. Но для каждой переменной из выражения должна существовать строка ввода.
+            if (!referenced.IsSubsetOf(_variables.Select(item => item.Key)))
+                return "Add input fields for the variables used in the expression: [a], [b], [c], ...";
 
             if (_minimum.HasValue != _maximum.HasValue)
                 return "Enter both output limits or leave both empty.";
