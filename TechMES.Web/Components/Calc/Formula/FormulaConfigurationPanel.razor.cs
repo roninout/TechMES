@@ -36,6 +36,7 @@ public partial class FormulaConfigurationPanel : IDisposable
 
     private bool _loadAttempted, _loaded, _disposed, _busy, _readingOutput;
     private bool _enabled, _allowWrites, _outputChecked;
+    private bool? _outputTrendFound;
 
     private string _name = "New formula", _description = "", _expression = "[a]", _outputTag = "";
     private string _error = "", _testMessage = "", _outputMessage = "", _liveError = "";
@@ -155,6 +156,7 @@ public partial class FormulaConfigurationPanel : IDisposable
         _maximum = job is null ? 100d : ReadNumber(ReadConstant("outputMaximum"));
         _outputTag = SavedOutputTag;
         _outputChecked = false;
+        _outputTrendFound = null;
         _outputMessage = _testMessage = _error = _liveError = _testedSignature = "";
         _testResult = _outputValue = null;
         _outputReadAt = null;
@@ -232,6 +234,7 @@ public partial class FormulaConfigurationPanel : IDisposable
 
         _outputTag = tag;
         _outputChecked = false;
+        _outputTrendFound = null;
         _outputMessage = "";
         _checkedOutputValue = null;
         InvalidateTest();
@@ -291,6 +294,7 @@ public partial class FormulaConfigurationPanel : IDisposable
         // Общая кнопка проверяет входы и выход в рамках одной операции IsBusy.
         // Старый результат проверки выхода скрываем до начала запросов.
         _outputChecked = false;
+        _outputTrendFound = null;
         _outputMessage = "";
         _checkedOutputValue = null;
 
@@ -307,6 +311,7 @@ public partial class FormulaConfigurationPanel : IDisposable
     private async Task CheckOutputCoreAsync()
     {
         _outputChecked = false;
+        _outputTrendFound = null;
         _outputMessage = "";
         _checkedOutputValue = null;
 
@@ -318,30 +323,52 @@ public partial class FormulaConfigurationPanel : IDisposable
             return;
         }
 
-        var result = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest { TagName = source, RequireTrend = true }, _cts.Token);
+        // Обязательное условие Output: доступный числовой Variable Tag.
+        var result = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest { TagName = source, RequireTrend = false }, _cts.Token);
 
-        _outputChecked = result.Found && result.TrendFound && result.CurrentValue.HasValue && double.IsFinite(result.CurrentValue.Value) && !string.IsNullOrWhiteSpace(result.TagName);
+        _outputChecked = result.Found && result.CurrentValue.HasValue && double.IsFinite(result.CurrentValue.Value) && !string.IsNullOrWhiteSpace(result.TagName);
 
         if (!_outputChecked)
         {
-            _outputMessage = result.Message ?? "Numeric tag with a trend reference was not resolved.";
+            _outputMessage = result.Message ?? "Output tag is not a readable numeric SCADA tag.";
             return;
         }
 
         var resolvedTag = result.TagName.Trim();
 
-        // В Job должен попасть реальный Variable Tag, который затем получит TagWrite.
-        // Изменение назначения записи требует повторного теста формулы.
         if (!string.Equals(_outputTag, resolvedTag, StringComparison.Ordinal))
         {
             _outputTag = resolvedTag;
             InvalidateTest();
         }
 
-        // Значение проверки используется для нового, ещё не сохранённого адреса.
-        // Сохранённый выходной тег отображается через циклическое чтение _outputValue.
         _checkedOutputValue = result.CurrentValue;
-        _outputMessage = "Trend reference resolved.";
+
+        // Тренд проверяем отдельно через существующий механизм.
+        // Его отсутствие или ошибка проверки не отменяют успешную проверку числового тега.
+        try
+        {
+            var trend = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest { TagName = resolvedTag, RequireTrend = true }, _cts.Token);
+
+            if (string.Equals(trend.TagName?.Trim(), resolvedTag, StringComparison.OrdinalIgnoreCase) && trend.CurrentValue.HasValue && double.IsFinite(trend.CurrentValue.Value))
+                _outputTrendFound = trend.TrendFound;
+        }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // null означает, что наличие тренда сейчас не удалось определить.
+            _outputTrendFound = null;
+        }
+
+        _outputMessage = _outputTrendFound switch
+        {
+            true => "Numeric tag found. Trend available.",
+            false => "Numeric tag found. No configured trend found.",
+            null => "Numeric tag found. Trend availability could not be checked."
+        };
     }
 
     private Task TestAsync() => RunActionAsync(async () =>
@@ -513,7 +540,7 @@ public partial class FormulaConfigurationPanel : IDisposable
 
         try
         {
-            // Тренд проверяется кнопкой Check и Runtime при сохранении.
+            // Наличие тренда определяется при Check только для отображения графика.
             // Для live-значения требуется только числовое чтение сохранённого тега.
             var response = await ParamApi.CheckNumericTagAsync(new ParamTagCheckRequest { TagName = tag, RequireTrend = false }, _cts.Token);
 

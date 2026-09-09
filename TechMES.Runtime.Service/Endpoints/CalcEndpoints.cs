@@ -507,11 +507,12 @@ public static class CalcEndpoints
             if (outputTag.Length == 0)
                 return null;
 
-            var outputResult = await paramProvider.CheckNumericTagAsync(outputTag, requireTrend: true, ct: ct);
+            // Наличие тренда не является условием записи результата в числовой тег.
+            var outputResult = await paramProvider.CheckNumericTagAsync(outputTag, requireTrend: false, ct: ct);
 
-            if (!outputResult.Found || !outputResult.TrendFound || !outputResult.CurrentValue.HasValue || !double.IsFinite(outputResult.CurrentValue.Value) || string.IsNullOrWhiteSpace(outputResult.TagName))
+            if (!outputResult.Found || !outputResult.CurrentValue.HasValue || !double.IsFinite(outputResult.CurrentValue.Value) || string.IsNullOrWhiteSpace(outputResult.TagName))
             {
-                return ApiError("formula.output-trend-tag-invalid", $"Formula output tag '{outputTag}' must be a readable numeric SCADA tag with a trend reference. {outputResult.Message}".Trim());
+                return ApiError("formula.output-tag-invalid", $"Formula output tag '{outputTag}' must be a readable numeric SCADA tag. {outputResult.Message}".Trim());
             }
 
             output!.TagName = outputResult.TagName.Trim();
