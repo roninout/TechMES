@@ -253,7 +253,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
     /// Если прямое чтение не удалось, разрешает Equipment.ITEM через TagInfo.
     /// Каталог и типы оборудования WEB для этого не требуются.
     /// TagName в ответе содержит имя, использованное для успешного чтения.
-    /// requireTrend сохраняет существующий механизм разрешения trend-reference.
+    /// requireTrend проверяет конфигурацию тренда, а не только возможность чтения тега.
     /// </summary>
     public async Task<ParamTagCheckResponse> CheckNumericTagAsync(string tagName, bool requireTrend, CancellationToken ct = default)
     {
@@ -304,14 +304,14 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         }
 
         var numericFound = currentValue.HasValue && double.IsFinite(currentValue.Value);
-        var trendRef = requireTrend && numericFound ? await ResolveRawTrendRefAsync(resolvedTag, ct) : null;
+        var trendRef = requireTrend && numericFound ? await ResolveVerifiedTagTrendAsync(resolvedTag, ct) : null;
         ct.ThrowIfCancellationRequested();
 
         var trendFound = trendRef is not null;
         var found = numericFound && (!requireTrend || trendFound);
 
         var message = !numericFound ? $"Cannot read '{source}' as a numeric SCADA tag or resolve it as Equipment.ITEM."
-            : !found ? "Numeric tag found, but trend reference was not resolved."
+            : !found ? "Numeric tag found, but a configured trend could not be confirmed."
             : requireTrend ? "Numeric tag and trend reference resolved." : "Online numeric tag found.";
 
         if (numericFound && !string.Equals(source, resolvedTag, StringComparison.OrdinalIgnoreCase))
@@ -470,83 +470,21 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
                 });
         }
 
-        var manRef =
-            await ResolveTrendNameAsync(
-                equipment.Name,
-                "ManTune",
-                ct)
-            ?? await ResolveTrendNameAsync(
-                equipment.Name,
-                "Man",
-                ct);
+        var manRef = await ResolveTrendNameAsync(equipment.Name, "ManTune", ct) ?? await ResolveTrendNameAsync(equipment.Name, "Man", ct);
+        await AppendTuneTrendPointsAsync(response.Trend, "ManTune", manRef, from, to, 0, 100, tuneAxisMin, tuneAxisMax, ct);
 
-        await AppendTuneTrendPointsAsync(
-            response.Trend,
-            "ManTune",
-            manRef,
-            from,
-            to,
-            0,
-            100,
-            tuneAxisMin,
-            tuneAxisMax,
-            ct);
+        var spRef = await ResolveRawTrendRefAsync(settings.Sp, ct);
+        settings.SpTrendFound = spRef is not null && response.SpValue.HasValue;
+        await AppendTuneTrendPointsAsync(response.Trend, "Sp", spRef, from, to, spRange.Min, spRange.Max, tuneAxisMin, tuneAxisMax, ct);
 
-        var spRef =
-            await ResolveRawTrendRefAsync(
-                settings.Sp,
-                ct);
+        var pvRef = await ResolveRawTrendRefAsync(settings.Pv, ct);
+        settings.PvTrendFound = pvRef is not null && response.PvValue.HasValue;
+        await AppendTuneTrendPointsAsync(response.Trend, "Pv", pvRef, from, to, pvRange.Min, pvRange.Max, tuneAxisMin, tuneAxisMax, ct);
 
-        settings.SpTrendFound =
-            spRef is not null
-            && response.SpValue.HasValue;
-
-        await AppendTuneTrendPointsAsync(
-            response.Trend,
-            "Sp",
-            spRef,
-            from,
-            to,
-            spRange.Min,
-            spRange.Max,
-            tuneAxisMin,
-            tuneAxisMax,
-            ct);
-
-        var pvRef =
-            await ResolveRawTrendRefAsync(
-                settings.Pv,
-                ct);
-
-        settings.PvTrendFound =
-            pvRef is not null
-            && response.PvValue.HasValue;
-
-        await AppendTuneTrendPointsAsync(
-            response.Trend,
-            "Pv",
-            pvRef,
-            from,
-            to,
-            pvRange.Min,
-            pvRange.Max,
-            tuneAxisMin,
-            tuneAxisMax,
-            ct);
-
-        response.Trend.Points =
-            response.Trend.Points
-                .OrderBy(point => point.Time)
-                .ThenBy(
-                    point => point.Series,
-                    StringComparer.OrdinalIgnoreCase)
-                .ToList();
+        response.Trend.Points = response.Trend.Points.OrderBy(point => point.Time).ThenBy(point => point.Series, StringComparer.OrdinalIgnoreCase).ToList();
 
         if (response.Trend.Points.Count == 0)
-        {
-            response.Trend.Message =
-                "No PID Tune trend points were returned for the selected time window.";
-        }
+            response.Trend.Message = "No PID Tune trend points were returned for the selected time window.";
 
         return response;
     }
@@ -1420,21 +1358,18 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return unit;
     }
 
-    private async Task<TrendRef?> ResolveTrendNameAsync(string equipmentName, string itemName, CancellationToken ct)
+    private async Task<TrendRef?> ResolveTrendNameAsync(string equipmentName, string itemName, CancellationToken ct, bool refresh = false)
     {
         var key = $"{equipmentName}.{itemName}";
 
-        if (_trendNameCache.TryGetValue(key, out var cachedTrendName))
+        if (!refresh && _trendNameCache.TryGetValue(key, out var cachedTrendName))
         {
             var cachedCluster = await ResolveClusterAsync(equipmentName, itemName, ct);
-            return string.IsNullOrWhiteSpace(cachedTrendName)
-                ? null
-                : new TrendRef(cachedTrendName, cachedCluster);
+            return string.IsNullOrWhiteSpace(cachedTrendName) ? null : new TrendRef(cachedTrendName, cachedCluster);
         }
 
         var cluster = await ResolveClusterAsync(equipmentName, itemName, ct);
-        if (string.IsNullOrWhiteSpace(cluster)
-            || cluster.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(cluster) || cluster.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
         {
             _trendNameCache[key] = "";
             return null;
@@ -1444,19 +1379,56 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         var escapedEquipmentName = EscapeCicodeString(equipmentName);
         var escapedItemName = EscapeCicodeString(itemName);
 
-        var trendName = (await _nativeClient.CicodeAsync(
-            $"_SATrend_GetTrendTag(\"{escapedCluster}\", \"{escapedEquipmentName}\", \"{escapedItemName}\")",
-            ct) ?? "").Trim();
+        var trendName = (await _nativeClient.CicodeAsync($"_SATrend_GetTrendTag(\"{escapedCluster}\", \"{escapedEquipmentName}\", \"{escapedItemName}\")", ct) ?? "").Trim();
 
         _trendNameCache[key] = trendName;
 
-        if (string.IsNullOrWhiteSpace(trendName)
-            || trendName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-        {
+        if (string.IsNullOrWhiteSpace(trendName) || trendName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
             return null;
-        }
 
         return new TrendRef(trendName, cluster);
+    }
+
+    /// <summary>
+    /// Подтверждает реальную конфигурацию тренда для числового Variable Tag.
+    /// Сначала используем общий поиск Equipment/Item, затем проверяем одноимённый trend tag.
+    /// Наличие текущего значения и наличие истории за выбранный период здесь не подменяют проверку конфигурации.
+    /// </summary>
+    private async Task<TrendRef?> ResolveVerifiedTagTrendAsync(string tagName, CancellationToken ct)
+    {
+        var escapedTag = EscapeCicodeString(tagName);
+        var equipment = CleanRefValue(await _nativeClient.CicodeAsync($"TagInfo(\"{escapedTag}\", 22)", ct));
+        var item = CleanRefValue(await _nativeClient.CicodeAsync($"TagInfo(\"{escapedTag}\", 25)", ct));
+        ct.ThrowIfCancellationRequested();
+
+        if (equipment.Length > 0 && item.Length > 0)
+        {
+            // Check должен заново запросить SCADA, даже если раньше результат был в кэше.
+            var linked = await ResolveTrendNameAsync(equipment, item, ct, refresh: true);
+
+            if (linked is not null && await IsConfiguredTrendAsync(linked.Value, ct))
+                return linked;
+        }
+
+        // Variable Tag и Trend Tag могут иметь одинаковое имя без Equipment-привязки.
+        // Cluster1 не подставляем: пустой cluster использует контекст SCADA.
+        var cluster = CleanRefValue(await ResolveRawTagClusterAsync(tagName, ct));
+        var direct = new TrendRef(tagName, cluster);
+        return await IsConfiguredTrendAsync(direct, ct) ? direct : null;
+    }
+
+    private async Task<bool> IsConfiguredTrendAsync(TrendRef trend, CancellationToken ct)
+    {
+        if (!IsReadableTagName(trend.TrendName)) return false;
+
+        var tag = EscapeCicodeString(trend.TrendName);
+        var cluster = EscapeCicodeString(trend.Cluster);
+
+        // TrnInfo(..., 8) возвращает способ хранения существующего тренда: 2 или 8 байт.
+        // При ошибке/отсутствии тренда пустой либо некорректный ответ не считается успехом.
+        var storage = CleanRefValue(await _nativeClient.CicodeAsync($"TrnInfo(\"{tag}\", 8, \"{cluster}\")", ct));
+        ct.ThrowIfCancellationRequested();
+        return storage is "2" or "8";
     }
 
     private async Task<TrendRef?> ResolveRawTrendRefAsync(string? tagName, CancellationToken ct)

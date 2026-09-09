@@ -51,9 +51,13 @@ public partial class FormulaConfigurationPanel : IDisposable
 
     private bool InputsReady => _variables.All(item => item.HasTag && item.Checked && item.Value.HasValue);
     private bool TestPassed => _testResult.HasValue && _testedSignature == ExecutionSignature();
-    private bool CanEnableWrites => _enabled && InputsReady && TestPassed && _outputChecked && _minimum.HasValue && _maximum.HasValue && ConfigurationError.Length == 0;
-    private bool CanKeepWrites => _job?.WriteEnabled == true && _enabled && ExecutionSignature() == _savedExecutionSignature;
-    private bool CanSave => _definition is not null && ConfigurationError.Length == 0 && _variables.All(item => item.Source.Length == 0 || item.HasTag) && (!_enabled || _variables.All(item => item.HasTag)) && (!_allowWrites || CanEnableWrites || CanKeepWrites);
+
+    // Сохранённую работающую конфигурацию можно оставить без повторного теста. Явный отказ последней проверки отменяет это разрешение.
+    private bool CanKeepExecution => _job?.Enabled == true && _enabled && ExecutionSignature() == _savedExecutionSignature && _error.Length == 0 && _testMessage.Length == 0 && (_outputMessage.Length == 0 || _outputChecked) && _variables.All(item => item.Message.Length == 0 || item.Checked);
+    private bool ExecutionReady => CanKeepExecution || (InputsReady && TestPassed);
+    private bool OutputReady => !string.IsNullOrWhiteSpace(_outputTag) && (_outputChecked || CanKeepExecution);
+    private bool CanEnableWrites => _enabled && ExecutionReady && OutputReady && _minimum.HasValue && _maximum.HasValue && ConfigurationError.Length == 0;
+    private bool CanSave => _definition is not null && ConfigurationError.Length == 0 && _variables.All(item => item.Source.Length == 0 || item.HasTag) && (!_enabled || (_variables.All(item => item.HasTag) && ExecutionReady && (string.IsNullOrWhiteSpace(_outputTag) || OutputReady) && (!_allowWrites || CanEnableWrites)));
 
     private string SavedOutputTag => _job?.Outputs.FirstOrDefault(item => item.OutputKey == "result")?.TagName?.Trim() ?? "";
     private bool HasCurrentState => _job is not null && State?.JobId == _job.Id && State.ConfigurationRevision == _job.Revision;
@@ -147,8 +151,8 @@ public partial class FormulaConfigurationPanel : IDisposable
         _enabled = job?.Enabled == true;
         _allowWrites = job?.WriteEnabled == true;
         _expression = ReadConstant("expression") is { ValueKind: JsonValueKind.String } expression ? expression.GetString() ?? "[a]" : "[a]";
-        _minimum = ReadNumber(ReadConstant("outputMinimum"));
-        _maximum = ReadNumber(ReadConstant("outputMaximum"));
+        _minimum = job is null ? 0d : ReadNumber(ReadConstant("outputMinimum"));
+        _maximum = job is null ? 100d : ReadNumber(ReadConstant("outputMaximum"));
         _outputTag = SavedOutputTag;
         _outputChecked = false;
         _outputMessage = _testMessage = _error = _liveError = _testedSignature = "";
@@ -229,15 +233,19 @@ public partial class FormulaConfigurationPanel : IDisposable
         _outputTag = tag;
         _outputChecked = false;
         _outputMessage = "";
+        _checkedOutputValue = null;
         InvalidateTest();
     }
 
     private void ChangeEnabled(bool value)
     {
         _enabled = value;
+    }
 
-        if (!value)
-            _allowWrites = false;
+    private void ChangeAllowWrites(bool value)
+    {
+        if (!value || CanEnableWrites)
+            _allowWrites = value;
     }
 
     private void ChangeVariableCount(bool add)
@@ -254,7 +262,7 @@ public partial class FormulaConfigurationPanel : IDisposable
     {
         _testedSignature = _testMessage = "";
         _testResult = null;
-        _allowWrites = false;
+        // Сбрасываем подтверждение теста, но сохраняем выбранный режим записи.
     }
 
     private async Task CheckInputCoreAsync(VariableEditor item)
@@ -346,6 +354,23 @@ public partial class FormulaConfigurationPanel : IDisposable
         if (!InputsReady)
         {
             _testMessage = "Check the input sources. Some current values are unavailable.";
+            return;
+        }
+
+        // Проверка из верхней панели включает Output, поэтому Settings можно оставить свёрнутой.
+        if (!string.IsNullOrWhiteSpace(_outputTag))
+        {
+            await CheckOutputCoreAsync();
+
+            if (!_outputChecked)
+            {
+                _testMessage = _outputMessage;
+                return;
+            }
+        }
+        else if (_enabled && _allowWrites)
+        {
+            _testMessage = "Enter an output tag before enabling output writes.";
             return;
         }
 
@@ -443,12 +468,12 @@ public partial class FormulaConfigurationPanel : IDisposable
             DefinitionCode = DefinitionCode,
             DefinitionVersion = _definition!.Version,
             Enabled = _enabled,
-            WriteEnabled = _allowWrites,
+            WriteEnabled = _enabled && _allowWrites,
             PeriodMs = _periodMs,
             ExpectedRevision = _job?.Revision,
             SortOrder = _job?.SortOrder ?? 0,
             Inputs = inputs,
-            Outputs = [new CalcJobOutputSaveDto { OutputKey = "result", TagName = string.IsNullOrWhiteSpace(_outputTag) ? null : _outputTag.Trim(), WriteEnabled = _allowWrites, Scale = 1d, Offset = 0d }]
+            Outputs = [new CalcJobOutputSaveDto { OutputKey = "result", TagName = string.IsNullOrWhiteSpace(_outputTag) ? null : _outputTag.Trim(), WriteEnabled = _enabled && _allowWrites, Scale = 1d, Offset = 0d }]
         };
     }
 

@@ -132,7 +132,7 @@
         </section>
 
         <section class="formula-settings-column">
-            <ParamAiPanel Title="Settings" Icon="settings" InitiallyCollapsed="false">
+            <ParamAiPanel Title="Settings" Icon="settings" InitiallyCollapsed="true">
                 <div class="formula-settings-body">
                     <div class="formula-input-header">
                         <h3 class="formula-heading formula-settings-heading">
@@ -223,7 +223,7 @@
                         <div class="formula-settings-actions">
                             <div class="formula-switch">
                                 <span class="formula-switch-state">@(_allowWrites ? "on" : "off")</span>
-                                <RadzenSwitch Value="@_allowWrites" Change="@((bool value) => _allowWrites = value && CanEnableWrites)" Disabled="@(IsBusy || (!_allowWrites && !CanEnableWrites))" InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Allow output writes" })" />
+                                <RadzenSwitch Value="@_allowWrites" Change="@ChangeAllowWrites" Disabled="@(IsBusy || !CanEnableWrites)" InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Allow output writes" })" />
                             </div>
 
                             <RadzenButton Text="Check" Icon="manage_search" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@CheckAllAsync" title="Check all inputs and output" />
