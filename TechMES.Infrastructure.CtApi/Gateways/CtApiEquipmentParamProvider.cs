@@ -328,32 +328,58 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         };
     }
 
+    /// <summary>История произвольного Output: общий поиск тренда и существующий TRNQUERY.</summary>
+    public async Task<ParamTrendResponse> GetTagTrendAsync(string tagName, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+    {
+        var from = NormalizeUtc(fromUtc)!.Value;
+        var to = NormalizeUtc(toUtc)!.Value;
+        var response = new ParamTrendResponse { FromUtc = from, ToUtc = to };
+
+        if (string.IsNullOrWhiteSpace(tagName) || from >= to || to - from > TimeSpan.FromDays(1))
+            throw new ArgumentException("A tag and a valid trend range of up to 24 hours are required.");
+
+        var trend = await ResolveVerifiedTagTrendAsync(tagName.Trim(), ct);
+        ct.ThrowIfCancellationRequested();
+
+        if (trend is null)
+        {
+            response.Message = "No configured trend found.";
+            return response;
+        }
+
+        response.Supported = true;
+        response.Series.Add(new ParamTrendItemDto { Name = trend.Value.TrendName });
+
+        var rows = await QueryTrendRowsAsync(trend.Value, from, to, ct, useResolvedCluster: true);
+        ct.ThrowIfCancellationRequested();
+
+        response.Points = rows.Where(row => double.IsFinite(row.Value) && row.TimeUtc >= from && row.TimeUtc <= to)
+            .OrderBy(row => row.TimeUtc)
+            .Select(row => new ParamTrendPointDto { Series = trend.Value.TrendName, Time = row.TimeUtc, Value = row.Value, RawValue = row.Value, Quality = row.Quality })
+            .ToList();
+
+        if (response.Points.Count == 0)
+            response.Message = "No trend points were returned for the selected time window.";
+
+        return response;
+    }
+
     public async Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(EquipmentDto equipment, ParamTuneSettingsResponse settings, int windowMinutes = 30, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(equipment);
-
         windowMinutes =Math.Clamp(windowMinutes, 1, 240);
 
-        var to =
-            NormalizeUtc(toUtc)
-            ?? DateTime.UtcNow;
-
-        var from =
-            NormalizeUtc(fromUtc)
-            ?? to.AddMinutes(-windowMinutes);
+        var to = NormalizeUtc(toUtc) ?? DateTime.UtcNow;
+        var from = NormalizeUtc(fromUtc) ?? to.AddMinutes(-windowMinutes);
 
         if (from >= to)
             from = to.AddMinutes(-windowMinutes);
 
-        settings.EquipmentName =
-            equipment.Name;
+        settings.EquipmentName = equipment.Name;
 
-        var supported =
-            equipment.TypeGroup
-            == EquipmentTypeGroup.VGA;
+        var supported = equipment.TypeGroup == EquipmentTypeGroup.VGA;
 
-        var response =
-            new ParamTuneRuntimeResponse
+        var response = new ParamTuneRuntimeResponse
             {
                 EquipmentName = equipment.Name,
                 TypeGroup = equipment.TypeGroup,
@@ -372,11 +398,8 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
 
         if (!supported)
         {
-            response.Message =
-                "PID Tune is supported only for VGA equipment.";
-
-            response.Trend.Message =
-                response.Message;
+            response.Message = "PID Tune is supported only for VGA equipment.";
+            response.Trend.Message = response.Message;
 
             return response;
         }
@@ -384,61 +407,22 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         const double tuneAxisMin = 0;
         const double tuneAxisMax = 100;
 
-        var pvRange =
-            NormalizeRange(
-                settings.PvMin ?? 0,
-                settings.PvMax ?? 100);
-
-        var spRange =
-            NormalizeRange(
-                settings.SpMin ?? 0,
-                settings.SpMax ?? 100);
+        var pvRange = NormalizeRange(settings.PvMin ?? 0, settings.PvMax ?? 100);
+        var spRange = NormalizeRange(settings.SpMin ?? 0, settings.SpMax ?? 100);
 
         response.ManTuneMin = 0;
         response.ManTuneMax = 100;
+        response.ManTuneValue = await ReadEquipmentNumericItemAsync(equipment.Name, "ManTune", ct) ?? await ReadEquipmentNumericItemAsync(equipment.Name, "Man", ct);
+        response.PvValue = await TryReadNumericTagAsync(settings.Pv, ct);
+        response.SpValue = await TryReadNumericTagAsync(settings.Sp, ct);
 
-        response.ManTuneValue =
-            await ReadEquipmentNumericItemAsync(
-                equipment.Name,
-                "ManTune",
-                ct)
-            ?? await ReadEquipmentNumericItemAsync(
-                equipment.Name,
-                "Man",
-                ct);
+         // Test Kp читается только online. В Series/Points он не добавляется и trend-reference не запрашивается.
+        response.TestKpValue = await TryReadNumericTagAsync(settings.TestKpTag, ct);
+        settings.TestKpFound = !string.IsNullOrWhiteSpace(settings.TestKpTag) && response.TestKpValue.HasValue;
+        response.Trend.AxisYMin = tuneAxisMin;
+        response.Trend.AxisYMax = tuneAxisMax;
 
-        response.PvValue =
-            await TryReadNumericTagAsync(
-                settings.Pv,
-                ct);
-
-        response.SpValue =
-            await TryReadNumericTagAsync(
-                settings.Sp,
-                ct);
-
-        /*
-         * Test Kp читается только online.
-         * В Series/Points он не добавляется и trend-reference не запрашивается.
-         */
-        response.TestKpValue =
-            await TryReadNumericTagAsync(
-                settings.TestKpTag,
-                ct);
-
-        settings.TestKpFound =
-            !string.IsNullOrWhiteSpace(
-                settings.TestKpTag)
-            && response.TestKpValue.HasValue;
-
-        response.Trend.AxisYMin =
-            tuneAxisMin;
-
-        response.Trend.AxisYMax =
-            tuneAxisMax;
-
-        response.Trend.Series.Add(
-            new ParamTrendItemDto
+        response.Trend.Series.Add(new ParamTrendItemDto
             {
                 Name = "ManTune",
                 Color = "#4F81BD",
@@ -448,8 +432,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
 
         if (!string.IsNullOrWhiteSpace(settings.Sp))
         {
-            response.Trend.Series.Add(
-                new ParamTrendItemDto
+            response.Trend.Series.Add(new ParamTrendItemDto
                 {
                     Name = "Sp",
                     Color = "#F59E0B",
@@ -460,8 +443,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
 
         if (!string.IsNullOrWhiteSpace(settings.Pv))
         {
-            response.Trend.Series.Add(
-                new ParamTrendItemDto
+            response.Trend.Series.Add(new ParamTrendItemDto
                 {
                     Name = "Pv",
                     Color = "#2E7D32",
@@ -1557,63 +1539,35 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         }
     }
 
-    private async Task<List<TrendRow>> QueryTrendRowsAsync(TrendRef trendRef, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+    private async Task<List<TrendRow>> QueryTrendRowsAsync(TrendRef trendRef, DateTime fromUtc, DateTime toUtc, CancellationToken ct, bool useResolvedCluster = false)
     {
         const float period = 1.0f;
         const int dataMode = 1;
         const int instantTrend = 0;
-        // Match the WPF TrnQuery(start, end, ...) overload: Plant SCADA expects
-        // 250 ms here even when period is 1 second.
+
+        // Существующий формат TRNQUERY: samplePeriod = 250 мс при периоде выборки 1 секунда.
         const int samplePeriod = 250;
 
         var end = new DateTimeOffset(DateTime.SpecifyKind(toUtc, DateTimeKind.Utc)).ToUnixTimeSeconds();
         var numSamples = Math.Max(1, (int)Math.Round((toUtc - fromUtc).TotalSeconds / period));
+        var displayMode = global::CtApi.DisplayMode.Get(global::CtApi.Ordering.OldestToNewest, global::CtApi.Condense.Mean, global::CtApi.Stretch.Raw, 0, global::CtApi.BadQuality.Zero, global::CtApi.Raw.None);
+        var query = string.Join(",", "TRNQUERY", end.ToString(CultureInfo.InvariantCulture), toUtc.Millisecond.ToString(CultureInfo.InvariantCulture), period.ToString(CitectNumberFormat), numSamples.ToString(CultureInfo.InvariantCulture), trendRef.TrendName, displayMode.ToString(CultureInfo.InvariantCulture), dataMode.ToString(CultureInfo.InvariantCulture), instantTrend.ToString(CultureInfo.InvariantCulture), samplePeriod.ToString(CultureInfo.InvariantCulture));
 
-        var displayMode = global::CtApi.DisplayMode.Get(
-            global::CtApi.Ordering.OldestToNewest,
-            global::CtApi.Condense.Mean,
-            global::CtApi.Stretch.Raw,
-            0,
-            global::CtApi.BadQuality.Zero,
-            global::CtApi.Raw.None);
-
-        var query = string.Join(
-            ",",
-            "TRNQUERY",
-            end.ToString(CultureInfo.InvariantCulture),
-            toUtc.Millisecond.ToString(CultureInfo.InvariantCulture),
-            period.ToString(CitectNumberFormat),
-            numSamples.ToString(CultureInfo.InvariantCulture),
-            trendRef.TrendName,
-            displayMode.ToString(CultureInfo.InvariantCulture),
-            dataMode.ToString(CultureInfo.InvariantCulture),
-            instantTrend.ToString(CultureInfo.InvariantCulture),
-            samplePeriod.ToString(CultureInfo.InvariantCulture));
-
-        var clusters = GetTrendQueryClusters(trendRef.Cluster);
+        var clusters = useResolvedCluster ? new[] { trendRef.Cluster } : GetTrendQueryClusters(trendRef.Cluster);
         var rows = Array.Empty<Dictionary<string, string>>() as IReadOnlyList<Dictionary<string, string>>;
 
         foreach (var cluster in clusters)
         {
             try
             {
-                rows = await _nativeClient.FindAsync(
-                    query,
-                    filter: null,
-                    cluster: cluster,
-                    properties: ["DATETIME", "MSECONDS", "VALUE", "QUALITY"],
-                    ct);
+                rows = await _nativeClient.FindAsync(query, filter: null, cluster: cluster, properties: ["DATETIME", "MSECONDS", "VALUE", "QUALITY"], ct);
 
                 if (rows.Count > 0)
                     break;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(
-                    ex,
-                    "Param trend query failed. Trend={Trend}, Cluster={Cluster}",
-                    trendRef.TrendName,
-                    cluster);
+                _logger.LogWarning(ex, "Param trend query failed. Trend={Trend}, Cluster={Cluster}", trendRef.TrendName, cluster);
             }
         }
 
@@ -1633,11 +1587,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
             if (!int.TryParse(GetValue(row, "QUALITY"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var quality))
                 quality = 0;
 
-            var timeUtc = DateTimeOffset
-                .FromUnixTimeSeconds(seconds)
-                .AddMilliseconds(milliseconds)
-                .UtcDateTime;
-
+            var timeUtc = DateTimeOffset.FromUnixTimeSeconds(seconds).AddMilliseconds(milliseconds).UtcDateTime;
             result.Add(new TrendRow(timeUtc, value, quality));
         }
 

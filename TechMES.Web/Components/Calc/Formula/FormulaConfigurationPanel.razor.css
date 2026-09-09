@@ -562,3 +562,24 @@
 .formula-functions ::deep .rz-chip-list-item {
     max-width: 100%;
 }
+
+/* График занимает свободную ширину слева от Test formula. */
+.formula-test-row {
+    align-items: flex-end;
+}
+
+.formula-test-messages {
+    flex: 1;
+    min-width: 0;
+}
+
+@container formula (max-width: 760px) {
+    .formula-test-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+        .formula-test-row > .formula-buttons {
+            align-self: flex-end;
+        }
+}

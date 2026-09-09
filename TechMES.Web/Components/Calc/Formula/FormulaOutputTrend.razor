@@ -1,0 +1,246 @@
+﻿@using Microsoft.Extensions.Options
+@using TechMES.Contracts.Param
+@using TechMES.Web.Settings
+@implements IAsyncDisposable
+@inject ParamApiClient ParamApi
+@inject IOptions<ParamUiOptions> ParamOptions
+
+@if (_supported && TrendAvailable != false)
+{
+    <div class="formula-output-trend">
+        <div class="formula-output-trend-toolbar">
+            <span>Output trend</span>
+            <RadzenBadge Text="@(_live ? "Live" : "History")" BadgeStyle="@(_live ? BadgeStyle.Success : BadgeStyle.Light)" />
+            <RadzenButton Text="Load older" Icon="history" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Disabled="@(_loading || _fromUtc <= _toUtc.AddDays(-1))" Click="@LoadOlderAsync" />
+            <RadzenButton Text="Live" Icon="update" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Disabled="@_loading" Click="@GoLiveAsync" />
+        </div>
+
+        @if (_points.Count > 0)
+        {
+            <RadzenChart AllowZoom="true" AllowPan="true" ViewStart="@_viewStart" ViewEnd="@_viewEnd" ViewChange="@OnViewChanged" Style="height:360px; width:100%;">
+                <RadzenLineSeries Data="@_points" CategoryProperty="Time" ValueProperty="Value" Title="Output" Stroke="var(--rz-primary)" StrokeWidth="2" />
+                <RadzenCategoryAxis Min="@_fromUtc.ToLocalTime()" Max="@_toUtc.ToLocalTime()" FormatString="{0:HH:mm}" Padding="0" />
+                <RadzenValueAxis Min="@(HasScale ? Minimum : null)" Max="@(HasScale ? Maximum : null)" FormatString="{0:0.###}">
+                    <RadzenGridLines Visible="true" />
+                </RadzenValueAxis>
+                <RadzenLegend Visible="false" />
+                <RadzenChartTooltipOptions Shared="true" />
+                <RadzenChartRangeNavigator Height="80" ShowHandleLabels="true" HandleLabelFormatString="{0:dd.MM HH:mm}">
+                    <RadzenRangeNavigatorLineSeries Data="@_points" CategoryProperty="Time" ValueProperty="Value" Stroke="var(--rz-primary)" />
+                </RadzenChartRangeNavigator>
+            </RadzenChart>
+        }
+
+        @if (_message.Length > 0)
+        {
+            <div class="formula-output-trend-message">@_message</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string TagName { get; set; } = "";
+    [Parameter] public bool? TrendAvailable { get; set; }
+    [Parameter] public double? Minimum { get; set; }
+    [Parameter] public double? Maximum { get; set; }
+
+    private readonly CancellationTokenSource _cts = new();
+    private PeriodicTimer? _timer;
+    private Task? _pollTask;
+    private List<TrendPoint> _points = [];
+    private string _tag = "", _message = "";
+    private bool _started, _supported, _loading, _disposed, _live = true;
+    private bool? _lastAvailability;
+    private int _windowMinutes, _historyMinutes;
+    private DateTime _fromUtc, _toUtc;
+    private double _viewStart, _viewEnd = 1;
+
+    private bool HasScale => Minimum.HasValue && Maximum.HasValue && double.IsFinite(Minimum.Value) && double.IsFinite(Maximum.Value) && Minimum.Value < Maximum.Value;
+
+    protected override void OnInitialized()
+    {
+        // Те же настройки и ограничения, что у EquipmentParamPanel.
+        var options = ParamOptions.Value;
+        _windowMinutes = Math.Clamp(options.TrendWindowMinutes, 1, 240);
+        _historyMinutes = Math.Clamp(Math.Max(options.TrendHistoryMinutes, _windowMinutes), _windowMinutes, 24 * 60);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var tag = TagName.Trim();
+        var changed = !_started || !string.Equals(_tag, tag, StringComparison.Ordinal);
+        var confirmed = TrendAvailable == true && _lastAvailability != true;
+        _lastAvailability = TrendAvailable;
+
+        if (changed)
+        {
+            _tag = tag;
+            _started = true;
+            _points = [];
+            _supported = false;
+            _message = "";
+            _live = true;
+            _fromUtc = _toUtc = default;
+        }
+
+        if (tag.Length == 0 || TrendAvailable == false)
+        {
+            _live = true;
+            _supported = false;
+            _points = [];
+            return;
+        }
+
+        if (changed || (confirmed && !_supported))
+            await LoadAsync(reset: true);
+
+        if (_timer is null && !_disposed)
+        {
+            // Как и online-значение Output, историю обновляем раз в 5 секунд.
+            _timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            _pollTask = PollAsync();
+        }
+    }
+
+    private async Task PollAsync()
+    {
+        try
+        {
+            while (await _timer!.WaitForNextTickAsync(_cts.Token))
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed || !_live || TrendAvailable == false || _tag.Length == 0) return;
+
+                    await LoadAsync(reset: _toUtc == default || !_supported);
+
+                    if (!_disposed)
+                        StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+    }
+
+    private async Task GoLiveAsync()
+    {
+        _live = true;
+        await LoadAsync(reset: true);
+    }
+
+    private async Task LoadOlderAsync()
+    {
+        _live = false;
+        await LoadAsync(older: true);
+    }
+
+    private void OnViewChanged(ChartViewChangeEventArgs args)
+    {
+        if (Math.Abs(args.ViewStart - _viewStart) < 0.000001 && Math.Abs(args.ViewEnd - _viewEnd) < 0.000001) return;
+
+        _viewStart = Math.Clamp(args.ViewStart, 0, 1);
+        _viewEnd = Math.Clamp(args.ViewEnd, _viewStart, 1);
+        _live = false;
+    }
+
+    private async Task LoadAsync(bool reset = false, bool older = false)
+    {
+        if (_loading || _disposed || TrendAvailable == false || _tag.Length == 0) return;
+
+        _loading = true;
+
+        var tag = _tag;
+        var now = DateTime.UtcNow;
+        var previousFrom = _fromUtc;
+        var previousTo = _toUtc;
+        var chunkMinutes = Math.Max(_windowMinutes, _historyMinutes / 2);
+        var to = older ? previousFrom : now;
+        var from = older ? previousFrom.AddMinutes(-chunkMinutes) : reset ? now.AddMinutes(-_historyMinutes) : previousTo.AddSeconds(-5);
+
+        if (older && from < previousTo.AddDays(-1))
+            from = previousTo.AddDays(-1);
+
+        if (!older && from < now.AddMinutes(-_historyMinutes))
+            from = now.AddMinutes(-_historyMinutes);
+
+        try
+        {
+            if (from >= to) return;
+
+            var response = await ParamApi.GetTagTrendAsync(tag, from, to, _cts.Token);
+
+            if (_disposed || tag != _tag || TrendAvailable == false) return;
+
+            // Ответ начатого live-запроса не должен сбрасывать выбранный пользователем участок.
+            if (!older && !_live) return;
+
+            _supported = response.Supported;
+
+            if (!_supported)
+            {
+                _points = [];
+                return;
+            }
+
+            var visibleFrom = previousFrom.AddTicks((long)((previousTo - previousFrom).Ticks * _viewStart));
+            var visibleTo = previousFrom.AddTicks((long)((previousTo - previousFrom).Ticks * _viewEnd));
+
+            _fromUtc = older ? from : now.AddMinutes(-_historyMinutes);
+            _toUtc = older ? previousTo : to;
+
+            var existing = reset ? Enumerable.Empty<TrendPoint>() : _points;
+            var incoming = response.Points.Select(point => new TrendPoint { Time = point.Time.ToLocalTime(), Value = point.Value });
+
+            _points = existing.Concat(incoming).Where(point => double.IsFinite(point.Value) && point.Time.ToUniversalTime() >= _fromUtc && point.Time.ToUniversalTime() <= _toUtc)
+                .GroupBy(point => point.Time)
+                .Select(group => group.Last())
+                .OrderBy(point => point.Time)
+                .ToList();
+
+            if (older)
+                SetVisibleRange(visibleFrom, visibleTo);
+            else
+                SetVisibleRange(_toUtc.AddMinutes(-_windowMinutes), _toUtc);
+
+            _message = _points.Count == 0 ? response.Message ?? "No trend data in this range." : "";
+        }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+        catch (Exception)
+        {
+            if (!_disposed && tag == _tag)
+                _message = "Trend data could not be loaded. Previously loaded data is retained.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void SetVisibleRange(DateTime from, DateTime to)
+    {
+        var ticks = (_toUtc - _fromUtc).Ticks;
+
+        if (ticks <= 0) return;
+
+        _viewStart = Math.Clamp((double)(from - _fromUtc).Ticks / ticks, 0, 1);
+        _viewEnd = Math.Clamp((double)(to - _fromUtc).Ticks / ticks, _viewStart, 1);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        _cts.Cancel();
+        _timer?.Dispose();
+
+        if (_pollTask is not null)
+            await _pollTask;
+
+        _cts.Dispose();
+    }
+
+    public sealed class TrendPoint
+    {
+        public DateTime Time { get; set; }
+        public double Value { get; set; }
+    }
+}

@@ -164,6 +164,18 @@ public sealed class ParamApiClient
             };
     }
 
+    /// <summary>Читает историю произвольного Output через общий источник Param trends.</summary>
+    public async Task<ParamTrendResponse> GetTagTrendAsync(string tagName, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+    {
+        var client = CreateClient();
+        var request = new ParamTagTrendRequest { TagName = tagName, FromUtc = fromUtc, ToUtc = toUtc };
+
+        using var response = await client.PostAsJsonAsync("api/param/tags/trend", request, ct);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<ParamTrendResponse>(cancellationToken: ct) ?? throw new InvalidOperationException("Runtime returned an empty trend response.");
+    }
+
     /// <summary>
     /// Проверяет произвольный числовой Plant SCADA Variable Tag через Runtime.Service.
     ///

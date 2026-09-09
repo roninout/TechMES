@@ -109,6 +109,8 @@
 
             <div class="formula-test-row">
                 <div class="formula-test-messages">
+                    <FormulaOutputTrend @key="@($"{_job?.Id}:{_outputTag.Trim()}")" TagName="@_outputTag" TrendAvailable="@_outputTrendFound" Minimum="@_minimum" Maximum="@_maximum" />
+
                     @if (HasPendingChanges)
                     {
                         <div class="formula-hint">Unsaved changes. The running calculation uses the last saved settings.</div>
@@ -129,6 +131,7 @@
                     <RadzenButton Text="Test formula" Icon="calculate" ButtonStyle="ButtonStyle.Secondary" Disabled="@(IsBusy || ConfigurationError.Length > 0 || _variables.Any(item => item.Source.Length == 0))" Click="@TestAsync" />
                 </div>
             </div>
+
         </section>
 
         <section class="formula-settings-column">

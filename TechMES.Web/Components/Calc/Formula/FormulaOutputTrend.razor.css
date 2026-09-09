@@ -1,0 +1,23 @@
+.formula-output-trend {
+    width: 100%;
+    min-width: 0;
+    margin: 12px 0;
+}
+
+.formula-output-trend-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+    .formula-output-trend-toolbar > span:first-child {
+        margin-right: auto;
+    }
+
+.formula-output-trend-message {
+    color: var(--rz-text-secondary-color);
+    font-size: 12px;
+    margin: 8px 0;
+}

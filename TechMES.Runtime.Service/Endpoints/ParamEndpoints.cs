@@ -23,6 +23,7 @@ public static class ParamEndpoints
     {
         app.MapGet("/api/param/{equipmentName}/snapshot", GetSnapshotAsync);
         app.MapGet("/api/param/{equipmentName}/trend", GetTrendAsync);
+        app.MapPost("/api/param/tags/trend", GetTagTrendAsync);
         app.MapPost("/api/param/tags/check", CheckNumericTagAsync); // Общая проверка уже разрешённого числового Variable Tag. Она не принадлежит конкретному Equipment и используется разными модулями.
         app.MapGet("/api/param/{equipmentName}/tune", GetTuneAsync);
         app.MapPost("/api/param/{equipmentName}/tune", SaveTuneAsync);
@@ -109,6 +110,18 @@ public static class ParamEndpoints
         {
             settings.TestKpTag = string.IsNullOrWhiteSpace(testKpTag) ? null : testKpTag.Trim();
         }
+    }
+
+    /// <summary>Читает историю произвольного Output через общий источник Param trends.</summary>
+    private static async Task<IResult> GetTagTrendAsync(ParamTagTrendRequest request, IEquipmentParamProvider paramProvider, CancellationToken ct)
+    {
+        var from = request.FromUtc.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(request.FromUtc, DateTimeKind.Utc) : request.FromUtc.ToUniversalTime();
+        var to = request.ToUtc.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(request.ToUtc, DateTimeKind.Utc) : request.ToUtc.ToUniversalTime();
+
+        if (string.IsNullOrWhiteSpace(request.TagName) || from >= to || to - from > TimeSpan.FromDays(1))
+            return Results.BadRequest("A tag and a valid trend range of up to 24 hours are required.");
+
+        return Results.Ok(await paramProvider.GetTagTrendAsync(request.TagName.Trim(), from, to, ct));
     }
 
     /// <summary>

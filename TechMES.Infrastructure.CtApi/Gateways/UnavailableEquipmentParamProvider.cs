@@ -17,9 +17,7 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         _message = message;
     }
 
-    public Task<ParamSnapshotResponse> GetSnapshotAsync(
-        EquipmentDto equipment,
-        CancellationToken ct = default)
+    public Task<ParamSnapshotResponse> GetSnapshotAsync(EquipmentDto equipment, CancellationToken ct = default)
     {
         return Task.FromResult(new ParamSnapshotResponse
         {
@@ -48,23 +46,15 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
-    public Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(
-        EquipmentDto equipment,
-        ParamTuneSettingsResponse settings,
-        int windowMinutes = 30,
-        DateTime? fromUtc = null,
-        DateTime? toUtc = null,
-        CancellationToken ct = default)
+    public Task<ParamTrendResponse> GetTagTrendAsync(string tagName, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
     {
-        var to =
-            NormalizeUtc(toUtc)
-            ?? DateTime.UtcNow;
+        return Task.FromResult(new ParamTrendResponse { Supported = false, FromUtc = fromUtc, ToUtc = toUtc, Message = _message });
+    }
 
-        var from =
-            NormalizeUtc(fromUtc)
-            ?? to.AddMinutes(
-                -Math.Max(1, windowMinutes));
-
+    public Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(EquipmentDto equipment, ParamTuneSettingsResponse settings, int windowMinutes = 30, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken ct = default)
+    {
+        var to = NormalizeUtc(toUtc) ?? DateTime.UtcNow;
+        var from = NormalizeUtc(fromUtc) ?? to.AddMinutes(-Math.Max(1, windowMinutes));
         settings.EquipmentName = equipment.Name;
 
         return Task.FromResult(new ParamTuneRuntimeResponse
@@ -86,21 +76,10 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
-    public Task<ParamTrendResponse> GetTrendAsync(
-        EquipmentDto equipment,
-        int windowMinutes = 30,
-        DateTime? fromUtc = null,
-        DateTime? toUtc = null,
-        CancellationToken ct = default)
+    public Task<ParamTrendResponse> GetTrendAsync(EquipmentDto equipment, int windowMinutes = 30, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken ct = default)
     {
-        var to =
-            NormalizeUtc(toUtc)
-            ?? DateTime.UtcNow;
-
-        var from =
-            NormalizeUtc(fromUtc)
-            ?? to.AddMinutes(
-                -Math.Max(1, windowMinutes));
+        var to = NormalizeUtc(toUtc) ?? DateTime.UtcNow;
+        var from = NormalizeUtc(fromUtc) ?? to.AddMinutes(-Math.Max(1, windowMinutes));
 
         return Task.FromResult(new ParamTrendResponse
         {
@@ -113,9 +92,7 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
-    public Task<ParamPlcRefsResponse> GetPlcRefsAsync(
-        EquipmentDto equipment,
-        CancellationToken ct = default)
+    public Task<ParamPlcRefsResponse> GetPlcRefsAsync(EquipmentDto equipment, CancellationToken ct = default)
     {
         return Task.FromResult(new ParamPlcRefsResponse
         {
@@ -126,10 +103,7 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
-    public Task<ParamDiDoRefsResponse> GetDiDoRefsAsync(
-        EquipmentDto equipment,
-        IReadOnlyList<EquipmentDto> equipmentCatalog,
-        CancellationToken ct = default)
+    public Task<ParamDiDoRefsResponse> GetDiDoRefsAsync(EquipmentDto equipment, IReadOnlyList<EquipmentDto> equipmentCatalog, CancellationToken ct = default)
     {
         return Task.FromResult(new ParamDiDoRefsResponse
         {
@@ -140,10 +114,7 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
-    public Task<ParamDryRunResponse> GetDryRunAsync(
-        EquipmentDto equipment,
-        IReadOnlyList<EquipmentDto> equipmentCatalog,
-        CancellationToken ct = default)
+    public Task<ParamDryRunResponse> GetDryRunAsync(EquipmentDto equipment, IReadOnlyList<EquipmentDto> equipmentCatalog, CancellationToken ct = default)
     {
         return Task.FromResult(new ParamDryRunResponse
         {
@@ -154,10 +125,7 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
-    public Task<ParamAtvRefResponse> GetAtvRefAsync(
-        EquipmentDto equipment,
-        IReadOnlyList<EquipmentDto> equipmentCatalog,
-        CancellationToken ct = default)
+    public Task<ParamAtvRefResponse> GetAtvRefAsync(EquipmentDto equipment, IReadOnlyList<EquipmentDto> equipmentCatalog, CancellationToken ct = default)
     {
         return Task.FromResult(new ParamAtvRefResponse
         {
@@ -168,10 +136,7 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
-    public Task<ParamWriteResponse> WriteAsync(
-        EquipmentDto equipment,
-        ParamWriteRequest request,
-        CancellationToken ct = default)
+    public Task<ParamWriteResponse> WriteAsync(EquipmentDto equipment, ParamWriteRequest request, CancellationToken ct = default)
     {
         return Task.FromResult(new ParamWriteResponse
         {
@@ -183,14 +148,11 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         });
     }
 
-    private static DateTime? NormalizeUtc(
-        DateTime? value)
+    private static DateTime? NormalizeUtc(DateTime? value)
     {
         if (!value.HasValue)
             return null;
 
-        return value.Value.Kind == DateTimeKind.Utc
-            ? value.Value
-            : value.Value.ToUniversalTime();
+        return value.Value.Kind == DateTimeKind.Utc ? value.Value : value.Value.ToUniversalTime();
     }
 }
