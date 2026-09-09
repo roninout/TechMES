@@ -555,7 +555,7 @@
         cursor: grabbing;
     }
 
-    .formula-function-token[draggable="false"] {
+    .formula-function-token[aria-disabled="true"] {
         cursor: default;
     }
 

@@ -51,8 +51,6 @@
                 </section>
             </div>
 
-            <div class="formula-separator"></div>
-
             <div class="formula-overview">
                 <section class="formula-overview-column formula-parameters">
                     <h3 class="formula-heading">Parameters</h3>
@@ -81,16 +79,17 @@
                             {
                                 <RadzenChipItem Text="@function.Name" Value="@function.Name">
                                     <Template>
-                                        <span class="formula-function-token" draggable="@(!IsBusy ? "true" : "false")" data-formula-template="@function.Template" title="@function.Tooltip">@function.Name</span>
+                                        <span class="formula-function-token" aria-disabled="@(IsBusy ? "true" : "false")" data-formula-template="@function.Template" title="@function.Tooltip">@function.Name</span>
                                     </Template>
                                 </RadzenChipItem>
                             }
                         </Items>
                     </RadzenChipList>
 
-                    <div class="formula-hint">Drag a function into Expression, or click to insert at the caret.</div>
-                    <div class="formula-hint">Variables: [a]..[z]. Constants: pi, e. Decimal separator: dot.</div>
+                    <div class="formula-hint">Click a function to insert it at the caret. Variables: [a]..[z]. Constants: pi, e. Decimal separator: dot.</div>
+
                 </section>
+
             </div>
 
             @if (HasCurrentState && State?.Status is CalcJobStateStatusDto.Error or CalcJobStateStatusDto.Skipped)
@@ -107,8 +106,6 @@
             {
                 <div class="formula-error">@ConfigurationError</div>
             }
-
-            <div class="formula-separator"></div>
 
             <div class="formula-test-row">
                 <div class="formula-test-messages">

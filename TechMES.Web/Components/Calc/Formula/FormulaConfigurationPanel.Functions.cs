@@ -31,6 +31,6 @@ public partial class FormulaConfigurationPanel
 
     private sealed record FormulaFunctionHelp(string Name, string Signature, string Description, string Example, string Template)
     {
-        public string Tooltip => $"{Signature}\n{Description}\nExample: {Example}\nDrag into Expression, or click to insert at the caret.";
+        public string Tooltip => $"{Signature}\n{Description}\nExample: {Example}\nClick to insert at the caret.";
     }
 }
