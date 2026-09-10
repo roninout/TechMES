@@ -28,3 +28,16 @@
     display: grid;
     gap: 4px;
 }
+
+.formula-trend-date-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.formula-trend-date {
+    font-size: 14px;
+    font-weight: 400;
+    white-space: nowrap;
+}
