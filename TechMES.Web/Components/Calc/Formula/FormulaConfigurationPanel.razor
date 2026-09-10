@@ -86,10 +86,29 @@
                         </Items>
                     </RadzenChipList>
 
-                    <div class="formula-hint">Click a function to insert it at the caret. Variables: [a]..[z]. Constants: pi, e. Decimal separator: dot.</div>
+                    <div class="formula-test-row">
+                        <div class="formula-test-messages">
+                            @if (HasPendingChanges)
+                            {
+                                <div class="formula-hint">Unsaved changes. The running calculation uses the last saved settings.</div>
+                            }
 
+                            @if (_testMessage.Length > 0)
+                            {
+                                <div class="formula-error">@_testMessage</div>
+                            }
+                        </div>
+
+                        <div class="formula-buttons formula-test-buttons">
+                            @if (TestPassed)
+                            {
+                                <RadzenBadge Text="@($"Result: {FormatNumber(_testResult)}")" BadgeStyle="BadgeStyle.Success" />
+                            }
+
+                            <RadzenButton Text="Test formula" Icon="calculate" ButtonStyle="ButtonStyle.Secondary" Disabled="@(IsBusy || ConfigurationError.Length > 0 || _variables.Any(item => item.Source.Length == 0))" Click="@TestAsync" />
+                        </div>
+                    </div>
                 </section>
-
             </div>
 
             @if (HasCurrentState && State?.Status is CalcJobStateStatusDto.Error or CalcJobStateStatusDto.Skipped)
@@ -107,31 +126,7 @@
                 <div class="formula-error">@ConfigurationError</div>
             }
 
-            <div class="formula-test-row">
-                <div class="formula-test-messages">
-                    <FormulaOutputTrend @key="@($"{_job?.Id}:{_outputTag.Trim()}")" TagName="@_outputTag" TrendAvailable="@_outputTrendFound" Minimum="@_minimum" Maximum="@_maximum" />
-
-                    @if (HasPendingChanges)
-                    {
-                        <div class="formula-hint">Unsaved changes. The running calculation uses the last saved settings.</div>
-                    }
-
-                    @if (_testMessage.Length > 0)
-                    {
-                        <div class="formula-error">@_testMessage</div>
-                    }
-                </div>
-
-                <div class="formula-buttons">
-                    @if (TestPassed)
-                    {
-                        <RadzenBadge Text="@($"Result: {FormatNumber(_testResult)}")" BadgeStyle="BadgeStyle.Success" />
-                    }
-
-                    <RadzenButton Text="Test formula" Icon="calculate" ButtonStyle="ButtonStyle.Secondary" Disabled="@(IsBusy || ConfigurationError.Length > 0 || _variables.Any(item => item.Source.Length == 0))" Click="@TestAsync" />
-                </div>
-            </div>
-
+            <FormulaOutputTrend @key="@($"{_job?.Id}:{_outputTag.Trim()}")" TagName="@_outputTag" TrendAvailable="@_outputTrendFound" Minimum="@_minimum" Maximum="@_maximum" />
         </section>
 
         <section class="formula-settings-column">

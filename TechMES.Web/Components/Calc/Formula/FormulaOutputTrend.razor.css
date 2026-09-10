@@ -1,23 +1,30 @@
 .formula-output-trend {
     width: 100%;
     min-width: 0;
-    margin: 12px 0;
+    padding: 18px;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    border-radius: 4px;
 }
 
 .formula-output-trend-toolbar {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
+    justify-content: space-between;
+    gap: 12px;
     margin-bottom: 8px;
 }
 
-    .formula-output-trend-toolbar > span:first-child {
-        margin-right: auto;
-    }
+.formula-trend-navigator {
+    margin-top: 12px;
+}
 
 .formula-output-trend-message {
     color: var(--rz-text-secondary-color);
     font-size: 12px;
-    margin: 8px 0;
+    margin-top: 8px;
+}
+
+.formula-trend-tooltip {
+    display: grid;
+    gap: 4px;
 }

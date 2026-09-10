@@ -563,14 +563,38 @@
     max-width: 100%;
 }
 
-/* График занимает свободную ширину слева от Test formula. */
+/* Parameters, Functions и Test formula — общая панель над графиком. */
+.formula-overview {
+    align-items: stretch;
+    margin: 0;
+    padding: 14px;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    border-radius: 4px;
+}
+
+.formula-functions {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 0;
+}
+
+    .formula-functions ::deep .formula-function-list {
+        margin-bottom: 8px;
+    }
+
 .formula-test-row {
     align-items: flex-end;
+    margin-top: auto;
 }
 
 .formula-test-messages {
     flex: 1;
     min-width: 0;
+}
+
+.formula-test-buttons {
+    flex-direction: column;
+    align-items: flex-end;
 }
 
 @container formula (max-width: 760px) {

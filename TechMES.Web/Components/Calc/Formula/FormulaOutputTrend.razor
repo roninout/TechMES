@@ -9,26 +9,44 @@
 {
     <div class="formula-output-trend">
         <div class="formula-output-trend-toolbar">
-            <span>Output trend</span>
-            <RadzenBadge Text="@(_live ? "Live" : "History")" BadgeStyle="@(_live ? BadgeStyle.Success : BadgeStyle.Light)" />
             <RadzenButton Text="Load older" Icon="history" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Disabled="@(_loading || _fromUtc <= _toUtc.AddDays(-1))" Click="@LoadOlderAsync" />
-            <RadzenButton Text="Live" Icon="update" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Disabled="@_loading" Click="@GoLiveAsync" />
+            <RadzenButton Text="Live" Icon="update" ButtonStyle="@(_live ? ButtonStyle.Success : ButtonStyle.Light)" Size="ButtonSize.Small" Disabled="@_loading" Click="@GoLiveAsync" />
         </div>
 
         @if (_points.Count > 0)
         {
-            <RadzenChart AllowZoom="true" AllowPan="true" ViewStart="@_viewStart" ViewEnd="@_viewEnd" ViewChange="@OnViewChanged" Style="height:360px; width:100%;">
-                <RadzenLineSeries Data="@_points" CategoryProperty="Time" ValueProperty="Value" Title="Output" Stroke="var(--rz-primary)" StrokeWidth="2" />
-                <RadzenCategoryAxis Min="@_fromUtc.ToLocalTime()" Max="@_toUtc.ToLocalTime()" FormatString="{0:HH:mm}" Padding="0" />
+            <RadzenChart @ref="_chart" AllowZoom="true" AllowPan="true" ViewStart="@_viewStart" ViewEnd="@_viewEnd" ViewChange="@OnViewChanged" Style="height:360px; width:100%;">
+                <RadzenLineSeries Data="@_points" CategoryProperty="Time" ValueProperty="Value" Title="Output" Stroke="var(--rz-primary)" StrokeWidth="2">
+                    <TooltipTemplate Context="point">
+                        <div class="formula-trend-tooltip">
+                            <strong>@TagName</strong>
+                            <div>@point.Time.ToString("dd.MM.yyyy HH:mm:ss")</div>
+                            <div>Value: @point.Value.ToString("0.######")</div>
+                        </div>
+                    </TooltipTemplate>
+                    <ChildContent>
+                        <RadzenSeriesDataLabels Display="DataLabelDisplay.FirstLast" Appearance="DataLabelAppearance.Chip" Position="DataLabelPosition.Auto" FormatString="{0:0.###}" />
+                    </ChildContent>
+                </RadzenLineSeries>
+
+                <RadzenCategoryAxis Min="@AxisFrom" Max="@AxisTo" FormatString="{0:HH:mm}" Padding="0" />
+
                 <RadzenValueAxis Min="@(HasScale ? Minimum : null)" Max="@(HasScale ? Maximum : null)" FormatString="{0:0.###}">
                     <RadzenGridLines Visible="true" />
                 </RadzenValueAxis>
+
                 <RadzenLegend Visible="false" />
-                <RadzenChartTooltipOptions Shared="true" />
-                <RadzenChartRangeNavigator Height="80" ShowHandleLabels="true" HandleLabelFormatString="{0:dd.MM HH:mm}">
-                    <RadzenRangeNavigatorLineSeries Data="@_points" CategoryProperty="Time" ValueProperty="Value" Stroke="var(--rz-primary)" />
-                </RadzenChartRangeNavigator>
+                <RadzenChartTooltipOptions Shared="false" />
             </RadzenChart>
+
+            @if (_points.Count > 1)
+            {
+                <div class="formula-trend-navigator" @onpointerdown="PauseLive">
+                    <RadzenRangeNavigator @key="_points" Start="@_viewStart" End="@_viewEnd" StartChanged="@OnNavigatorStartChanged" EndChanged="@OnNavigatorEndChanged" ShowHandleLabels="true" HandleLabelFormatString="{0:dd.MM HH:mm}" Style="height:80px; width:100%;">
+                        <RadzenRangeNavigatorLineSeries Data="@_points" CategoryProperty="Time" ValueProperty="Value" Stroke="var(--rz-primary)" />
+                    </RadzenRangeNavigator>
+                </div>
+            }
         }
 
         @if (_message.Length > 0)
@@ -45,6 +63,9 @@
     [Parameter] public double? Maximum { get; set; }
 
     private readonly CancellationTokenSource _cts = new();
+    private RadzenChart? _chart;
+    private bool _reloadChart;
+    private double? _navigatorStart;
     private PeriodicTimer? _timer;
     private Task? _pollTask;
     private List<TrendPoint> _points = [];
@@ -56,6 +77,34 @@
     private double _viewStart, _viewEnd = 1;
 
     private bool HasScale => Minimum.HasValue && Maximum.HasValue && double.IsFinite(Minimum.Value) && double.IsFinite(Maximum.Value) && Minimum.Value < Maximum.Value;
+
+    // Chart и Navigator используют одну шкалу: фактические границы одного набора точек.
+    private DateTime AxisFrom => _points.Count > 1 ? _points[0].Time : _fromUtc.ToLocalTime();
+    private DateTime AxisTo => _points.Count > 1 ? _points[^1].Time : _toUtc.ToLocalTime();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_reloadChart && _chart is not null && !_disposed)
+        {
+            _reloadChart = false;
+            await _chart.Reload();
+        }
+    }
+
+    private void PauseLive() => _live = false;
+
+    private void OnNavigatorStartChanged(double value)
+    {
+        // Radzen передаёт Start и End двумя callback: применяем их вместе во втором.
+        _navigatorStart = value;
+        _live = false;
+    }
+
+    private void OnNavigatorEndChanged(double value)
+    {
+        OnViewChanged(new ChartViewChangeEventArgs { ViewStart = _navigatorStart ?? _viewStart, ViewEnd = value });
+        _navigatorStart = null;
+    }
 
     protected override void OnInitialized()
     {
@@ -182,8 +231,8 @@
                 return;
             }
 
-            var visibleFrom = previousFrom.AddTicks((long)((previousTo - previousFrom).Ticks * _viewStart));
-            var visibleTo = previousFrom.AddTicks((long)((previousTo - previousFrom).Ticks * _viewEnd));
+            var visibleFrom = AxisFrom.AddTicks((long)((AxisTo - AxisFrom).Ticks * _viewStart));
+            var visibleTo = AxisFrom.AddTicks((long)((AxisTo - AxisFrom).Ticks * _viewEnd));
 
             _fromUtc = older ? from : now.AddMinutes(-_historyMinutes);
             _toUtc = older ? previousTo : to;
@@ -200,7 +249,10 @@
             if (older)
                 SetVisibleRange(visibleFrom, visibleTo);
             else
-                SetVisibleRange(_toUtc.AddMinutes(-_windowMinutes), _toUtc);
+                SetVisibleRange(AxisTo.AddMinutes(-_windowMinutes), AxisTo);
+
+            // Пересчёт Chart выполняется после передачи новых Data и границ оси.
+            _reloadChart = true;
 
             _message = _points.Count == 0 ? response.Message ?? "No trend data in this range." : "";
         }
@@ -218,12 +270,12 @@
 
     private void SetVisibleRange(DateTime from, DateTime to)
     {
-        var ticks = (_toUtc - _fromUtc).Ticks;
+        var ticks = (AxisTo - AxisFrom).Ticks;
 
         if (ticks <= 0) return;
 
-        _viewStart = Math.Clamp((double)(from - _fromUtc).Ticks / ticks, 0, 1);
-        _viewEnd = Math.Clamp((double)(to - _fromUtc).Ticks / ticks, _viewStart, 1);
+        _viewStart = Math.Clamp((double)(from - AxisFrom).Ticks / ticks, 0, 1);
+        _viewEnd = Math.Clamp((double)(to - AxisFrom).Ticks / ticks, _viewStart, 1);
     }
 
     public async ValueTask DisposeAsync()
