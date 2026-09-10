@@ -9,7 +9,7 @@
 {
     <div class="formula-output-trend">
         <div class="formula-output-trend-toolbar">
-            <RadzenButton Text="Load older" Icon="history" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Disabled="@(_loading || _fromUtc <= _toUtc.AddDays(-1))" Click="@LoadOlderAsync" />
+            <RadzenButton Text="Load older" Icon="history" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" IsBusy="@(_loading && !_live)" BusyText="Loading..." Disabled="@(_loading || HistoryLimitReached)" Click="@LoadOlderAsync" />
             <RadzenButton Text="Live" Icon="update" ButtonStyle="@(_live ? ButtonStyle.Success : ButtonStyle.Light)" Size="ButtonSize.Small" Disabled="@_loading" Click="@GoLiveAsync" />
         </div>
 
@@ -39,14 +39,19 @@
                 <RadzenChartTooltipOptions Shared="false" />
             </RadzenChart>
 
-            @if (_points.Count > 1)
+            @if (_navigatorPoints.Count > 1)
             {
                 <div class="formula-trend-navigator" @onpointerdown="PauseLive">
-                    <RadzenRangeNavigator @key="_points" Start="@_viewStart" End="@_viewEnd" StartChanged="@OnNavigatorStartChanged" EndChanged="@OnNavigatorEndChanged" ShowHandleLabels="true" HandleLabelFormatString="{0:dd.MM HH:mm}" Style="height:80px; width:100%;">
-                        <RadzenRangeNavigatorLineSeries Data="@_points" CategoryProperty="Time" ValueProperty="Value" Stroke="var(--rz-primary)" />
+                    <RadzenRangeNavigator @key="_navigatorPoints" Start="@_viewStart" End="@_viewEnd" StartChanged="@OnNavigatorStartChanged" EndChanged="@OnNavigatorEndChanged" ShowHandleLabels="true" HandleLabelFormatString="{0:dd.MM HH:mm}" Style="height:80px; width:100%;">
+                        <RadzenRangeNavigatorLineSeries Data="@_navigatorPoints" CategoryProperty="Time" ValueProperty="Value" Stroke="var(--rz-primary)" />
                     </RadzenRangeNavigator>
                 </div>
             }
+        }
+
+        @if (HistoryLimitReached)
+        {
+            <div class="formula-output-trend-message">History limit reached. Select Live to return to recent data.</div>
         }
 
         @if (_message.Length > 0)
@@ -57,6 +62,13 @@
 }
 
 @code {
+    // Ограничения только графика Formula. Общие настройки live-окна остаются в ParamUiOptions.
+    private const int MaxHistoryMinutes = 360;
+    private const int MaxStoredPoints = 21_601;
+    private const int MaxChartPoints = 1_200;
+    private const int MaxNavigatorPoints = 600;
+    private const int RequestTimeoutSeconds = 30;
+
     [Parameter] public string TagName { get; set; } = "";
     [Parameter] public bool? TrendAvailable { get; set; }
     [Parameter] public double? Minimum { get; set; }
@@ -68,7 +80,12 @@
     private double? _navigatorStart;
     private PeriodicTimer? _timer;
     private Task? _pollTask;
+
+    private List<TrendPoint> _history = [];
     private List<TrendPoint> _points = [];
+    private List<TrendPoint> _navigatorPoints = [];
+
+    private bool _pointLimitReached;
     private string _tag = "", _message = "";
     private bool _started, _supported, _loading, _disposed, _live = true;
     private bool? _lastAvailability;
@@ -78,9 +95,10 @@
 
     private bool HasScale => Minimum.HasValue && Maximum.HasValue && double.IsFinite(Minimum.Value) && double.IsFinite(Maximum.Value) && Minimum.Value < Maximum.Value;
 
-    // Chart и Navigator используют одну шкалу: фактические границы одного набора точек.
-    private DateTime AxisFrom => _points.Count > 1 ? _points[0].Time : _fromUtc.ToLocalTime();
-    private DateTime AxisTo => _points.Count > 1 ? _points[^1].Time : _toUtc.ToLocalTime();
+    // Границы определяются полной историей, а не прореженным видимым участком.
+    private DateTime AxisFrom => _history.Count > 1 ? _history[0].Time : _fromUtc.ToLocalTime();
+    private DateTime AxisTo => _history.Count > 1 ? _history[^1].Time : _toUtc.ToLocalTime();
+    private bool HistoryLimitReached => _pointLimitReached || (_toUtc != default && _fromUtc <= _toUtc.AddMinutes(-MaxHistoryMinutes));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -108,10 +126,10 @@
 
     protected override void OnInitialized()
     {
-        // Те же настройки и ограничения, что у EquipmentParamPanel.
+        // Общие настройки Param с верхним пределом истории для графика Formula.
         var options = ParamOptions.Value;
         _windowMinutes = Math.Clamp(options.TrendWindowMinutes, 1, 240);
-        _historyMinutes = Math.Clamp(Math.Max(options.TrendHistoryMinutes, _windowMinutes), _windowMinutes, 24 * 60);
+        _historyMinutes = Math.Clamp(Math.Max(options.TrendHistoryMinutes, _windowMinutes), _windowMinutes, MaxHistoryMinutes);
     }
 
     protected override async Task OnParametersSetAsync()
@@ -125,7 +143,10 @@
         {
             _tag = tag;
             _started = true;
+            _history = [];
             _points = [];
+            _navigatorPoints = [];
+            _pointLimitReached = false;
             _supported = false;
             _message = "";
             _live = true;
@@ -136,7 +157,9 @@
         {
             _live = true;
             _supported = false;
+            _history = [];
             _points = [];
+            _navigatorPoints = [];
             return;
         }
 
@@ -173,12 +196,16 @@
 
     private async Task GoLiveAsync()
     {
+        if (_loading || _disposed) return;
+
         _live = true;
         await LoadAsync(reset: true);
     }
 
     private async Task LoadOlderAsync()
     {
+        if (_loading || _disposed || HistoryLimitReached || _fromUtc == default) return;
+
         _live = false;
         await LoadAsync(older: true);
     }
@@ -190,11 +217,14 @@
         _viewStart = Math.Clamp(args.ViewStart, 0, 1);
         _viewEnd = Math.Clamp(args.ViewEnd, _viewStart, 1);
         _live = false;
+
+        RefreshChartPoints();
     }
 
     private async Task LoadAsync(bool reset = false, bool older = false)
     {
         if (_loading || _disposed || TrendAvailable == false || _tag.Length == 0) return;
+        if (older && (HistoryLimitReached || _fromUtc == default)) return;
 
         _loading = true;
 
@@ -206,8 +236,8 @@
         var to = older ? previousFrom : now;
         var from = older ? previousFrom.AddMinutes(-chunkMinutes) : reset ? now.AddMinutes(-_historyMinutes) : previousTo.AddSeconds(-5);
 
-        if (older && from < previousTo.AddDays(-1))
-            from = previousTo.AddDays(-1);
+        if (older && from < previousTo.AddMinutes(-MaxHistoryMinutes))
+            from = previousTo.AddMinutes(-MaxHistoryMinutes);
 
         if (!older && from < now.AddMinutes(-_historyMinutes))
             from = now.AddMinutes(-_historyMinutes);
@@ -216,56 +246,158 @@
         {
             if (from >= to) return;
 
-            var response = await ParamApi.GetTagTrendAsync(tag, from, to, _cts.Token);
+            using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+            requestCts.CancelAfter(TimeSpan.FromSeconds(RequestTimeoutSeconds));
+
+            var response = await ParamApi.GetTagTrendAsync(tag, from, to, requestCts.Token);
 
             if (_disposed || tag != _tag || TrendAvailable == false) return;
-
-            // Ответ начатого live-запроса не должен сбрасывать выбранный пользователем участок.
             if (!older && !_live) return;
 
             _supported = response.Supported;
 
             if (!_supported)
             {
+                _history = [];
                 _points = [];
+                _navigatorPoints = [];
+                return;
+            }
+
+            var incoming = response.Points.Where(point => double.IsFinite(point.Value) && point.Time.ToUniversalTime() >= from && point.Time.ToUniversalTime() <= to)
+                .Select(point => new TrendPoint { Time = point.Time.ToLocalTime(), Value = point.Value })
+                .ToList();
+
+            // Пустой участок не означает, что более ранней истории нет.
+            // Продвигаем границу следующего запроса, но не пересоздаём график и Navigator.
+            if (older && incoming.Count == 0)
+            {
+                _fromUtc = from;
+                _message = $"No data in {from.ToLocalTime():dd.MM HH:mm} – {to.ToLocalTime():dd.MM HH:mm}. Earlier intervals may still contain data.";
                 return;
             }
 
             var visibleFrom = AxisFrom.AddTicks((long)((AxisTo - AxisFrom).Ticks * _viewStart));
             var visibleTo = AxisFrom.AddTicks((long)((AxisTo - AxisFrom).Ticks * _viewEnd));
+            var nextFrom = older ? from : now.AddMinutes(-_historyMinutes);
+            var nextTo = older ? previousTo : to;
+            var existing = reset ? Enumerable.Empty<TrendPoint>() : _history;
 
-            _fromUtc = older ? from : now.AddMinutes(-_historyMinutes);
-            _toUtc = older ? previousTo : to;
-
-            var existing = reset ? Enumerable.Empty<TrendPoint>() : _points;
-            var incoming = response.Points.Select(point => new TrendPoint { Time = point.Time.ToLocalTime(), Value = point.Value });
-
-            _points = existing.Concat(incoming).Where(point => double.IsFinite(point.Value) && point.Time.ToUniversalTime() >= _fromUtc && point.Time.ToUniversalTime() <= _toUtc)
+            var history = existing.Concat(incoming).Where(point => point.Time.ToUniversalTime() >= nextFrom && point.Time.ToUniversalTime() <= nextTo)
                 .GroupBy(point => point.Time)
                 .Select(group => group.Last())
                 .OrderBy(point => point.Time)
+                .Take(MaxStoredPoints + 1)
                 .ToList();
+
+            // Не обрезаем историю молча: сохраняем предыдущий рабочий набор.
+            if (history.Count > MaxStoredPoints)
+            {
+                _pointLimitReached = true;
+                _live = false;
+                _message = "Too many trend samples. Previously loaded data is retained.";
+                return;
+            }
+
+            _fromUtc = nextFrom;
+            _toUtc = nextTo;
+            _pointLimitReached = false;
+            _history = history;
+            _navigatorPoints = ReducePoints(_history, MaxNavigatorPoints);
 
             if (older)
                 SetVisibleRange(visibleFrom, visibleTo);
             else
                 SetVisibleRange(AxisTo.AddMinutes(-_windowMinutes), AxisTo);
 
-            // Пересчёт Chart выполняется после передачи новых Data и границ оси.
-            _reloadChart = true;
-
-            _message = _points.Count == 0 ? response.Message ?? "No trend data in this range." : "";
+            RefreshChartPoints();
+            _message = incoming.Count == 0 ? "No trend data was returned for the requested interval." : "";
         }
         catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+        catch (OperationCanceledException)
+        {
+            _live = false;
+            _message = "Trend request timed out. Previously loaded data is retained. Select Live or retry Load older.";
+        }
         catch (Exception)
         {
-            if (!_disposed && tag == _tag)
-                _message = "Trend data could not be loaded. Previously loaded data is retained.";
+            // При ошибке прекращаем автоматические повторы, чтобы не создавать очередь запросов.
+            _live = false;
+            _message = "Trend data could not be loaded. Previously loaded data is retained. Select Live or retry Load older.";
         }
         finally
         {
             _loading = false;
         }
+    }
+
+    private void RefreshChartPoints()
+    {
+        if (_history.Count == 0)
+        {
+            _points = [];
+            return;
+        }
+
+        var from = AxisFrom.AddTicks((long)((AxisTo - AxisFrom).Ticks * _viewStart));
+        var to = AxisFrom.AddTicks((long)((AxisTo - AxisFrom).Ticks * _viewEnd));
+        var first = _history.FindIndex(point => point.Time >= from);
+
+        if (first < 0)
+            first = _history.Count;
+
+        var end = first;
+
+        while (end < _history.Count && _history[end].Time <= to)
+            end++;
+
+        // Сохраняем первую/последнюю видимую точку и по одной соседней для непрерывной линии.
+        _points = ReducePoints(_history.GetRange(first, end - first), MaxChartPoints - 2);
+
+        if (first > 0)
+            _points.Insert(0, _history[first - 1]);
+
+        if (end < _history.Count)
+            _points.Add(_history[end]);
+
+        _reloadChart = true;
+    }
+
+    private static List<TrendPoint> ReducePoints(List<TrendPoint> source, int limit)
+    {
+        if (source.Count <= limit)
+            return source.ToList();
+
+        // Для каждого участка оставляем минимум и максимум в исходном временном порядке.
+        // Это сохраняет экстремумы лучше, чем выбор каждой N-й точки.
+        var result = new List<TrendPoint>(limit) { source[0] };
+        var buckets = (limit - 2) / 2;
+        var innerCount = source.Count - 2;
+
+        for (var bucket = 0; bucket < buckets; bucket++)
+        {
+            var start = 1 + (int)((long)bucket * innerCount / buckets);
+            var end = 1 + (int)((long)(bucket + 1) * innerCount / buckets);
+            var min = start;
+            var max = start;
+
+            for (var index = start + 1; index < end; index++)
+            {
+                if (source[index].Value < source[min].Value)
+                    min = index;
+
+                if (source[index].Value > source[max].Value)
+                    max = index;
+            }
+
+            result.Add(source[Math.Min(min, max)]);
+
+            if (min != max)
+                result.Add(source[Math.Max(min, max)]);
+        }
+
+        result.Add(source[^1]);
+        return result;
     }
 
     private void SetVisibleRange(DateTime from, DateTime to)
