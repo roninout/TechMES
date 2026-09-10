@@ -10,18 +10,17 @@
     <div class="formula-output-trend">
         <div class="formula-output-trend-toolbar">
             <div class="formula-trend-date-controls">
-                <RadzenButton Text="Load older" Icon="history" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" IsBusy="@(_loading && !_live)" BusyText="Loading..." Disabled="@(_loading || HistoryLimitReached || _fromUtc == default)" Click="@LoadOlderAsync" />
                 <RadzenDatePicker TValue="DateTime" Value="@_selectedDate" Change="@OnDateChangedAsync" ShowInput="false" ShowTime="false" AllowClear="false" DateFormat="dd.MM.yyyy" Max="@DateTime.Today" Disabled="@_loading" />
                 <span class="formula-trend-date">@_selectedDate.ToString("dd.MM.yyyy")</span>
             </div>
 
-            <RadzenButton Text="Live" Icon="update" ButtonStyle="@(_live ? ButtonStyle.Success : ButtonStyle.Light)" Size="ButtonSize.Small" Disabled="@_loading" Click="@GoLiveAsync" />
+            <RadzenButton Text="Live" Icon="update" ButtonStyle="@(_live ? ButtonStyle.Success : ButtonStyle.Light)" Size="ButtonSize.Small" IsBusy="@_loading" BusyText="Loading..." Disabled="@_loading" Click="@GoLiveAsync" />
         </div>
 
         @if (_points.Count > 0)
         {
             <RadzenChart @ref="_chart" AllowZoom="true" AllowPan="true" ViewStart="@_viewStart" ViewEnd="@_viewEnd" ViewChange="@OnViewChanged" Style="height:360px; width:100%;">
-                <RadzenLineSeries Data="@_points" CategoryProperty="Time" ValueProperty="Value" Title="Output" Stroke="var(--rz-primary)" StrokeWidth="2">
+                <RadzenLineSeries Data="@_points" CategoryProperty="Time" ValueProperty="Value" Title="@TagName" Stroke="var(--rz-primary)" StrokeWidth="2">
                     <TooltipTemplate Context="point">
                         <div class="formula-trend-tooltip">
                             <strong>@TagName</strong>
@@ -35,13 +34,17 @@
                     </ChildContent>
                 </RadzenLineSeries>
 
-                <RadzenCategoryAxis Min="@AxisFrom" Max="@AxisTo" Formatter="@FormatAxisTime" Padding="0" />
+                <RadzenCategoryAxis Min="@AxisFrom" Max="@AxisTo" Formatter="@FormatAxisTime" Padding="0">
+                    <RadzenGridLines Visible="true" />
+                </RadzenCategoryAxis>
 
-                <RadzenValueAxis Min="@(HasScale ? Minimum : null)" Max="@(HasScale ? Maximum : null)" FormatString="{0:0.###}">
+                @*<RadzenValueAxis Min="@(HasScale ? Minimum : null)" Max="@(HasScale ? Maximum : null)" FormatString="{0:0.###}">*@
+
+                <RadzenValueAxis FormatString="{0:0.###}">
                     <RadzenGridLines Visible="true" />
                 </RadzenValueAxis>
 
-                <RadzenLegend Visible="false" />
+                <RadzenLegend Visible="true" Position="LegendPosition.Bottom" />
                 <RadzenChartTooltipOptions Shared="false" />
             </RadzenChart>
 
@@ -55,11 +58,6 @@
             }
         }
 
-        @if (HistoryLimitReached && !_pointLimitReached)
-        {
-            <div class="formula-output-trend-message">Start of selected day reached. Select another date or Live.</div>
-        }
-
         @if (_message.Length > 0)
         {
             <div class="formula-output-trend-message">@_message</div>
@@ -68,8 +66,7 @@
 }
 
 @code {
-    // Ограничения только графика Formula. Общие настройки live-окна остаются в ParamUiOptions.
-    private const int MaxHistoryMinutes = 24 * 60;
+    // История ограничена выбранными календарными сутками.
     private const int RequestChunkMinutes = 60;
 
     // Запас на сутки с переводом часов назад: 25 часов по одной точке в секунду.
@@ -94,11 +91,10 @@
     private List<TrendPoint> _points = [];
     private List<TrendPoint> _navigatorPoints = [];
 
-    private bool _pointLimitReached;
     private string _tag = "", _message = "";
     private bool _started, _supported, _loading, _disposed, _live = true;
     private bool? _lastAvailability;
-    private int _windowMinutes, _historyMinutes;
+    private int _windowMinutes;
     private DateTime _fromUtc, _toUtc, _selectedDate, _dayFromUtc, _dayToUtc;
     private int _selectionVersion;
     private double _viewStart, _viewEnd = 1;
@@ -108,7 +104,6 @@
     // Границы определяются полной историей, а не прореженным видимым участком.
     private DateTime AxisFrom => _history.Count > 1 ? _history[0].Time : _fromUtc;
     private DateTime AxisTo => _history.Count > 1 ? _history[^1].Time : _toUtc;
-    private bool HistoryLimitReached => _pointLimitReached || (_toUtc != default && _fromUtc <= _dayFromUtc);
 
     // Данные и шкалы храним в UTC, местное время используем только для подписей.
     private static DateTime AsUtc(DateTime value) => value.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(value, DateTimeKind.Utc) : value.ToUniversalTime();
@@ -130,7 +125,6 @@
         _points = [];
         _navigatorPoints = [];
         _navigatorStart = null;
-        _pointLimitReached = false;
         _message = "";
         _fromUtc = _toUtc = default;
         _viewStart = 0;
@@ -142,8 +136,8 @@
         if (_loading || _disposed || !value.HasValue || value.Value.Date > DateTime.Today) return;
 
         BeginDay(value.Value);
-        _live = false;
-        await LoadAsync(reset: true, wholeDay: true);
+        _live = _selectedDate == DateTime.Today;
+        await LoadAsync(reset: true);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -172,10 +166,8 @@
 
     protected override void OnInitialized()
     {
-        // Общие настройки Param с верхним пределом истории для графика Formula.
-        var options = ParamOptions.Value;
-        _windowMinutes = Math.Clamp(options.TrendWindowMinutes, 1, 240);
-        _historyMinutes = Math.Clamp(Math.Max(options.TrendHistoryMinutes, _windowMinutes), _windowMinutes, MaxHistoryMinutes);
+        // Используем общее live-окно: в текущих настройках проекта это 30 минут.
+        _windowMinutes = Math.Clamp(ParamOptions.Value.TrendWindowMinutes, 1, 240);
         BeginDay(DateTime.Today);
     }
 
@@ -191,7 +183,7 @@
             _tag = tag;
             _started = true;
             BeginDay(DateTime.Today);
-            _supported = false;
+            _supported = TrendAvailable == true;
             _live = true;
         }
 
@@ -247,15 +239,7 @@
             BeginDay(DateTime.Today);
 
         _live = true;
-        await LoadAsync(reset: true);
-    }
-
-    private async Task LoadOlderAsync()
-    {
-        if (_loading || _disposed || HistoryLimitReached || _fromUtc == default) return;
-
-        _live = false;
-        await LoadAsync(older: true);
+        await LoadAsync(reset: _toUtc == default || !_supported);
     }
 
     private void OnViewChanged(ChartViewChangeEventArgs args)
@@ -269,28 +253,23 @@
         RefreshChartPoints();
     }
 
-    private async Task LoadAsync(bool reset = false, bool older = false, bool wholeDay = false)
+    private async Task LoadAsync(bool reset = false)
     {
         if (_loading || _disposed || TrendAvailable == false || _tag.Length == 0) return;
-        if (older && (HistoryLimitReached || _fromUtc == default)) return;
 
         _loading = true;
 
         var tag = _tag;
         var version = _selectionVersion;
+        var followLive = _live;
         var now = DateTime.UtcNow;
-        var previousFrom = _fromUtc;
-        var previousTo = _toUtc;
-        var chunkMinutes = Math.Min(RequestChunkMinutes, Math.Max(_windowMinutes, _historyMinutes / 2));
         var dayEnd = _dayToUtc;
-        var to = older ? previousFrom : now < dayEnd ? now : dayEnd;
-        var from = wholeDay ? _dayFromUtc : older ? previousFrom.AddMinutes(-chunkMinutes) : reset ? to.AddMinutes(-_historyMinutes) : previousTo.AddSeconds(-5);
+        var to = now < dayEnd ? now : dayEnd;
 
-        if (!older && !wholeDay && from < to.AddMinutes(-_historyMinutes))
-            from = to.AddMinutes(-_historyMinutes);
-
-        if (from < _dayFromUtc)
-            from = _dayFromUtc;
+        // Полный день читаем при выборе даты/первом открытии.
+        // При обновлении Live читаем только новые данные с перекрытием 5 секунд.
+        var from = reset || _toUtc == default ? _dayFromUtc : _toUtc.AddSeconds(-5);
+        if (from < _dayFromUtc) from = _dayFromUtc;
 
         try
         {
@@ -302,7 +281,7 @@
             var response = await ReadRangeAsync(tag, from, to, dayEnd, version, requestCts.Token);
 
             if (_disposed || tag != _tag || version != _selectionVersion || TrendAvailable == false) return;
-            if (!older && !wholeDay && !_live) return;
+            if (followLive && !_live) return;
 
             _supported = response.Supported;
 
@@ -314,27 +293,11 @@
                 return;
             }
 
-            var incoming = response.Points.Select(point => new TrendPoint { Time = AsUtc(point.Time), Value = point.Value }).ToList();
-
-            // Пустой участок не означает, что более ранней истории нет.
-            // Продвигаем границу запроса без пересоздания графика и Navigator.
-            if (older && incoming.Count == 0)
-            {
-                _fromUtc = from;
-                _message = $"No data in {from.ToLocalTime():dd.MM HH:mm} – {to.ToLocalTime():dd.MM HH:mm}.";
-                return;
-            }
-
-            var visibleFrom = AxisFrom.AddTicks((long)((AxisTo - AxisFrom).Ticks * _viewStart));
-            var visibleTo = AxisFrom.AddTicks((long)((AxisTo - AxisFrom).Ticks * _viewEnd));
-            var nextFrom = wholeDay ? _dayFromUtc : older ? from : to.AddMinutes(-_historyMinutes);
-            var nextTo = older ? previousTo : to;
+            var incoming = response.Points.Select(point => new TrendPoint { Time = AsUtc(point.Time), Value = point.Value });
             var existing = reset ? Enumerable.Empty<TrendPoint>() : _history;
 
-            if (nextFrom < _dayFromUtc)
-                nextFrom = _dayFromUtc;
-
-            var history = existing.Concat(incoming).Where(point => point.Time >= nextFrom && point.Time <= nextTo && point.Time < dayEnd)
+            // Сохраняем всю историю выбранных суток, включая ранее загруженные точки.
+            var history = existing.Concat(incoming).Where(point => point.Time >= _dayFromUtc && point.Time <= to && point.Time < dayEnd)
                 .GroupBy(point => point.Time)
                 .Select(group => group.Last())
                 .OrderBy(point => point.Time)
@@ -344,39 +307,35 @@
             if (history.Count > MaxStoredPoints)
                 throw new InvalidDataException();
 
-            _fromUtc = nextFrom;
-            _toUtc = nextTo;
-            _pointLimitReached = false;
+            _fromUtc = _dayFromUtc;
+            _toUtc = to;
             _history = history;
             _navigatorPoints = ReducePoints(_history, MaxNavigatorPoints);
 
-            if (wholeDay)
-                SetVisibleRange(AxisFrom, AxisTo);
-            else if (older)
-                SetVisibleRange(visibleFrom, visibleTo);
-            else
+            if (_selectedDate == DateTime.Today)
                 SetVisibleRange(AxisTo.AddMinutes(-_windowMinutes), AxisTo);
+            else
+                SetVisibleRange(AxisFrom, AxisTo);
 
             RefreshChartPoints();
-            _message = incoming.Count == 0 ? "No trend data was returned for the requested interval." : "";
+            _message = _history.Count == 0 ? "No trend data was returned for the selected day." : "";
         }
-        catch (OperationCanceledException) when (_cts.IsCancellationRequested || version != _selectionVersion) { }
+        catch (Exception) when (_disposed || version != _selectionVersion) { }
         catch (InvalidDataException)
         {
-            _pointLimitReached = true;
             _live = false;
-            _message = wholeDay ? "Too many trend samples for this day. Select another date or Live." : "Too many trend samples. Previously loaded data is retained.";
+            _message = "Too many trend samples. Previously loaded data is retained. Select another date or Live.";
         }
         catch (OperationCanceledException)
         {
             _live = false;
-            _message = wholeDay ? "Trend request timed out. Select a date again or Live." : "Trend request timed out. Previously loaded data is retained. Select Live or retry Load older.";
+            _message = "Trend request timed out. Previously loaded data is retained. Select a date again or Live.";
         }
         catch (Exception)
         {
             // При ошибке прекращаем автоматические повторы, чтобы не создавать очередь запросов.
             _live = false;
-            _message = wholeDay ? "Trend data could not be loaded. Select a date again or Live." : "Trend data could not be loaded. Previously loaded data is retained. Select Live or retry Load older.";
+            _message = "Trend data could not be loaded. Previously loaded data is retained. Select a date again or Live.";
         }
         finally
         {
