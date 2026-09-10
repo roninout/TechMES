@@ -1,0 +1,151 @@
+﻿@if (_configurationError.Length > 0)
+{
+    <div class="trend-message">@_configurationError</div>
+}
+else if (_series.Any(series => series.Supported != false))
+{
+    <div class="scada-trend">
+        <div class="trend-toolbar">
+            <div class="trend-date-controls">
+                <RadzenDatePicker TValue="DateTime" Value="@_selectedDate" Change="@OnDateChangedAsync" ShowInput="false" ShowTime="false" AllowClear="false" DateFormat="dd.MM.yyyy" Max="@DateTime.Today" Disabled="@_loading" />
+                <span class="trend-date">@_selectedDate.ToString("dd.MM.yyyy")</span>
+                <RadzenButton Icon="query_stats" Variant="Variant.Text" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Click="@ToggleAnalysis" title="Trendlines and statistics" aria-label="Trendlines and statistics" aria-expanded="@(_showAnalysis ? "true" : "false")" />
+            </div>
+
+            @if (_showAnalysis)
+            {
+                <div class="trend-analysis">
+                    @if (_series.Count > 1)
+                    {
+                        <div class="trend-analysis-group">
+                            <span class="trend-group-title">Series</span>
+                            <RadzenDropDown TValue="string" Data="@_series" TextProperty="Name" ValueProperty="Tag" @bind-Value="_analysisTag" Style="width:180px;" />
+                        </div>
+                    }
+
+                    <div class="trend-analysis-group">
+                        <span class="trend-group-title">Regression overlays</span>
+                        <div class="trend-options">
+                            <label><RadzenCheckBox TValue="bool" @bind-Value="_linear" /> Linear trend</label>
+                            <label><RadzenCheckBox TValue="bool" @bind-Value="_polynomial" /> Polynomial</label>
+                            <RadzenNumeric TValue="int" @bind-Value="_order" Min="1" Max="6" Style="width:65px;" aria-label="Polynomial order" />
+                            <label><RadzenCheckBox TValue="bool" @bind-Value="_movingAverage" /> Moving average</label>
+                            <RadzenNumeric TValue="int" @bind-Value="_period" Min="2" Max="200" Style="width:65px;" aria-label="Moving average period in displayed samples" />
+                        </div>
+                    </div>
+
+                    <div class="trend-analysis-group">
+                        <span class="trend-group-title">Statistical overlays</span>
+                        <div class="trend-options">
+                            <label><RadzenCheckBox TValue="bool" @bind-Value="_mean" /> Mean</label>
+                            <label><RadzenCheckBox TValue="bool" @bind-Value="_median" /> Median</label>
+                            <label><RadzenCheckBox TValue="bool" @bind-Value="_mode" /> Mode</label>
+                        </div>
+                    </div>
+
+                    <span class="trend-analysis-note">Overlays use displayed samples. Moving average period is a sample count.</span>
+                </div>
+            }
+
+            <RadzenButton class="trend-live" Text="Live" Icon="update" ButtonStyle="@(_live ? ButtonStyle.Success : ButtonStyle.Light)" Size="ButtonSize.Small" IsBusy="@_loading" BusyText="Loading..." Disabled="@_loading" Click="@GoLiveAsync" />
+        </div>
+
+        @if (_series.Any(series => series.Points.Count > 0))
+        {
+            <RadzenChart @ref="_chart" AllowZoom="true" AllowPan="true" ViewStart="@_viewStart" ViewEnd="@_viewEnd" ViewChange="@OnViewChanged" Style="@($"height:{Math.Clamp(Height, 160, 1200)}px; width:100%;")">
+                @foreach (var series in _series.Where(series => series.Points.Count > 0))
+                {
+                    @if (series.Options.Style == ScadaTrendStyle.Area)
+                    {
+                        <RadzenAreaSeries @key="series.Tag" TItem="TrendPoint" Data="@series.Points" CategoryProperty="Time" ValueProperty="Value" Title="@series.Name" Stroke="@series.Color" StrokeWidth="@series.Options.StrokeWidth" Fill="@series.Color" FillMode="FillMode.Gradient" GradientStartOpacity="0.35" GradientEndOpacity="0.03" TooltipTemplate="@PointTooltip(series)" ChildContent="@Decorations(series)" />
+                    }
+                    else
+                    {
+                        <RadzenLineSeries @key="series.Tag" TItem="TrendPoint" Data="@series.Points" CategoryProperty="Time" ValueProperty="Value" Title="@series.Name" Stroke="@series.Color" StrokeWidth="@series.Options.StrokeWidth" TooltipTemplate="@PointTooltip(series)" ChildContent="@Decorations(series)" />
+                    }
+                }
+
+                <RadzenCategoryAxis Min="@AxisFrom" Max="@AxisTo" Formatter="@FormatAxisTime" Padding="0">
+                    <RadzenGridLines Visible="true" />
+                </RadzenCategoryAxis>
+
+                <RadzenValueAxis Min="@(HasFixedScale ? Minimum : null)" Max="@(HasFixedScale ? Maximum : null)" FormatString="{0:0.###}">
+                    <RadzenGridLines Visible="true" />
+                </RadzenValueAxis>
+
+                <RadzenLegend Visible="true" Position="LegendPosition.Bottom" />
+                <RadzenChartTooltipOptions Shared="false" />
+            </RadzenChart>
+
+            @if (CanNavigate)
+            {
+                <div class="trend-navigator" @onpointerdown="PauseLive">
+                    <RadzenRangeNavigator @key="_navigatorVersion" Start="@_viewStart" End="@_viewEnd" StartChanged="@OnNavigatorStartChanged" EndChanged="@OnNavigatorEndChanged" ShowHandleLabels="true" HandleLabelFormatter="@FormatNavigatorTime" Style="height:80px; width:100%;">
+                        @foreach (var series in _series.Where(series => series.Navigator.Count > 0))
+                        {
+                            <RadzenRangeNavigatorLineSeries @key="series.Tag" TItem="TrendPoint" Data="@series.Navigator" CategoryProperty="Time" ValueProperty="Value" Stroke="@series.Color" Fill="@series.Color" FillOpacity="0.12" />
+                        }
+                    </RadzenRangeNavigator>
+                </div>
+            }
+        }
+
+        @foreach (var series in _series.Where(series => series.Message.Length > 0))
+        {
+            <div class="trend-message">@series.Name: @series.Message</div>
+        }
+
+        @if (_message.Length > 0)
+        {
+            <div class="trend-message">@_message</div>
+        }
+    </div>
+}
+
+@code {
+    private RenderFragment<TrendPoint> PointTooltip(SeriesState series) => point => @<div class="trend-tooltip">
+        <strong>@series.Name</strong>
+        <div>@point.Time.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</div>
+        <div>@point.Value.ToString("0.######") @series.Options.Unit</div>
+    </div>;
+
+    private RenderFragment Decorations(SeriesState series) => @<text>
+        @if (ShowDataLabels)
+        {
+            <RadzenSeriesDataLabels Display="DataLabelDisplay.FirstLast" Appearance="DataLabelAppearance.Chip" Position="DataLabelPosition.Auto" FormatString="{0:0.###}" />
+        }
+
+        @if (series.Tag == _analysisTag)
+        {
+            @if (_linear && series.Points.Count >= 2)
+            {
+                <RadzenSeriesTrendLine Stroke="#e91e63" />
+            }
+
+            @if (_polynomial && series.Points.Count > Math.Clamp(_order, 1, 6))
+            {
+                <RadzenSeriesPolynomialTrendLine Order="@Math.Clamp(_order, 1, 6)" Stroke="#00a65a" />
+            }
+
+            @if (_movingAverage && series.Points.Count >= Math.Clamp(_period, 2, 200))
+            {
+                <RadzenSeriesMovingAverageLine Period="@Math.Clamp(_period, 2, 200)" Stroke="#e69500" />
+            }
+
+            @if (_mean)
+            {
+                <RadzenSeriesMeanLine Stroke="#627dff" />
+            }
+
+            @if (_median)
+            {
+                <RadzenSeriesMedianLine Stroke="#9263d9" />
+            }
+
+            @if (_mode)
+            {
+                <RadzenSeriesModeLine Stroke="#00a8b5" />
+            }
+        }
+    </text>;
+}

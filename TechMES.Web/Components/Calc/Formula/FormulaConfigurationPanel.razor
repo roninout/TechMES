@@ -126,7 +126,8 @@
                 <div class="formula-error">@ConfigurationError</div>
             }
 
-            <FormulaOutputTrend @key="@($"{_job?.Id}:{_outputTag.Trim()}")" TagName="@_outputTag" TrendAvailable="@_outputTrendFound" Minimum="@_minimum" Maximum="@_maximum" />
+            @* <FormulaOutputTrend @key="@($"{_job?.Id}:{_outputTag.Trim()}")" TagName="@_outputTag" TrendAvailable="@_outputTrendFound" Minimum="@_minimum" Maximum="@_maximum" /> *@
+            <FormulaOutputTrend @key="@($"{_job?.Id}:{_outputTag.Trim()}")" TagName="@_outputTag" TrendAvailable="@_outputTrendFound" Minimum="@_minimum" Maximum="@_maximum" Style="ScadaTrendStyle.Area" Color="var(--rz-series-1)" />
         </section>
 
         <section class="formula-settings-column">

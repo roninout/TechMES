@@ -1,0 +1,88 @@
+.scada-trend {
+    width: 100%;
+    min-width: 0;
+    padding: 18px;
+    border: 1px solid var(--rz-border-color, #d7dbe0);
+    border-radius: 4px;
+}
+
+.trend-toolbar {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.trend-date-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.trend-date {
+    font-size: 14px;
+    font-weight: 400;
+    white-space: nowrap;
+}
+
+.trend-toolbar ::deep .trend-live {
+    margin-left: auto;
+}
+
+.trend-analysis {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px 20px;
+    min-width: 240px;
+}
+
+.trend-analysis-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.trend-group-title {
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--rz-text-secondary-color);
+}
+
+.trend-options {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+    .trend-options label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+    }
+
+.trend-analysis-note {
+    flex-basis: 100%;
+    color: var(--rz-text-secondary-color);
+    font-size: 11px;
+}
+
+.trend-navigator {
+    margin-top: 12px;
+}
+
+.trend-message {
+    color: var(--rz-text-secondary-color);
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+.trend-tooltip {
+    display: grid;
+    gap: 4px;
+}
