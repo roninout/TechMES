@@ -1,15 +1,18 @@
-﻿@if (_configurationError.Length > 0)
+﻿@inject TooltipService OverlayTooltips
+
+@if (_configurationError.Length > 0)
 {
     <div class="trend-message">@_configurationError</div>
 }
 else if (_series.Any(series => series.Supported != false))
 {
     <div class="scada-trend">
+
         <div class="trend-toolbar">
             <div class="trend-date-controls">
                 <RadzenDatePicker TValue="DateTime" Value="@_selectedDate" Change="@OnDateChangedAsync" ShowInput="false" ShowTime="false" AllowClear="false" DateFormat="dd.MM.yyyy" Max="@DateTime.Today" Disabled="@_loading" />
                 <span class="trend-date">@_selectedDate.ToString("dd.MM.yyyy")</span>
-                <RadzenButton Icon="query_stats" Variant="Variant.Text" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Click="@ToggleAnalysis" title="Trendlines and statistics" aria-label="Trendlines and statistics" aria-expanded="@(_showAnalysis ? "true" : "false")" />
+                <RadzenButton class="trend-analysis-toggle" Icon="tune" Variant="Variant.Text" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Click="@ToggleAnalysis" title="Trendlines and statistics" aria-label="Trendlines and statistics" aria-expanded="@(_showAnalysis ? "true" : "false")" />
             </div>
 
             @if (_showAnalysis)
@@ -19,31 +22,54 @@ else if (_series.Any(series => series.Supported != false))
                     {
                         <div class="trend-analysis-group">
                             <span class="trend-group-title">Series</span>
-                            <RadzenDropDown TValue="string" Data="@_series" TextProperty="Name" ValueProperty="Tag" @bind-Value="_analysisTag" Style="width:180px;" />
+                            <RadzenDropDown TValue="string" Data="@_series" TextProperty="Name" ValueProperty="Tag" @bind-Value="_analysisTag" @bind-Value:after="OnAnalysisChanged" MouseEnter="@(element => ShowOverlayTooltip(element, OverlayHint.Series))" MouseLeave="HideOverlayTooltip" Style="width:180px;" />
                         </div>
                     }
 
                     <div class="trend-analysis-group">
                         <span class="trend-group-title">Regression overlays</span>
                         <div class="trend-options">
-                            <label><RadzenCheckBox TValue="bool" @bind-Value="_linear" /> Linear trend</label>
-                            <label><RadzenCheckBox TValue="bool" @bind-Value="_polynomial" /> Polynomial</label>
-                            <RadzenNumeric TValue="int" @bind-Value="_order" Min="1" Max="6" Style="width:65px;" aria-label="Polynomial order" />
-                            <label><RadzenCheckBox TValue="bool" @bind-Value="_movingAverage" /> Moving average</label>
-                            <RadzenNumeric TValue="int" @bind-Value="_period" Min="2" Max="200" Style="width:65px;" aria-label="Moving average period in displayed samples" />
+                            <label @ref="_linearAnchor" @onmouseenter="@(() => ShowOverlayTooltip(_linearAnchor, OverlayHint.Linear))" @onmouseleave="HideOverlayTooltip" @onfocusin="@(() => ShowOverlayTooltip(_linearAnchor, OverlayHint.Linear))" @onfocusout="HideOverlayTooltip">
+                                <RadzenCheckBox TValue="bool" @bind-Value="_linear" @bind-Value:after="OnAnalysisChanged" />
+                                Linear trend
+                            </label>
+
+                            <label @ref="_polynomialAnchor" @onmouseenter="@(() => ShowOverlayTooltip(_polynomialAnchor, OverlayHint.Polynomial))" @onmouseleave="HideOverlayTooltip" @onfocusin="@(() => ShowOverlayTooltip(_polynomialAnchor, OverlayHint.Polynomial))" @onfocusout="HideOverlayTooltip">
+                                <RadzenCheckBox TValue="bool" @bind-Value="_polynomial" @bind-Value:after="OnAnalysisChanged" />
+                                Polynomial
+                            </label>
+
+                            <RadzenNumeric TValue="int" @bind-Value="_order" @bind-Value:after="OnAnalysisChanged" MouseEnter="@(element => ShowOverlayTooltip(element, OverlayHint.Order))" MouseLeave="HideOverlayTooltip" Min="1" Max="6" Style="width:65px;" aria-label="Polynomial order" />
+
+                            <label @ref="_movingAverageAnchor" @onmouseenter="@(() => ShowOverlayTooltip(_movingAverageAnchor, OverlayHint.MovingAverage))" @onmouseleave="HideOverlayTooltip" @onfocusin="@(() => ShowOverlayTooltip(_movingAverageAnchor, OverlayHint.MovingAverage))" @onfocusout="HideOverlayTooltip">
+                                <RadzenCheckBox TValue="bool" @bind-Value="_movingAverage" @bind-Value:after="OnAnalysisChanged" />
+                                Moving average
+                            </label>
+
+                            <RadzenNumeric TValue="int" @bind-Value="_period" @bind-Value:after="OnAnalysisChanged" MouseEnter="@(element => ShowOverlayTooltip(element, OverlayHint.Period))" MouseLeave="HideOverlayTooltip" Min="2" Max="200" Style="width:65px;" aria-label="Moving average period in displayed samples" />
                         </div>
                     </div>
 
                     <div class="trend-analysis-group">
                         <span class="trend-group-title">Statistical overlays</span>
                         <div class="trend-options">
-                            <label><RadzenCheckBox TValue="bool" @bind-Value="_mean" /> Mean</label>
-                            <label><RadzenCheckBox TValue="bool" @bind-Value="_median" /> Median</label>
-                            <label><RadzenCheckBox TValue="bool" @bind-Value="_mode" /> Mode</label>
+                            <label @ref="_meanAnchor" @onmouseenter="@(() => ShowOverlayTooltip(_meanAnchor, OverlayHint.Mean))" @onmouseleave="HideOverlayTooltip" @onfocusin="@(() => ShowOverlayTooltip(_meanAnchor, OverlayHint.Mean))" @onfocusout="HideOverlayTooltip">
+                                <RadzenCheckBox TValue="bool" @bind-Value="_mean" @bind-Value:after="OnAnalysisChanged" />
+                                Mean
+                            </label>
+
+                            <label @ref="_medianAnchor" @onmouseenter="@(() => ShowOverlayTooltip(_medianAnchor, OverlayHint.Median))" @onmouseleave="HideOverlayTooltip" @onfocusin="@(() => ShowOverlayTooltip(_medianAnchor, OverlayHint.Median))" @onfocusout="HideOverlayTooltip">
+                                <RadzenCheckBox TValue="bool" @bind-Value="_median" @bind-Value:after="OnAnalysisChanged" />
+                                Median
+                            </label>
+
+                            <label @ref="_modeAnchor" @onmouseenter="@(() => ShowOverlayTooltip(_modeAnchor, OverlayHint.Mode))" @onmouseleave="HideOverlayTooltip" @onfocusin="@(() => ShowOverlayTooltip(_modeAnchor, OverlayHint.Mode))" @onfocusout="HideOverlayTooltip">
+                                <RadzenCheckBox TValue="bool" @bind-Value="_mode" @bind-Value:after="OnAnalysisChanged" />
+                                Mode
+                            </label>
                         </div>
                     </div>
 
-                    <span class="trend-analysis-note">Overlays use displayed samples. Moving average period is a sample count.</span>
                 </div>
             }
 

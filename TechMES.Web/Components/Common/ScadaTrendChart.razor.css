@@ -1,4 +1,5 @@
 .scada-trend {
+    container-type: inline-size;
     width: 100%;
     min-width: 0;
     padding: 18px;
@@ -7,9 +8,9 @@
 }
 
 .trend-toolbar {
-    display: flex;
-    align-items: flex-start;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(190px, 1fr) minmax(0, auto) minmax(190px, 1fr);
+    align-items: start;
     gap: 12px;
     margin-bottom: 8px;
 }
@@ -27,19 +28,28 @@
 }
 
 .trend-toolbar ::deep .trend-live {
-    margin-left: auto;
+    grid-column: 3;
+    justify-self: end;
+}
+
+.trend-date-controls ::deep .trend-analysis-toggle {
+    margin-left: 12px;
 }
 
 .trend-analysis {
+    grid-column: 2;
     display: flex;
-    flex: 1;
+    justify-content: center;
     flex-wrap: wrap;
     align-items: flex-start;
     gap: 12px 20px;
-    min-width: 240px;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .trend-analysis-group {
+    min-width: 0;
+    max-width: 100%;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -53,6 +63,7 @@
 }
 
 .trend-options {
+    min-height: 36px;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
@@ -65,12 +76,6 @@
         gap: 6px;
         white-space: nowrap;
     }
-
-.trend-analysis-note {
-    flex-basis: 100%;
-    color: var(--rz-text-secondary-color);
-    font-size: 11px;
-}
 
 .trend-navigator {
     margin-top: 12px;
@@ -85,4 +90,25 @@
 .trend-tooltip {
     display: grid;
     gap: 4px;
+}
+
+@container (max-width: 1150px) {
+    .trend-toolbar {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .trend-date-controls {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .trend-toolbar ::deep .trend-live {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .trend-analysis {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
 }

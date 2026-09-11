@@ -310,7 +310,55 @@ public partial class ScadaTrendChart : IAsyncDisposable
         return new ParamTrendResponse { Supported = true, Points = samples.Values.ToList() };
     }
 
-    private void ToggleAnalysis() => _showAnalysis = !_showAnalysis;
+    private enum OverlayHint
+    {
+        Linear,
+        Polynomial,
+        MovingAverage,
+        Mean,
+        Median,
+        Mode,
+        Order,
+        Period,
+        Series
+    }
+
+    private ElementReference _linearAnchor, _polynomialAnchor, _movingAverageAnchor, _meanAnchor, _medianAnchor, _modeAnchor;
+
+    private void ToggleAnalysis()
+    {
+        _showAnalysis = !_showAnalysis;
+        _reloadChart = true;
+    }
+
+    private void OnAnalysisChanged()
+    {
+        // Перерисовываем после регистрации/удаления overlays в новом дереве компонентов.
+        // OnAfterRenderAsync вызывает Reload без повторного чтения SCADA и смены диапазона.
+        _reloadChart = true;
+    }
+
+    private void ShowOverlayTooltip(ElementReference element, OverlayHint hint)
+    {
+        var text = hint switch
+        {
+            OverlayHint.Linear => "Fits a straight line to the displayed samples to show the overall direction of change.",
+            OverlayHint.Polynomial => "Fits a polynomial curve to the displayed samples. The selected order controls the degree of the curve.",
+            OverlayHint.MovingAverage => "Smooths the displayed samples using a rolling average. The period is a number of samples, not seconds.",
+            OverlayHint.Mean => "Shows the arithmetic mean of the displayed sample values as a horizontal line.",
+            OverlayHint.Median => "Shows the middle value of the sorted displayed samples as a horizontal line.",
+            OverlayHint.Mode => "Shows the most frequent value among the displayed samples as a horizontal line.",
+            OverlayHint.Order => "Polynomial degree, from 1 to 6. Requires more displayed samples than the selected degree.",
+            OverlayHint.Period => "Moving average window, from 2 to 200 displayed samples. A larger window produces a smoother line.",
+            OverlayHint.Series => "Selects the series used for all regression and statistical overlays.",
+            _ => string.Empty
+        };
+
+        OverlayTooltips.Open(element, text, new TooltipOptions { Position = TooltipPosition.Bottom, Delay = 350, Duration = null, Style = "max-width:340px; white-space:normal;" });
+    }
+
+    private void HideOverlayTooltip() => OverlayTooltips.Close();
+
     private void PauseLive() => _live = false;
 
     private void OnNavigatorStartChanged(double value)
