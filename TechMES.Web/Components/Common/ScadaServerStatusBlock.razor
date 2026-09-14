@@ -1,0 +1,138 @@
+﻿@using System.Globalization
+@using TechMES.Contracts.Scada
+@inject RuntimeStatusApiClient RuntimeStatusApi
+@implements IAsyncDisposable
+
+@foreach (var role in new[] { "Primary", "Secondary" })
+{
+    var server = role == "Primary" ? _state?.Primary : _state?.Secondary;
+    var status = Describe(_state, server, DateTimeOffset.UtcNow);
+
+    <RadzenBadge Text="@($"{role}: {status.Text}")"
+                 BadgeStyle="@status.Style"
+                 title="@(_error.Length > 0 ? _error : status.Hint)" />
+}
+
+@code {
+    private readonly CancellationTokenSource _stop = new();
+    private readonly PeriodicTimer _timer = new(TimeSpan.FromSeconds(5));
+
+    private PlantScadaRedundancyState? _state;
+    private string _error = "";
+    private Task? _loop;
+    private bool _disposed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync(_stop.Token);
+
+        if (!_disposed)
+            _loop = RunAsync(_stop.Token);
+    }
+
+    private async Task RefreshAsync(CancellationToken ct)
+    {
+        try
+        {
+            var health = await RuntimeStatusApi.GetScadaHealthAsync(ct);
+
+            if (_disposed)
+                return;
+
+            _state = health.Redundancy;
+            _error = _state is null
+                ? "PLC status tag diagnostics are unavailable."
+                : "";
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (Exception)
+        {
+            _state = null;
+            _error = "Unable to read PLC status from Runtime.";
+        }
+    }
+
+    private async Task RunAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (await _timer.WaitForNextTickAsync(ct))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshAsync(ct);
+
+                    if (!_disposed)
+                        StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+    }
+
+    private static (string Text, BadgeStyle Style, string Hint) Describe(PlantScadaRedundancyState? state, PlantScadaServerState? server, DateTimeOffset now)
+    {
+        if (state?.CheckedAtUtc is null || server is null)
+        {
+            return ("Unknown", BadgeStyle.Light, "Waiting for PLC status tag data.");
+        }
+
+        if (string.IsNullOrWhiteSpace(server.ReadTag))
+        {
+            return ("Unknown", BadgeStyle.Light, "PLC status tag is not configured.");
+        }
+
+        if (server.ReadOk != true)
+        {
+            return ("Unknown", BadgeStyle.Warning, $"{server.ReadTag}: {server.ReadMessage}");
+        }
+
+        if (server.ReadAtUtc is null || now - server.ReadAtUtc.Value > TimeSpan.FromSeconds(Math.Max(5, state.HealthPeriodSeconds) * 3d))
+        {
+            return ("Unknown", BadgeStyle.Warning, $"{server.ReadTag}: PLC status tag data is stale.");
+        }
+
+        // Только значение Read-тега.
+        // Connected и WriteOk не определяют статус этого badge.
+        bool online;
+
+        if (bool.TryParse(server.ReadValue, out var boolean))
+        {
+            online = boolean;
+        }
+        else if (double.TryParse(server.ReadValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && (value == 0 || value == 1))
+        {
+            online = value == 1;
+        }
+        else
+        {
+            return ("Unknown", BadgeStyle.Warning, $"{server.ReadTag}: expected 0 or 1.");
+        }
+
+        return (
+            online ? "Online" : "Offline",
+            online ? BadgeStyle.Success : BadgeStyle.Danger,
+            $"{server.ReadTag} = {server.ReadValue}; " +
+            $"checked {server.ReadAtUtc.Value.ToLocalTime():dd.MM.yyyy HH:mm:ss}");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        _stop.Cancel();
+        _timer.Dispose();
+
+        if (_loop is not null)
+            await _loop;
+
+        _stop.Dispose();
+    }
+}

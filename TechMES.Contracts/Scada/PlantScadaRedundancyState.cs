@@ -8,11 +8,23 @@ public sealed record PlantScadaServerState
     public bool Connected { get; init; }
     public string Message { get; init; } = "Not checked.";
 
-    public string ControlTag { get; init; } = "";
-    public string? TagValue { get; init; }
-    public bool? TagReadOk { get; init; }
-    public bool? TagWriteOk { get; init; }
-    public string TagMessage { get; init; } = "Not checked.";
+    public string WriteTag { get; init; } = "";
+    public string ReadTag { get; init; } = "";
+
+    // Последнее прочитанное значение Write-тега.
+    public string? WriteValue { get; init; }
+
+    // Последняя подтверждённая запись heartbeat.
+    public string? LastWrittenValue { get; init; }
+    public bool? WriteTagReadOk { get; init; }
+    public bool? WriteOk { get; init; }
+    public string WriteMessage { get; init; } = "Not checked.";
+
+    // Ответ PLC. Не зависит от Connected и результата heartbeat-записи.
+    public string? ReadValue { get; init; }
+    public bool? ReadOk { get; init; }
+    public string ReadMessage { get; init; } = "Not checked.";
+    public DateTimeOffset? ReadAtUtc { get; init; }
 }
 
 public sealed record PlantScadaRedundancyState

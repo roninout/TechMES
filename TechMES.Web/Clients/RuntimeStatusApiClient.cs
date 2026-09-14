@@ -1,5 +1,6 @@
 ﻿using System.Net.Http.Json;
 using TechMES.Contracts.Runtime;
+using TechMES.Contracts.Scada;
 
 namespace TechMES.Web.Clients;
 
@@ -36,8 +37,7 @@ public sealed class RuntimeStatusApiClient
     /// Читает /api/health. Даже при 503 пытается разобрать DTO,
     /// потому что backend возвращает полезное описание ошибки.
     /// </summary>
-    public async Task<RuntimeHealthResponse> GetHealthAsync(
-        CancellationToken ct = default)
+    public async Task<RuntimeHealthResponse> GetHealthAsync(CancellationToken ct = default)
     {
         var client = CreateClient();
 
@@ -58,5 +58,22 @@ public sealed class RuntimeStatusApiClient
         }
 
         return health;
+    }
+
+    public async Task<PlantScadaHealthResponse> GetScadaHealthAsync(CancellationToken ct = default)
+    {
+        using var client = CreateClient();
+
+        using var response = await client.GetAsync(
+            "api/scada/health",
+            ct);
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content
+            .ReadFromJsonAsync<PlantScadaHealthResponse>(
+                cancellationToken: ct)
+            ?? throw new InvalidOperationException(
+                "Runtime returned an empty SCADA health response.");
     }
 }

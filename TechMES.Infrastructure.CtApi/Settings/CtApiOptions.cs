@@ -35,8 +35,14 @@ public sealed class CtApiOptions
 
     // Server сохраняет имя JSON-поля для совместимости; это Primary.
     public string ServerSecondary { get; set; } = "";
+    
+    // ConnectionTag — выходной heartbeat.
     public string PrimaryConnectionTag { get; set; } = "";
     public string SecondaryConnectionTag { get; set; } = "";
+    
+    // StatusTag — ответ PLC, используется только для чтения.
+    public string PrimaryStatusTag { get; set; } = "";
+    public string SecondaryStatusTag { get; set; } = "";
 
     /// <summary>
     /// Пользователь Plant SCADA.

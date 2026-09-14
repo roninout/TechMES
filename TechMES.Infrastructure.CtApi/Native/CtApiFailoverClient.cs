@@ -13,6 +13,7 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
 {
     private readonly ICtApiNativeClient[] _clients;
     private readonly bool[] _opened = new bool[2];
+    private readonly bool?[] _lastSent = new bool?[2];
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CtApiOptions _options;
     private readonly ILogger _logger;
@@ -32,8 +33,24 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
         _state = new()
         {
             HealthPeriodSeconds = Math.Max(5, options.HealthCheckPeriodSeconds),
-            Primary = new() { Role = "Primary", Server = options.Server.Trim(), Configured = true, ControlTag = options.PrimaryConnectionTag.Trim() },
-            Secondary = new() { Role = "Secondary", Server = options.ServerSecondary.Trim(), Configured = !string.IsNullOrWhiteSpace(options.ServerSecondary), ControlTag = options.SecondaryConnectionTag.Trim() }
+
+            Primary = new()
+            {
+                Role = "Primary",
+                Server = options.Server.Trim(),
+                Configured = true,
+                WriteTag = options.PrimaryConnectionTag.Trim(),
+                ReadTag = options.PrimaryStatusTag.Trim()
+            },
+
+            Secondary = new()
+            {
+                Role = "Secondary",
+                Server = options.ServerSecondary.Trim(),
+                Configured = !string.IsNullOrWhiteSpace(options.ServerSecondary),
+                WriteTag = options.SecondaryConnectionTag.Trim(),
+                ReadTag = options.SecondaryStatusTag.Trim()
+            }
         };
     }
 
@@ -47,7 +64,13 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
 
             var primary = await ProbeAsync(0, State.Primary, ct);
             var duplicate = primary.Server.Length > 0 && string.Equals(primary.Server, State.Secondary.Server, StringComparison.OrdinalIgnoreCase);
-            var secondary = duplicate ? State.Secondary with { Connected = false, Message = "Primary and Secondary must be different servers." } : await ProbeAsync(1, State.Secondary, ct);
+            var secondary = duplicate 
+                ? State.Secondary with
+                {
+                    Connected = false,
+                    Message = "Primary and Secondary must be different servers."
+                }
+                : await ProbeAsync(1, State.Secondary, ct);
 
             var next = primary.Connected ? 0 : secondary.Connected ? 1 : -1;
 
@@ -56,22 +79,46 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
 
             _active = next;
 
-            // Публикуем выбранный маршрут до записи тегов: health не ждёт нативную запись.
+            // Health API читает готовый снимок и не ждёт нативные операции.
+            // Для ответа PLC сохраняется собственное время чтения ReadAtUtc.
             Volatile.Write(ref _state, State with
             {
-                Primary = primary with { TagReadOk = null, TagWriteOk = null, TagValue = null, TagMessage = "Checking control tag." },
-                Secondary = secondary with { TagReadOk = null, TagWriteOk = null, TagValue = null, TagMessage = "Checking control tag." },
+                Primary = primary with
+                {
+                    WriteOk = null,
+                    WriteMessage = "Health cycle in progress."
+                },
+                Secondary = secondary with
+                {
+                    WriteOk = null,
+                    WriteMessage = "Health cycle in progress."
+                },
                 CheckedAtUtc = DateTimeOffset.UtcNow,
-                ActiveRole = next == 0 ? "Primary" : next == 1 ? "Secondary" : null,
-                ActiveServer = next == 0 ? primary.Server : next == 1 ? secondary.Server : null
+                ActiveRole = next == 0
+                    ? "Primary"
+                    : next == 1
+                        ? "Secondary"
+                        : null,
+                ActiveServer = next == 0
+                    ? primary.Server
+                    : next == 1
+                        ? secondary.Server
+                        : null
             });
 
-            var duplicateTag = primary.ControlTag.Length > 0 && string.Equals(primary.ControlTag, secondary.ControlTag, StringComparison.OrdinalIgnoreCase);
+            primary = await UpdateHeartbeatAsync(0, primary, writeControlTags, ct);
+            secondary = await UpdateHeartbeatAsync(1, secondary, writeControlTags, ct);
 
-            primary = await UpdateTagAsync(primary, writeControlTags, duplicateTag, ct);
-            secondary = await UpdateTagAsync(secondary, writeControlTags, duplicateTag, ct);
+            // Общие теги читаем через выбранное рабочее соединение.
+            // Ошибка heartbeat не отменяет чтение ответа PLC.
+            primary = await ReadPlcStatusAsync(primary, ct);
+            secondary = await ReadPlcStatusAsync(secondary, ct);
 
-            Volatile.Write(ref _state, State with { Primary = primary, Secondary = secondary });
+            Volatile.Write(ref _state, State with
+            {
+                Primary = primary,
+                Secondary = secondary
+            });
         }
         finally
         {
@@ -111,42 +158,120 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
         }
     }
 
-    private async Task<PlantScadaServerState> UpdateTagAsync(PlantScadaServerState state, bool write, bool duplicate, CancellationToken ct)
+    private bool IsDuplicateTag(string tag)
     {
-        state = state with { TagValue = null, TagReadOk = null, TagWriteOk = null };
+        return tag.Length > 0 && new[]
+            {
+                State.Primary.WriteTag,
+                State.Primary.ReadTag,
+                State.Secondary.WriteTag,
+                State.Secondary.ReadTag
+            }.Count(value => string.Equals(value, tag, StringComparison.OrdinalIgnoreCase)) > 1;
+    }
 
-        if (state.ControlTag.Length == 0)
-            return state with { TagMessage = "Control tag is not configured." };
+    private async Task<PlantScadaServerState> UpdateHeartbeatAsync(int index, PlantScadaServerState state, bool write, CancellationToken ct)
+    {
+        state = state with
+        {
+            WriteValue = null,
+            WriteTagReadOk = null,
+            WriteOk = null
+        };
 
-        if (duplicate)
-            return state with { TagMessage = "Control tags must be different.", TagReadOk = false };
+        if (!state.Connected || !state.Configured)
+            _lastSent[index] = null;
+
+        if (state.WriteTag.Length == 0)
+        {
+            return state with
+            {
+                WriteMessage = "Write tag is not configured."
+            };
+        }
+
+        if (IsDuplicateTag(state.WriteTag))
+        {
+            return state with
+            {
+                WriteTagReadOk = false,
+                WriteMessage = "All four tag names must be different."
+            };
+        }
 
         if (_active < 0)
-            return state with { TagMessage = "No connection. Control tag could not be updated." };
+        {
+            _lastSent[index] = null;
+
+            return state with
+            {
+                WriteMessage = "No connection. Heartbeat is not written."
+            };
+        }
 
         try
         {
             var client = _clients[_active];
-            var value = await client.ReadControlTagAsync(state.ControlTag, ct);
+            var value = await client.ReadControlTagAsync(state.WriteTag, ct);
 
-            state = state with { TagValue = value };
+            state = state with { WriteValue = value };
 
-            if (!IsBoolean(value))
-                return state with { TagReadOk = false, TagMessage = "Expected a readable boolean value (0/1)." };
+            if (!TryBoolean(value, out var current))
+            {
+                return state with
+                {
+                    WriteTagReadOk = false,
+                    WriteMessage = "Expected a readable boolean Write tag (0/1)."
+                };
+            }
 
-            state = state with { TagReadOk = true };
+            state = state with { WriteTagReadOk = true };
+
+            // Для отключённого сервера запрещена любая heartbeat-запись,
+            // в том числе запись нуля.
+            if (!state.Connected || !state.Configured)
+            {
+                _lastSent[index] = null;
+
+                return state with
+                {
+                    WriteMessage = "Server is offline. Heartbeat is not written."
+                };
+            }
 
             if (!write)
-                return state with { TagMessage = "Readable. Waiting for the health cycle." };
+            {
+                return state with
+                {
+                    WriteMessage = "Readable. Waiting for the health cycle."
+                };
+            }
 
             if (!_options.AllowWrites)
-                return state with { TagMessage = "Readable. Writes disabled by CtApi:AllowWrites." };
+            {
+                _lastSent[index] = null;
 
-            var expected = state.Connected ? "1" : "0";
+                return state with
+                {
+                    WriteMessage = "Writes disabled by CtApi:AllowWrites."
+                };
+            }
 
-            await client.WriteControlTagAsync(state.ControlTag, expected, ct);
+            // При первом запуске инвертируем фактическое значение.
+            // Далее инвертируем последнюю успешную запись:
+            // задержка readback не должна повторять один и тот же бит.
+            var next = !(_lastSent[index] ?? current);
+            var sent = next ? "1" : "0";
 
-            return state with { TagWriteOk = true, TagMessage = $"Write accepted: {expected}. Read value is from before this write." };
+            await client.WriteControlTagAsync(state.WriteTag, sent, ct);
+
+            _lastSent[index] = next;
+
+            return state with
+            {
+                LastWrittenValue = sent,
+                WriteOk = true,
+                WriteMessage = $"Heartbeat write accepted: {sent}."
+            };
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -154,12 +279,94 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            // Ошибка тега не доказывает потерю связи с сервером.
-            return state with { TagReadOk = state.TagReadOk ?? false, TagWriteOk = state.TagReadOk == true ? false : null, TagMessage = ex.Message };
+            // После неподтверждённой записи следующий цикл
+            // снова синхронизируется с фактическим значением.
+            _lastSent[index] = null;
+
+            return state with
+            {
+                WriteTagReadOk = state.WriteTagReadOk ?? false,
+                WriteOk = state.WriteTagReadOk == true ? false : null,
+                WriteMessage = ex.Message
+            };
         }
     }
 
-    private static bool IsBoolean(string? value) => bool.TryParse(value, out _) || (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) && (n == 0 || n == 1));
+    private async Task<PlantScadaServerState> ReadPlcStatusAsync(PlantScadaServerState state, CancellationToken ct)
+    {
+        state = state with
+        {
+            ReadValue = null,
+            ReadOk = null,
+            ReadAtUtc = null
+        };
+
+        if (state.ReadTag.Length == 0)
+        {
+            return state with
+            {
+                ReadMessage = "Read status tag is not configured."
+            };
+        }
+
+        if (IsDuplicateTag(state.ReadTag))
+        {
+            return state with
+            {
+                ReadOk = false,
+                ReadMessage = "All four tag names must be different."
+            };
+        }
+
+        if (_active < 0)
+        {
+            return state with
+            {
+                ReadMessage = "No connection. PLC status is unavailable."
+            };
+        }
+
+        try
+        {
+            var value = await _clients[_active].ReadControlTagAsync(state.ReadTag, ct);
+            var valid = TryBoolean(value, out _);
+
+            return state with
+            {
+                ReadValue = value,
+                ReadOk = valid,
+                ReadAtUtc = DateTimeOffset.UtcNow,
+                ReadMessage = valid ? "PLC status read successfully." : "Expected a boolean PLC status (0/1)."
+            };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return state with
+            {
+                ReadOk = false,
+                ReadMessage = ex.Message
+            };
+        }
+    }
+
+    private static bool TryBoolean(string? value, out bool result)
+    {
+        if (bool.TryParse(value, out result))
+            return true;
+
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && (number == 0 || number == 1))
+        {
+            result = number == 1;
+            return true;
+        }
+
+        result = false;
+        return false;
+    }
 
     private async Task<T> UseAsync<T>(Func<ICtApiNativeClient, Task<T>> operation, CancellationToken ct)
     {
@@ -222,6 +429,7 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
             await CloseClientAsync(1);
 
             _active = -1;
+            Array.Clear(_lastSent);
 
             Volatile.Write(ref _state, State with { ActiveRole = null, ActiveServer = null, Primary = State.Primary with { Connected = false }, Secondary = State.Secondary with { Connected = false } });
         }

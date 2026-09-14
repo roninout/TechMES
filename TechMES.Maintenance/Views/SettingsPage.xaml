@@ -493,26 +493,24 @@
                         </views:MaintenanceSection>
                         <views:MaintenanceSection Header="CtApi connection" Margin="0,0,0,12">
                             <StackPanel Margin="12">
+                                
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Path" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <TextBlock Text="Path" 
+                                               Style="{StaticResource SettingsFieldLabel}" />
+
                                     <StackPanel Grid.Column="1">
-                                        <ui:TextBox Text="{Binding TypedAppSettings.CtApiPath, UpdateSourceTrigger=PropertyChanged}" Width="640" Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="Путь к локальным нативным библиотекам CtApi/Citect." Style="{StaticResource SettingsHintText}" />
-                                    </StackPanel>
-                                </Grid>
-                                <Grid Margin="0,0,0,10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="240" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Server Primary" Style="{StaticResource SettingsFieldLabel}" />
-                                    <StackPanel Grid.Column="1">
-                                        <ui:TextBox Text="{Binding TypedAppSettings.CtApiServer, UpdateSourceTrigger=PropertyChanged}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="Адрес сервера Citect/CtApi, к которому подключается Runtime Service." Style="{StaticResource SettingsHintText}" />
+                                        <ui:TextBox Text="{Binding TypedAppSettings.CtApiPath, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="175"
+                                                    HorizontalAlignment="Left"
+                                                    Style="{StaticResource SettingsTextBox}" />
+
+                                        <TextBlock Text="Путь к локальным нативным библиотекам CtApi/Citect."
+                                                   Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
 
@@ -521,10 +519,44 @@
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Server Secondary" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="Server Primary"
+                                                   Style="{StaticResource SettingsFieldLabel}" />
+
+                                        <ui:SymbolIcon Symbol="Server24"
+                                                       Width="16"
+                                                       Height="16"
+                                                       Margin="12,0,0,0"
+                                                       Foreground="#00A65A"
+                                                       ToolTip="CtApi health check succeeded.">
+                                            <ui:SymbolIcon.Style>
+                                                <Style TargetType="ui:SymbolIcon">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding CtApiPrimaryOnline}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ui:SymbolIcon.Style>
+                                        </ui:SymbolIcon>
+                                    </StackPanel>
+
                                     <StackPanel Grid.Column="1">
-                                        <ui:TextBox Text="{Binding TypedAppSettings.CtApiServerSecondary, UpdateSourceTrigger=PropertyChanged}" Width="320" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="Backup server. Primary is preferred whenever its CtApi health check succeeds." Style="{StaticResource SettingsHintText}" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <ui:TextBox Text="{Binding TypedAppSettings.CtApiServer, UpdateSourceTrigger=PropertyChanged}"
+                                                        Width="175"
+                                                        HorizontalAlignment="Left"
+                                                        Style="{StaticResource SettingsTextBox}" />
+
+                                            <TextBlock Text="{Binding CtApiPrimaryCheckedText}"
+                                                       Margin="12,0,0,0"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+
+                                        <TextBlock Text="Адрес сервера Citect/CtApi, к которому подключается Runtime Service."
+                                                   Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
 
@@ -533,10 +565,44 @@
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Primary connection tag" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="Server Secondary"
+                                                   Style="{StaticResource SettingsFieldLabel}" />
+
+                                        <ui:SymbolIcon Symbol="Server24"
+                                                       Width="16"
+                                                       Height="16"
+                                                       Margin="12,0,0,0"
+                                                       Foreground="#00A65A"
+                                                       ToolTip="CtApi health check succeeded.">
+                                            <ui:SymbolIcon.Style>
+                                                <Style TargetType="ui:SymbolIcon">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding CtApiSecondaryOnline}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ui:SymbolIcon.Style>
+                                        </ui:SymbolIcon>
+                                    </StackPanel>
+
                                     <StackPanel Grid.Column="1">
-                                        <ui:TextBox Text="{Binding TypedAppSettings.CtApiPrimaryConnectionTag, UpdateSourceTrigger=PropertyChanged}" Width="320" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="Shared boolean tag: 1 when Primary is connected, otherwise 0." Style="{StaticResource SettingsHintText}" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <ui:TextBox Text="{Binding TypedAppSettings.CtApiServerSecondary, UpdateSourceTrigger=PropertyChanged}"
+                                                        Width="175"
+                                                        HorizontalAlignment="Left"
+                                                        Style="{StaticResource SettingsTextBox}" />
+
+                                            <TextBlock Text="{Binding CtApiSecondaryCheckedText}"
+                                                       Margin="12,0,0,0"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+
+                                        <TextBlock Text="Backup server. Primary is preferred whenever its CtApi health check succeeds."
+                                                   Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
 
@@ -545,21 +611,69 @@
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Secondary connection tag" Style="{StaticResource SettingsFieldLabel}" />
-                                    <StackPanel Grid.Column="1">
-                                        <ui:TextBox Text="{Binding TypedAppSettings.CtApiSecondaryConnectionTag, UpdateSourceTrigger=PropertyChanged}" Width="320" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="Shared boolean tag: 1 when Secondary is connected, otherwise 0." Style="{StaticResource SettingsHintText}" />
+
+                                    <TextBlock Text="Primary connection tag"
+                                               Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <StackPanel>
+                                            <ui:TextBox Text="{Binding TypedAppSettings.CtApiPrimaryConnectionTag, UpdateSourceTrigger=PropertyChanged}"
+                                                        Width="175"
+                                                        HorizontalAlignment="Left"
+                                                        Style="{StaticResource SettingsTextBox}" />
+
+                                            <TextBlock Text="Write tag"
+                                                       Style="{StaticResource SettingsHintText}"
+                                                       ToolTip="Heartbeat toggles 0/1 each health cycle while this server is connected." />
+                                        </StackPanel>
+
+                                        <StackPanel Margin="18,0,0,0">
+                                            <ui:TextBox Text="{Binding TypedAppSettings.CtApiPrimaryStatusTag, UpdateSourceTrigger=PropertyChanged}"
+                                                        Width="175"
+                                                        HorizontalAlignment="Left"
+                                                        Style="{StaticResource SettingsTextBox}" />
+
+                                            <TextBlock Text="Read status tag"
+                                                       Style="{StaticResource SettingsHintText}"
+                                                       ToolTip="PLC status: 1 = Online, 0 = Offline. Displayed in the WEB footer." />
+                                        </StackPanel>
                                     </StackPanel>
                                 </Grid>
 
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
-                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Active server" Style="{StaticResource SettingsFieldLabel}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding CtApiActiveServerText}" TextWrapping="Wrap" VerticalAlignment="Center" />
+
+                                    <TextBlock Text="Secondary connection tag"
+                                               Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <StackPanel>
+                                            <ui:TextBox Text="{Binding TypedAppSettings.CtApiSecondaryConnectionTag, UpdateSourceTrigger=PropertyChanged}"
+                                                        Width="175"
+                                                        HorizontalAlignment="Left"
+                                                        Style="{StaticResource SettingsTextBox}" />
+
+                                            <TextBlock Text="Write tag"
+                                                       Style="{StaticResource SettingsHintText}"
+                                                       ToolTip="Heartbeat toggles 0/1 each health cycle while this server is connected." />
+                                        </StackPanel>
+
+                                        <StackPanel Margin="18,0,0,0">
+                                            <ui:TextBox Text="{Binding TypedAppSettings.CtApiSecondaryStatusTag, UpdateSourceTrigger=PropertyChanged}"
+                                                        Width="175"
+                                                        HorizontalAlignment="Left"
+                                                        Style="{StaticResource SettingsTextBox}" />
+
+                                            <TextBlock Text="Read status tag"
+                                                       Style="{StaticResource SettingsHintText}"
+                                                       ToolTip="PLC status: 1 = Online, 0 = Offline. Displayed in the WEB footer." />
+                                        </StackPanel>
+                                    </StackPanel>
                                 </Grid>
+                                
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -571,6 +685,7 @@
                                         <TextBlock Text="Имя пользователя CtApi для подключения Runtime Service." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
+                                
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -582,6 +697,7 @@
                                         <TextBlock Text="Пароль CtApi для подключения Runtime Service." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
+                                
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -593,6 +709,7 @@
                                         <TextBlock Text="Тег, который периодически читается для проверки связи с CtApi." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
+                                
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -604,6 +721,7 @@
                                         <TextBlock Text="Интервал в секундах между проверками health-тега Runtime." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
+                                
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -615,6 +733,7 @@
                                         <TextBlock Text="Максимальное количество параллельных операций чтения тегов CtApi." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
+                                
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -626,6 +745,7 @@
                                         <TextBlock Text="Главный переключатель, который разрешает Runtime Service записывать значения через CtApi." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
+                                
                             </StackPanel>
                         </views:MaintenanceSection>
                         <views:MaintenanceSection Header="WEB Param behavior" Margin="0,0,0,12">

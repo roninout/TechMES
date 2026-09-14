@@ -77,6 +77,21 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     private string _ctApiPrimaryConnectionTag = "";
     private string _ctApiSecondaryConnectionTag = "";
 
+    private string _ctApiPrimaryStatusTag = "";
+    private string _ctApiSecondaryStatusTag = "";
+
+    public string CtApiPrimaryStatusTag
+    {
+        get => _ctApiPrimaryStatusTag;
+        set => SetProperty(ref _ctApiPrimaryStatusTag, value);
+    }
+
+    public string CtApiSecondaryStatusTag
+    {
+        get => _ctApiSecondaryStatusTag;
+        set => SetProperty(ref _ctApiSecondaryStatusTag, value);
+    }
+
     /// <summary>
     /// Статус последней загрузки или сохранения typed appsettings.
     /// </summary>

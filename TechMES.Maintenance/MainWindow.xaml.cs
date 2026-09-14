@@ -1853,6 +1853,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             TypedAppSettings.CtApiServerSecondary = GetString(runtime, "CtApi", "ServerSecondary");
             TypedAppSettings.CtApiPrimaryConnectionTag = GetString(runtime, "CtApi", "PrimaryConnectionTag");
             TypedAppSettings.CtApiSecondaryConnectionTag = GetString(runtime, "CtApi", "SecondaryConnectionTag");
+            TypedAppSettings.CtApiPrimaryStatusTag = GetString(runtime, "CtApi", "PrimaryStatusTag");
+            TypedAppSettings.CtApiSecondaryStatusTag = GetString(runtime, "CtApi", "SecondaryStatusTag");
             TypedAppSettings.CtApiUser = GetString(runtime, "CtApi", "User");
             TypedAppSettings.CtApiPassword = GetString(runtime, "CtApi", "Password");
             TypedAppSettings.CtApiHealthCheckPeriodSeconds = GetInt(runtime, 10, "CtApi", "HealthCheckPeriodSeconds");
@@ -2032,6 +2034,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         SetValue(root, TypedAppSettings.CtApiServerSecondary, "CtApi", "ServerSecondary");
         SetValue(root, TypedAppSettings.CtApiPrimaryConnectionTag, "CtApi", "PrimaryConnectionTag");
         SetValue(root, TypedAppSettings.CtApiSecondaryConnectionTag, "CtApi", "SecondaryConnectionTag");
+        SetValue(root, TypedAppSettings.CtApiPrimaryStatusTag, "CtApi", "PrimaryStatusTag");
+        SetValue(root, TypedAppSettings.CtApiSecondaryStatusTag, "CtApi", "SecondaryStatusTag");
         SetValue(root, TypedAppSettings.CtApiUser, "CtApi", "User");
         SetValue(root, TypedAppSettings.CtApiPassword, "CtApi", "Password");
         SetValue(root, TypedAppSettings.CtApiHealthCheckPeriodSeconds, "CtApi", "HealthCheckPeriodSeconds");
@@ -2694,17 +2698,29 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     private void AddCtApiConfigurationChecks()
     {
         AddPathCheck("CtApi", "CtApi path", TypedAppSettings.CtApiPath, pathCanBeFile: true);
-
         AddRequiredTextCheck("CtApi", "Server Primary", TypedAppSettings.CtApiServer);
         AddRequiredTextCheck("CtApi", "Server Secondary", TypedAppSettings.CtApiServerSecondary);
-        AddRequiredTextCheck("CtApi", "Primary connection tag", TypedAppSettings.CtApiPrimaryConnectionTag);
-        AddRequiredTextCheck("CtApi", "Secondary connection tag", TypedAppSettings.CtApiSecondaryConnectionTag);
+        AddRequiredTextCheck("CtApi", "Primary Write tag", TypedAppSettings.CtApiPrimaryConnectionTag);
+        AddRequiredTextCheck("CtApi", "Secondary Write tag", TypedAppSettings.CtApiSecondaryConnectionTag);
+        AddRequiredTextCheck("CtApi", "Primary Read tag", TypedAppSettings.CtApiPrimaryStatusTag);
+        AddRequiredTextCheck("CtApi", "Secondary Read tag", TypedAppSettings.CtApiSecondaryStatusTag);
 
         if (!string.IsNullOrWhiteSpace(TypedAppSettings.CtApiServerSecondary) && string.Equals(TypedAppSettings.CtApiServer.Trim(), TypedAppSettings.CtApiServerSecondary.Trim(), StringComparison.OrdinalIgnoreCase))
             AddDependencyCheck("CtApi", "Server addresses", "Error", "Primary and Secondary must be different servers.");
 
-        if (!string.IsNullOrWhiteSpace(TypedAppSettings.CtApiPrimaryConnectionTag) && string.Equals(TypedAppSettings.CtApiPrimaryConnectionTag.Trim(), TypedAppSettings.CtApiSecondaryConnectionTag.Trim(), StringComparison.OrdinalIgnoreCase))
-            AddDependencyCheck("CtApi", "Control tag names", "Error", "Control tags must be different.");
+        var tags = new[]
+        {
+            TypedAppSettings.CtApiPrimaryConnectionTag,
+            TypedAppSettings.CtApiSecondaryConnectionTag,
+            TypedAppSettings.CtApiPrimaryStatusTag,
+            TypedAppSettings.CtApiSecondaryStatusTag
+        }
+        .Select(value => value.Trim())
+        .Where(value => value.Length > 0)
+        .ToArray();
+
+        if (tags.Distinct(StringComparer.OrdinalIgnoreCase).Count() != tags.Length)
+            AddDependencyCheck("CtApi", "Tag names", "Error", "All four tag names must be different.");
 
         AddRequiredTextCheck("CtApi", "CtApi user", TypedAppSettings.CtApiUser);
         AddRequiredTextCheck("CtApi", "Health check tag", TypedAppSettings.CtApiHealthCheckTag);

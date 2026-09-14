@@ -5,6 +5,8 @@
              AlignItems="AlignItems.Center"
              Gap="8px">
 
+    <ScadaServerStatusBlock />
+
     @if (_isLoading && _health is null)
     {
         <RadzenBadge Text="Runtime: checking..."
