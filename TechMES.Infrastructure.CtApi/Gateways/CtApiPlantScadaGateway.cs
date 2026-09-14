@@ -18,7 +18,7 @@ namespace TechMES.Infrastructure.CtApi.Gateways;
 /// - запрещает запись, если AllowWrites=false;
 /// - хранит состояние подключения.
 /// </summary>
-public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposable
+public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IPlantScadaHealthMonitor, IAsyncDisposable
 {
     /// <summary>
     /// Низкоуровневый wrapper над CtApi.dll. Gateway не вызывает legacy-код напрямую.
@@ -75,32 +75,23 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
 
         try
         {
-            SetState(
-                PlantScadaConnectionStatus.Connecting,
-                "Открываем CtApi connection...");
+            SetState(PlantScadaConnectionStatus.Connecting, "Открываем CtApi connection...");
 
             await _nativeClient.OpenAsync(ct);
 
-            SetState(
-                PlantScadaConnectionStatus.Connected,
-                "CtApi connection открыт.");
+            if (!await _nativeClient.TryProbeConnectionAsync(ct))
+                throw new InvalidOperationException("CtApi health probe failed.");
+
+            SetState(PlantScadaConnectionStatus.Connected, "CtApi connection открыт.");
         }
         catch (Exception ex)
         {
-            SetState(
-                PlantScadaConnectionStatus.Disconnected,
-                "Ошибка открытия CtApi: " + ex.Message);
-
-            _logger.LogError(
-                ex,
-                "Не удалось открыть CtApi connection.");
+            SetState(PlantScadaConnectionStatus.Disconnected, "Ошибка открытия CtApi: " + ex.Message);
+            _logger.LogError(ex, "Не удалось открыть CtApi connection.");
 
             // ВАЖНО:
-            // Пока не валим Runtime.Service при ошибке CtApi.
-            // WEB должен запуститься и показать health=Disconnected.
-            //
-            // Позже можно добавить настройку:
-            // CtApi:FailFastOnStartup = true.
+            // Пока не валим Runtime.Service при ошибке CtApi. WEB должен запуститься и показать health=Disconnected.
+            // Позже можно добавить настройку: CtApi:FailFastOnStartup = true.
         }
         finally
         {
@@ -109,66 +100,46 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
     }
 
     /// <summary>
-    /// Возвращает текущее состояние CtApi и при необходимости пробует выполнить probe/reconnect.
+    /// Возвращает готовый снимок CtApi. Проверку и резервирование запускает health worker.
     /// </summary>
-    public async Task<PlantScadaHealthResponse> GetHealthAsync(CancellationToken ct = default)
+    public Task<PlantScadaHealthResponse> GetHealthAsync(CancellationToken ct = default)
     {
-        /*
-            Health вызывается:
-            - WEB через /api/scada/health;
-            - PlantScadaHealthWorker периодически.
+        var redundancy = (_nativeClient as CtApiFailoverClient)?.State;
+        var connected = redundancy is null ? _status == PlantScadaConnectionStatus.Connected : redundancy.ActiveRole is not null;
 
-            Поэтому здесь можно делать лёгкую probe-проверку.
-        */
-        if (_status == PlantScadaConnectionStatus.Connected)
-        {
-            var ok = await ProbeConnectionAsync(ct);
-
-            if (!ok)
-            {
-                SetState(
-                    PlantScadaConnectionStatus.Disconnected,
-                    "CtApi probe failed.");
-
-                _logger.LogWarning("CtApi probe failed. Trying reconnect...");
-
-                await TryReconnectAsync(ct);
-            }
-        }
-        else if (_status == PlantScadaConnectionStatus.Disconnected)
-        {
-            /*
-                Если связь уже считается потерянной,
-                фоновая проверка будет периодически пытаться восстановить её.
-            */
-            await TryReconnectAsync(ct);
-        }
-
-        return new PlantScadaHealthResponse
+        return Task.FromResult(new PlantScadaHealthResponse
         {
             Provider = "CtApi",
-            Status = _status,
-            IsConnected = _status == PlantScadaConnectionStatus.Connected,
-            Message = _lastMessage,
+            IsConnected = connected,
+            Status = connected ? PlantScadaConnectionStatus.Connected : PlantScadaConnectionStatus.Disconnected,
+            Message = redundancy is null ? _lastMessage : connected ? $"Connected to {redundancy.ActiveRole}: {redundancy.ActiveServer}." : "Neither CtApi server is connected.",
+            Redundancy = redundancy,
             Time = DateTime.Now
-        };
+        });
     }
 
-    /// <summary>
-    /// Выполняет легкую проверку живости CtApi через native-клиент.
-    /// </summary>
-    private async Task<bool> ProbeConnectionAsync(CancellationToken ct)
+    public async Task RefreshHealthAsync(CancellationToken ct = default)
     {
         await _apiGate.WaitAsync(ct);
 
         try
         {
-            return await _nativeClient.TryProbeConnectionAsync(ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Ошибка CtApi probe.");
-            return false;
+            if (_nativeClient is CtApiFailoverClient redundant)
+            {
+                await redundant.RefreshAsync(true, ct);
+
+                SetState(redundant.State.ActiveRole is null ? PlantScadaConnectionStatus.Disconnected : PlantScadaConnectionStatus.Connected, "CtApi health cycle completed.");
+            }
+            else
+            {
+                if (!await _nativeClient.TryProbeConnectionAsync(ct))
+                {
+                    await _nativeClient.CloseAsync(ct);
+                    await _nativeClient.OpenAsync(ct);
+                }
+
+                SetState(await _nativeClient.TryProbeConnectionAsync(ct) ? PlantScadaConnectionStatus.Connected : PlantScadaConnectionStatus.Disconnected, "CtApi health cycle completed.");
+            }
         }
         finally
         {
@@ -176,49 +147,7 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
         }
     }
 
-    /// <summary>
-    /// Пытается закрыть старое соединение и открыть CtApi заново после ошибки связи.
-    /// </summary>
-    private async Task TryReconnectAsync(CancellationToken ct)
-    {
-        await _apiGate.WaitAsync(ct);
-
-        try
-        {
-            SetState(
-                PlantScadaConnectionStatus.Connecting,
-                "Пытаемся переподключить CtApi...");
-
-            try
-            {
-                await _nativeClient.CloseAsync(ct);
-            }
-            catch
-            {
-                // Ошибки закрытия при reconnect игнорируем.
-            }
-
-            await _nativeClient.OpenAsync(ct);
-
-            SetState(
-                PlantScadaConnectionStatus.Connected,
-                "CtApi connection restored.");
-        }
-        catch (Exception ex)
-        {
-            SetState(
-                PlantScadaConnectionStatus.Disconnected,
-                "CtApi reconnect failed: " + ex.Message);
-
-            _logger.LogWarning(
-                ex,
-                "CtApi reconnect failed.");
-        }
-        finally
-        {
-            _apiGate.Release();
-        }
-    }
+    private bool IsConnected => _nativeClient is CtApiFailoverClient redundant ? redundant.State.ActiveRole is not null : _status == PlantScadaConnectionStatus.Connected;
 
     /// <summary>
     /// Читает один SCADA tag через CtApi и возвращает контролируемый DTO-ответ для Runtime endpoint-а.
@@ -236,7 +165,7 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
             };
         }
 
-        if (_status != PlantScadaConnectionStatus.Connected)
+        if (!IsConnected)
         {
             return new ScadaTagReadResponse
             {
@@ -297,7 +226,7 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
         var normalizedNames = ScadaTagBatchHelper.NormalizeTagNames(tagNames);
         var readAtUtc = DateTimeOffset.UtcNow;
 
-        if (_status != PlantScadaConnectionStatus.Connected)
+        if (!IsConnected)
         {
             var disconnectedItems = normalizedNames.Select(tagName => new ScadaTagBatchReadItem
             {
@@ -412,7 +341,7 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IAsyncDisposabl
             };
         }
 
-        if (_status != PlantScadaConnectionStatus.Connected)
+        if (!IsConnected)
         {
             return new ScadaTagWriteResponse
             {

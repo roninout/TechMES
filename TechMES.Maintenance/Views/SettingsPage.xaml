@@ -509,11 +509,56 @@
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Server" Style="{StaticResource SettingsFieldLabel}" />
+                                    <TextBlock Text="Server Primary" Style="{StaticResource SettingsFieldLabel}" />
                                     <StackPanel Grid.Column="1">
                                         <ui:TextBox Text="{Binding TypedAppSettings.CtApiServer, UpdateSourceTrigger=PropertyChanged}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
                                         <TextBlock Text="Адрес сервера Citect/CtApi, к которому подключается Runtime Service." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Server Secondary" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.CtApiServerSecondary, UpdateSourceTrigger=PropertyChanged}" Width="320" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Backup server. Primary is preferred whenever its CtApi health check succeeds." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Primary connection tag" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.CtApiPrimaryConnectionTag, UpdateSourceTrigger=PropertyChanged}" Width="320" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Shared boolean tag: 1 when Primary is connected, otherwise 0." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Secondary connection tag" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.CtApiSecondaryConnectionTag, UpdateSourceTrigger=PropertyChanged}" Width="320" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Shared boolean tag: 1 when Secondary is connected, otherwise 0." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Active server" Style="{StaticResource SettingsFieldLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding CtApiActiveServerText}" TextWrapping="Wrap" VerticalAlignment="Center" />
                                 </Grid>
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>

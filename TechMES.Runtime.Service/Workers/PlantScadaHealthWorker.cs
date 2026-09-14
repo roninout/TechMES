@@ -44,7 +44,6 @@ public sealed class PlantScadaHealthWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var options = _options.Value;
-
         var seconds = Math.Max(5, options.HealthCheckPeriodSeconds);
         var period = TimeSpan.FromSeconds(seconds);
 
@@ -56,12 +55,14 @@ public sealed class PlantScadaHealthWorker : BackgroundService
         {
             try
             {
+                // Проверка серверов, выбор активного подключения и запись контрольных тегов.
+                if (_plantScadaGateway is IPlantScadaHealthMonitor monitor)
+                    await monitor.RefreshHealthAsync(stoppingToken);
+
                 var health = await _plantScadaGateway.GetHealthAsync(stoppingToken);
 
                 if (!health.IsConnected)
-                {
                     _logger.LogWarning("Plant SCADA status: {Status}. {Message}", health.Status, health.Message);
-                }
             }
             catch (OperationCanceledException)
             {

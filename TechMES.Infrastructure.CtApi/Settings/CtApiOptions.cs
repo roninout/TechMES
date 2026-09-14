@@ -33,6 +33,11 @@ public sealed class CtApiOptions
     /// </summary>
     public string Server { get; set; } = "";
 
+    // Server сохраняет имя JSON-поля для совместимости; это Primary.
+    public string ServerSecondary { get; set; } = "";
+    public string PrimaryConnectionTag { get; set; } = "";
+    public string SecondaryConnectionTag { get; set; } = "";
+
     /// <summary>
     /// Пользователь Plant SCADA.
     /// </summary>

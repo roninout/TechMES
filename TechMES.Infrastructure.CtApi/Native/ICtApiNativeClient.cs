@@ -61,4 +61,9 @@ public interface ICtApiNativeClient
     /// Он получает уже готовые строки как Dictionary.
     /// </summary>
     Task<IReadOnlyList<Dictionary<string, string>>> FindAsync(string tableName, string? filter, string? cluster, IReadOnlyList<string> properties, CancellationToken ct = default);
+
+    // Отдельные строгие операции для контрольных тегов: ошибки нельзя считать успешной записью.
+    Task<string?> ReadControlTagAsync(string tagName, CancellationToken ct = default) => TagReadAsync(tagName, ct);
+
+    Task WriteControlTagAsync(string tagName, string value, CancellationToken ct = default) => TagWriteAsync(tagName, value, ct);
 }

@@ -73,6 +73,10 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     private string _calcLogLevel = "";
     private string _calcLifetimeLogLevel = "";
 
+    private string _ctApiServerSecondary = "";
+    private string _ctApiPrimaryConnectionTag = "";
+    private string _ctApiSecondaryConnectionTag = "";
+
     /// <summary>
     /// Статус последней загрузки или сохранения typed appsettings.
     /// </summary>
@@ -579,5 +583,23 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     {
         get => _webFileLoggingPrefix;
         set => SetProperty(ref _webFileLoggingPrefix, value);
+    }
+
+    public string CtApiServerSecondary
+    {
+        get => _ctApiServerSecondary;
+        set => SetProperty(ref _ctApiServerSecondary, value);
+    }
+
+    public string CtApiPrimaryConnectionTag
+    {
+        get => _ctApiPrimaryConnectionTag;
+        set => SetProperty(ref _ctApiPrimaryConnectionTag, value);
+    }
+
+    public string CtApiSecondaryConnectionTag
+    {
+        get => _ctApiSecondaryConnectionTag;
+        set => SetProperty(ref _ctApiSecondaryConnectionTag, value);
     }
 }

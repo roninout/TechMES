@@ -15,9 +15,7 @@ namespace TechMES.Infrastructure.CtApi;
 /// </summary>
 public static class CtApiServiceCollectionExtensions
 {
-    public static IServiceCollection AddCtApiInfrastructure(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddCtApiInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<CtApiOptions>(configuration.GetSection("CtApi"));
 
@@ -26,42 +24,36 @@ public static class CtApiServiceCollectionExtensions
         if (string.Equals(provider, "Mock", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IPlantScadaGateway, MockPlantScadaGateway>();
-
-            services.AddSingleton<IEquipmentParamProvider>(_ =>
-                new UnavailableEquipmentParamProvider(
-                    "Param read-only is unavailable in Mock CtApi mode."));
-
-            services.AddSingleton<IEquipmentSoeProvider>(_ =>
-                new UnavailableEquipmentSoeProvider(
-                    "SOE is unavailable in Mock CtApi mode."));
-
-            services.AddSingleton<ICalcModelCatalogProvider>(_ =>
-                new UnavailableCalcModelCatalogProvider(
-                    "Calc SCADA catalog is unavailable in Mock CtApi mode."));
+            services.AddSingleton<IEquipmentParamProvider>(_ => new UnavailableEquipmentParamProvider("Param read-only is unavailable in Mock CtApi mode."));
+            services.AddSingleton<IEquipmentSoeProvider>(_ => new UnavailableEquipmentSoeProvider("SOE is unavailable in Mock CtApi mode."));
+            services.AddSingleton<ICalcModelCatalogProvider>(_ => new UnavailableCalcModelCatalogProvider("Calc SCADA catalog is unavailable in Mock CtApi mode."));
         }
         else if (string.Equals(provider, "Disabled", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IPlantScadaGateway, DisabledPlantScadaGateway>();
-
-            services.AddSingleton<IEquipmentParamProvider>(_ =>
-                new UnavailableEquipmentParamProvider(
-                    "Param read-only is unavailable because CtApi is disabled."));
-
-            services.AddSingleton<IEquipmentSoeProvider>(_ =>
-                new UnavailableEquipmentSoeProvider(
-                    "SOE is unavailable because CtApi is disabled."));
-
-            services.AddSingleton<ICalcModelCatalogProvider>(_ =>
-                new UnavailableCalcModelCatalogProvider(
-                    "Calc SCADA catalog is unavailable because CtApi is disabled."));
+            services.AddSingleton<IEquipmentParamProvider>(_ => new UnavailableEquipmentParamProvider("Param read-only is unavailable because CtApi is disabled."));
+            services.AddSingleton<IEquipmentSoeProvider>(_ => new UnavailableEquipmentSoeProvider("SOE is unavailable because CtApi is disabled."));
+            services.AddSingleton<ICalcModelCatalogProvider>(_ => new UnavailableCalcModelCatalogProvider( "Calc SCADA catalog is unavailable because CtApi is disabled."));
         }
         else if (string.Equals(provider, "CtApi", StringComparison.OrdinalIgnoreCase))
         {
-            /*
-             * Один ICtApiNativeClient используется всеми CtApi-модулями.
-             * Внутренний gate native client сериализует обращения к CtApi.
-             */
-            services.AddSingleton<ICtApiNativeClient, CtApiNativeClient>();
+            // Один ICtApiNativeClient используется всеми CtApi-модулями. Внутренний gate native client сериализует обращения к CtApi.
+            services.AddSingleton<ICtApiNativeClient>(provider =>
+            {
+                var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<CtApiOptions>>().Value;
+                var logger = provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CtApiNativeClient>>();
+
+                CtApiNativeClient Create(string server) => new(Microsoft.Extensions.Options.Options.Create(new CtApiOptions
+                {
+                    Path = options.Path,
+                    Server = server,
+                    User = options.User,
+                    Password = options.Password,
+                    HealthCheckTag = options.HealthCheckTag
+                }), logger);
+
+                return new CtApiFailoverClient(options, Create(options.Server), Create(options.ServerSecondary), provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CtApiFailoverClient>>());
+            });
 
             services.AddSingleton<IPlantScadaGateway, CtApiPlantScadaGateway>();
             services.AddSingleton<IEquipmentParamProvider, CtApiEquipmentParamProvider>();

@@ -32,4 +32,6 @@ public sealed class PlantScadaHealthResponse
     /// Время формирования ответа.
     /// </summary>
     public DateTime Time { get; set; } = DateTime.Now;
+
+    public PlantScadaRedundancyState? Redundancy { get; set; }
 }

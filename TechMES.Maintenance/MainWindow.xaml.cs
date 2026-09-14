@@ -1516,6 +1516,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// </summary>
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        StartCtApiStatusMonitoring();
+
         await RefreshAllAsync();
         await RefreshServerAsync();
     }
@@ -1788,10 +1790,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Обновляет HealthUrl выбранного сервиса и уведомляет строки Dashboard.
     /// </summary>
-    private void SetServiceHealthUrl(
-        string serviceKey,
-        string value,
-        string propertyName)
+    private void SetServiceHealthUrl(string serviceKey, string value, string propertyName)
     {
         var service = GetServiceDefinition(serviceKey);
         if (service is null || service.HealthUrl == value)
@@ -1851,6 +1850,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
             TypedAppSettings.CtApiPath = GetString(runtime, "CtApi", "Path");
             TypedAppSettings.CtApiServer = GetString(runtime, "CtApi", "Server");
+            TypedAppSettings.CtApiServerSecondary = GetString(runtime, "CtApi", "ServerSecondary");
+            TypedAppSettings.CtApiPrimaryConnectionTag = GetString(runtime, "CtApi", "PrimaryConnectionTag");
+            TypedAppSettings.CtApiSecondaryConnectionTag = GetString(runtime, "CtApi", "SecondaryConnectionTag");
             TypedAppSettings.CtApiUser = GetString(runtime, "CtApi", "User");
             TypedAppSettings.CtApiPassword = GetString(runtime, "CtApi", "Password");
             TypedAppSettings.CtApiHealthCheckPeriodSeconds = GetInt(runtime, 10, "CtApi", "HealthCheckPeriodSeconds");
@@ -2027,6 +2029,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
         SetValue(root, TypedAppSettings.CtApiPath, "CtApi", "Path");
         SetValue(root, TypedAppSettings.CtApiServer, "CtApi", "Server");
+        SetValue(root, TypedAppSettings.CtApiServerSecondary, "CtApi", "ServerSecondary");
+        SetValue(root, TypedAppSettings.CtApiPrimaryConnectionTag, "CtApi", "PrimaryConnectionTag");
+        SetValue(root, TypedAppSettings.CtApiSecondaryConnectionTag, "CtApi", "SecondaryConnectionTag");
         SetValue(root, TypedAppSettings.CtApiUser, "CtApi", "User");
         SetValue(root, TypedAppSettings.CtApiPassword, "CtApi", "Password");
         SetValue(root, TypedAppSettings.CtApiHealthCheckPeriodSeconds, "CtApi", "HealthCheckPeriodSeconds");
@@ -2115,17 +2120,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Возвращает исходный appsettings относительно корня репозитория.
     /// </summary>
-    private string GetSourceAppsettingsPath(string relativePath) =>
-        Path.Combine(_repositoryRoot.FullName, relativePath);
+    private string GetSourceAppsettingsPath(string relativePath) => Path.Combine(_repositoryRoot.FullName, relativePath);
 
     /// <summary>
     /// Возвращает список рабочих appsettings для сохранения.
     /// Сейчас это один файл: published appsettings, если он есть, иначе исходный appsettings проекта.
     /// </summary>
-    private IReadOnlyList<string> GetWritableAppsettingsPaths(
-        string serviceKey,
-        string sourceRelativePath,
-        string fallbackPublishFolderName)
+    private IReadOnlyList<string> GetWritableAppsettingsPaths(string serviceKey, string sourceRelativePath, string fallbackPublishFolderName)
     {
         return [GetPreferredAppsettingsPath(serviceKey, sourceRelativePath, fallbackPublishFolderName)];
     }
@@ -2173,28 +2174,22 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Безопасно читает строковое значение из вложенного JSON-пути.
     /// </summary>
-    private static string GetString(JsonObject root, params string[] path) =>
-        TryGetValue<string>(root, path, out var value) ? value ?? "" : "";
+    private static string GetString(JsonObject root, params string[] path) => TryGetValue<string>(root, path, out var value) ? value ?? "" : "";
 
     /// <summary>
     /// Безопасно читает integer из вложенного JSON-пути.
     /// </summary>
-    private static int GetInt(JsonObject root, int defaultValue, params string[] path) =>
-        TryGetValue<int>(root, path, out var value) ? value : defaultValue;
+    private static int GetInt(JsonObject root, int defaultValue, params string[] path) => TryGetValue<int>(root, path, out var value) ? value : defaultValue;
 
     /// <summary>
     /// Безопасно читает boolean из вложенного JSON-пути.
     /// </summary>
-    private static bool GetBool(JsonObject root, bool defaultValue, params string[] path) =>
-        TryGetValue<bool>(root, path, out var value) ? value : defaultValue;
+    private static bool GetBool(JsonObject root, bool defaultValue, params string[] path) => TryGetValue<bool>(root, path, out var value) ? value : defaultValue;
 
     /// <summary>
     /// Пытается получить typed-значение из JSON без исключения наружу.
     /// </summary>
-    private static bool TryGetValue<T>(
-        JsonObject root,
-        IReadOnlyList<string> path,
-        out T? value)
+    private static bool TryGetValue<T>(JsonObject root, IReadOnlyList<string> path, out T? value)
     {
         value = default;
         JsonNode? current = root;
@@ -2224,10 +2219,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Записывает значение в JSON-путь, создавая недостающие промежуточные объекты.
     /// </summary>
-    private static void SetValue(
-        JsonObject root,
-        object? value,
-        params string[] path)
+    private static void SetValue(JsonObject root, object? value, params string[] path)
     {
         if (path.Length == 0)
             throw new ArgumentException("JSON path cannot be empty.", nameof(path));
@@ -2243,9 +2235,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Возвращает вложенный объект или создает его, если раздел отсутствует.
     /// </summary>
-    private static JsonObject GetOrCreateObject(
-        JsonObject parent,
-        string propertyName)
+    private static JsonObject GetOrCreateObject(JsonObject parent, string propertyName)
     {
         if (parent[propertyName] is JsonObject existing)
             return existing;
@@ -2285,6 +2275,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         await AddPostgresAuthCheckAsync("Event PostgreSQL", TypedAppSettings.RuntimeEventDatabaseConnectionString);
 
         AddCtApiConfigurationChecks();
+
+        await AddCtApiRuntimeChecksAsync();
+
         AddFileSystemChecks();
         AddTargetMachineChecks();
         AddWriteSafetyChecks();
@@ -2320,9 +2313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// Проверяет, что PostgreSQL host/port из connection string доступны по TCP.
     /// Это легкая проверка сети; логин, пароль и схему данных по-прежнему проверяет Runtime.Service.
     /// </summary>
-    private async Task AddPostgresTcpCheckAsync(
-        string name,
-        string connectionString)
+    private async Task AddPostgresTcpCheckAsync(string name, string connectionString)
     {
         if (!TryGetPostgresEndpoint(connectionString, out var host, out var port, out var database, out var reason))
         {
@@ -2355,9 +2346,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// Проверяет PostgreSQL глубже TCP: логин, пароль, выбранную БД, текущего пользователя и версию сервера.
     /// Это безопасный read-only запрос, который помогает увидеть проблему авторизации до запуска Runtime.Service.
     /// </summary>
-    private async Task AddPostgresAuthCheckAsync(
-        string name,
-        string connectionString)
+    private async Task AddPostgresAuthCheckAsync(string name, string connectionString)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -2705,7 +2694,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     private void AddCtApiConfigurationChecks()
     {
         AddPathCheck("CtApi", "CtApi path", TypedAppSettings.CtApiPath, pathCanBeFile: true);
-        AddRequiredTextCheck("CtApi", "CtApi server", TypedAppSettings.CtApiServer);
+
+        AddRequiredTextCheck("CtApi", "Server Primary", TypedAppSettings.CtApiServer);
+        AddRequiredTextCheck("CtApi", "Server Secondary", TypedAppSettings.CtApiServerSecondary);
+        AddRequiredTextCheck("CtApi", "Primary connection tag", TypedAppSettings.CtApiPrimaryConnectionTag);
+        AddRequiredTextCheck("CtApi", "Secondary connection tag", TypedAppSettings.CtApiSecondaryConnectionTag);
+
+        if (!string.IsNullOrWhiteSpace(TypedAppSettings.CtApiServerSecondary) && string.Equals(TypedAppSettings.CtApiServer.Trim(), TypedAppSettings.CtApiServerSecondary.Trim(), StringComparison.OrdinalIgnoreCase))
+            AddDependencyCheck("CtApi", "Server addresses", "Error", "Primary and Secondary must be different servers.");
+
+        if (!string.IsNullOrWhiteSpace(TypedAppSettings.CtApiPrimaryConnectionTag) && string.Equals(TypedAppSettings.CtApiPrimaryConnectionTag.Trim(), TypedAppSettings.CtApiSecondaryConnectionTag.Trim(), StringComparison.OrdinalIgnoreCase))
+            AddDependencyCheck("CtApi", "Control tag names", "Error", "Control tags must be different.");
+
         AddRequiredTextCheck("CtApi", "CtApi user", TypedAppSettings.CtApiUser);
         AddRequiredTextCheck("CtApi", "Health check tag", TypedAppSettings.CtApiHealthCheckTag);
     }
@@ -2736,86 +2736,45 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Добавляет проверку обязательного текстового параметра.
     /// </summary>
-    private void AddRequiredTextCheck(
-        string category,
-        string name,
-        string value)
+    private void AddRequiredTextCheck(string category, string name, string value)
     {
-        AddDependencyCheck(
-            category,
-            name,
-            string.IsNullOrWhiteSpace(value) ? "Warning" : "OK",
-            string.IsNullOrWhiteSpace(value) ? "Value is empty." : value);
+        AddDependencyCheck(category, name, string.IsNullOrWhiteSpace(value) ? "Warning" : "OK", string.IsNullOrWhiteSpace(value) ? "Value is empty." : value);
     }
 
     /// <summary>
     /// Проверяет наличие файла.
     /// </summary>
-    private void AddFileCheck(
-        string category,
-        string name,
-        string path)
+    private void AddFileCheck(string category, string name, string path)
     {
-        AddDependencyCheck(
-            category,
-            name,
-            File.Exists(path) ? "OK" : "Warning",
-            path);
+        AddDependencyCheck(category, name, File.Exists(path) ? "OK" : "Warning", path);
     }
 
     /// <summary>
     /// Проверяет наличие папки.
     /// </summary>
-    private void AddDirectoryCheck(
-        string category,
-        string name,
-        string path)
+    private void AddDirectoryCheck(string category, string name, string path)
     {
-        AddDependencyCheck(
-            category,
-            name,
-            Directory.Exists(path) ? "OK" : "Warning",
-            path);
+        AddDependencyCheck(category, name, Directory.Exists(path) ? "OK" : "Warning", path);
     }
 
     /// <summary>
     /// Проверяет путь, который может быть как папкой, так и файлом.
     /// </summary>
-    private void AddPathCheck(
-        string category,
-        string name,
-        string path,
-        bool pathCanBeFile)
+    private void AddPathCheck(string category, string name, string path, bool pathCanBeFile)
     {
-        var exists = pathCanBeFile
-            ? File.Exists(path) || Directory.Exists(path)
-            : Directory.Exists(path);
-
-        AddDependencyCheck(
-            category,
-            name,
-            exists ? "OK" : "Warning",
-            string.IsNullOrWhiteSpace(path) ? "Path is empty." : path);
+        var exists = pathCanBeFile ? File.Exists(path) || Directory.Exists(path) : Directory.Exists(path);
+        AddDependencyCheck(category, name, exists ? "OK" : "Warning", string.IsNullOrWhiteSpace(path) ? "Path is empty." : path);
     }
 
     /// <summary>
     /// Добавляет одну строку результата во вкладку Checks.
     /// </summary>
-    private void AddDependencyCheck(
-        string category,
-        string name,
-        string status,
-        string details)
+    private void AddDependencyCheck(string category, string name, string status, string details)
     {
         AddDiagnosticsRow(DependencyChecks, category, name, status, details);
     }
 
-    private static void AddDiagnosticsRow(
-        ObservableCollection<DependencyCheckViewModel> target,
-        string category,
-        string name,
-        string status,
-        string details)
+    private static void AddDiagnosticsRow(ObservableCollection<DependencyCheckViewModel> target, string category, string name, string status, string details)
     {
         target.Add(new DependencyCheckViewModel
         {
@@ -2827,9 +2786,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         });
     }
 
-    private static void UpdateDiagnosticsStatus(
-        ObservableCollection<DependencyCheckViewModel> rows,
-        Action<string> applyStatus)
+    private static void UpdateDiagnosticsStatus(ObservableCollection<DependencyCheckViewModel> rows, Action<string> applyStatus)
     {
         var errors = rows.Count(check => check.Status == "Error");
         var warnings = rows.Count(check => check.Status == "Warning");
@@ -2897,22 +2854,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             .ToList();
     }
 
-    private static bool IsPrincipalAllowed(
-        string currentUser,
-        IReadOnlyCollection<string> currentGroups,
-        IReadOnlyCollection<string> allowedUsers,
-        IReadOnlyCollection<string> allowedGroups)
+    private static bool IsPrincipalAllowed(string currentUser, IReadOnlyCollection<string> currentGroups, IReadOnlyCollection<string> allowedUsers, IReadOnlyCollection<string> allowedGroups)
     {
-        return allowedUsers.Any(allowed => PrincipalMatches(currentUser, allowed))
-            || currentGroups.Any(group => allowedGroups.Any(allowed => PrincipalMatches(group, allowed)));
+        return allowedUsers.Any(allowed => PrincipalMatches(currentUser, allowed)) || currentGroups.Any(group => allowedGroups.Any(allowed => PrincipalMatches(group, allowed)));
     }
 
-    private static bool PrincipalListsMatch(
-        IReadOnlyCollection<string> first,
-        IReadOnlyCollection<string> second)
+    private static bool PrincipalListsMatch(IReadOnlyCollection<string> first, IReadOnlyCollection<string> second)
     {
-        return first.Count == second.Count
-            && first.All(item => second.Any(other => PrincipalMatches(item, other)));
+        return first.Count == second.Count && first.All(item => second.Any(other => PrincipalMatches(item, other)));
     }
 
     private static bool PrincipalMatches(string actual, string allowed)
@@ -2941,12 +2890,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// Достает host, port и database из PostgreSQL connection string.
     /// Поддерживаются стандартные ключи Npgsql: Host, Server, Port, Database.
     /// </summary>
-    private static bool TryGetPostgresEndpoint(
-        string connectionString,
-        out string host,
-        out int port,
-        out string database,
-        out string reason)
+    private static bool TryGetPostgresEndpoint(string connectionString, out string host, out int port, out string database, out string reason)
     {
         host = "";
         port = 5432;
@@ -2991,9 +2935,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Возвращает первое найденное значение из connection string по списку возможных ключей.
     /// </summary>
-    private static string GetConnectionStringValue(
-        Dictionary<string, string> values,
-        params string[] keys)
+    private static string GetConnectionStringValue(Dictionary<string, string> values, params string[] keys)
     {
         foreach (var key in keys)
         {
@@ -3226,12 +3168,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Добавляет одну строку в табличную часть профиля сервера.
     /// </summary>
-    private void AddServerProfileItem(
-        string section,
-        string name,
-        string value,
-        string status,
-        string details)
+    private void AddServerProfileItem(string section, string name, string value, string status, string details)
     {
         ServerProfileItems.Add(new ServerProfileItemViewModel
         {
@@ -3246,11 +3183,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Пересчитывает итоговую готовность сервера и собирает список причин, если сервер еще не готов.
     /// </summary>
-    private void UpdateServerReadiness(
-        bool webListening,
-        bool httpsListening,
-        bool runtimeListening,
-        bool certificateReady)
+    private void UpdateServerReadiness(bool webListening, bool httpsListening, bool runtimeListening, bool certificateReady)
     {
         var issues = new List<string>();
 
@@ -3282,8 +3215,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             issues.Add(hostResolution.Details);
         }
 
-        if (!string.IsNullOrWhiteSpace(_configuration.TargetMachine.IpAddress) &&
-            !currentIps.Contains(_configuration.TargetMachine.IpAddress, StringComparer.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(_configuration.TargetMachine.IpAddress) && !currentIps.Contains(_configuration.TargetMachine.IpAddress, StringComparer.OrdinalIgnoreCase))
         {
             issues.Add($"Expected IP {_configuration.TargetMachine.IpAddress} was not found on this machine");
         }
@@ -3311,14 +3243,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Возвращает true, если Windows Service сейчас запущен.
     /// </summary>
-    private static bool IsServiceRunning(ServiceStatusViewModel service) =>
-        string.Equals(service.Status, "RUNNING", StringComparison.OrdinalIgnoreCase);
+    private static bool IsServiceRunning(ServiceStatusViewModel service) => string.Equals(service.Status, "RUNNING", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Возвращает true, если health endpoint вернул успешный HTTP-ответ.
     /// </summary>
-    private static bool IsHealthOk(ServiceStatusViewModel service) =>
-        service.Health.StartsWith("OK", StringComparison.OrdinalIgnoreCase);
+    private static bool IsHealthOk(ServiceStatusViewModel service) => service.Health.StartsWith("OK", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Перечитывает IPv4-адреса локальной машины и формирует URL для планшета.
@@ -3338,9 +3268,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Обновляет одну строку сервиса.
     /// </summary>
-    private async Task RefreshServiceAsync(
-        ServiceStatusViewModel service,
-        bool includeHealth)
+    private async Task RefreshServiceAsync(ServiceStatusViewModel service, bool includeHealth)
     {
         service.IsBusy = true;
 
@@ -4116,9 +4044,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Выполняет start/stop/restart и затем перечитывает статус строки.
     /// </summary>
-    private async Task RunServiceCommandAsync(
-        ServiceStatusViewModel service,
-        Func<Task<ServiceCommandResult>> command)
+    private async Task RunServiceCommandAsync(ServiceStatusViewModel service, Func<Task<ServiceCommandResult>> command)
     {
         service.IsBusy = true;
 
@@ -4139,9 +4065,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Достает ServiceStatusViewModel из кнопки внутри DataGrid.
     /// </summary>
-    private static bool TryGetServiceFromButton(
-        object sender,
-        out ServiceStatusViewModel service)
+    private static bool TryGetServiceFromButton(object sender, out ServiceStatusViewModel service)
     {
         if (sender is Button { Tag: ServiceStatusViewModel viewModel })
         {
@@ -4156,9 +4080,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Достает DeploymentServiceViewModel из кнопки внутри deploy-таблицы.
     /// </summary>
-    private static bool TryGetDeploymentServiceFromButton(
-        object sender,
-        out DeploymentServiceViewModel service)
+    private static bool TryGetDeploymentServiceFromButton(object sender, out DeploymentServiceViewModel service)
     {
         if (sender is Button { Tag: DeploymentServiceViewModel viewModel })
         {
@@ -4198,10 +4120,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
         try
         {
-            _settingsFileService.SaveWithoutBackup(
-                SelectedSettingsFile.FullPath,
-                SelectedSettingsFile.Content);
-
+            _settingsFileService.SaveWithoutBackup(SelectedSettingsFile.FullPath, SelectedSettingsFile.Content);
             SelectedSettingsFile.IsDirty = false;
             SelectedSettingsFile.Status = "Saved.";
             AppendDiagnostics($"{SelectedSettingsFile.DisplayName}: saved.");
@@ -4222,9 +4141,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         {
             var content = _settingsFileService.Load(settingsFile.FullPath);
             settingsFile.SetCleanContent(content);
-            settingsFile.Status = File.Exists(settingsFile.FullPath)
-                ? $"Loaded: {DateTime.Now:HH:mm:ss}"
-                : "File not found.";
+            settingsFile.Status = File.Exists(settingsFile.FullPath) ? $"Loaded: {DateTime.Now:HH:mm:ss}" : "File not found.";
         }
         catch (Exception ex)
         {
@@ -4331,9 +4248,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             BackupItems.Add(backup);
 
         SelectedBackup = BackupItems.FirstOrDefault();
-        BackupStatusText = BackupItems.Count == 0
-            ? "No backups found yet."
-            : $"Loaded {BackupItems.Count} backup(s).";
+        BackupStatusText = BackupItems.Count == 0 ? "No backups found yet." : $"Loaded {BackupItems.Count} backup(s).";
     }
 
     /// <summary>
@@ -4658,9 +4573,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     private void AppendServerLog(string message)
     {
         var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
-        ServerLogText = string.IsNullOrWhiteSpace(ServerLogText)
-            ? line
-            : ServerLogText + Environment.NewLine + line;
+        ServerLogText = string.IsNullOrWhiteSpace(ServerLogText) ? line : ServerLogText + Environment.NewLine + line;
     }
 
     /// <summary>

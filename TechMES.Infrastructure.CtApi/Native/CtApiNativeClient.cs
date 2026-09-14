@@ -319,4 +319,34 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
     /// </summary>
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool SetDllDirectory(string lpPathName);
+
+    public async Task<string?> ReadControlTagAsync(string tagName, CancellationToken ct = default)
+    {
+        await _apiGate.WaitAsync(ct);
+
+        try
+        {
+            EnsureOpen();
+            return await Task.Run(() => _ctApi.TagReadWithDebug(tagName));
+        }
+        finally
+        {
+            _apiGate.Release();
+        }
+    }
+
+    public async Task WriteControlTagAsync(string tagName, string value, CancellationToken ct = default)
+    {
+        await _apiGate.WaitAsync(ct);
+
+        try
+        {
+            EnsureOpen();
+            await Task.Run(() => _ctApi.TagWriteWithDebug(tagName, value));
+        }
+        finally
+        {
+            _apiGate.Release();
+        }
+    }
 }
