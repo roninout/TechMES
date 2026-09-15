@@ -788,11 +788,14 @@ namespace CtApi
         }
 
         /// <summary>
-        /// Мягкая probe-проверка связи через CtCicode.
-        /// 
-        /// НИЧЕГО не бросает.
-        /// Возвращает true, если вызов успешен и вернул непустое значение.
-        /// Используется только heartbeat-логикой.
+        /// Диагностика последней проверки. Не используется как отдельный признак связи.
+        /// Содержит команду, результат нативного вызова и фактический ответ Cicode.
+        /// </summary>
+        public string LastProbeMessage { get; private set; } = "Not checked.";
+
+        /// <summary>
+        /// Выполняет прежнюю проверку связи через CtCicode вне вызывающего потока.
+        /// Команда и критерий успеха сохранены: нативный успех и непустой ответ.
         /// </summary>
         public Task<bool> TryProbeConnectionAsync(string cmd = "TagRead(sWndTitle)", uint win = 0)
         {
@@ -800,29 +803,50 @@ namespace CtApi
         }
 
         /// <summary>
-        /// Мягкая probe-проверка связи через CtCicode.
+        /// Проверяет соединение прежним способом и сохраняет подробности результата.
+        /// Значение "0" само по себе не означает потерю связи: это может быть ответ тега.
+        /// Read/Write-теги PLC здесь не используются.
         /// </summary>
         public bool TryProbeConnection(string cmd = "TagRead(sWndTitle)", uint win = 0)
         {
+            LastProbeMessage = $"Probe running. Command: {cmd}.";
+
             try
             {
-                var value = new StringBuilder(100);
-                var result = CtCicode(_ctapi, cmd, win, 0, value, value.Capacity, IntPtr.Zero);
-
-                if (result == 0)
+                if (_ctapi == IntPtr.Zero)
                 {
-                    var err = Marshal.GetLastWin32Error();
-                    //_logger?.LogWarning($"Citect.CtApi > TryProbeConnection failed, cmd={cmd}, win={win}, win32={err}");
+                    LastProbeMessage = $"Connection handle is not open. Command: {cmd}.";
                     return false;
                 }
 
-                return !string.IsNullOrWhiteSpace(value.ToString());
+                var value = new StringBuilder(100);
+                var result = CtCicode(_ctapi, cmd, win, 0, value, value.Capacity, IntPtr.Zero);
+
+                // Получаем код ошибки сразу после нативного вызова.
+                var error = result == 0 ? Marshal.GetLastWin32Error() : 0;
+                var response = value.ToString();
+                var display = response.Replace("\r", " ").Replace("\n", " ");
+
+                if (result == 0)
+                {
+                    LastProbeMessage = $"Command: {cmd}; native result: {result}; Win32: {error}; response: [{display}].";
+                    return false;
+                }
+
+                // Сохраняем прежний критерий успешной проверки.
+                var success = !string.IsNullOrWhiteSpace(response);
+
+                LastProbeMessage = $"Command: {cmd}; native result: {result}; response: [{display}]; probe: {(success ? "OK" : "empty response")}.";
+
+                return success;
             }
-            catch
+            catch (Exception ex)
             {
-                //_logger?.LogWarning($"Citect.CtApi > TryProbeConnection exception, cmd={cmd}, win={win}, error={ex.Message}");
+                LastProbeMessage = $"Command: {cmd}; {ex.GetType().Name}: {ex.Message}";
                 return false;
             }
         }
+
+
     }
 }

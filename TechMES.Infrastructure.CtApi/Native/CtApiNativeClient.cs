@@ -255,7 +255,14 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
     }
 
     /// <summary>
-    /// Проверяет живость соединения без выбрасывания исключения наружу.
+    /// Последний результат проверки именно этого CtApi-соединения.
+    /// Используется в Diagnostics; не заменяет результат TryProbeConnectionAsync.
+    /// </summary>
+    public string LastProbeMessage { get; private set; } = "Not checked.";
+
+    /// <summary>
+    /// Проверяет сервер через настроенный HealthCheckTag прежним вызовом Cicode.
+    /// Сохраняет ответ для Diagnostics и передаёт отмену вызывающему worker-у.
     /// </summary>
     public async Task<bool> TryProbeConnectionAsync(CancellationToken ct = default)
     {
@@ -264,15 +271,29 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
         try
         {
             if (!_isOpen)
+            {
+                LastProbeMessage = "CtApi connection is not open.";
                 return false;
+            }
 
-            var options = _options.Value;
-            var probeCommand = BuildProbeCommand(options.HealthCheckTag);
+            // Используем существующее формирование команды.
+            // При HealthCheckTag = sWndTitle получаем TagRead(sWndTitle).
+            var probeCommand = BuildProbeCommand(_options.Value.HealthCheckTag);
+            var connected = await _ctApi.TryProbeConnectionAsync(probeCommand);
 
-            return await _ctApi.TryProbeConnectionAsync(probeCommand);
+            LastProbeMessage = _ctApi.LastProbeMessage;
+
+            ct.ThrowIfCancellationRequested();
+
+            return connected;
         }
-        catch
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LastProbeMessage = $"{ex.GetType().Name}: {ex.Message}";
             return false;
         }
         finally

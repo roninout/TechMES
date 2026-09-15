@@ -126,6 +126,11 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Проверяет HealthCheckTag через собственное соединение указанного сервера.
+    /// Read/Write-теги PLC не участвуют в определении Connected.
+    /// Ошибка проверки закрывает соединение; следующий цикл попробует открыть его снова.
+    /// </summary>
     private async Task<PlantScadaServerState> ProbeAsync(int index, PlantScadaServerState state, CancellationToken ct)
     {
         if (!state.Configured)
@@ -141,11 +146,20 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
                 _opened[index] = true;
             }
 
-            // Используем прежний алгоритм CtApi health probe.
-            if (!await _clients[index].TryProbeConnectionAsync(ct))
-                throw new InvalidOperationException("CtApi health probe failed.");
+            // Каждый сервер проверяется через собственный CtApi-клиент.
+            var connected = await _clients[index].TryProbeConnectionAsync(ct);
 
-            return state with { Connected = true, Message = "CtApi health probe succeeded." };
+            // Передаём подробности в существующий снимок Diagnostics.
+            var details = _clients[index] is CtApiNativeClient native ? native.LastProbeMessage : "CtApi health probe completed.";
+
+            if (!connected)
+                throw new InvalidOperationException("CtApi health probe failed. " + details);
+
+            return state with
+            {
+                Connected = true,
+                Message = "CtApi health probe succeeded. " + details
+            };
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -153,8 +167,15 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            _logger.LogWarning("CtApi {Role} health check failed. Server={Server}. {Reason}", state.Role, state.Server, ex.Message);
+
             await CloseClientAsync(index);
-            return state with { Connected = false, Message = ex.Message };
+
+            return state with
+            {
+                Connected = false,
+                Message = ex.Message
+            };
         }
     }
 
