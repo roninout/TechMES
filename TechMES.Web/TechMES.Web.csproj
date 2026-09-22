@@ -22,4 +22,8 @@
     <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="wwwroot\lib\" />
+  </ItemGroup>
+
 </Project>

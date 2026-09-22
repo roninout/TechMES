@@ -10,7 +10,8 @@ namespace TechMES.Web.Components.Common;
 
 public partial class ScadaTrendChart : IAsyncDisposable
 {
-    private const int MaxSeries = 8, MaxStoredPoints = 90_001, RequestChunkMinutes = 60, RequestTimeoutSeconds = 30;
+    private const int MaxSeries = ScadaTrendData.MaxSeries, MaxStoredPoints = ScadaTrendData.MaxPointsPerSeries, RequestTimeoutSeconds = 30;
+    private int RequestChunkMinutes => Math.Clamp(ParamOptions.Value.TrendHistoryMinutes, 1, 240);
     private static readonly string[] Palette = ["var(--rz-primary)", "#00a65a", "#e69500", "#e91e63", "#9263d9", "#00a8b5", "#795548", "#607d8b"];
 
     [Inject] private ParamApiClient ParamApi { get; set; } = default!;
@@ -65,20 +66,42 @@ public partial class ScadaTrendChart : IAsyncDisposable
         }
     }
 
-    private bool HasFixedScale => !AutoScale && Minimum.HasValue && Maximum.HasValue && double.IsFinite(Minimum.Value) && double.IsFinite(Maximum.Value) && Minimum.Value < Maximum.Value;
+    private bool HasFixedScale => !AutoScale && ScaleMinimum.HasValue && ScaleMaximum.HasValue && double.IsFinite(ScaleMinimum.Value) && double.IsFinite(ScaleMaximum.Value) && ScaleMinimum.Value < ScaleMaximum.Value;
 
+    /// <summary>Приводит время Tag API к UTC.</summary>
     private static DateTime AsUtc(DateTime value) => value.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(value, DateTimeKind.Utc) : value.ToUniversalTime();
+
+    /// <summary>Форматирует локальное время оси X.</summary>
     private static string FormatAxisTime(object value) => value is DateTime time ? AsUtc(time).ToLocalTime().ToString("HH:mm") : "";
+
+    /// <summary>Форматирует дату и время Navigator.</summary>
     private static string FormatNavigatorTime(object value) => value is DateTime time ? AsUtc(time).ToLocalTime().ToString("dd.MM HH:mm") : "";
 
+    /// <summary>Загружает настроенную ширину Live и границы сегодняшнего дня.</summary>
     protected override void OnInitialized()
     {
         _windowMinutes = Math.Clamp(ParamOptions.Value.TrendWindowMinutes, 1, 240);
         BeginDay(DateTime.Today);
     }
 
+    /// <summary>Применяет внешние данные либо настройки самостоятельного чтения тегов.</summary>
     protected override async Task OnParametersSetAsync()
     {
+        if (ExternalData)
+        {
+            _version++;
+            _timer?.Dispose();
+            _timer = null;
+            ApplyExternalTrend();
+            return;
+        }
+
+        if (_appliedViewKey is not null)
+        {
+            _appliedViewKey = null;
+            _configuration = [];
+        }
+
         var configuration = Series.Select(s => s with { TagName = s.TagName.Trim() }).ToArray();
 
         _configurationError = configuration.Length > MaxSeries ? $"A chart supports up to {MaxSeries} series." :
@@ -112,12 +135,14 @@ public partial class ScadaTrendChart : IAsyncDisposable
         }
     }
 
+    /// <summary>Вычисляет границы локальных суток для заданного часового пояса.</summary>
     private static (DateTime From, DateTime To) GetDayBounds(DateTime date, TimeZoneInfo zone)
     {
         var midnight = DateTime.SpecifyKind(date.Date, DateTimeKind.Unspecified);
         return (TimeZoneInfo.ConvertTimeToUtc(midnight, zone), TimeZoneInfo.ConvertTimeToUtc(midnight.AddDays(1), zone));
     }
 
+    /// <summary>Сбрасывает буфер перед загрузкой другого дня.</summary>
     private void BeginDay(DateTime date)
     {
         _selectedDate = date.Date;
@@ -139,18 +164,34 @@ public partial class ScadaTrendChart : IAsyncDisposable
         }
     }
 
+    /// <summary>Загружает выбранную дату либо передаёт её внешнему источнику.</summary>
     private async Task OnDateChangedAsync(DateTime? date)
     {
-        if (_loading || _disposed || !date.HasValue || date.Value.Date > DateTime.Today) return;
+        if (Busy || _disposed || !date.HasValue || date.Value.Date > DateTime.Today)
+            return;
+
+        if (ExternalData)
+        {
+            await OnDateSelected.InvokeAsync(date.Value.Date);
+            return;
+        }
 
         BeginDay(date.Value);
         _live = _selectedDate == DateTime.Today;
         await LoadAsync(reset: true);
     }
 
+    /// <summary>Возвращает график к последнему участку текущих суток.</summary>
     private async Task GoLiveAsync()
     {
-        if (_loading || _disposed) return;
+        if (Busy || _disposed)
+            return;
+
+        if (ExternalData)
+        {
+            await OnGoLive.InvokeAsync();
+            return;
+        }
 
         if (_selectedDate != DateTime.Today)
             BeginDay(DateTime.Today);
@@ -159,15 +200,22 @@ public partial class ScadaTrendChart : IAsyncDisposable
         await LoadAsync(reset: _toUtc == default);
     }
 
+    /// <summary>Обновляет самостоятельный график только в режиме Live.</summary>
     private async Task PollAsync()
     {
+        var timer = _timer;
+
+        if (timer is null)
+            return;
+
         try
         {
-            while (await _timer!.WaitForNextTickAsync(_cts.Token))
+            while (await timer.WaitForNextTickAsync(_cts.Token))
             {
                 await InvokeAsync(async () =>
                 {
-                    if (_disposed || _loading || !_live || _configurationError.Length > 0 || !_series.Any(s => s.Supported != false)) return;
+                    if (ExternalData || _disposed || _loading || !_live || _configurationError.Length > 0 || !_series.Any(s => s.Supported != false))
+                        return;
 
                     if (_selectedDate != DateTime.Today)
                         BeginDay(DateTime.Today);
@@ -182,9 +230,11 @@ public partial class ScadaTrendChart : IAsyncDisposable
         catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
     }
 
+    /// <summary>Атомарно обновляет серии за выбранные сутки с ограничением времени и объёма.</summary>
     private async Task LoadAsync(bool reset = false)
     {
-        if (_loading || _disposed || _configurationError.Length > 0 || _series.Count == 0) return;
+        if (ExternalData || _loading || _disposed || _configurationError.Length > 0 || _series.Count == 0)
+            return;
 
         _loading = true;
 
@@ -201,7 +251,8 @@ public partial class ScadaTrendChart : IAsyncDisposable
 
         try
         {
-            if (from >= to) return;
+            if (from >= to)
+                return;
 
             using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
             requestCts.CancelAfter(TimeSpan.FromSeconds(RequestTimeoutSeconds));
@@ -218,7 +269,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
                 var response = await ReadRangeAsync(series.Tag, from, to, _dayToUtc, version, requestCts.Token);
                 var existing = reset ? Enumerable.Empty<TrendPoint>() : series.History;
 
-                var history = response.Supported ? existing.Concat(response.Points.Select(p => new TrendPoint { Time = AsUtc(p.Time), Value = p.Value }))
+                var history = response.Supported ? existing.Concat(response.Points.Select(p => new TrendPoint { Time = AsUtc(p.Time), Value = p.Value, RawValue = p.RawValue, Quality = p.Quality }))
                     .Where(p => p.Time >= _dayFromUtc && p.Time <= to && p.Time < _dayToUtc)
                     .GroupBy(p => p.Time)
                     .Select(g => g.Last())
@@ -232,7 +283,8 @@ public partial class ScadaTrendChart : IAsyncDisposable
                 updates.Add((series, response.Supported, history));
             }
 
-            if (_disposed || version != _version || (followLive && !_live)) return;
+            if (_disposed || version != _version || (followLive && !_live))
+                return;
 
             // Применяем результаты вместе, чтобы серии не получили разные временные окна.
             foreach (var update in updates)
@@ -266,6 +318,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
         }
     }
 
+    /// <summary>Читает историю ограниченными порциями, сохраняя исходное значение и качество.</summary>
     private async Task<ParamTrendResponse> ReadRangeAsync(string tag, DateTime from, DateTime to, DateTime dayEnd, int version, CancellationToken cancellationToken)
     {
         var samples = new Dictionary<DateTime, ParamTrendPointDto>();
@@ -298,7 +351,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
                 if (!double.IsFinite(point.Value) || time < cursor || time > end || time >= dayEnd)
                     continue;
 
-                samples[time] = new ParamTrendPointDto { Time = time, Value = point.Value };
+                samples[time] = new ParamTrendPointDto { Time = time, Value = point.Value, RawValue = point.RawValue, Quality = point.Quality };
 
                 if (samples.Count > MaxStoredPoints)
                     throw new InvalidDataException();
@@ -325,12 +378,14 @@ public partial class ScadaTrendChart : IAsyncDisposable
 
     private ElementReference _linearAnchor, _polynomialAnchor, _movingAverageAnchor, _meanAnchor, _medianAnchor, _modeAnchor;
 
+    /// <summary>Показывает или скрывает панель анализа.</summary>
     private void ToggleAnalysis()
     {
         _showAnalysis = !_showAnalysis;
         _reloadChart = true;
     }
 
+    /// <summary>Перерисовывает overlays без повторного запроса данных.</summary>
     private void OnAnalysisChanged()
     {
         // Перерисовываем после регистрации/удаления overlays в новом дереве компонентов.
@@ -338,6 +393,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
         _reloadChart = true;
     }
 
+    /// <summary>Показывает описание выбранного инструмента анализа.</summary>
     private void ShowOverlayTooltip(ElementReference element, OverlayHint hint)
     {
         var text = hint switch
@@ -357,33 +413,51 @@ public partial class ScadaTrendChart : IAsyncDisposable
         OverlayTooltips.Open(element, text, new TooltipOptions { Position = TooltipPosition.Bottom, Delay = 350, Duration = null, Style = "max-width:340px; white-space:normal;" });
     }
 
+    /// <summary>Закрывает подсказку анализа.</summary>
     private void HideOverlayTooltip() => OverlayTooltips.Close();
 
-    private void PauseLive() => _live = false;
-
-    private void OnNavigatorStartChanged(double value)
+    /// <summary>Останавливает Live при ручной навигации и уведомляет родителя.</summary>
+    private async Task PauseLive()
     {
-        _navigatorStart = value;
+        if (_disposed || (ExternalData && IsBusy))
+            return;
+
         _live = false;
+        await NotifyRangeAsync();
     }
 
-    private void OnNavigatorEndChanged(double value)
+    /// <summary>Запоминает начало диапазона до получения второй границы Navigator.</summary>
+    private async Task OnNavigatorStartChanged(double value)
     {
-        OnViewChanged(new ChartViewChangeEventArgs { ViewStart = _navigatorStart ?? _viewStart, ViewEnd = value });
+        _navigatorStart = value;
+        await PauseLive();
+    }
+
+    /// <summary>Применяет обе границы Navigator одним изменением.</summary>
+    private async Task OnNavigatorEndChanged(double value)
+    {
+        await OnViewChanged(new ChartViewChangeEventArgs { ViewStart = _navigatorStart ?? _viewStart, ViewEnd = value });
         _navigatorStart = null;
     }
 
-    private void OnViewChanged(ChartViewChangeEventArgs args)
+    /// <summary>Синхронизирует zoom/pan, Navigator и диапазон расчёта PID.</summary>
+    private async Task OnViewChanged(ChartViewChangeEventArgs args)
     {
-        if (Math.Abs(args.ViewStart - _viewStart) < 0.000001 && Math.Abs(args.ViewEnd - _viewEnd) < 0.000001) return;
+        if (_disposed || (ExternalData && IsBusy) || !double.IsFinite(args.ViewStart) || !double.IsFinite(args.ViewEnd))
+            return;
+
+        if (Math.Abs(args.ViewStart - _viewStart) < 0.000001 && Math.Abs(args.ViewEnd - _viewEnd) < 0.000001)
+            return;
 
         _viewStart = Math.Clamp(args.ViewStart, 0, 1);
         _viewEnd = Math.Clamp(args.ViewEnd, _viewStart, 1);
         _live = false;
 
         RefreshChartPoints();
+        await NotifyRangeAsync();
     }
 
+    /// <summary>Преобразует абсолютный диапазон в доли общей шкалы времени.</summary>
     private void SetVisibleRange(DateTime from, DateTime to)
     {
         var ticks = (AxisTo - AxisFrom).Ticks;
@@ -399,6 +473,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
         _viewEnd = Math.Clamp((double)(to - AxisFrom).Ticks / ticks, _viewStart, 1);
     }
 
+    /// <summary>Сокращает только данные отрисовки, сохраняя буфер исходных точек.</summary>
     private void RefreshChartPoints()
     {
         var from = AxisFrom.AddTicks((long)((AxisTo - AxisFrom).Ticks * _viewStart));
@@ -425,9 +500,13 @@ public partial class ScadaTrendChart : IAsyncDisposable
                 series.Points.Add(series.History[end]);
         }
 
+        if (_series.All(series => series.Points.Count == 0))
+            _chart = null;
+
         _reloadChart = true;
     }
 
+    /// <summary>Сохраняет крайние точки и экстремумы временных корзин.</summary>
     private static List<TrendPoint> ReducePoints(List<TrendPoint> source, int limit)
     {
         if (source.Count <= limit)
@@ -463,6 +542,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
         return result;
     }
 
+    /// <summary>Перерисовывает серии после обновления дерева и сообщает видимый диапазон.</summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (_reloadChart && _chart is not null && !_disposed)
@@ -470,8 +550,14 @@ public partial class ScadaTrendChart : IAsyncDisposable
             _reloadChart = false;
             await _chart.Reload();
         }
+
+        if (_notifyRange)
+            await NotifyRangeAsync();
+
+        await ObserveLayoutAsync();
     }
 
+    /// <summary>Останавливает polling, отменяет чтение и отключает наблюдение за размерами.</summary>
     public async ValueTask DisposeAsync()
     {
         _disposed = true;
@@ -481,6 +567,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
         if (_pollTask is not null)
             await _pollTask;
 
+        await DisposeLayoutAsync();
         _cts.Dispose();
     }
 
@@ -488,6 +575,9 @@ public partial class ScadaTrendChart : IAsyncDisposable
     {
         public DateTime Time { get; set; }
         public double Value { get; set; }
+        public double? RawValue { get; set; }
+        public int Quality { get; set; }
+        public double DisplayValue => RawValue.HasValue && double.IsFinite(RawValue.Value) ? RawValue.Value : Value;
     }
 
     private sealed class SeriesState(ScadaTrendSeries options, string fallbackColor)

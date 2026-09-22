@@ -96,6 +96,7 @@
                         @* Иконки вкладок Param остаются themed: Radzen сам окрашивает их по активной теме и состоянию вкладки. *@
                         <RadzenTabsItem Text="Graph" Icon="area_chart">
                             <div class="param-graph-panel">
+
                                 <div class="param-toolbar">
                                     <div class="param-toolbar-side-slot">
                                         @if (IsAiEquipment)
@@ -278,48 +279,20 @@
                                         }
                                     </div>
 
-                                    <RadzenButton Icon="skip_next"
-                                                  ButtonStyle="ButtonStyle.Light"
-                                                  class="param-live-button"
-                                                  title="Go to latest"
-                                                  Click="@GoLiveAsync" />
                                 </div>
 
                                 <div class="param-graph-layout">
-                                    <ParamGraphSidePanel Equipment="@Equipment"
-                                                         Snapshot="@_snapshot"
-                                                         OnWriteRequested="@(item => BeginParamWriteAsync(item))"
-                                                         OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                    <ParamGraphSidePanel Equipment="@Equipment" Snapshot="@_snapshot" OnWriteRequested="@(item => BeginParamWriteAsync(item))" OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
 
                                     <div class="param-graph-main">
-                                        @if (_trend is null || _trend.Points.Count == 0)
-                                        {
-                                            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                                                @DisplayValue(_trend?.Message ?? "Trend points are not loaded yet.")
-                                            </RadzenAlert>
-                                        }
-                                        else
-                                        {
-                                            <div class="param-chart-shell">
-                                                <EquipmentTrendChart Trend="@_trend"
-                                                                     ViewKey="@ChartViewKey"
-                                                                     Unit="@_snapshot.Unit"
-                                                                     RenderStyle="@EquipmentTrendRenderStyle.Area"
-                                                                     GoToLatestVersion="@_chartViewVersion"
-                                                                     LatestWindowMinutes="@_windowMinutes"
-                                                                     VisibleFromUtc="@GetVisibleFromUtc()"
-                                                                     VisibleToUtc="@GetVisibleToUtc()"
-                                                                     CanLoadOlder="@CanScrollGraphBackward"
-                                                                     CanLoadNewer="@CanScrollGraphForward"
-                                                                     OnHistoryRequested="@OnChartHistoryRequestedAsync" />
-                                            </div>
-                                        }
+                                        <ScadaTrendChart ExternalData="true" Trend="@_trend" ViewKey="@ChartViewKey" Unit="@_snapshot.Unit" RenderStyle="ScadaTrendStyle.Area" AutoScale="false" ExternalLive="@IsGraphLive" IsBusy="@_isRefreshing" VisibleFromUtc="@GetVisibleFromUtc()" VisibleToUtc="@GetVisibleToUtc()" OnDateSelected="@OnGraphDateSelectedAsync" OnGoLive="@GoLiveAsync" OnVisibleWindowChanged="@OnGraphVisibleWindowChangedAsync" />
                                     </div>
                                 </div>
 
                                 <div class="param-graph-footer">
                                     <span class="param-status">@FormatGraphStatus()</span>
                                 </div>
+
                             </div>
                         </RadzenTabsItem>
 
@@ -605,6 +578,7 @@
                                         }
 
                                         <div class="param-tune-graph-layout">
+
                                             <div class="param-tune-bars">
                                                 <ParamGraphVerticalBar Label="Out"
                                                                        Value="@_tune?.ManTuneValue"
@@ -623,39 +597,10 @@
                                                                        FillColor="#2E7D32" />
                                             </div>
 
-                                            <div class="param-tune-chart">
-                                                <div class="param-tune-chart-toolbar">
-                                                    <RadzenButton Icon="skip_next"
-                                                                  ButtonStyle="ButtonStyle.Light"
-                                                                  class="param-live-button"
-                                                                  title="Go to latest"
-                                                                  Click="@GoTuneLiveAsync" />
+                                                <div class="param-tune-chart">
+                                                    <ScadaTrendChart ExternalData="true" Trend="@_tuneTrend" ViewKey="@TuneChartViewKey" RenderStyle="ScadaTrendStyle.Line" SeriesDisplayNames="@TuneSeriesDisplayNames" AutoScale="false" ExternalLive="@IsTuneLive" IsBusy="@(_isRefreshing || _isTuneChecking || _isTuneSaving)" VisibleFromUtc="@GetTuneVisibleFromUtc()" VisibleToUtc="@GetTuneVisibleToUtc()" OnDateSelected="@OnTuneDateSelectedAsync" OnGoLive="@GoTuneLiveAsync" OnVisibleWindowChanged="@OnTuneVisibleWindowChangedAsync" />
                                                 </div>
 
-                                                @if (_tuneTrend is null || _tuneTrend.Points.Count == 0)
-                                                {
-                                                    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                                                        @DisplayValue(_tuneTrend?.Message ?? "Tune trend points are not loaded yet.")
-                                                    </RadzenAlert>
-                                                }
-                                                else
-                                                {
-                                                    <div class="param-chart-shell">
-                                                        <EquipmentTrendChart Trend="@_tuneTrend"
-                                                                             ViewKey="@TuneChartViewKey"
-                                                                             RenderStyle="@EquipmentTrendRenderStyle.Line"
-                                                                             SeriesDisplayNames="@TuneSeriesDisplayNames"
-                                                                             GoToLatestVersion="@_tuneChartViewVersion"
-                                                                             LatestWindowMinutes="@_windowMinutes"
-                                                                             VisibleFromUtc="@GetTuneVisibleFromUtc()"
-                                                                             VisibleToUtc="@GetTuneVisibleToUtc()"
-                                                                             CanLoadOlder="@CanScrollTuneBackward"
-                                                                             CanLoadNewer="@CanScrollTuneForward"
-                                                                             OnHistoryRequested="@OnTuneChartHistoryRequestedAsync"
-                                                                             OnVisibleWindowChanged="@OnTuneVisibleWindowChangedAsync" />
-                                                    </div>
-                                                }
-                                            </div>
                                         </div>
 
                                         <ParamAiPanel Title="PID Tune" Icon="query_stats">
@@ -1057,11 +1002,7 @@
     /// Отображаемые имена серий Tune-графика.
     /// Техническое имя ManTune сохраняется для чтения OUT и PID-расчета.
     /// </summary>
-    private static readonly IReadOnlyDictionary<string, string> TuneSeriesDisplayNames =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["ManTune"] = "Out"
-        };
+    private static readonly IReadOnlyDictionary<string, string> TuneSeriesDisplayNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["ManTune"] = "Out" };
 
     /// <summary>
     /// Версия Tune-графика, чтобы JS сбрасывал старый zoom при смене оборудования или сохранении тегов.
@@ -1344,10 +1285,7 @@
         var options = ParamOptions.Value;
 
         _windowMinutes = Math.Clamp(options.TrendWindowMinutes, 1, 240);
-        _trendHistoryMinutes = Math.Clamp(
-            Math.Max(options.TrendHistoryMinutes, _windowMinutes),
-            _windowMinutes,
-            24 * 60);
+        _trendHistoryMinutes = Math.Clamp(Math.Max(options.TrendHistoryMinutes, _windowMinutes), _windowMinutes, 24 * 60);
         _confirmWrites = options.ConfirmWrites;
     }
 
@@ -1367,13 +1305,9 @@
             return;
         }
 
-        var currentName =
-            Equipment?.Name;
+        var currentName = Equipment?.Name;
 
-        if (string.Equals(
-                _loadedEquipmentName,
-                currentName,
-                StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(_loadedEquipmentName, currentName, StringComparison.OrdinalIgnoreCase))
         {
             StartRefreshLoop();
             return;
@@ -1382,8 +1316,7 @@
         StopRefreshLoop();
         CancelActiveLoads();
 
-        _loadedEquipmentName =
-            currentName;
+        _loadedEquipmentName = currentName;
 
         _snapshot = null;
         _trend = null;
@@ -1393,13 +1326,8 @@
         _hasTuneSettingsLoadedFromStore = false;
         _isTuneCalculating = false;
 
-        /*
-         * Критически важно:
-         * коэффициенты K/Tau/Theta/ki/Ku/Tu принадлежат конкретному
-         * оборудованию и конкретным исходным тегам.
-         */
-        ResetTuneCalculationState(
-            clearModelParameters: true);
+         // Критически важно: коэффициенты K/Tau/Theta/ki/Ku/Tu принадлежат конкретному оборудованию и конкретным исходным тегам.
+        ResetTuneCalculationState(clearModelParameters: true);
 
         _tuneVisibleFromUtc = null;
         _tuneVisibleToUtc = null;
@@ -1421,10 +1349,7 @@
         if (Equipment is null)
             return;
 
-        await LoadAsync(
-            showLoading: true,
-            includeTrend: ShouldLoadVisibleTrend,
-            ct: GetActiveLoadToken());
+        await LoadAsync(showLoading: true, includeTrend: ShouldLoadVisibleTrend, ct: GetActiveLoadToken());
 
         StartRefreshLoop();
     }
@@ -1505,46 +1430,6 @@
     }
 
     /// <summary>
-    /// Получает от JS-графика запрос подгрузить older/newer segment истории.
-    /// </summary>
-    private async Task OnChartHistoryRequestedAsync(string direction)
-    {
-        if (_isRefreshing)
-            return;
-
-        if (direction.Equals("older", StringComparison.OrdinalIgnoreCase) && CanScrollGraphBackward)
-        {
-            await LoadHistorySegmentAsync(direction);
-            return;
-        }
-
-        if (direction.Equals("newer", StringComparison.OrdinalIgnoreCase) && CanScrollGraphForward)
-        {
-            await LoadHistorySegmentAsync(direction);
-        }
-    }
-
-    /// <summary>
-    /// Получает от общего ECharts-компонента запрос на соседний участок истории Tune.
-    /// Направление и проверки совпадают с вкладкой Graph, но используются отдельные
-    /// состояния, чтобы line-график Tune не менял историческое окно основного графика.
-    /// </summary>
-    private async Task OnTuneChartHistoryRequestedAsync(string direction)
-    {
-        if (_isRefreshing)
-            return;
-
-        if (direction.Equals("older", StringComparison.OrdinalIgnoreCase) && CanScrollTuneBackward)
-        {
-            await LoadTuneHistorySegmentAsync(direction);
-            return;
-        }
-
-        if (direction.Equals("newer", StringComparison.OrdinalIgnoreCase) && CanScrollTuneForward)
-            await LoadTuneHistorySegmentAsync(direction);
-    }
-
-    /// <summary>
     /// Возвращает график в live-режим: правая граница снова равна текущему времени.
     /// </summary>
     private async Task GoLiveAsync()
@@ -1552,20 +1437,14 @@
         await GoToLatestAsync(ParamPanelTabKind.Graph);
     }
 
-    /// <summary>
-    /// Загружает Param snapshot и при необходимости trend.
-    /// Info DTO здесь намеренно не запрашивается: полная карточка оборудования принадлежит Info-режиму,
-    /// а Param-режиму для идентификационной строки достаточно выбранного EquipmentDto.
-    /// Метод специально защищен от параллельных refresh-ов, чтобы не перегружать CtApi.
-    /// </summary>
-    private async Task LoadAsync(
-        bool showLoading,
-        bool includeTrend,
-        CancellationToken ct)
+    /// <summary>Обновляет snapshot и видимый график, не допуская параллельных refresh-запросов.</summary>
+    private async Task LoadAsync(bool showLoading, bool includeTrend, CancellationToken ct)
     {
-        if (!IsActive || Equipment is null || _isRefreshing || ct.IsCancellationRequested)
+        if (!IsActive || Equipment is null || _isRefreshing || _isTuneChecking || _isTuneSaving || ct.IsCancellationRequested)
             return;
 
+        var operation = new object();
+        _paramRefreshOperation = operation;
         _isRefreshing = true;
 
         if (showLoading)
@@ -1576,44 +1455,36 @@
             _statusText = "";
 
             var equipmentName = Equipment.Name;
+            var snapshot = await ParamApi.GetSnapshotAsync(equipmentName, ct);
 
-            _snapshot = await ParamApi.GetSnapshotAsync(equipmentName, ct);
+            ct.ThrowIfCancellationRequested();
+
+            if (Equipment?.Name != equipmentName || !IsActive || _isDisposed)
+                return;
+
+            _snapshot = snapshot;
             EnsureSelectedTabIsAvailable();
-            var shouldLoadTrend = includeTrend && IsGraphTabVisible;
-            var shouldLoadTune = includeTrend && IsTuneTabVisible && IsVgaEquipment;
 
-            if (_snapshot.Supported && shouldLoadTrend)
+            var graph = includeTrend && IsGraphTabVisible;
+            var tune = includeTrend && IsTuneTabVisible && IsVgaEquipment;
+
+            if (_snapshot.Supported && graph)
             {
                 if (IsGraphLive || _trend is null)
-                {
-                    var (fromUtc, toUtc) = GetTrendRequestBufferUtc();
-                    _trend = await ParamApi.GetTrendAsync(
-                        equipmentName,
-                        _trendHistoryMinutes,
-                        fromUtc,
-                        toUtc,
-                        ct);
-                }
+                    await LoadGraphTrendAsync(equipmentName, ct);
             }
             else
             {
-                _trend = _snapshot.Supported && !shouldLoadTrend ? _trend : null;
+                _trend = _snapshot.Supported && !graph ? _trend : null;
             }
 
-            if (_snapshot.Supported && shouldLoadTune)
-            {
-                // В историческом режиме Tune polling продолжает обновлять snapshot,
-                // но не заменяет расширенный trend-буфер последними 240 минутами.
-                if (IsTuneLive || _tuneTrend is null)
-                    await LoadTuneAsync(equipmentName, ct);
-            }
+            if (_snapshot.Supported && tune && (IsTuneLive || _tuneTrend is null))
+                await LoadTuneAsync(equipmentName, ct);
 
             if (_snapshot.Supported)
                 await LoadSelectedReferencePageAsync(ct);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested || _isDisposed || !IsActive)
-        {
-        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested || _isDisposed || !IsActive) { }
         catch (Exception ex)
         {
             if (_isDisposed || !IsActive)
@@ -1632,172 +1503,11 @@
         }
         finally
         {
-            if (!_isDisposed)
+            if (!_isDisposed && ReferenceEquals(_paramRefreshOperation, operation))
             {
                 _isLoading = false;
                 _isRefreshing = false;
             }
-        }
-    }
-
-    /// <summary>
-    /// Загружает дополнительный historical segment и сливает его с текущим буфером тренда.
-    /// </summary>
-    private async Task LoadHistorySegmentAsync(string direction)
-    {
-        if (Equipment is null || _trend is null)
-            return;
-
-        var existingTrend = _trend;
-        var chunkMinutes = Math.Max(_windowMinutes, _trendHistoryMinutes / 2);
-        DateTime fromUtc;
-        DateTime toUtc;
-
-        if (direction.Equals("older", StringComparison.OrdinalIgnoreCase))
-        {
-            toUtc = existingTrend.FromUtc;
-            fromUtc = toUtc.AddMinutes(-chunkMinutes);
-            _fixedTrendToUtc ??= existingTrend.ToUtc;
-        }
-        else
-        {
-            fromUtc = existingTrend.ToUtc;
-            toUtc = fromUtc.AddMinutes(chunkMinutes);
-
-            var nowUtc = DateTime.UtcNow;
-            if (toUtc >= nowUtc)
-            {
-                toUtc = nowUtc;
-                _fixedTrendToUtc = null;
-            }
-            else
-            {
-                _fixedTrendToUtc = toUtc;
-            }
-        }
-
-        if (toUtc <= fromUtc.AddSeconds(1))
-            return;
-
-        _isRefreshing = true;
-
-        try
-        {
-            var chunk = await ParamApi.GetTrendAsync(
-                Equipment.Name,
-                (int)Math.Ceiling((toUtc - fromUtc).TotalMinutes),
-                fromUtc,
-                toUtc,
-                GetActiveLoadToken());
-
-            if (chunk.Supported)
-            {
-                _trend = MergeTrends(existingTrend, chunk);
-            }
-        }
-        catch (OperationCanceledException) when (_isDisposed || !IsActive)
-        {
-        }
-        catch (Exception ex)
-        {
-            if (_isDisposed || !IsActive)
-                return;
-
-            _statusStyle = AlertStyle.Warning;
-            _statusText = "Cannot load more trend history: " + ex.Message;
-        }
-        finally
-        {
-            if (!_isDisposed)
-                _isRefreshing = false;
-        }
-    }
-
-    /// <summary>
-    /// Загружает соседний historical chunk для Tune и объединяет его с уже показанными
-    /// ManTune/PV/SP-точками. ViewKey при этом не меняется: общий ECharts-компонент
-    /// сохраняет фактическое видимое окно, поэтому палец или мышь остаются на том же месте.
-    /// </summary>
-    private async Task LoadTuneHistorySegmentAsync(string direction)
-    {
-        if (Equipment is null || _tuneTrend is null)
-            return;
-
-        var existingTrend = _tuneTrend;
-        var chunkMinutes = Math.Max(_windowMinutes, _trendHistoryMinutes / 2);
-        DateTime fromUtc;
-        DateTime toUtc;
-
-        if (direction.Equals("older", StringComparison.OrdinalIgnoreCase))
-        {
-            toUtc = existingTrend.FromUtc;
-            fromUtc = toUtc.AddMinutes(-chunkMinutes);
-            _fixedTuneToUtc ??= existingTrend.ToUtc;
-        }
-        else
-        {
-            fromUtc = existingTrend.ToUtc;
-            toUtc = fromUtc.AddMinutes(chunkMinutes);
-
-            var nowUtc = DateTime.UtcNow;
-            if (toUtc >= nowUtc)
-            {
-                toUtc = nowUtc;
-                _fixedTuneToUtc = null;
-            }
-            else
-            {
-                _fixedTuneToUtc = toUtc;
-            }
-        }
-
-        if (toUtc <= fromUtc.AddSeconds(1))
-            return;
-
-        _isRefreshing = true;
-
-        try
-        {
-            var chunkResponse = await ParamApi.GetTuneAsync(
-                Equipment.Name,
-                (int)Math.Ceiling((toUtc - fromUtc).TotalMinutes),
-                fromUtc,
-                toUtc,
-                GetActiveLoadToken(),
-                _tune?.Settings);
-
-            if (chunkResponse.Trend.Supported)
-            {
-                var mergedTrend = MergeTrends(existingTrend, chunkResponse.Trend);
-                _tuneTrend = mergedTrend;
-
-                if (_tune is not null)
-                {
-                    _tune.Trend = mergedTrend;
-                }
-                else
-                {
-                    chunkResponse.Trend = mergedTrend;
-                    _tune = chunkResponse;
-                }
-            }
-        }
-        catch (OperationCanceledException) when (_isDisposed || !IsActive)
-        {
-        }
-        catch (Exception ex)
-        {
-            if (_isDisposed || !IsActive)
-                return;
-
-            _tuneStatusStyle = AlertStyle.Warning;
-            _tuneStatusText = "Cannot load more PID Tune history: " + ex.Message;
-            _tuneIssueCode = PidTuneIssueCode.HistoryLoadFailed;
-        }
-        finally
-        {
-            if (!_isDisposed)
-                _isRefreshing = false;
         }
     }
 
@@ -1967,14 +1677,7 @@
     /// Открывает Radzen Dialog для конкретного target equipment.
     /// target equipment совпадает с выбранным оборудованием для обычного Param и отличается для DryRun settings.
     /// </summary>
-    private async Task BeginParamWriteAsync(
-        string equipmentName,
-        ParamItemDto item,
-        bool? initialBooleanValue,
-        bool reloadTargetReference,
-        bool allowReadOnlyItemDialog = false,
-        string? referenceSourceEquipmentName = null,
-        ParamValueKind? referenceValueKind = null)
+    private async Task BeginParamWriteAsync(string equipmentName, ParamItemDto item, bool? initialBooleanValue, bool reloadTargetReference, bool allowReadOnlyItemDialog = false, string? referenceSourceEquipmentName = null, ParamValueKind? referenceValueKind = null)
     {
         if (Equipment is null
             || string.IsNullOrWhiteSpace(equipmentName)
@@ -1990,8 +1693,7 @@
 
         try
         {
-            result = await DialogService.OpenAsync<ParamWriteDialog>(
-                $"Write: {item.Name}",
+            result = await DialogService.OpenAsync<ParamWriteDialog>($"Write: {item.Name}",
                 new Dictionary<string, object?>
                 {
                     [nameof(ParamWriteDialog.Item)] = item,
@@ -2012,14 +1714,7 @@
         if (result is not ParamWriteDialogResult writeResult)
             return;
 
-        await SaveParamWriteAsync(
-            item,
-            writeResult.Value,
-            equipmentName,
-            reloadTargetReference,
-            allowReadOnlyItemDialog,
-            referenceSourceEquipmentName,
-            referenceValueKind);
+        await SaveParamWriteAsync(item, writeResult.Value, equipmentName, reloadTargetReference, allowReadOnlyItemDialog, referenceSourceEquipmentName, referenceValueKind);
     }
 
     /// <summary>
@@ -2278,8 +1973,7 @@
         if (string.IsNullOrWhiteSpace(_writeComment))
             return false;
 
-        return _writeItem.Kind == ParamValueKind.Boolean
-            || !string.IsNullOrWhiteSpace(_writeValueText);
+        return _writeItem.Kind == ParamValueKind.Boolean || !string.IsNullOrWhiteSpace(_writeValueText);
     }
 
     /// <summary>
@@ -2304,8 +1998,7 @@
 
         try
         {
-            var response = await ParamApi.WriteAsync(
-                equipmentName,
+            var response = await ParamApi.WriteAsync(equipmentName,
                 new ParamWriteRequest
                 {
                     ItemName = item.Name,
@@ -2599,45 +2292,14 @@
     }
 
     /// <summary>
-    /// Возвращает UTC-диапазон исторического буфера, который нужно запросить у Runtime.Service.
-    /// </summary>
-    private (DateTime FromUtc, DateTime ToUtc) GetTrendRequestBufferUtc()
-    {
-        var toUtc = _fixedTrendToUtc ?? DateTime.UtcNow;
-        return (toUtc.AddMinutes(-_trendHistoryMinutes), toUtc);
-    }
-
-    /// <summary>
     /// true, если график привязан к текущему времени.
     /// </summary>
     private bool IsGraphLive => !_fixedTrendToUtc.HasValue;
 
     /// <summary>
-    /// Можно ли прокручивать график назад и просить старую историю.
-    /// </summary>
-    private bool CanScrollGraphBackward => _trend?.Supported == true;
-
-    /// <summary>
-    /// Можно ли прокручивать график вперед к live-краю.
-    /// </summary>
-    private bool CanScrollGraphForward =>
-        _trend?.Supported == true && _trend.ToUtc < DateTime.UtcNow.AddSeconds(-3);
-
-    /// <summary>
     /// true, если Tune-график находится у текущего времени и polling может обновлять его буфер.
     /// </summary>
     private bool IsTuneLive => !_fixedTuneToUtc.HasValue;
-
-    /// <summary>
-    /// Можно ли Tune-графику запросить более старый исторический участок.
-    /// </summary>
-    private bool CanScrollTuneBackward => _tuneTrend?.Supported == true;
-
-    /// <summary>
-    /// Можно ли Tune-графику загрузить следующий участок в направлении live-края.
-    /// </summary>
-    private bool CanScrollTuneForward =>
-        _tuneTrend?.Supported == true && _tuneTrend.ToUtc < DateTime.UtcNow.AddSeconds(-3);
 
     /// <summary>
     /// true, когда активна вкладка Graph.
@@ -2818,111 +2480,42 @@
         };
     }
 
-    /// <summary>
-    /// Ключ ECharts состояния: меняется при смене оборудования или принудительном reset live.
-    /// </summary>
-    private string ChartViewKey =>
-        $"{Equipment?.Name ?? ""}|{_windowMinutes}|{_chartViewVersion}";
+    /// <summary>Ключ состояния Graph: оборудование и версия выбранного дня.</summary>
+    private string ChartViewKey => $"{Equipment?.Name ?? ""}|{_windowMinutes}|{_chartViewVersion}";
 
-    /// <summary>
-    /// Левая граница видимого окна графика.
-    /// </summary>
-    private DateTime? GetVisibleFromUtc()
-    {
-        return _trend?.ToUtc.AddMinutes(-_windowMinutes);
-    }
+    /// <summary>Левая граница Graph: выбранная история либо последние минуты Live.</summary>
+    private DateTime? GetVisibleFromUtc() => _graphVisibleFromUtc ?? (IsGraphLive ? _trend?.ToUtc.AddMinutes(-_windowMinutes) : _trend?.FromUtc);
 
-    /// <summary>
-    /// Правая граница видимого окна графика.
-    /// </summary>
-    private DateTime? GetVisibleToUtc()
-    {
-        return _trend?.ToUtc;
-    }
+    /// <summary>Правая граница видимого участка Graph.</summary>
+    private DateTime? GetVisibleToUtc() => _graphVisibleToUtc ?? _trend?.ToUtc;
 
-    /// <summary>
-    /// Отдельный ключ состояния ECharts для вкладки Tune, чтобы зум/прокрутка PID-графика
-    /// не пересекались с обычной вкладкой Graph того же оборудования.
-    /// </summary>
-    private string TuneChartViewKey =>
-        $"{Equipment?.Name ?? ""}|tune|{_windowMinutes}|{_tuneChartViewVersion}";
+    /// <summary>Независимый ключ состояния графика PID Tune.</summary>
+    private string TuneChartViewKey => $"{Equipment?.Name ?? ""}|tune|{_windowMinutes}|{_tuneChartViewVersion}";
 
-    /// <summary>
-    /// Левая граница видимого окна line-графика Tune.
-    /// </summary>
-    private DateTime? GetTuneVisibleFromUtc()
-    {
-        return _tuneVisibleFromUtc ?? _tuneTrend?.ToUtc.AddMinutes(-_windowMinutes);
-    }
+    /// <summary>Левая граница участка, используемого также расчётом PID.</summary>
+    private DateTime? GetTuneVisibleFromUtc() => _tuneVisibleFromUtc ?? (IsTuneLive ? _tuneTrend?.ToUtc.AddMinutes(-_windowMinutes) : _tuneTrend?.FromUtc);
 
-    /// <summary>
-    /// Правая граница видимого окна line-графика Tune.
-    /// </summary>
-    private DateTime? GetTuneVisibleToUtc()
-    {
-        return _tuneVisibleToUtc ?? _tuneTrend?.ToUtc;
-    }
+    /// <summary>Правая граница видимого участка Tune.</summary>
+    private DateTime? GetTuneVisibleToUtc() => _tuneVisibleToUtc ?? _tuneTrend?.ToUtc;
 
-    /// <summary>
-    /// Запоминает фактическое окно Tune-графика после прокрутки или масштабирования.
-    /// Кнопка Calculate использует именно этот диапазон, а не весь загруженный буфер.
-    /// </summary>
+    /// <summary>Сохраняет реальное окно графика для Calculate и состояние Live/History.</summary>
     private Task OnTuneVisibleWindowChangedAsync(TrendVisibleWindowChangedEventArgs range)
     {
-        if (!string.Equals(range.ViewKey, TuneChartViewKey, StringComparison.Ordinal))
+        if (range.ViewKey != TuneChartViewKey)
             return Task.CompletedTask;
 
         _tuneVisibleFromUtc = range.FromUtc;
         _tuneVisibleToUtc = range.ToUtc;
+        _fixedTuneToUtc = range.IsLive ? null : range.ToUtc;
+
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Возвращает Tune-график к последнему доступному участку и перечитывает свежие точки.
-    /// </summary>
-    private async Task GoTuneLiveAsync()
-    {
-        await GoToLatestAsync(ParamPanelTabKind.Tune);
-    }
+    /// <summary>Возвращает Tune к последнему участку текущих суток.</summary>
+    private Task GoTuneLiveAsync() => GoToLatestAsync(ParamPanelTabKind.Tune);
 
-    /// <summary>
-    /// Возвращает выбранный универсальный трендовый график к последнему доступному участку.
-    /// Graph и Tune используют один сценарий: сначала перечитываются свежие точки, затем
-    /// задается точное окно справа и изменяется ViewKey, чтобы общий ECharts-компонент
-    /// отбросил сохраненный zoom. Это не дает старому положению dataZoom восстановиться
-    /// поверх только что загруженного диапазона.
-    /// </summary>
-    private async Task GoToLatestAsync(ParamPanelTabKind tab)
-    {
-        if (Equipment is null)
-            return;
-
-        if (tab == ParamPanelTabKind.Graph)
-        {
-            _fixedTrendToUtc = null;
-            await RefreshNowAsync();
-            _chartViewVersion++;
-        }
-        else if (tab == ParamPanelTabKind.Tune)
-        {
-            _fixedTuneToUtc = null;
-            _tuneVisibleFromUtc = null;
-            _tuneVisibleToUtc = null;
-
-            await LoadTuneAsync(Equipment.Name, GetActiveLoadToken());
-
-            if (_tuneTrend is not null)
-            {
-                _tuneVisibleToUtc = _tuneTrend.ToUtc;
-                _tuneVisibleFromUtc = _tuneTrend.ToUtc.AddMinutes(-_windowMinutes);
-            }
-
-            _tuneChartViewVersion++;
-        }
-
-        if (!_isDisposed)
-            await InvokeAsync(StateHasChanged);
-    }
+    /// <summary>Перечитывает конец сегодняшнего буфера и сбрасывает исторический zoom.</summary>
+    private Task GoToLatestAsync(ParamPanelTabKind tab) => SelectTrendDayAsync(DateTime.Today, tab == ParamPanelTabKind.Tune, false);
 
     /// <summary>
     /// Гарантирует наличие объекта настроек Tune даже до первой загрузки из Runtime.
@@ -3253,9 +2846,7 @@
     /// true, когда текущий статус содержит классифицированную причину,
     /// для которой можно открыть диагностическую справку.
     /// </summary>
-    private bool CanOpenTuneIssue =>
-        _tuneIssueCode != PidTuneIssueCode.None &&
-        !string.IsNullOrWhiteSpace(_tuneStatusText);
+    private bool CanOpenTuneIssue => _tuneIssueCode != PidTuneIssueCode.None && !string.IsNullOrWhiteSpace(_tuneStatusText);
 
     /// <summary>
     /// Открывает модель-зависимую диагностическую справку.
@@ -3626,39 +3217,6 @@
     }
 
     /// <summary>
-    /// Загружает сохраненные настройки PID Tune, текущие значения ManTune/PV/SP и line-тренды.
-    /// </summary>
-    private async Task LoadTuneAsync(string equipmentName, CancellationToken ct)
-    {
-        var draftSettings = _hasTuneSettingsLoadedFromStore
-            && _tune?.Settings is not null
-            && string.Equals(_tune.Settings.EquipmentName, equipmentName, StringComparison.OrdinalIgnoreCase)
-                ? _tune.Settings
-                : null;
-
-        var runtimeTune = await ParamApi.GetTuneAsync(
-            equipmentName,
-            _trendHistoryMinutes,
-            null,
-            null,
-            ct,
-            draftSettings);
-
-        if (draftSettings is not null)
-            runtimeTune.Settings = draftSettings;
-        else
-            _hasTuneSettingsLoadedFromStore = true;
-
-        _tune = runtimeTune;
-        _tuneTrend = runtimeTune.Trend;
-        _tuneVisibleFromUtc ??= runtimeTune.Trend?.ToUtc.AddMinutes(-_windowMinutes);
-        _tuneVisibleToUtc ??= runtimeTune.Trend?.ToUtc;
-
-        if (!string.IsNullOrWhiteSpace(runtimeTune.Message))
-            _tuneStatusStyle = runtimeTune.Supported ? AlertStyle.Info : AlertStyle.Warning;
-    }
-
-    /// <summary>
     /// Проверяет PID Tune-теги одной операцией.
     ///
     /// PV/SP:
@@ -3971,43 +3529,6 @@
             if (!_isDisposed)
                 StateHasChanged();
         }
-    }
-
-    /// <summary>
-    /// Сливает уже загруженный trend с новым historical chunk без дублей точек.
-    /// </summary>
-    private static ParamTrendResponse MergeTrends(
-        ParamTrendResponse existing,
-        ParamTrendResponse chunk)
-    {
-        var series = existing.Series.Count > 0
-            ? existing.Series
-            : chunk.Series;
-
-        return new ParamTrendResponse
-        {
-            EquipmentName = existing.EquipmentName,
-            TypeGroup = existing.TypeGroup,
-            Supported = existing.Supported || chunk.Supported,
-            Message = existing.Message,
-            FromUtc = existing.FromUtc <= chunk.FromUtc ? existing.FromUtc : chunk.FromUtc,
-            ToUtc = existing.ToUtc >= chunk.ToUtc ? existing.ToUtc : chunk.ToUtc,
-            AxisYMin = existing.AxisYMin ?? chunk.AxisYMin,
-            AxisYMax = existing.AxisYMax ?? chunk.AxisYMax,
-            Series = series,
-            Points = existing.Points
-                .Concat(chunk.Points)
-                .GroupBy(
-                    point => new
-                    {
-                        Series = point.Series.ToUpperInvariant(),
-                        Time = point.Time.Ticks
-                    })
-                .Select(group => group.First())
-                .OrderBy(point => point.Time)
-                .ThenBy(point => point.Series, StringComparer.OrdinalIgnoreCase)
-                .ToList()
-        };
     }
 
     /// <summary>

@@ -1,31 +1,29 @@
 ﻿namespace TechMES.Web.Components.Common;
 
 /// <summary>
-/// Диапазон времени, который сейчас реально виден в ECharts.
-/// Нужен для расчетов, где пользователь сам выбирает рабочий участок тренда.
+/// Реальный видимый диапазон общего компонента тренда.
+/// Используется для расчётов по выбранному пользователем участку.
 /// </summary>
 public sealed class TrendVisibleWindowChangedEventArgs : EventArgs
 {
-    public TrendVisibleWindowChangedEventArgs(DateTime fromUtc, DateTime toUtc, string viewKey)
+    /// <summary>Создаёт уведомление о диапазоне и режиме графика.</summary>
+    public TrendVisibleWindowChangedEventArgs(DateTime fromUtc, DateTime toUtc, string viewKey, bool isLive = false)
     {
         FromUtc = DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc);
         ToUtc = DateTime.SpecifyKind(toUtc, DateTimeKind.Utc);
         ViewKey = viewKey;
+        IsLive = isLive;
     }
 
-    /// <summary>
-    /// Левая граница видимого окна в UTC.
-    /// </summary>
+    /// <summary>Левая граница видимого окна в UTC.</summary>
     public DateTime FromUtc { get; }
 
-    /// <summary>
-    /// Правая граница видимого окна в UTC.
-    /// </summary>
+    /// <summary>Правая граница видимого окна в UTC.</summary>
     public DateTime ToUtc { get; }
 
-    /// <summary>
-    /// Ключ версии графика, из которой пришло событие.
-    /// Родитель отбрасывает запоздавшие callback-и предыдущего render-а.
-    /// </summary>
+    /// <summary>Ключ версии графика для отбрасывания устаревших событий.</summary>
     public string ViewKey { get; }
+
+    /// <summary>True, когда график следует за текущим временем.</summary>
+    public bool IsLive { get; }
 }

@@ -51,13 +51,6 @@
     min-width: 0;
 }
 
-.param-tune-chart-toolbar {
-    display: flex;
-    justify-content: flex-end;
-    min-height: 34px;
-    min-width: 0;
-}
-
 .param-tune-form {
     display: flex;
     flex-direction: column;
@@ -556,36 +549,6 @@
     font-size: 18px;
 }
 
-::deep .param-live-button {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    padding: 0;
-    background: transparent !important;
-    border-color: transparent !important;
-    box-shadow: none !important;
-    transition: background-color 120ms ease, transform 120ms ease;
-}
-
-::deep .param-live-button:hover {
-    background: var(--rz-base-200) !important;
-    border-color: transparent !important;
-}
-
-::deep .param-live-button:active {
-    transform: scale(0.92);
-}
-
-::deep .param-live-button .rz-button-icon-left {
-    margin: 0;
-    color: var(--rz-text-color);
-    font-size: 26px;
-}
-
-::deep .param-chart-shell {
-    min-width: 0;
-}
-
 .param-motor-all-panels {
     display: grid;
     gap: 16px;
@@ -633,4 +596,10 @@
            перенеси это правило в меньший breakpoint или удали его. */
         grid-template-columns: minmax(0, 1fr);
     }
+}
+
+/* Боковая панель растягивается вместе с toolbar, графиком и Navigator. */
+.param-graph-layout ::deep .param-graph-side-panel {
+    height: auto;
+    align-self: stretch;
 }

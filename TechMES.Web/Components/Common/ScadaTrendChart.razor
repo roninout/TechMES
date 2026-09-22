@@ -4,13 +4,13 @@
 {
     <div class="trend-message">@_configurationError</div>
 }
-else if (_series.Any(series => series.Supported != false))
+else if (ExternalData || _series.Any(series => series.Supported != false))
 {
-    <div class="scada-trend">
+    <div class="scada-trend" @ref="_root">
 
         <div class="trend-toolbar">
             <div class="trend-date-controls">
-                <RadzenDatePicker TValue="DateTime" Value="@_selectedDate" Change="@OnDateChangedAsync" ShowInput="false" ShowTime="false" AllowClear="false" DateFormat="dd.MM.yyyy" Max="@DateTime.Today" Disabled="@_loading" />
+                <RadzenDatePicker TValue="DateTime" Value="@_selectedDate" Change="@OnDateChangedAsync" ShowInput="false" ShowTime="false" AllowClear="false" DateFormat="dd.MM.yyyy" Max="@DateTime.Today" Disabled="@Busy" />
                 <span class="trend-date">@_selectedDate.ToString("dd.MM.yyyy")</span>
                 <RadzenButton class="trend-analysis-toggle" Icon="tune" Variant="Variant.Text" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Click="@ToggleAnalysis" title="Trendlines and statistics" aria-label="Trendlines and statistics" aria-expanded="@(_showAnalysis ? "true" : "false")" />
             </div>
@@ -69,16 +69,15 @@ else if (_series.Any(series => series.Supported != false))
                             </label>
                         </div>
                     </div>
-
                 </div>
             }
 
-            <RadzenButton class="trend-live" Text="Live" Icon="update" ButtonStyle="@(_live ? ButtonStyle.Success : ButtonStyle.Light)" Size="ButtonSize.Small" IsBusy="@_loading" BusyText="Loading..." Disabled="@_loading" Click="@GoLiveAsync" />
+            <RadzenButton class="trend-live" Text="Live" Icon="update" ButtonStyle="@(_live ? ButtonStyle.Success : ButtonStyle.Light)" Size="ButtonSize.Small" IsBusy="@Busy" BusyText="Loading..." Disabled="@Busy" Click="@GoLiveAsync" />
         </div>
 
         @if (_series.Any(series => series.Points.Count > 0))
         {
-            <RadzenChart @ref="_chart" AllowZoom="true" AllowPan="true" ViewStart="@_viewStart" ViewEnd="@_viewEnd" ViewChange="@OnViewChanged" Style="@($"height:{Math.Clamp(Height, 160, 1200)}px; width:100%;")">
+            <RadzenChart @ref="_chart" AllowZoom="true" AllowPan="true" ViewStart="@_viewStart" ViewEnd="@_viewEnd" ViewChange="@OnViewChanged" Style="@($"height:{Math.Clamp(Height, 160, 1200)}px; width:100%; pointer-events:{(ExternalData && IsBusy ? "none" : "auto")};")">
                 @foreach (var series in _series.Where(series => series.Points.Count > 0))
                 {
                     @if (series.Options.Style == ScadaTrendStyle.Area)
@@ -95,7 +94,7 @@ else if (_series.Any(series => series.Supported != false))
                     <RadzenGridLines Visible="true" />
                 </RadzenCategoryAxis>
 
-                <RadzenValueAxis Min="@(HasFixedScale ? Minimum : null)" Max="@(HasFixedScale ? Maximum : null)" FormatString="{0:0.###}">
+                <RadzenValueAxis Min="@(HasFixedScale ? ScaleMinimum : null)" Max="@(HasFixedScale ? ScaleMaximum : null)" FormatString="{0:0.###}">
                     <RadzenGridLines Visible="true" />
                 </RadzenValueAxis>
 
@@ -105,7 +104,7 @@ else if (_series.Any(series => series.Supported != false))
 
             @if (CanNavigate)
             {
-                <div class="trend-navigator" @onpointerdown="PauseLive">
+                <div class="trend-navigator" @onpointerdown="PauseLive" style="@(ExternalData && IsBusy ? "pointer-events:none;" : null)">
                     <RadzenRangeNavigator @key="_navigatorVersion" Start="@_viewStart" End="@_viewEnd" StartChanged="@OnNavigatorStartChanged" EndChanged="@OnNavigatorEndChanged" ShowHandleLabels="true" HandleLabelFormatter="@FormatNavigatorTime" Style="height:80px; width:100%;">
                         @foreach (var series in _series.Where(series => series.Navigator.Count > 0))
                         {
@@ -132,7 +131,7 @@ else if (_series.Any(series => series.Supported != false))
     private RenderFragment<TrendPoint> PointTooltip(SeriesState series) => point => @<div class="trend-tooltip">
         <strong>@series.Name</strong>
         <div>@point.Time.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</div>
-        <div>@point.Value.ToString("0.######") @series.Options.Unit</div>
+        <div>@point.DisplayValue.ToString("0.######") @series.Options.Unit</div>
     </div>;
 
     private RenderFragment Decorations(SeriesState series) => @<text>
