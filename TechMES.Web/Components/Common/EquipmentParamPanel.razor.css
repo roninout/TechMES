@@ -512,9 +512,16 @@
         box-sizing: border-box;
     }
 
-/* Поле R остаётся в верхней строке, но опускается на 7 px. */
+/* Верхняя строка перекрывает поднятый график. Пропускаем нажатия
+   к календарю, настройкам и кнопке Live внутри ScadaTrendChart. */
 .param-graph-panel-radzen .param-toolbar {
     --param-toolbar-r-offset-y: 7px;
+    pointer-events: none;
+}
+
+/* Поля R/Man и другие элементы слева остаются доступными. */
+.param-graph-panel-radzen .param-toolbar-side-slot {
+    pointer-events: auto;
 }
 
 /* Поднимаем рамку Radzen Chart до уровня верхней части боковой панели. */
@@ -523,14 +530,12 @@
     margin-top: -47px;
 }
 
-/* Если показано предупреждение, оставляем под него отдельную строку:
-   оно не должно перекрывать календарь и кнопку Live. */
+/* При предупреждении оставляем для него отдельную строку. */
 .param-graph-panel-radzen:has(.param-graph-alert) .param-graph-layout {
     margin-top: 0;
 }
 
-/* При Height="445" верх и низ шкалы барграфа совпадают
-   с границами области построения Radzen Chart. */
+/* Совмещаем шкалу барграфа с областью построения Chart высотой 445px. */
 .param-graph-panel-radzen .param-graph-layout ::deep .param-graph-side-panel {
     height: 460px;
     margin-top: 52px;
