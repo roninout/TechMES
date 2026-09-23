@@ -310,8 +310,8 @@
                                         }
                                         else if (_paramTrendSeries.Count > 0)
                                         {
-                                            @* Данные и Navigator загружаются как в формулах. Увеличенная высота совмещает область построения со шкалой барграфа. *@
-                                            <ScadaTrendChart Series="@_paramTrendSeries" AutoScale="true" VisibleWindowMinutes="30" Height="445" />
+                                            @* Param запускается с фиксированной шкалой. Кнопка в общем компоненте позволяет временно переключиться на автоматическую. *@
+                                            <ScadaTrendChart Series="@_paramTrendSeries" AutoScale="false" Minimum="@_paramTrendMinimum" Maximum="@_paramTrendMaximum" ShowScaleToggle="true" VisibleWindowMinutes="30" Height="445" />
                                         }
                                         else
                                         {

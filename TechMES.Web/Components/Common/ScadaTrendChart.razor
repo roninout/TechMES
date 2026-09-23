@@ -12,7 +12,14 @@ else if (_series.Any(series => series.Supported != false))
             <div class="trend-date-controls">
                 <RadzenDatePicker TValue="DateTime" Value="@_selectedDate" Change="@OnDateChangedAsync" ShowInput="false" ShowTime="false" AllowClear="false" DateFormat="dd.MM.yyyy" Max="@DateTime.Today" Disabled="@_loading" />
                 <span class="trend-date">@_selectedDate.ToString("dd.MM.yyyy")</span>
+
                 <RadzenButton class="trend-analysis-toggle" Icon="tune" Variant="Variant.Text" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Click="@ToggleAnalysis" title="Trendlines and statistics" aria-label="Trendlines and statistics" aria-expanded="@(_showAnalysis ? "true" : "false")" />
+
+                @if (ShowScaleToggle)
+                {
+                    @* Режим оси Y локален для графика; исходное значение задаёт вызывающая страница. *@
+                    <RadzenButton Icon="@(_autoScale ? "auto_graph" : "height")" Variant="Variant.Text" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Click="@ToggleScale" title="@(_autoScale ? "Y axis: automatic scale. Click for fixed scale." : "Y axis: fixed scale. Click for automatic scale.")" aria-label="@(_autoScale ? "Use fixed Y axis scale" : "Use automatic Y axis scale")" aria-pressed="@_autoScale" />
+                }
             </div>
 
             @if (_showAnalysis)

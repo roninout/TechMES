@@ -18,6 +18,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
 
     [Parameter] public IReadOnlyList<ScadaTrendSeries> Series { get; set; } = [];
     [Parameter] public bool AutoScale { get; set; } = true;
+    [Parameter] public bool ShowScaleToggle { get; set; }
     [Parameter] public double? Minimum { get; set; }
     [Parameter] public double? Maximum { get; set; }
     [Parameter] public bool ShowDataLabels { get; set; } = true;
@@ -32,7 +33,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
     private List<SeriesState> _series = [];
 
     private DateTime _selectedDate, _dayFromUtc, _dayToUtc, _toUtc;
-    private bool _loading, _disposed, _reloadChart, _live = true;
+    private bool _loading, _disposed, _reloadChart, _live = true, _autoScale;
     private int _version, _navigatorVersion, _windowMinutes;
     private double _viewStart, _viewEnd = 1;
     private double? _navigatorStart;
@@ -45,7 +46,6 @@ public partial class ScadaTrendChart : IAsyncDisposable
     private DateTime AxisFrom => TimeBounds.From;
     private DateTime AxisTo => TimeBounds.To;
     private bool CanNavigate => _series.SelectMany(s => s.Navigator).Select(p => p.Time).Distinct().Take(2).Count() > 1;
-
     private (DateTime From, DateTime To) TimeBounds
     {
         get
@@ -65,16 +65,18 @@ public partial class ScadaTrendChart : IAsyncDisposable
             return (from > _dayFromUtc ? from.AddSeconds(-1) : from, to.AddSeconds(1) < _dayToUtc ? to.AddSeconds(1) : _dayToUtc);
         }
     }
-
-    private bool HasFixedScale => !AutoScale && Minimum.HasValue && Maximum.HasValue && double.IsFinite(Minimum.Value) && double.IsFinite(Maximum.Value) && Minimum.Value < Maximum.Value;
-
+    private bool HasFixedScale => !_autoScale && Minimum.HasValue && Maximum.HasValue && double.IsFinite(Minimum.Value) && double.IsFinite(Maximum.Value) && Minimum.Value < Maximum.Value;
     private static DateTime AsUtc(DateTime value) => value.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(value, DateTimeKind.Utc) : value.ToUniversalTime();
     private static string FormatAxisTime(object value) => value is DateTime time ? AsUtc(time).ToLocalTime().ToString("HH:mm") : "";
     private static string FormatNavigatorTime(object value) => value is DateTime time ? AsUtc(time).ToLocalTime().ToString("dd.MM HH:mm") : "";
 
-    /// <summary>Устанавливает видимое окно; Param передаёт 30 минут явно.</summary>
+    /// <summary>
+    /// При создании графика берёт начальный режим шкалы из настроек вызывающей страницы.
+    /// Param передаёт фиксированный режим, формулы сохраняют автоматический.
+    /// </summary>
     protected override void OnInitialized()
     {
+        _autoScale = AutoScale;
         _windowMinutes = Math.Clamp(VisibleWindowMinutes ?? ParamOptions.Value.TrendWindowMinutes, 1, 240);
         BeginDay(DateTime.Today);
     }
@@ -99,6 +101,8 @@ public partial class ScadaTrendChart : IAsyncDisposable
 
         if (!_configuration.SequenceEqual(configuration))
         {
+            // При выборе другого оборудования возвращаем начальный режим шкалы. Обычный циклический snapshot с теми же сериями режим не сбрасывает.
+            _autoScale = AutoScale;
             _configuration = configuration;
             _series = configuration.Select((options, index) => new SeriesState(options, Palette[index])).ToList();
             _analysisTag = _series.FirstOrDefault()?.Tag ?? "";
@@ -330,6 +334,19 @@ public partial class ScadaTrendChart : IAsyncDisposable
     private void ToggleAnalysis()
     {
         _showAnalysis = !_showAnalysis;
+        _reloadChart = true;
+    }
+
+    /// <summary>
+    /// Переключает только вертикальную шкалу. Данные, окно времени и Live не меняются.
+    /// После рендера Radzen Chart пересчитывает ось из новых Min/Max.
+    /// </summary>
+    private void ToggleScale()
+    {
+        if (!ShowScaleToggle || !Minimum.HasValue || !Maximum.HasValue || !double.IsFinite(Minimum.Value) || !double.IsFinite(Maximum.Value) || Minimum.Value >= Maximum.Value)
+            return;
+
+        _autoScale = !_autoScale;
         _reloadChart = true;
     }
 
