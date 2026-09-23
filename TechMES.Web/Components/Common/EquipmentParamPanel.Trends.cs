@@ -28,19 +28,46 @@ public partial class EquipmentParamPanel
     {
         EnsureTrendOwner(equipmentName);
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
-
         var date = IsGraphLive ? DateTime.Today : _graphTrendDate;
-        var trend = await ScadaTrendData.LoadDayAsync(date, reload ? null : _trend, _trendHistoryMinutes, (from, to, token) => ParamApi.GetTrendAsync(equipmentName, _trendHistoryMinutes, from, to, token), timeout.Token);
+        var published = false;
 
-        timeout.Token.ThrowIfCancellationRequested();
+        // Показываем первую готовую порцию, не ожидая всей истории от полуночи.
+        async Task PublishAsync(ParamTrendResponse trend)
+        {
+            ct.ThrowIfCancellationRequested();
 
-        if (Equipment?.Name != equipmentName || !IsActive || _isDisposed)
-            return;
+            if (Equipment?.Name != equipmentName || !IsActive || _isDisposed)
+                return;
 
-        _trend = trend;
-        _graphTrendDate = date;
+            if (_trend is null || _trend.FromUtc.ToLocalTime().Date != date.Date)
+            {
+                _graphVisibleFromUtc = _graphVisibleToUtc = null;
+                _chartViewVersion++;
+            }
+
+            _trend = trend;
+            _graphTrendDate = date;
+            published = true;
+
+            await InvokeAsync(StateHasChanged);
+        }
+
+        try
+        {
+            var trend = await ScadaTrendData.LoadDayAsync(date, reload ? null : _trend, _trendHistoryMinutes, (from, to, token) => ParamApi.GetTrendAsync(equipmentName, _trendHistoryMinutes, from, to, token), ct, PublishAsync);
+            await PublishAsync(trend);
+        }
+        catch
+        {
+            // Не запускаем полную повторную загрузку каждые пять секунд после таймаута.
+            if (published && !ct.IsCancellationRequested && Equipment?.Name == equipmentName && _trend is not null)
+            {
+                _fixedTrendToUtc = _trend.ToUtc;
+                _trend = ScadaTrendData.WithMessage(_trend, "History loading stopped. Loaded data is available. Select Live or the date to retry.");
+            }
+
+            throw;
+        }
     }
 
     /// <summary>Определяет настройки источников, от которых зависит буфер Tune.</summary>
@@ -51,45 +78,78 @@ public partial class EquipmentParamPanel
     {
         EnsureTrendOwner(equipmentName);
 
-        var original = _hasTuneSettingsLoadedFromStore && _tune?.Settings.EquipmentName == equipmentName ? _tune.Settings : null;
-        var key = TuneSourceKey(original);
-        var draft = original is null ? null : JsonSerializer.Deserialize<ParamTuneSettingsResponse>(JsonSerializer.Serialize(original));
+        var editor = _hasTuneSettingsLoadedFromStore && _tune?.Settings.EquipmentName == equipmentName ? _tune.Settings : null;
+        var key = TuneSourceKey(editor);
+        var draft = editor is null ? null : JsonSerializer.Deserialize<ParamTuneSettingsResponse>(JsonSerializer.Serialize(editor));
         var cache = !reload && key == _tuneBufferSettings ? _tuneTrend : null;
         var date = IsTuneLive ? DateTime.Today : _tuneTrendDate;
 
         ParamTuneRuntimeResponse? latest = null;
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        var published = false;
 
         // Все порции используют одни PV/SP и шкалы, даже если оператор редактирует форму.
         async Task<ParamTrendResponse> ReadAsync(DateTime from, DateTime to, CancellationToken token)
         {
             latest = await ParamApi.GetTuneAsync(equipmentName, _trendHistoryMinutes, from, to, token, draft);
-            draft ??= latest.Settings;
+
+            draft ??= JsonSerializer.Deserialize<ParamTuneSettingsResponse>(JsonSerializer.Serialize(latest.Settings));
+            editor ??= JsonSerializer.Deserialize<ParamTuneSettingsResponse>(JsonSerializer.Serialize(draft));
+
             return latest.Trend;
         }
 
-        var trend = await ScadaTrendData.LoadDayAsync(date, cache, _trendHistoryMinutes, ReadAsync, timeout.Token);
-        timeout.Token.ThrowIfCancellationRequested();
+        // Редактор и снимок запроса являются разными объектами: ввод не меняет выполняемые запросы.
+        async Task PublishAsync(ParamTrendResponse trend)
+        {
+            ct.ThrowIfCancellationRequested();
 
-        if (latest is null || Equipment?.Name != equipmentName || !IsActive || _isDisposed)
-            return;
+            if (latest is null || Equipment?.Name != equipmentName || !IsActive || _isDisposed)
+                return;
 
-        if (original is not null && TuneSourceKey(original) != key)
-            throw new InvalidOperationException("Tune settings changed during loading. Check the tags again.");
+            if (TuneSourceKey(editor) != TuneSourceKey(draft))
+                throw new InvalidOperationException("Tune settings changed during loading. Check the tags again.");
 
-        latest.Settings = original ?? draft ?? latest.Settings;
-        latest.Trend = trend;
+            if (_tuneTrend is null || _tuneTrend.FromUtc.ToLocalTime().Date != date.Date)
+            {
+                _tuneVisibleFromUtc = _tuneVisibleToUtc = null;
+                _tuneChartViewVersion++;
+            }
 
-        _tune = latest;
-        _tuneTrend = trend;
-        _tuneTrendDate = date;
-        _hasTuneSettingsLoadedFromStore = true;
-        _tuneBufferSettings = TuneSourceKey(latest.Settings);
+            latest.Settings = editor ?? latest.Settings;
+            latest.Trend = trend;
 
-        if (!string.IsNullOrWhiteSpace(latest.Message))
-            _tuneStatusStyle = latest.Supported ? AlertStyle.Info : AlertStyle.Warning;
+            _tune = latest;
+            _tuneTrend = trend;
+            _tuneTrendDate = date;
+            _hasTuneSettingsLoadedFromStore = true;
+            _tuneBufferSettings = TuneSourceKey(draft);
+
+            if (!string.IsNullOrWhiteSpace(latest.Message))
+                _tuneStatusStyle = latest.Supported ? AlertStyle.Info : AlertStyle.Warning;
+
+            published = true;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        try
+        {
+            var trend = await ScadaTrendData.LoadDayAsync(date, cache, _trendHistoryMinutes, ReadAsync, ct, PublishAsync);
+            await PublishAsync(trend);
+        }
+        catch
+        {
+            // Сохраняем показанную историю и приостанавливаем её автоматическую подгрузку.
+            if (published && !ct.IsCancellationRequested && Equipment?.Name == equipmentName && _tuneTrend is not null)
+            {
+                _fixedTuneToUtc = _tuneTrend.ToUtc;
+                _tuneTrend = ScadaTrendData.WithMessage(_tuneTrend, "History loading stopped. Loaded data is available. Select Live or the date to retry.");
+
+                if (_tune is not null)
+                    _tune.Trend = _tuneTrend;
+            }
+
+            throw;
+        }
     }
 
     /// <summary>Сохраняет реальный диапазон Graph и останавливает polling истории.</summary>
@@ -111,7 +171,7 @@ public partial class EquipmentParamPanel
     /// <summary>Обрабатывает выбор дня для PID Tune.</summary>
     private Task OnTuneDateSelectedAsync(DateTime date) => SelectTrendDayAsync(date, true);
 
-    /// <summary>Меняет день атомарно; при ошибке оставляет предыдущие данные и диапазон.</summary>
+    /// <summary>Меняет день порциями; при ошибке сохраняет загруженную часть или предыдущий график.</summary>
     private async Task SelectTrendDayAsync(DateTime date, bool tune, bool reload = true)
     {
         if (Equipment is null || !IsActive || _isDisposed || _isRefreshing || _isTuneChecking || _isTuneSaving || date.Date > DateTime.Today)
@@ -167,13 +227,14 @@ public partial class EquipmentParamPanel
             if (!ReferenceEquals(_paramRefreshOperation, operation) || Equipment?.Name != equipmentName || !IsActive || _isDisposed)
                 return;
 
-            if (tune)
+            // Если уже показана часть нового дня, сохраняем её для просмотра и продолжения загрузки.
+            if (tune && ReferenceEquals(_tuneTrend, previousTrend))
             {
                 _tuneTrendDate = previousDate;
                 _fixedTuneToUtc = previousFixed;
                 _tuneTrend = previousTrend;
             }
-            else
+            else if (!tune && ReferenceEquals(_trend, previousTrend))
             {
                 _graphTrendDate = previousDate;
                 _fixedTrendToUtc = previousFixed;
@@ -181,7 +242,7 @@ public partial class EquipmentParamPanel
             }
 
             _statusStyle = AlertStyle.Warning;
-            _statusText = ex is OperationCanceledException ? "Trend request timed out. The previous chart has been kept." : "Cannot load the selected day: " + ex.Message;
+            _statusText = ex is OperationCanceledException ? "Trend request timed out. Loaded data has been kept." : "Cannot load the selected day: " + ex.Message;
         }
         finally
         {

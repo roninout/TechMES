@@ -1465,6 +1465,10 @@
             _snapshot = snapshot;
             EnsureSelectedTabIsAvailable();
 
+            // Основная панель доступна сразу после snapshot; историю загружаем с индикатором Live.
+            _isLoading = false;
+            await InvokeAsync(StateHasChanged);
+
             var graph = includeTrend && IsGraphTabVisible;
             var tune = includeTrend && IsTuneTabVisible && IsVgaEquipment;
 

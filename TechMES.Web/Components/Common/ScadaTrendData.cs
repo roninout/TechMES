@@ -19,70 +19,144 @@ internal static class ScadaTrendData
         return (TimeZoneInfo.ConvertTimeToUtc(midnight, TimeZoneInfo.Local), TimeZoneInfo.ConvertTimeToUtc(midnight.AddDays(1), TimeZoneInfo.Local));
     }
 
-    /// <summary>Собирает новый буфер отдельно; ошибка или отмена не изменяет предыдущий график.</summary>
-    internal static async Task<ParamTrendResponse> LoadDayAsync(DateTime date, ParamTrendResponse? cache, int chunkMinutes, Func<DateTime, DateTime, CancellationToken, Task<ParamTrendResponse>> read, CancellationToken ct)
+    /// <summary>Читает сутки от новых данных к старым; публикует готовые порции и умеет продолжать неполный буфер.</summary>
+    internal static async Task<ParamTrendResponse> LoadDayAsync(DateTime date, ParamTrendResponse? cache, int chunkMinutes, Func<DateTime, DateTime, CancellationToken, Task<ParamTrendResponse>> read, CancellationToken ct, Func<ParamTrendResponse, Task>? onProgress = null)
     {
         var (from, dayEnd) = DayBounds(date);
-        var to = DateTime.UtcNow < dayEnd ? DateTime.UtcNow : dayEnd;
+        var now = DateTime.UtcNow;
+        var to = now < dayEnd ? now : dayEnd;
 
         if (to <= from)
             return new ParamTrendResponse { Supported = true, FromUtc = from, ToUtc = dayEnd, Message = "No data for the selected day." };
 
-        if (cache?.Supported != true || cache.FromUtc != from || cache.ToUtc > to)
+        if (cache?.Supported != true || cache.FromUtc < from || cache.FromUtc >= to || cache.ToUtc > to || cache.ToUtc < cache.FromUtc)
             cache = null;
 
+        // Ограничения действуют отдельно на одну порцию и на всю операцию.
+        // После общего таймаута уже показанный участок остаётся доступным.
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        operation.CancelAfter(TimeSpan.FromMinutes(2));
+
+        var token = operation.Token;
         var points = new Dictionary<(string Series, DateTime Time), ParamTrendPointDto>();
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         ParamTrendResponse? latest = cache;
+        var coveredFrom = cache?.FromUtc ?? to;
+        var coveredTo = cache?.ToUtc ?? to;
 
         if (cache is not null)
             AddPoints(cache.Points, from, to, dayEnd, points, counts);
 
-        var cursor = cache is null ? from : cache.ToUtc.AddSeconds(-5);
-
-        if (cursor < from)
-            cursor = from;
-
-        while (cursor < to)
+        // Читает одну порцию с отдельным таймаутом, не меняя настройки внешнего источника.
+        async Task<ParamTrendResponse> ReadChunkAsync(DateTime start, DateTime end)
         {
-            ct.ThrowIfCancellationRequested();
+            token.ThrowIfCancellationRequested();
 
-            var end = cursor.AddMinutes(Math.Clamp(chunkMinutes, 1, 240));
+            using var request = CancellationTokenSource.CreateLinkedTokenSource(token);
+            request.CancelAfter(TimeSpan.FromSeconds(30));
 
-            if (end > to)
-                end = to;
+            var response = await read(start, end, request.Token);
+            request.Token.ThrowIfCancellationRequested();
 
-            latest = await read(cursor, end, ct);
-            ct.ThrowIfCancellationRequested();
-
-            if (!latest.Supported)
-                return latest;
-
-            if (latest.Series.Count > MaxSeries)
+            if (response.Series.Count > MaxSeries)
                 throw new InvalidDataException("Too many trend series.");
 
-            // Не объединяем точки, нормализованные по разным шкалам.
-            if (cache is not null && !SameScale(cache, latest))
-                return await LoadDayAsync(date, null, chunkMinutes, read, ct);
-
-            AddPoints(latest.Points, cursor, end, dayEnd, points, counts);
-            cursor = end;
+            return response;
         }
 
-        return new ParamTrendResponse
+        // Сначала обновляем конец уже загруженного участка.
+        if (cache is not null)
+        {
+            var tailFrom = cache.ToUtc.AddSeconds(-5);
+
+            if (tailFrom < coveredFrom)
+                tailFrom = coveredFrom;
+
+            while (tailFrom < to)
+            {
+                var end = tailFrom.AddMinutes(Math.Clamp(chunkMinutes, 1, 240));
+
+                if (end > to)
+                    end = to;
+
+                latest = await ReadChunkAsync(tailFrom, end);
+
+                if (!latest.Supported)
+                    return latest;
+
+                if (!SameScale(cache, latest))
+                    return await LoadDayAsync(date, null, chunkMinutes, read, token, onProgress);
+
+                AddPoints(latest.Points, tailFrom, end, dayEnd, points, counts);
+
+                coveredTo = end;
+                tailFrom = end;
+
+                if (onProgress is not null)
+                    await onProgress(BuildResult(coveredFrom > from || coveredTo < to));
+            }
+        }
+
+        // Историю подгружаем назад: последняя порция появляется первой.
+        while (coveredFrom > from)
+        {
+            var end = coveredFrom;
+            var start = end.AddMinutes(-Math.Clamp(chunkMinutes, 1, 240));
+
+            if (start < from)
+                start = from;
+
+            var response = await ReadChunkAsync(start, end);
+
+            if (!response.Supported)
+                return response;
+
+            if (latest is not null && !SameScale(latest, response))
+                throw new InvalidDataException("Trend scales changed during loading. Select Live or the date again.");
+
+            latest = response;
+            AddPoints(response.Points, start, end, dayEnd, points, counts);
+            coveredFrom = start;
+
+            // Передаём новый объект и отдельный список: показанный буфер больше не изменяется.
+            if (onProgress is not null)
+                await onProgress(BuildResult(coveredFrom > from));
+
+            token.ThrowIfCancellationRequested();
+        }
+
+        return BuildResult(false);
+
+        // FromUtc обозначает фактически загруженное начало, чтобы Live мог продолжить после ошибки.
+        ParamTrendResponse BuildResult(bool loading) => new()
         {
             EquipmentName = latest?.EquipmentName ?? "",
             TypeGroup = latest?.TypeGroup ?? default,
             Supported = latest?.Supported == true,
-            FromUtc = from,
-            ToUtc = to,
+            FromUtc = coveredFrom,
+            ToUtc = coveredTo,
             AxisYMin = latest?.AxisYMin,
             AxisYMax = latest?.AxisYMax,
             Series = latest?.Series ?? [],
             Points = points.Values.OrderBy(p => p.Time).ThenBy(p => p.Series).ToList(),
-            Message = points.Count == 0 ? "No data for the selected day." : ""
+            Message = loading ? "Loading day history..." : points.Count == 0 ? "No data for the selected day." : ""
         };
     }
+
+    /// <summary>Меняет сообщение новым снимком, не изменяя уже переданные компоненту данные.</summary>
+    internal static ParamTrendResponse WithMessage(ParamTrendResponse source, string message) => new()
+    {
+        EquipmentName = source.EquipmentName,
+        TypeGroup = source.TypeGroup,
+        Supported = source.Supported,
+        FromUtc = source.FromUtc,
+        ToUtc = source.ToUtc,
+        AxisYMin = source.AxisYMin,
+        AxisYMax = source.AxisYMax,
+        Series = source.Series,
+        Points = source.Points,
+        Message = message
+    };
 
     /// <summary>Проверяет совместимость шкал предыдущего буфера и новой порции.</summary>
     private static bool SameScale(ParamTrendResponse left, ParamTrendResponse right)
