@@ -483,10 +483,12 @@
         box-sizing: border-box;
     }
 
-/* Верхняя строка перекрывает поднятый график. Пропускаем нажатия
-   к календарю, настройкам и кнопке Live внутри ScadaTrendChart. */
+/* У DI/DO верхняя строка пуста, у Motor/VGD содержит только State. Резервируем
+   ту же высоту, что у поля R на AI: высоту Radzen input и верхний отступ FormField.
+   Иначе отрицательный отступ Graph поднимает эти графики выше вкладок. */
 .param-graph-panel-radzen .param-toolbar {
     --param-toolbar-r-offset-y: 7px;
+    min-height: calc(var(--rz-input-height, 2.25rem) + 0.625rem);
     pointer-events: none;
 }
 
