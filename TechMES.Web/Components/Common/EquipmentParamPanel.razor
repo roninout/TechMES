@@ -22,8 +22,7 @@
     {
         <RadzenCard class="equipment-param-summary-card">
             <div class="equipment-param-summary">
-                @* Param намеренно показывает только идентификационную строку.
-                   Полная карточка с полями, логотипом и фотографией остается в EquipmentInfoPanel. *@
+                @* Param намеренно показывает только идентификационную строку. Полная карточка с полями, логотипом и фотографией остается в EquipmentInfoPanel. *@
                 <div class="equipment-selected-header equipment-param-selected-header">
                     <EquipmentTypeBadge TypeGroup="@Equipment.TypeGroup" />
 
@@ -57,17 +56,73 @@
                         }
                     </div>
                 </div>
+
             </div>
         </RadzenCard>
 
-        @if (!string.IsNullOrWhiteSpace(_statusText))
+        @* Сообщения Param находятся в одном месте над вкладками. Каждое активное состояние занимает отдельную строку. *@
+        @if (!string.IsNullOrWhiteSpace(_statusText) || HasVisibleGraphAlerts)
         {
-            <RadzenAlert AlertStyle="@_statusStyle"
-                         ShowIcon="true"
-                         AllowClose="true"
-                         Close="@(() => _statusText = string.Empty)">
-                @_statusText
-            </RadzenAlert>
+            <div class="param-alert-stack">
+                @if (!string.IsNullOrWhiteSpace(_statusText))
+                {
+                    <RadzenAlert AlertStyle="@_statusStyle" ShowIcon="true" AllowClose="true" Close="@(() => _statusText = string.Empty)" class="param-status-alert">
+                        @_statusText
+                    </RadzenAlert>
+                }
+
+                @if (HasVisibleGraphAlerts)
+                {
+                    @if (IsGraphForcedChannelActive)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" AllowClose="false" class="param-status-alert">
+                            Forced chanel!
+                        </RadzenAlert>
+                    }
+
+                    @if (IsGraphChannelErrorActive)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" AllowClose="false" class="param-status-alert">
+                            Chanel error!
+                        </RadzenAlert>
+                    }
+
+                    @if (IsGraphVgaElAlarmActive)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" AllowClose="false" class="param-status-alert">
+                            Alarm active!
+                        </RadzenAlert>
+                    }
+
+                    @if (IsGraphVgaElOpenAlarmActive)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" AllowClose="false" class="param-status-alert">
+                            Open alarm!
+                        </RadzenAlert>
+                    }
+
+                    @if (IsGraphVgaElCloseAlarmActive)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" AllowClose="false" class="param-status-alert">
+                            Close alarm!
+                        </RadzenAlert>
+                    }
+
+                    @if (IsGraphMotorTimeWorkActive)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" AllowClose="false" class="param-status-alert">
+                            Time Work!
+                        </RadzenAlert>
+                    }
+
+                    @if (IsGraphVgdAlarmActive)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" AllowClose="false" class="param-status-alert">
+                            Alarm active!
+                        </RadzenAlert>
+                    }
+                }
+            </div>
         }
 
         <div class="equipment-param-tabs">
@@ -182,103 +237,6 @@
                                                     @GetVgdStateDisplayValue()
                                                 </div>
                                             </div>
-                                        }
-                                    </div>
-
-                                    @* Пустая колонка между полем R и уведомлением Forced.
-                                       Ее ширина задается в CSS через --param-toolbar-spacer-width,
-                                       чтобы можно было точно подвинуть alert, не меняя разметку графика. *@
-                                    <div class="param-toolbar-spacer" aria-hidden="true"></div>
-
-                                    <div class="param-toolbar-alert-slot">
-                                        @if (IsGraphForcedChannelActive)
-                                        {
-                                            @* Forced-состояние выводим над графиком, чтобы боковая панель с барграфами
-                                               не меняла свою геометрию и продолжала совпадать с plot-area ECharts. *@
-                                            <RadzenAlert AllowClose="false"
-                                                         AlertStyle="AlertStyle.Warning"
-                                                         Variant="Variant.Flat"
-                                                         Shade="Shade.Lighter"
-                                                         ShowIcon="true"
-                                                         class="param-graph-alert param-forced-alert">
-                                                Forced chanel!
-                                            </RadzenAlert>
-                                        }
-
-                                        @if (IsGraphChannelErrorActive)
-                                        {
-                                            @* AlarmHealth переносим из бокового WPF-блока наверх:
-                                               предупреждение остается видимым, но больше не меняет высоту/позицию барграфов. *@
-                                            <RadzenAlert AllowClose="false"
-                                                         AlertStyle="AlertStyle.Danger"
-                                                         Variant="Variant.Flat"
-                                                         Shade="Shade.Lighter"
-                                                         ShowIcon="true"
-                                                         class="param-graph-alert param-channel-error-alert">
-                                                Chanel error!
-                                            </RadzenAlert>
-                                        }
-
-                                        @if (IsGraphVgaElAlarmActive)
-                                        {
-                                            <RadzenAlert AllowClose="false"
-                                                         AlertStyle="AlertStyle.Danger"
-                                                         Variant="Variant.Flat"
-                                                         Shade="Shade.Lighter"
-                                                         ShowIcon="true"
-                                                         class="param-graph-alert param-channel-error-alert">
-                                                Alarm active!
-                                            </RadzenAlert>
-                                        }
-
-                                        @if (IsGraphVgaElOpenAlarmActive)
-                                        {
-                                            <RadzenAlert AllowClose="false"
-                                                         AlertStyle="AlertStyle.Danger"
-                                                         Variant="Variant.Flat"
-                                                         Shade="Shade.Lighter"
-                                                         ShowIcon="true"
-                                                         class="param-graph-alert param-channel-error-alert">
-                                                Open alarm!
-                                            </RadzenAlert>
-                                        }
-
-                                        @if (IsGraphVgaElCloseAlarmActive)
-                                        {
-                                            <RadzenAlert AllowClose="false"
-                                                         AlertStyle="AlertStyle.Danger"
-                                                         Variant="Variant.Flat"
-                                                         Shade="Shade.Lighter"
-                                                         ShowIcon="true"
-                                                         class="param-graph-alert param-channel-error-alert">
-                                                Close alarm!
-                                            </RadzenAlert>
-                                        }
-
-                                        @if (IsGraphMotorTimeWorkActive)
-                                        {
-                                            @* Time Work у Motor больше не находится внутри боковой станции:
-                                               предупреждение выводим в общей alert-строке Graph рядом с другими состояниями. *@
-                                            <RadzenAlert AllowClose="false"
-                                                         AlertStyle="AlertStyle.Info"
-                                                         Variant="Variant.Flat"
-                                                         Shade="Shade.Lighter"
-                                                         ShowIcon="true"
-                                                         class="param-graph-alert param-motor-time-work-alert">
-                                                Time Work!
-                                            </RadzenAlert>
-                                        }
-
-                                        @if (IsGraphVgdAlarmActive)
-                                        {
-                                            <RadzenAlert AllowClose="false"
-                                                         AlertStyle="AlertStyle.Danger"
-                                                         Variant="Variant.Flat"
-                                                         Shade="Shade.Lighter"
-                                                         ShowIcon="true"
-                                                         class="param-graph-alert param-channel-error-alert">
-                                                Alarm active!
-                                            </RadzenAlert>
                                         }
                                     </div>
 
@@ -4186,6 +4144,13 @@
 
         return $"{status} | {from:HH:mm:ss} - {to:HH:mm:ss}";
     }
+
+    /// <summary>
+    /// Показывает состояния оборудования над вкладками только при активной Graph.
+    /// Если состояний нет, пустой блок уведомлений не создаётся.
+    /// </summary>
+    private bool HasVisibleGraphAlerts => _snapshot?.Supported == true && IsGraphTabVisible &&
+        (IsGraphForcedChannelActive || IsGraphChannelErrorActive || IsGraphVgaElAlarmActive || IsGraphVgaElOpenAlarmActive || IsGraphVgaElCloseAlarmActive || IsGraphMotorTimeWorkActive || IsGraphVgdAlarmActive);
 
     /// <summary>
     /// true, если текущий snapshot сообщает о принудительном режиме канала.

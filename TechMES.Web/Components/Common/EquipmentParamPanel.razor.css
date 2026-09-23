@@ -307,26 +307,33 @@
     min-width: 0;
 }
 
+/* Статус запроса и состояния оборудования занимают всю ширину и показываются друг под другом над вкладками Param. */
+.param-alert-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.param-alert-stack ::deep .param-status-alert {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 60px;
+    margin: 0;
+}
+
 ::deep .param-write-card {
     border-left: 4px solid var(--rz-warning);
 }
 
 .param-toolbar {
-    /* Левая колонка верхней строки Graph: в ней находится read-only поле R. */
+    /* Слева остаётся поле R/Man/State, справа — кнопка старого графика. */
     --param-toolbar-side-width: 180px;
-    /* Фактическая ширина самого RadzenFormField с текущим значением R. */
     --param-toolbar-r-width: 100px;
-    /* Пустая колонка между R и уведомлением Forced. Меняй ее, чтобы сдвигать alert вправо. */
-    --param-toolbar-spacer-width: 52px;
-    /* Максимальная ширина каждого уведомления внутри своей части центральной колонки. */
-    --param-toolbar-alert-width: 1800px;
-    /* Одинаковый внешний отступ сверху и снизу от строки R/alert/live-button. */
     --param-toolbar-outer-gap: 0px;
-    /* Вертикальное смещение поля R, если нужно чуть опустить или поднять его относительно alert. */
     --param-toolbar-r-offset-y: 0px;
     display: grid;
-    /* Колонки: зона R, ручной spacer, зона alert, кнопка перехода к live-краю графика. */
-    grid-template-columns: var(--param-toolbar-side-width) var(--param-toolbar-spacer-width) minmax(0, 1fr) auto;
+    grid-template-columns: var(--param-toolbar-side-width) minmax(0, 1fr);
     align-items: center;
     gap: 10px;
     margin: var(--param-toolbar-outer-gap) 0;
@@ -437,42 +444,6 @@
     cursor: pointer;
 }
 
-.param-toolbar-spacer {
-    width: var(--param-toolbar-spacer-width);
-    min-width: 0;
-}
-
-.param-toolbar-alert-slot {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-    overflow: hidden;
-    padding-inline: 8px;
-}
-
-::deep .param-graph-alert {
-    width: min(var(--param-toolbar-alert-width), 100%);
-    max-width: 100%;
-    min-width: 0;
-    min-height: 36px;
-    margin: 0;
-    overflow: hidden;
-}
-
-::deep .param-forced-alert {
-    color: #f28c00;
-}
-
-::deep .param-channel-error-alert {
-    color: var(--rz-danger);
-}
-
-::deep .param-motor-time-work-alert {
-    color: var(--rz-info);
-}
-
 ::deep .param-graph-alert .rz-alert-content,
 ::deep .param-graph-alert .rz-alert-message {
     min-width: 0;
@@ -530,11 +501,6 @@
     margin-top: -47px;
 }
 
-/* При предупреждении оставляем для него отдельную строку. */
-.param-graph-panel-radzen:has(.param-graph-alert) .param-graph-layout {
-    margin-top: 0;
-}
-
 /* Совмещаем шкалу барграфа с областью построения Chart высотой 445px. */
 .param-graph-panel-radzen .param-graph-layout ::deep .param-graph-side-panel {
     height: 460px;
@@ -589,6 +555,8 @@
 }
 
 ::deep .param-live-button {
+    grid-column: 2;
+    justify-self: end;
     width: 36px;
     min-width: 36px;
     height: 36px;
@@ -654,8 +622,6 @@
         /* Здесь можно отдельно настроить те же размеры для планшета, не трогая desktop. */
         --param-toolbar-side-width: 180px;
         --param-toolbar-r-width: 100px;
-        --param-toolbar-spacer-width: 52px;
-        --param-toolbar-alert-width: 1800px;
         --param-toolbar-outer-gap: 0px;
         --param-toolbar-r-offset-y: 0px;
     }
