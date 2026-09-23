@@ -95,8 +95,12 @@
                     <Tabs>
                         @* Иконки вкладок Param остаются themed: Radzen сам окрашивает их по активной теме и состоянию вкладки. *@
                         <RadzenTabsItem Text="Graph" Icon="area_chart">
-                            <div class="param-graph-panel">
+
+                            @* Для Radzen Chart график поднимается в область верхней строки. Старый Graph сохраняет прежнюю разметку. *@
+                            <div class="param-graph-panel @(UseLegacyParamTrend ? string.Empty : "param-graph-panel-radzen")">
+
                                 <div class="param-toolbar">
+
                                     <div class="param-toolbar-side-slot">
                                         @if (IsAiEquipment)
                                         {
@@ -306,8 +310,8 @@
                                         }
                                         else if (_paramTrendSeries.Count > 0)
                                         {
-                                            @* Та же загрузка суточной истории и тот же Navigator, что у формул. *@
-                                            <ScadaTrendChart Series="@_paramTrendSeries" AutoScale="true" VisibleWindowMinutes="30" />
+                                            @* Данные и Navigator загружаются как в формулах. Увеличенная высота совмещает область построения со шкалой барграфа. *@
+                                            <ScadaTrendChart Series="@_paramTrendSeries" AutoScale="true" VisibleWindowMinutes="30" Height="445" />
                                         }
                                         else
                                         {

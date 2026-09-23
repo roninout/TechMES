@@ -494,9 +494,8 @@
 .param-graph-layout {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    /* Боковая WPF-панель центрируется относительно контейнера ECharts, а не прижимается к верхней кромке вкладки Graph. */
+    /* Старый ECharts сохраняет исходное центрирование боковой панели. */
     align-items: center;
-    /* Расстояние между левой Param-панелью и графиком. Уменьшаем его здесь, не меняя внутреннюю геометрию шкал. */
     gap: 6px;
     min-height: 360px;
     min-width: 0;
@@ -512,6 +511,30 @@
     .param-graph-main ::deep .scada-trend {
         box-sizing: border-box;
     }
+
+/* Поле R остаётся в верхней строке, но опускается на 7 px. */
+.param-graph-panel-radzen .param-toolbar {
+    --param-toolbar-r-offset-y: 7px;
+}
+
+/* Поднимаем рамку Radzen Chart до уровня верхней части боковой панели. */
+.param-graph-panel-radzen .param-graph-layout {
+    align-items: start;
+    margin-top: -47px;
+}
+
+/* Если показано предупреждение, оставляем под него отдельную строку:
+   оно не должно перекрывать календарь и кнопку Live. */
+.param-graph-panel-radzen:has(.param-graph-alert) .param-graph-layout {
+    margin-top: 0;
+}
+
+/* При Height="445" верх и низ шкалы барграфа совпадают
+   с границами области построения Radzen Chart. */
+.param-graph-panel-radzen .param-graph-layout ::deep .param-graph-side-panel {
+    height: 460px;
+    margin-top: 52px;
+}
 
 .param-graph-footer {
     display: flex;
@@ -636,5 +659,14 @@
         /* На узком экране можно свернуть Graph в одну колонку. Если нужен WPF-вид с барграфом слева,
            перенеси это правило в меньший breakpoint или удали его. */
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    /* На узком экране боковая панель и график идут друг за другом. */
+    .param-graph-panel-radzen .param-graph-layout {
+        margin-top: 0;
+    }
+
+    .param-graph-panel-radzen .param-graph-layout ::deep .param-graph-side-panel {
+        margin-top: 0;
     }
 }
