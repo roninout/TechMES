@@ -509,6 +509,10 @@
     min-width: 0;
 }
 
+    .param-graph-main ::deep .scada-trend {
+        box-sizing: border-box;
+    }
+
 .param-graph-footer {
     display: flex;
     justify-content: flex-end;

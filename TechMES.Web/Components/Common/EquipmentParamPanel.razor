@@ -278,48 +278,52 @@
                                         }
                                     </div>
 
-                                    <RadzenButton Icon="skip_next"
-                                                  ButtonStyle="ButtonStyle.Light"
-                                                  class="param-live-button"
-                                                  title="Go to latest"
-                                                  Click="@GoLiveAsync" />
+                                    @if (UseLegacyParamTrend)
+                                    {
+                                        <RadzenButton Icon="skip_next" ButtonStyle="ButtonStyle.Light" class="param-live-button" title="Go to latest" Click="@GoLiveAsync" />
+                                    }
                                 </div>
 
                                 <div class="param-graph-layout">
-                                    <ParamGraphSidePanel Equipment="@Equipment"
-                                                         Snapshot="@_snapshot"
-                                                         OnWriteRequested="@(item => BeginParamWriteAsync(item))"
-                                                         OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
+                                    <ParamGraphSidePanel Equipment="@Equipment" Snapshot="@_snapshot" OnWriteRequested="@(item => BeginParamWriteAsync(item))" OnBooleanWriteRequested="@(request => BeginParamWriteAsync(request))" />
 
                                     <div class="param-graph-main">
-                                        @if (_trend is null || _trend.Points.Count == 0)
+                                        @if (UseLegacyParamTrend)
                                         {
-                                            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                                                @DisplayValue(_trend?.Message ?? "Trend points are not loaded yet.")
-                                            </RadzenAlert>
+                                            @* Старый график сохранён и может быть включён переключателем. *@
+                                            @if (_trend is null || _trend.Points.Count == 0)
+                                            {
+                                                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                                                    @DisplayValue(_trend?.Message ?? "Trend points are not loaded yet.")
+                                                </RadzenAlert>
+                                            }
+                                            else
+                                            {
+                                                <div class="param-chart-shell">
+                                                    <EquipmentTrendChart Trend="@_trend" ViewKey="@ChartViewKey" Unit="@_snapshot.Unit" RenderStyle="@EquipmentTrendRenderStyle.Area" GoToLatestVersion="@_chartViewVersion" LatestWindowMinutes="@_windowMinutes" VisibleFromUtc="@GetVisibleFromUtc()" VisibleToUtc="@GetVisibleToUtc()" CanLoadOlder="@CanScrollGraphBackward" CanLoadNewer="@CanScrollGraphForward" OnHistoryRequested="@OnChartHistoryRequestedAsync" />
+                                                </div>
+                                            }
+                                        }
+                                        else if (_paramTrendSeries.Count > 0)
+                                        {
+                                            @* Та же загрузка суточной истории и тот же Navigator, что у формул. *@
+                                            <ScadaTrendChart Series="@_paramTrendSeries" AutoScale="true" VisibleWindowMinutes="30" />
                                         }
                                         else
                                         {
-                                            <div class="param-chart-shell">
-                                                <EquipmentTrendChart Trend="@_trend"
-                                                                     ViewKey="@ChartViewKey"
-                                                                     Unit="@_snapshot.Unit"
-                                                                     RenderStyle="@EquipmentTrendRenderStyle.Area"
-                                                                     GoToLatestVersion="@_chartViewVersion"
-                                                                     LatestWindowMinutes="@_windowMinutes"
-                                                                     VisibleFromUtc="@GetVisibleFromUtc()"
-                                                                     VisibleToUtc="@GetVisibleToUtc()"
-                                                                     CanLoadOlder="@CanScrollGraphBackward"
-                                                                     CanLoadNewer="@CanScrollGraphForward"
-                                                                     OnHistoryRequested="@OnChartHistoryRequestedAsync" />
-                                            </div>
+                                            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                                                No trend items are configured for this equipment.
+                                            </RadzenAlert>
                                         }
                                     </div>
                                 </div>
 
-                                <div class="param-graph-footer">
-                                    <span class="param-status">@FormatGraphStatus()</span>
-                                </div>
+                                @if (UseLegacyParamTrend)
+                                {
+                                    <div class="param-graph-footer">
+                                        <span class="param-status">@FormatGraphStatus()</span>
+                                    </div>
+                                }
                             </div>
                         </RadzenTabsItem>
 
@@ -1352,11 +1356,8 @@
     }
 
     /// <summary>
-    /// Реагирует на смену Equipment/route mode.
-    ///
-    /// При смене оборудования обязательно очищает все коэффициенты
-    /// идентификации, чтобы результат одного VGA не мог быть сохранен
-    /// для другого VGA.
+    /// Реагирует на смену Equipment или режима страницы.
+    /// Данные Graph и коэффициенты PID принадлежат конкретному оборудованию.
     /// </summary>
     protected override async Task OnParametersSetAsync()
     {
@@ -1367,13 +1368,9 @@
             return;
         }
 
-        var currentName =
-            Equipment?.Name;
+        var currentName = Equipment?.Name;
 
-        if (string.Equals(
-                _loadedEquipmentName,
-                currentName,
-                StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(_loadedEquipmentName, currentName, StringComparison.OrdinalIgnoreCase))
         {
             StartRefreshLoop();
             return;
@@ -1382,24 +1379,19 @@
         StopRefreshLoop();
         CancelActiveLoads();
 
-        _loadedEquipmentName =
-            currentName;
+        _loadedEquipmentName = currentName;
 
         _snapshot = null;
         _trend = null;
+        _paramTrendSeries = [];
         _tune = null;
         _tuneTrend = null;
 
         _hasTuneSettingsLoadedFromStore = false;
         _isTuneCalculating = false;
 
-        /*
-         * Критически важно:
-         * коэффициенты K/Tau/Theta/ki/Ku/Tu принадлежат конкретному
-         * оборудованию и конкретным исходным тегам.
-         */
-        ResetTuneCalculationState(
-            clearModelParameters: true);
+        // Коэффициенты PID не должны переходить от одного VGA к другому.
+        ResetTuneCalculationState(clearModelParameters: true);
 
         _tuneVisibleFromUtc = null;
         _tuneVisibleToUtc = null;
@@ -1421,10 +1413,7 @@
         if (Equipment is null)
             return;
 
-        await LoadAsync(
-            showLoading: true,
-            includeTrend: ShouldLoadVisibleTrend,
-            ct: GetActiveLoadToken());
+        await LoadAsync(showLoading: true, includeTrend: ShouldLoadVisibleTrend, ct: GetActiveLoadToken());
 
         StartRefreshLoop();
     }
@@ -1553,15 +1542,10 @@
     }
 
     /// <summary>
-    /// Загружает Param snapshot и при необходимости trend.
-    /// Info DTO здесь намеренно не запрашивается: полная карточка оборудования принадлежит Info-режиму,
-    /// а Param-режиму для идентификационной строки достаточно выбранного EquipmentDto.
-    /// Метод специально защищен от параллельных refresh-ов, чтобы не перегружать CtApi.
+    /// Загружает Param snapshot и данные выбранной вкладки.
+    /// Запросы старого Graph выполняются только при включённом UseLegacyParamTrend.
     /// </summary>
-    private async Task LoadAsync(
-        bool showLoading,
-        bool includeTrend,
-        CancellationToken ct)
+    private async Task LoadAsync(bool showLoading, bool includeTrend, CancellationToken ct)
     {
         if (!IsActive || Equipment is null || _isRefreshing || ct.IsCancellationRequested)
             return;
@@ -1579,20 +1563,17 @@
 
             _snapshot = await ParamApi.GetSnapshotAsync(equipmentName, ct);
             EnsureSelectedTabIsAvailable();
+            UpdateParamTrendSeries(_snapshot);
+
             var shouldLoadTrend = includeTrend && IsGraphTabVisible;
             var shouldLoadTune = includeTrend && IsTuneTabVisible && IsVgaEquipment;
 
-            if (_snapshot.Supported && shouldLoadTrend)
+            if (UseLegacyParamTrend && _snapshot.Supported && shouldLoadTrend)
             {
                 if (IsGraphLive || _trend is null)
                 {
                     var (fromUtc, toUtc) = GetTrendRequestBufferUtc();
-                    _trend = await ParamApi.GetTrendAsync(
-                        equipmentName,
-                        _trendHistoryMinutes,
-                        fromUtc,
-                        toUtc,
-                        ct);
+                    _trend = await ParamApi.GetTrendAsync(equipmentName, _trendHistoryMinutes, fromUtc, toUtc, ct);
                 }
             }
             else
@@ -1602,8 +1583,8 @@
 
             if (_snapshot.Supported && shouldLoadTune)
             {
-                // В историческом режиме Tune polling продолжает обновлять snapshot,
-                // но не заменяет расширенный trend-буфер последними 240 минутами.
+                // Tune пока работает со своим прежним графиком и своим буфером.
+                // В History очередной snapshot не заменяет расширенную историю Tune.
                 if (IsTuneLive || _tuneTrend is null)
                     await LoadTuneAsync(equipmentName, ct);
             }

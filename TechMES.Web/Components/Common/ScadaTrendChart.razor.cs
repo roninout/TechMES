@@ -22,6 +22,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
     [Parameter] public double? Maximum { get; set; }
     [Parameter] public bool ShowDataLabels { get; set; } = true;
     [Parameter] public int Height { get; set; } = 360;
+    [Parameter] public int? VisibleWindowMinutes { get; set; }
 
     private readonly CancellationTokenSource _cts = new();
     private RadzenChart? _chart;
@@ -71,9 +72,10 @@ public partial class ScadaTrendChart : IAsyncDisposable
     private static string FormatAxisTime(object value) => value is DateTime time ? AsUtc(time).ToLocalTime().ToString("HH:mm") : "";
     private static string FormatNavigatorTime(object value) => value is DateTime time ? AsUtc(time).ToLocalTime().ToString("dd.MM HH:mm") : "";
 
+    /// <summary>Устанавливает видимое окно; Param передаёт 30 минут явно.</summary>
     protected override void OnInitialized()
     {
-        _windowMinutes = Math.Clamp(ParamOptions.Value.TrendWindowMinutes, 1, 240);
+        _windowMinutes = Math.Clamp(VisibleWindowMinutes ?? ParamOptions.Value.TrendWindowMinutes, 1, 240);
         BeginDay(DateTime.Today);
     }
 
