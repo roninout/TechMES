@@ -139,7 +139,7 @@ else if (_series.Any(series => series.Supported != false))
     private RenderFragment<TrendPoint> PointTooltip(SeriesState series) => point => @<div class="trend-tooltip">
         <strong>@series.Name</strong>
         <div>@point.Time.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</div>
-        <div>@point.Value.ToString("0.######") @series.Options.Unit</div>
+        <div>@(series.Options.SourceTagName.Length > 0 ? point.RawValue : point.Value).ToString("0.######") @series.Options.Unit</div>
     </div>;
 
     private RenderFragment Decorations(SeriesState series) => @<text>

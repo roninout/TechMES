@@ -552,8 +552,9 @@
 
                         @if (IsVgaEquipment)
                         {
-                            var tuneSettings = EnsureTuneSettings();
-                            var tuneResult = CalculateTune();
+                                var tuneSettings = EnsureTuneSettings();
+                                var tuneResult = CalculateTune();
+                                var tuneSeries = BuildTuneRadzenSeries();
 
                             <RadzenTabsItem Text="Tune" Icon="query_stats">
                                 @if (_isLoading && SelectedTabKind == ParamPanelTabKind.Tune)
@@ -570,59 +571,47 @@
                                             </RadzenAlert>
                                         }
 
-                                        <div class="param-tune-graph-layout">
-                                            <div class="param-tune-bars">
-                                                <ParamGraphVerticalBar Label="Out"
-                                                                       Value="@_tune?.ManTuneValue"
-                                                                       Min="@(_tune?.ManTuneMin ?? 0)"
-                                                                       Max="@(_tune?.ManTuneMax ?? 100)"
-                                                                       FillColor="#4F81BD" />
-                                                <ParamGraphVerticalBar Label="Sp"
-                                                                       Value="@_tune?.SpValue"
-                                                                       Min="@(tuneSettings.SpMin ?? 0)"
-                                                                       Max="@(tuneSettings.SpMax ?? 100)"
-                                                                       FillColor="#F59E0B" />
-                                                <ParamGraphVerticalBar Label="Pv"
-                                                                       Value="@_tune?.PvValue"
-                                                                       Min="@(tuneSettings.PvMin ?? 0)"
-                                                                       Max="@(tuneSettings.PvMax ?? 100)"
-                                                                       FillColor="#2E7D32" />
-                                            </div>
-
-                                            <div class="param-tune-chart">
-                                                <div class="param-tune-chart-toolbar">
-                                                    <RadzenButton Icon="skip_next"
-                                                                  ButtonStyle="ButtonStyle.Light"
-                                                                  class="param-live-button"
-                                                                  title="Go to latest"
-                                                                  Click="@GoTuneLiveAsync" />
+                                            <div class="param-tune-graph-layout @(UseLegacyTuneTrend ? string.Empty : "param-tune-graph-layout-radzen")">
+                                                <div class="param-tune-bars">
+                                                    <ParamGraphVerticalBar Label="Out" Value="@_tune?.ManTuneValue" Min="@(_tune?.ManTuneMin ?? 0)" Max="@(_tune?.ManTuneMax ?? 100)" FillColor="#4F81BD" />
+                                                    <ParamGraphVerticalBar Label="Sp" Value="@_tune?.SpValue" Min="@(tuneSettings.SpMin ?? 0)" Max="@(tuneSettings.SpMax ?? 100)" FillColor="#F59E0B" />
+                                                    <ParamGraphVerticalBar Label="Pv" Value="@_tune?.PvValue" Min="@(tuneSettings.PvMin ?? 0)" Max="@(tuneSettings.PvMax ?? 100)" FillColor="#2E7D32" />
                                                 </div>
 
-                                                @if (_tuneTrend is null || _tuneTrend.Points.Count == 0)
-                                                {
-                                                    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
-                                                        @DisplayValue(_tuneTrend?.Message ?? "Tune trend points are not loaded yet.")
-                                                    </RadzenAlert>
-                                                }
-                                                else
-                                                {
-                                                    <div class="param-chart-shell">
-                                                        <EquipmentTrendChart Trend="@_tuneTrend"
-                                                                             ViewKey="@TuneChartViewKey"
-                                                                             RenderStyle="@EquipmentTrendRenderStyle.Line"
-                                                                             SeriesDisplayNames="@TuneSeriesDisplayNames"
-                                                                             GoToLatestVersion="@_tuneChartViewVersion"
-                                                                             LatestWindowMinutes="@_windowMinutes"
-                                                                             VisibleFromUtc="@GetTuneVisibleFromUtc()"
-                                                                             VisibleToUtc="@GetTuneVisibleToUtc()"
-                                                                             CanLoadOlder="@CanScrollTuneBackward"
-                                                                             CanLoadNewer="@CanScrollTuneForward"
-                                                                             OnHistoryRequested="@OnTuneChartHistoryRequestedAsync"
-                                                                             OnVisibleWindowChanged="@OnTuneVisibleWindowChangedAsync" />
-                                                    </div>
-                                                }
+                                                <div class="param-tune-chart">
+                                                    @if (UseLegacyTuneTrend)
+                                                    {
+                                                        @* Старый Tune-график остаётся доступным на время проверки нового. *@
+                                                        <div class="param-tune-chart-toolbar">
+                                                            <RadzenButton Icon="skip_next" ButtonStyle="ButtonStyle.Light" class="param-live-button" title="Go to latest" Click="@GoTuneLiveAsync" />
+                                                        </div>
+
+                                                        @if (_tuneTrend is null || _tuneTrend.Points.Count == 0)
+                                                        {
+                                                            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                                                                @DisplayValue(_tuneTrend?.Message ?? "Tune trend points are not loaded yet.")
+                                                            </RadzenAlert>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="param-chart-shell">
+                                                                <EquipmentTrendChart Trend="@_tuneTrend" ViewKey="@TuneChartViewKey" RenderStyle="@EquipmentTrendRenderStyle.Line" SeriesDisplayNames="@TuneSeriesDisplayNames" GoToLatestVersion="@_tuneChartViewVersion" LatestWindowMinutes="@_windowMinutes" VisibleFromUtc="@GetTuneVisibleFromUtc()" VisibleToUtc="@GetTuneVisibleToUtc()" CanLoadOlder="@CanScrollTuneBackward" CanLoadNewer="@CanScrollTuneForward" OnHistoryRequested="@OnTuneChartHistoryRequestedAsync" OnVisibleWindowChanged="@OnTuneVisibleWindowChangedAsync" />
+                                                            </div>
+                                                        }
+                                                    }
+                                                    else if (tuneSeries.Count > 0)
+                                                    {
+                                                        @* DatePicker, Live, Navigator и Y-scale работают внутри общего компонента. *@
+                                                        <ScadaTrendChart @ref="_tuneRadzenChart" Series="@tuneSeries" HistoryProvider="@LoadTuneChartHistoryAsync" AutoScale="false" Minimum="0" Maximum="100" ShowScaleToggle="true" VisibleWindowMinutes="30" Height="445" VisibleSelectionChanged="@OnTuneRadzenSelectionChanged" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">
+                                                            Tune trend series are not configured.
+                                                        </RadzenAlert>
+                                                    }
+                                                </div>
                                             </div>
-                                        </div>
 
                                         <ParamAiPanel Title="PID Tune" Icon="query_stats">
                                             <div class="param-tune-form">
@@ -1019,6 +1008,11 @@
     /// </summary>
     private ParamTrendResponse? _tuneTrend;
 
+    // Новый Tune-график использует общий Radzen Chart.
+    // Старый путь сохраняется до проверки на реальном CtApi.
+    private static readonly bool UseLegacyTuneTrend = false;
+    private ScadaTrendChart? _tuneRadzenChart;
+
     /// <summary>
     /// Отображаемые имена серий Tune-графика.
     /// Техническое имя ManTune сохраняется для чтения OUT и PID-расчета.
@@ -1348,6 +1342,7 @@
         _paramTrendSeries = [];
         _tune = null;
         _tuneTrend = null;
+        _tuneRadzenChart = null;
 
         _hasTuneSettingsLoadedFromStore = false;
         _isTuneCalculating = false;
@@ -2563,13 +2558,12 @@
     /// <summary>
     /// Можно ли прокручивать график вперед к live-краю.
     /// </summary>
-    private bool CanScrollGraphForward =>
-        _trend?.Supported == true && _trend.ToUtc < DateTime.UtcNow.AddSeconds(-3);
+    private bool CanScrollGraphForward => _trend?.Supported == true && _trend.ToUtc < DateTime.UtcNow.AddSeconds(-3);
 
     /// <summary>
-    /// true, если Tune-график находится у текущего времени и polling может обновлять его буфер.
+    /// Live-состояние соответствующего Tune-графика.
     /// </summary>
-    private bool IsTuneLive => !_fixedTuneToUtc.HasValue;
+    private bool IsTuneLive => UseLegacyTuneTrend ? !_fixedTuneToUtc.HasValue : _tuneRadzenChart?.IsLive == true;
 
     /// <summary>
     /// Можно ли Tune-графику запросить более старый исторический участок.
@@ -2579,8 +2573,7 @@
     /// <summary>
     /// Можно ли Tune-графику загрузить следующий участок в направлении live-края.
     /// </summary>
-    private bool CanScrollTuneForward =>
-        _tuneTrend?.Supported == true && _tuneTrend.ToUtc < DateTime.UtcNow.AddSeconds(-3);
+    private bool CanScrollTuneForward => _tuneTrend?.Supported == true && _tuneTrend.ToUtc < DateTime.UtcNow.AddSeconds(-3);
 
     /// <summary>
     /// true, когда активна вкладка Graph.
@@ -2764,8 +2757,7 @@
     /// <summary>
     /// Ключ ECharts состояния: меняется при смене оборудования или принудительном reset live.
     /// </summary>
-    private string ChartViewKey =>
-        $"{Equipment?.Name ?? ""}|{_windowMinutes}|{_chartViewVersion}";
+    private string ChartViewKey => $"{Equipment?.Name ?? ""}|{_windowMinutes}|{_chartViewVersion}";
 
     /// <summary>
     /// Левая граница видимого окна графика.
@@ -2787,22 +2779,27 @@
     /// Отдельный ключ состояния ECharts для вкладки Tune, чтобы зум/прокрутка PID-графика
     /// не пересекались с обычной вкладкой Graph того же оборудования.
     /// </summary>
-    private string TuneChartViewKey =>
-        $"{Equipment?.Name ?? ""}|tune|{_windowMinutes}|{_tuneChartViewVersion}";
+    private string TuneChartViewKey => $"{Equipment?.Name ?? ""}|tune|{_windowMinutes}|{_tuneChartViewVersion}";
 
     /// <summary>
-    /// Левая граница видимого окна line-графика Tune.
+    /// Левая граница фактически выбранного окна Tune.
     /// </summary>
     private DateTime? GetTuneVisibleFromUtc()
     {
+        if (!UseLegacyTuneTrend)
+            return _tuneRadzenChart?.GetVisibleSelection()?.FromUtc;
+
         return _tuneVisibleFromUtc ?? _tuneTrend?.ToUtc.AddMinutes(-_windowMinutes);
     }
 
     /// <summary>
-    /// Правая граница видимого окна line-графика Tune.
+    /// Правая граница фактически выбранного окна Tune.
     /// </summary>
     private DateTime? GetTuneVisibleToUtc()
     {
+        if (!UseLegacyTuneTrend)
+            return _tuneRadzenChart?.GetVisibleSelection()?.ToUtc;
+
         return _tuneVisibleToUtc ?? _tuneTrend?.ToUtc;
     }
 
@@ -2919,9 +2916,7 @@
             var normalized = (value ?? "").Trim();
 
             if (string.Equals(settings.Pv ?? "", normalized, StringComparison.Ordinal))
-            {
                 return;
-            }
 
             settings.Pv = normalized;
             settings.PvTrendFound = false;
@@ -2939,35 +2934,19 @@
     /// </summary>
     private string TuneSp
     {
-        get =>
-            EnsureTuneSettings().Sp
-            ?? "";
+        get => EnsureTuneSettings().Sp ?? "";
 
         set
         {
-            var settings =
-                EnsureTuneSettings();
+            var settings = EnsureTuneSettings();
+            var normalized = (value ?? "").Trim();
 
-            var normalized =
-                (value ?? "").Trim();
-
-            if (string.Equals(
-                    settings.Sp ?? "",
-                    normalized,
-                    StringComparison.Ordinal))
-            {
+            if (string.Equals(settings.Sp ?? "", normalized, StringComparison.Ordinal))
                 return;
-            }
 
-            settings.Sp =
-                normalized;
-
-            settings.SpTrendFound =
-                false;
-
-            ResetTuneCalculationState(
-                clearModelParameters: true);
-
+            settings.Sp = normalized;
+            settings.SpTrendFound = false;
+            ResetTuneCalculationState(clearModelParameters: true);
             _tuneSettingsStatusText = "";
         }
     }
@@ -2975,43 +2954,27 @@
     /// <summary>
     /// Имя online-тега фактического Kp для ClosedLoop.
     ///
-    /// Test Kp не является трендовым тегом, но его изменение полностью
-    /// инвалидирует прежний Ku/ClosedLoop результат.
+    /// Test Kp не является трендовым тегом, но его изменение полностью инвалидирует прежний Ku/ClosedLoop результат.
     /// </summary>
     private string TuneTestKpTag
     {
-        get =>
-            EnsureTuneSettings().TestKpTag
-            ?? "";
+        get => EnsureTuneSettings().TestKpTag ?? "";
 
         set
         {
-            var settings =
-                EnsureTuneSettings();
+            var settings = EnsureTuneSettings();
+            var normalized = (value ?? "").Trim();
 
-            var normalized =
-                (value ?? "").Trim();
-
-            if (string.Equals(
-                    settings.TestKpTag ?? "",
-                    normalized,
-                    StringComparison.Ordinal))
-            {
+            if (string.Equals(settings.TestKpTag ?? "", normalized, StringComparison.Ordinal))
                 return;
-            }
 
-            settings.TestKpTag =
-                normalized;
-
-            settings.TestKpFound =
-                false;
+            settings.TestKpTag = normalized;
+            settings.TestKpFound = false;
 
             if (_tune is not null)
                 _tune.TestKpValue = null;
 
-            ResetTuneCalculationState(
-                clearModelParameters: true);
-
+            ResetTuneCalculationState(clearModelParameters: true);
             _tuneSettingsStatusText = "";
         }
     }
@@ -3057,60 +3020,50 @@
     }
 
     /// <summary>
-    /// FOPDT / Integrating:
-    ///     требуют PV + OUT/ManTune.
-    ///
-    /// ClosedLoop:
-    ///     требует PV + SP.
-    ///     OUT не нужен; Ku берется из текущего online Test Kp.
+    /// FOPDT/Integrating требуют Pv + Out.
+    /// ClosedLoop требует Pv + Sp; Out для него не нужен.
+    /// Проверка нового графика относится к точкам выбранного окна.
     /// </summary>
     private bool CanCalculateTune
     {
         get
         {
-            if (_isTuneCalculating
-                || _tuneTrend is null)
-            {
+            if (_isTuneCalculating)
                 return false;
+
+            if (!UseLegacyTuneTrend)
+            {
+                var selection = _tuneRadzenChart?.GetVisibleSelection();
+
+                if (selection is null || !selection.Samples.Any(point => point.Series.Equals("Pv", StringComparison.OrdinalIgnoreCase)))
+                    return false;
+
+                var requiredSeries = _tuneCalculationModel == TuneModelClosedLoop ? "Sp" : "ManTune";
+
+                return selection.Samples.Any(point => point.Series.Equals(requiredSeries, StringComparison.OrdinalIgnoreCase));
             }
 
-            var hasPv =
-                _tuneTrend.Points.Any(
-                    point =>
-                        point.Series.Equals(
-                            "Pv",
-                            StringComparison.OrdinalIgnoreCase));
+            if (_tuneTrend is null)
+                return false;
+
+            var hasPv = _tuneTrend.Points.Any(point => point.Series.Equals("Pv", StringComparison.OrdinalIgnoreCase));
 
             if (!hasPv)
                 return false;
 
-            if (_tuneCalculationModel
-                == TuneModelClosedLoop)
-            {
-                return _tuneTrend.Points.Any(
-                    point =>
-                        point.Series.Equals(
-                            "Sp",
-                            StringComparison.OrdinalIgnoreCase));
-            }
+            if (_tuneCalculationModel == TuneModelClosedLoop)
+                return _tuneTrend.Points.Any(point => point.Series.Equals("Sp", StringComparison.OrdinalIgnoreCase));
 
-            return _tuneTrend.Points.Any(
-                point =>
-                    point.Series.Equals(
-                        "ManTune",
-                        StringComparison.OrdinalIgnoreCase));
+            return _tuneTrend.Points.Any(point => point.Series.Equals("ManTune", StringComparison.OrdinalIgnoreCase));
         }
     }
-
 
     /// <summary>
     /// Компактное отображение рассчитанных PID-значений.
     /// </summary>
     private static string FormatTuneNumber(double? value)
     {
-        return value.HasValue
-            ? value.Value.ToString("0.###", CultureInfo.InvariantCulture)
-            : "";
+        return value.HasValue ? value.Value.ToString("0.###", CultureInfo.InvariantCulture) : "";
     }
 
     /// <summary>
@@ -3118,13 +3071,7 @@
     /// </summary>
     private static string FormatTunePercent(double? value)
     {
-        return value.HasValue
-            ? (value.Value * 100)
-                .ToString(
-                    "0.##",
-                    CultureInfo.InvariantCulture)
-              + "%"
-            : "";
+        return value.HasValue ? (value.Value * 100).ToString("0.##", CultureInfo.InvariantCulture) + "%" : "";
     }
 
     private IReadOnlyList<TuneOption> TuneMethodOptions => _tuneCalculationModel switch
@@ -3275,84 +3222,36 @@
     /// </summary>
     private async Task CalculateTuneFromVisibleTrendAsync()
     {
-        if (_tuneTrend is null)
+        // В новом режиме не допускаем расчёт по оставшемуся старому буферу,
+        // если общий график ещё не загрузил выбранный интервал.
+        if (_tuneTrend is null || (!UseLegacyTuneTrend && _tuneRadzenChart?.GetVisibleSelection() is null))
             return;
 
-        var selectedModel =
-            _tuneCalculationModel;
-
-        var selectedMethod =
-            _tuneCalculationMethod;
-
+        var selectedModel = _tuneCalculationModel;
+        var selectedMethod = _tuneCalculationMethod;
         _isTuneCalculating = true;
-        _tuneIssueCode =
-            PidTuneIssueCode.None;
+        _tuneIssueCode = PidTuneIssueCode.None;
 
         try
         {
-            var fromUtc =
-                GetTuneVisibleFromUtc()
-                ?? _tuneTrend.FromUtc;
+            var fromUtc = GetTuneVisibleFromUtc() ?? _tuneTrend.FromUtc;
+            var toUtc = GetTuneVisibleToUtc() ?? _tuneTrend.ToUtc;
+            var pv = GetTuneSamples("Pv", fromUtc, toUtc);
 
-            var toUtc =
-                GetTuneVisibleToUtc()
-                ?? _tuneTrend.ToUtc;
+            IReadOnlyList<PidTuningSample> output = selectedModel == TuneModelClosedLoop ? [] : GetTuneSamples("ManTune", fromUtc, toUtc);
+             // SP нужен именно для ClosedLoop. Анализ одного PV может принять периодическое изменение SP за ultimate oscillation.
+            IReadOnlyList<PidTuningSample> sp = selectedModel == TuneModelClosedLoop ? GetTuneSamples("Sp", fromUtc, toUtc) : [];
 
-            var pv =
-                GetTuneSamples(
-                    "Pv",
-                    fromUtc,
-                    toUtc);
+            var identification = PidProcessIdentifier.Identify(selectedModel, pv, output, sp, _tune?.TestKpValue);
 
-            IReadOnlyList<PidTuningSample> output =
-                selectedModel == TuneModelClosedLoop
-                    ? []
-                    : GetTuneSamples(
-                        "ManTune",
-                        fromUtc,
-                        toUtc);
-
-            /*
-             * SP нужен именно для ClosedLoop.
-             * Анализ одного PV может принять периодическое изменение SP
-             * за ultimate oscillation.
-             */
-            IReadOnlyList<PidTuningSample> sp =
-                selectedModel == TuneModelClosedLoop
-                    ? GetTuneSamples(
-                        "Sp",
-                        fromUtc,
-                        toUtc)
-                    : [];
-
-            var identification =
-                PidProcessIdentifier.Identify(
-                    selectedModel,
-                    pv,
-                    output,
-                    sp,
-                    _tune?.TestKpValue);
-
-            /*
-             * Храним и успешный, и неуспешный результат:
-             * Info-dialog сможет показать diagnostics последней попытки.
-             */
-            _tuneIdentification =
-                identification;
+             // Храним и успешный, и неуспешный результат: Info-dialog сможет показать diagnostics последней попытки.
+            _tuneIdentification = identification;
 
             if (!identification.IsSuccess)
             {
-                _tuneStatusStyle =
-                    AlertStyle.Warning;
-
-                _tuneStatusText =
-                    identification.ErrorMessage;
-
-                _tuneIssueCode =
-                    identification.IssueCode
-                    == PidTuneIssueCode.None
-                        ? PidTuneIssueCode.Unknown
-                        : identification.IssueCode;
+                _tuneStatusStyle = AlertStyle.Warning;
+                _tuneStatusText = identification.ErrorMessage;
+                _tuneIssueCode = identification.IssueCode == PidTuneIssueCode.None ? PidTuneIssueCode.Unknown : identification.IssueCode;
 
                 return;
             }
@@ -3360,92 +3259,48 @@
             switch (selectedModel)
             {
                 case TuneModelFopdt:
-                    _tuneFopdtK =
-                        identification.K;
-
-                    _tuneFopdtTau =
-                        identification.Tau;
-
-                    _tuneFopdtTheta =
-                        identification.Theta;
-
-                    _tuneFopdtTauC =
-                        identification.TauC;
+                    _tuneFopdtK = identification.K;
+                    _tuneFopdtTau = identification.Tau;
+                    _tuneFopdtTheta = identification.Theta;
+                    _tuneFopdtTauC = identification.TauC;
                     break;
 
                 case TuneModelIntegrating:
-                    _tuneIntegratingKi =
-                        identification.Ki;
-
-                    _tuneIntegratingTheta =
-                        identification.Theta;
-
-                    _tuneIntegratingTauC =
-                        identification.TauC;
+                    _tuneIntegratingKi = identification.Ki;
+                    _tuneIntegratingTheta = identification.Theta;
+                    _tuneIntegratingTauC = identification.TauC;
                     break;
 
                 case TuneModelClosedLoop:
-                    _tuneClosedKu =
-                        identification.Ku;
-
-                    _tuneClosedTu =
-                        identification.Tu;
+                    _tuneClosedKu = identification.Ku;
+                    _tuneClosedTu = identification.Tu;
                     break;
             }
 
-            /*
-             * Асинхронная операция не должна менять выбранные
-             * пользователем model/method.
-             */
-            _tuneCalculationModel =
-                selectedModel;
+             // Асинхронная операция не должна менять выбранные пользователем model/method.
+            _tuneCalculationModel = selectedModel;
+            _tuneCalculationMethod = selectedMethod;
 
-            _tuneCalculationMethod =
-                selectedMethod;
-
-            var selectedTune =
-                CalculateTune();
+            var selectedTune = CalculateTune();
 
             if (!selectedTune.IsValid)
             {
-                _tuneStatusStyle =
-                    AlertStyle.Warning;
-
-                _tuneStatusText =
-                    selectedTune.Message;
-
-                _tuneIssueCode =
-                    PidTuneIssueCode.InvalidControllerParameters;
+                _tuneStatusStyle = AlertStyle.Warning;
+                _tuneStatusText = selectedTune.Message;
+                _tuneIssueCode = PidTuneIssueCode.InvalidControllerParameters;
 
                 return;
             }
 
-            _tuneStatusStyle =
-                AlertStyle.Success;
-
-            _tuneIssueCode =
-                PidTuneIssueCode.None;
-
-            _tuneStatusText =
-                BuildTuneCalculationStatus(
-                    selectedModel,
-                    selectedTune,
-                    identification);
-
-            NotificationService.Notify(
-                new NotificationMessage
+            _tuneStatusStyle = AlertStyle.Success;
+            _tuneIssueCode = PidTuneIssueCode.None;
+            _tuneStatusText = BuildTuneCalculationStatus(selectedModel, selectedTune, identification);
+            NotificationService.Notify(new NotificationMessage
                 {
-                    Severity =
-                        NotificationSeverity.Success,
-
-                    Summary =
-                        "PID Tune",
-
-                    Detail =
-                        "Calculation completed.",
-
-                    Duration =
-                        2500
+                    Severity = NotificationSeverity.Success,
+                    Summary = "PID Tune",
+                    Detail = "Calculation completed.",
+                    Duration = 2500
                 });
         }
         finally
@@ -3530,25 +3385,41 @@
 
 
     /// <summary>
-    /// Достает точки выбранной серии из текущего видимого окна Tune-графика.
-    /// Для расчета используется RawValue, потому Value уже масштабирован в общую ось 0..100.
+    /// Возвращает исходные точки серии за выбранный интервал.
+    /// Новый график предоставляет полную историю; старый использует свой буфер.
     /// </summary>
     private IReadOnlyList<PidTuningSample> GetTuneSamples(string seriesName, DateTime fromUtc, DateTime toUtc)
     {
         var normalizedFromUtc = NormalizeTrendPointUtc(fromUtc);
         var normalizedToUtc = NormalizeTrendPointUtc(toUtc);
 
+        if (!UseLegacyTuneTrend)
+        {
+            return _tuneRadzenChart?
+                .GetVisibleSelection()?
+                .Samples
+                .Where(point =>
+                    point.Series.Equals(seriesName, StringComparison.OrdinalIgnoreCase) &&
+                    point.TimeUtc >= normalizedFromUtc &&
+                    point.TimeUtc <= normalizedToUtc)
+                .OrderBy(point => point.TimeUtc)
+                .Select(point => new PidTuningSample(point.TimeUtc, point.RawValue))
+                .ToList()
+                ?? [];
+        }
+
         return _tuneTrend?.Points
-            .Where(point => point.Series.Equals(seriesName, StringComparison.OrdinalIgnoreCase))
+            .Where(point =>
+                point.Series.Equals(seriesName, StringComparison.OrdinalIgnoreCase))
             .Select(point => new
             {
                 TimeUtc = NormalizeTrendPointUtc(point.Time),
                 point.RawValue
             })
-            .Where(point => point.TimeUtc >= normalizedFromUtc
-                            && point.TimeUtc <= normalizedToUtc
-                            && !double.IsNaN(point.RawValue)
-                            && !double.IsInfinity(point.RawValue))
+            .Where(point =>
+                point.TimeUtc >= normalizedFromUtc &&
+                point.TimeUtc <= normalizedToUtc &&
+                double.IsFinite(point.RawValue))
             .OrderBy(point => point.TimeUtc)
             .Select(point => new PidTuningSample(point.TimeUtc, point.RawValue))
             .ToList()
@@ -3569,23 +3440,13 @@
     }
 
     /// <summary>
-    /// Загружает сохраненные настройки PID Tune, текущие значения ManTune/PV/SP и line-тренды.
+    /// Загружает Settings и текущие значения Tune.
+    /// Полную историю в режиме Radzen загружает ScadaTrendChart отдельно.
     /// </summary>
     private async Task LoadTuneAsync(string equipmentName, CancellationToken ct)
     {
-        var draftSettings = _hasTuneSettingsLoadedFromStore
-            && _tune?.Settings is not null
-            && string.Equals(_tune.Settings.EquipmentName, equipmentName, StringComparison.OrdinalIgnoreCase)
-                ? _tune.Settings
-                : null;
-
-        var runtimeTune = await ParamApi.GetTuneAsync(
-            equipmentName,
-            _trendHistoryMinutes,
-            null,
-            null,
-            ct,
-            draftSettings);
+        var draftSettings = _hasTuneSettingsLoadedFromStore && _tune?.Settings is not null && string.Equals(_tune.Settings.EquipmentName, equipmentName, StringComparison.OrdinalIgnoreCase) ? _tune.Settings : null;
+        var runtimeTune = await ParamApi.GetTuneAsync(equipmentName, UseLegacyTuneTrend ? _trendHistoryMinutes : 1, null, null, ct, draftSettings);
 
         if (draftSettings is not null)
             runtimeTune.Settings = draftSettings;

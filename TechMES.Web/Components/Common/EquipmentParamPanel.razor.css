@@ -44,6 +44,14 @@
     min-height: 0;
 }
 
+/* Новый Chart включает снизу легенду и Navigator. Высоту трёх индикаторов ограничиваем областью построения графика. */
+.param-tune-graph-layout-radzen .param-tune-bars {
+    align-self: start;
+    height: 470px;
+    padding-block-start: 85px;
+    padding-block-end: 47px;
+}
+
 .param-tune-chart {
     display: flex;
     flex-direction: column;
@@ -189,6 +197,11 @@
 
     .param-tune-bars {
         min-height: 360px;
+        padding-block: 0;
+    }
+
+    .param-tune-graph-layout-radzen .param-tune-bars {
+        height: auto;
         padding-block: 0;
     }
 

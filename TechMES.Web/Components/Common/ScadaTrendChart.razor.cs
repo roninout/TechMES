@@ -25,6 +25,16 @@ public partial class ScadaTrendChart : IAsyncDisposable
     [Parameter] public int Height { get; set; } = 360;
     [Parameter] public int? VisibleWindowMinutes { get; set; }
 
+    /// <summary>
+    /// Необязательный источник общей истории нескольких серий. Без него Param и формулы продолжают читать каждый тег прежним способом.
+    /// </summary>
+    [Parameter] public Func<DateTime, DateTime, CancellationToken, Task<ParamTrendResponse>>? HistoryProvider { get; set; }
+
+    /// <summary>
+    /// Сообщает вызывающей странице, что загрузка или выбранное окно изменились.
+    /// </summary>
+    [Parameter] public EventCallback VisibleSelectionChanged { get; set; }
+
     private readonly CancellationTokenSource _cts = new();
     private RadzenChart? _chart;
     private PeriodicTimer? _timer;
@@ -37,6 +47,9 @@ public partial class ScadaTrendChart : IAsyncDisposable
     private int _version, _navigatorVersion, _windowMinutes;
     private double _viewStart, _viewEnd = 1;
     private double? _navigatorStart;
+
+    /// <summary>График следует за текущим временем.</summary>
+    public bool IsLive => _live;
 
     private string _message = "", _configurationError = "", _analysisTag = "";
     private bool _showAnalysis, _linear, _polynomial, _movingAverage, _mean, _median, _mode;
@@ -67,6 +80,31 @@ public partial class ScadaTrendChart : IAsyncDisposable
     }
     private bool HasFixedScale => !_autoScale && Minimum.HasValue && Maximum.HasValue && double.IsFinite(Minimum.Value) && double.IsFinite(Maximum.Value) && Minimum.Value < Maximum.Value;
     private static DateTime AsUtc(DateTime value) => value.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(value, DateTimeKind.Utc) : value.ToUniversalTime();
+
+    /// <summary>
+    /// Возвращает полные исходные точки выбранного окна.
+    /// Точки Chart и Navigator для расчёта не используются: они могут быть прорежены.
+    /// </summary>
+    public ScadaTrendSelection? GetVisibleSelection()
+    {
+        if (_loading || _disposed || _series.Count == 0 || AxisTo <= AxisFrom)
+            return null;
+
+        var fromUtc = AxisFrom.AddTicks(
+            (long)((AxisTo - AxisFrom).Ticks * _viewStart));
+
+        var toUtc = AxisFrom.AddTicks(
+            (long)((AxisTo - AxisFrom).Ticks * _viewEnd));
+
+        var samples = _series
+            .SelectMany(series => series.History
+                .Where(point => point.Time >= fromUtc && point.Time <= toUtc && double.IsFinite(point.RawValue))
+                .Select(point => new ScadaTrendSample(series.Tag, point.Time, point.RawValue)))
+            .ToArray();
+
+        return new ScadaTrendSelection(fromUtc, toUtc, samples);
+    }
+
     private static string FormatAxisTime(object value) => value is DateTime time ? AsUtc(time).ToLocalTime().ToString("HH:mm") : "";
     private static string FormatNavigatorTime(object value) => value is DateTime time ? AsUtc(time).ToLocalTime().ToString("dd.MM HH:mm") : "";
 
@@ -188,9 +226,14 @@ public partial class ScadaTrendChart : IAsyncDisposable
         catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
     }
 
+    /// <summary>
+    /// Загружает историю выбранного дня. Обычные графики читают теги по одному;
+    /// Tune может передать HistoryProvider для чтения трёх серий одним ответом.
+    /// </summary>
     private async Task LoadAsync(bool reset = false)
     {
-        if (_loading || _disposed || _configurationError.Length > 0 || _series.Count == 0) return;
+        if (_loading || _disposed || _configurationError.Length > 0 || _series.Count == 0)
+            return;
 
         _loading = true;
 
@@ -207,40 +250,88 @@ public partial class ScadaTrendChart : IAsyncDisposable
 
         try
         {
-            if (from >= to) return;
+            if (from >= to)
+                return;
 
             using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
             requestCts.CancelAfter(TimeSpan.FromSeconds(RequestTimeoutSeconds));
-
             var updates = new List<(SeriesState Series, bool Supported, List<TrendPoint> History)>();
 
-            foreach (var series in _series.ToArray())
+            if (HistoryProvider is not null)
             {
-                activeTag = series.Tag;
+                // Tune возвращает Out, Sp и Pv за один временной блок. Value используется для графика, RawValue — для PID.
+                var response = await ReadCombinedRangeAsync(from, to, version, requestCts.Token);
 
-                if (series.Options.TrendAvailable == false || (!reset && series.Supported == false))
-                    continue;
+                foreach (var series in _series.ToArray())
+                {
+                    activeTag = series.Tag;
+                    var existing = reset ? Enumerable.Empty<TrendPoint>() : series.History;
 
-                var response = await ReadRangeAsync(series.Tag, from, to, _dayToUtc, version, requestCts.Token);
-                var existing = reset ? Enumerable.Empty<TrendPoint>() : series.History;
+                    var history = existing
+                        .Concat(response.Points
+                            .Where(point => point.Series.Equals(series.Tag, StringComparison.OrdinalIgnoreCase))
+                            .Select(point => new TrendPoint
+                            {
+                                Time = AsUtc(point.Time),
+                                Value = point.Value,
+                                RawValue = point.RawValue
+                            }))
+                        .Where(point => point.Time >= _dayFromUtc && point.Time <= to && point.Time < _dayToUtc)
+                        .GroupBy(point => point.Time)
+                        .Select(group => group.Last())
+                        .OrderBy(point => point.Time)
+                        .Take(MaxStoredPoints + 1)
+                        .ToList();
 
-                var history = response.Supported ? existing.Concat(response.Points.Select(p => new TrendPoint { Time = AsUtc(p.Time), Value = p.Value }))
-                    .Where(p => p.Time >= _dayFromUtc && p.Time <= to && p.Time < _dayToUtc)
-                    .GroupBy(p => p.Time)
-                    .Select(g => g.Last())
-                    .OrderBy(p => p.Time)
-                    .Take(MaxStoredPoints + 1)
-                    .ToList() : [];
+                    if (history.Count > MaxStoredPoints)
+                        throw new InvalidDataException();
 
-                if (history.Count > MaxStoredPoints)
-                    throw new InvalidDataException();
+                    updates.Add((series, response.Supported, history));
+                }
+            }
+            else
+            {
+                // Не меняем действующий путь загрузки Param и формул.
+                foreach (var series in _series.ToArray())
+                {
+                    activeTag = series.Tag;
 
-                updates.Add((series, response.Supported, history));
+                    if (series.Options.TrendAvailable == false || (!reset && series.Supported == false))
+                        continue;
+
+                    var response = await ReadRangeAsync(series.Tag, from, to, _dayToUtc, version, requestCts.Token);
+                    var existing = reset ? Enumerable.Empty<TrendPoint>() : series.History;
+
+                    var history = response.Supported
+                        ? existing
+                            .Concat(response.Points.Select(point => new TrendPoint
+                            {
+                                Time = AsUtc(point.Time),
+                                Value = point.Value,
+                                RawValue = point.RawValue
+                            }))
+                            .Where(point =>
+                                point.Time >= _dayFromUtc &&
+                                point.Time <= to &&
+                                point.Time < _dayToUtc)
+                            .GroupBy(point => point.Time)
+                            .Select(group => group.Last())
+                            .OrderBy(point => point.Time)
+                            .Take(MaxStoredPoints + 1)
+                            .ToList()
+                        : [];
+
+                    if (history.Count > MaxStoredPoints)
+                        throw new InvalidDataException();
+
+                    updates.Add((series, response.Supported, history));
+                }
             }
 
-            if (_disposed || version != _version || (followLive && !_live)) return;
+            if (_disposed || version != _version || (followLive && !_live))
+                return;
 
-            // Применяем результаты вместе, чтобы серии не получили разные временные окна.
+            // Применяем все серии одновременно: ось времени у них общая.
             foreach (var update in updates)
             {
                 update.Series.Supported = update.Supported;
@@ -258,7 +349,9 @@ public partial class ScadaTrendChart : IAsyncDisposable
             RefreshChartPoints();
             _message = "";
         }
-        catch (Exception) when (_disposed || version != _version) { }
+        catch (Exception) when (_disposed || version != _version)
+        {
+        }
         catch (Exception error)
         {
             _live = false;
@@ -269,7 +362,53 @@ public partial class ScadaTrendChart : IAsyncDisposable
         finally
         {
             _loading = false;
+
+            if (!_disposed && version == _version && VisibleSelectionChanged.HasDelegate)
+                await VisibleSelectionChanged.InvokeAsync();
         }
+    }
+
+    /// <summary>
+    /// Читает общий набор Tune-серий часовыми блоками. Ограничение количества точек защищает страницу от слишком большой истории.
+    /// </summary>
+    private async Task<ParamTrendResponse> ReadCombinedRangeAsync(DateTime from, DateTime to, int version, CancellationToken cancellationToken)
+    {
+        var result = new ParamTrendResponse
+        {
+            Supported = true
+        };
+
+        for (var cursor = from; cursor < to;)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (version != _version)
+                throw new OperationCanceledException();
+
+            var end = cursor.AddMinutes(RequestChunkMinutes);
+
+            if (end > to)
+                end = to;
+
+            var response = await HistoryProvider!(cursor, end, cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (version != _version)
+                throw new OperationCanceledException();
+
+            if (!response.Supported)
+                return response;
+
+            result.Points.AddRange(response.Points.Where(point => double.IsFinite(point.Value) && double.IsFinite(point.RawValue) && AsUtc(point.Time) >= cursor && AsUtc(point.Time) <= end));
+
+            if (result.Points.Count > MaxStoredPoints * _series.Count)
+                throw new InvalidDataException();
+
+            cursor = end;
+        }
+
+        return result;
     }
 
     private async Task<ParamTrendResponse> ReadRangeAsync(string tag, DateTime from, DateTime to, DateTime dayEnd, int version, CancellationToken cancellationToken)
@@ -392,15 +531,22 @@ public partial class ScadaTrendChart : IAsyncDisposable
         _navigatorStart = null;
     }
 
+    /// <summary>
+    /// Запоминает выбранное окно после зума или перемещения Navigator.
+    /// </summary>
     private void OnViewChanged(ChartViewChangeEventArgs args)
     {
-        if (Math.Abs(args.ViewStart - _viewStart) < 0.000001 && Math.Abs(args.ViewEnd - _viewEnd) < 0.000001) return;
+        if (Math.Abs(args.ViewStart - _viewStart) < 0.000001 && Math.Abs(args.ViewEnd - _viewEnd) < 0.000001)
+            return;
 
         _viewStart = Math.Clamp(args.ViewStart, 0, 1);
         _viewEnd = Math.Clamp(args.ViewEnd, _viewStart, 1);
         _live = false;
 
         RefreshChartPoints();
+
+        if (VisibleSelectionChanged.HasDelegate)
+            _ = VisibleSelectionChanged.InvokeAsync();
     }
 
     private void SetVisibleRange(DateTime from, DateTime to)
@@ -506,7 +652,12 @@ public partial class ScadaTrendChart : IAsyncDisposable
     public sealed class TrendPoint
     {
         public DateTime Time { get; set; }
+
+        /// <summary>Значение на общей шкале графика.</summary>
         public double Value { get; set; }
+
+        /// <summary>Исходное значение CtApi для Tooltip и расчётов.</summary>
+        public double RawValue { get; set; }
     }
 
     private sealed class SeriesState(ScadaTrendSeries options, string fallbackColor)
