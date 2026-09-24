@@ -52,25 +52,20 @@ public static class ParamEndpoints
     }
 
     /// <summary>
-    /// Возвращает Runtime-данные вкладки PID Tune для VGA-оборудования.
-    /// PV/SP/Test Kp можно временно передать из WEB после Check,
-    /// не сохраняя черновик в PostgreSQL.
+    /// Возвращает текущие значения и тренды Tune. При historyOnly запрашивает только историю: текущие значения уже читаются обычным запросом панели.
     /// </summary>
-    private static async Task<IResult> GetTuneAsync(string equipmentName, int? windowMinutes, DateTime? fromUtc, DateTime? toUtc, string? pv, double? pvMin, double? pvMax, string? sp,double? spMin,
-        double? spMax, string? testKpTag, IEquipmentCatalogProvider equipmentCatalog, IEquipmentParamProvider paramProvider, IParamTuneStore tuneStore, CancellationToken ct)
+    private static async Task<IResult> GetTuneAsync(string equipmentName, int? windowMinutes, DateTime? fromUtc, DateTime? toUtc, string? pv, double? pvMin, double? pvMax, string? sp, double? spMin, double? spMax, string? testKpTag, bool? historyOnly, IEquipmentCatalogProvider equipmentCatalog, IEquipmentParamProvider paramProvider, IParamTuneStore tuneStore, CancellationToken ct)
     {
         var equipment = await equipmentCatalog.GetEquipmentByNameAsync(equipmentName, ct);
 
         if (equipment is null)
             return Results.NotFound();
 
-        var settings = await tuneStore.GetAsync(equipment.Name, ct) ?? new ParamTuneSettingsResponse
-            {
-                EquipmentName = equipment.Name
-            };
+        var settings = await tuneStore.GetAsync(equipment.Name, ct) ?? new ParamTuneSettingsResponse { EquipmentName = equipment.Name };
 
         ApplyTuneQueryOverrides(settings, pv, pvMin, pvMax, sp, spMin, spMax, testKpTag);
-        var result = await paramProvider.GetTuneRuntimeAsync(equipment, settings, windowMinutes.GetValueOrDefault(30), fromUtc, toUtc, ct);
+
+        var result = await paramProvider.GetTuneRuntimeAsync(equipment, settings, windowMinutes.GetValueOrDefault(30), fromUtc, toUtc, ct, historyOnly == true);
 
         return Results.Ok(result);
     }

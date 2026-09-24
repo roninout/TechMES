@@ -61,9 +61,8 @@ public partial class EquipmentParamPanel
     }
 
     /// <summary>
-    /// Использует существующий Tune endpoint: он знает fallback ManTune/Man
-    /// и приводит Pv/Sp к шкале 0..100 по введённым Min/Max.
-    /// Исходные значения сохраняются в RawValue.
+    /// Загружает тренды Tune за один временной блок. Текущие значения при таком
+    /// запросе не читаются: панель получает их отдельно обычным способом.
     /// </summary>
     private async Task<ParamTrendResponse> LoadTuneChartHistoryAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
@@ -83,7 +82,14 @@ public partial class EquipmentParamPanel
             SpMax = settings.SpMax
         };
 
-        var response = await ParamApi.GetTuneAsync(Equipment.Name, (int)Math.Ceiling((toUtc - fromUtc).TotalMinutes), fromUtc, toUtc, ct, requestSettings);
+        var response = await ParamApi.GetTuneAsync(
+            Equipment.Name,
+            (int)Math.Ceiling((toUtc - fromUtc).TotalMinutes),
+            fromUtc,
+            toUtc,
+            ct,
+            requestSettings,
+            historyOnly: true);
 
         return response.Trend;
     }

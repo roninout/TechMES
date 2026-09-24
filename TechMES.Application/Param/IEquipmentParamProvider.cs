@@ -47,7 +47,7 @@ public interface IEquipmentParamProvider
     /// Читает Runtime-данные вкладки PID Tune для VGA:
     /// ManTune, PV/SP, online Test Kp и тренды.
     /// </summary>
-    Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(EquipmentDto equipment, ParamTuneSettingsResponse settings, int windowMinutes = 30, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken ct = default);
+    Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(EquipmentDto equipment, ParamTuneSettingsResponse settings, int windowMinutes = 30, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken ct = default, bool historyOnly = false);
 
     /// <summary>
     /// Читает PLC reference page: связанные PLC-теги и их read-only значения.

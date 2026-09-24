@@ -51,7 +51,7 @@ public sealed class UnavailableEquipmentParamProvider : IEquipmentParamProvider
         return Task.FromResult(new ParamTrendResponse { Supported = false, FromUtc = fromUtc, ToUtc = toUtc, Message = _message });
     }
 
-    public Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(EquipmentDto equipment, ParamTuneSettingsResponse settings, int windowMinutes = 30, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken ct = default)
+    public Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(EquipmentDto equipment, ParamTuneSettingsResponse settings, int windowMinutes = 30, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken ct = default, bool historyOnly = false)
     {
         var to = NormalizeUtc(toUtc) ?? DateTime.UtcNow;
         var from = NormalizeUtc(fromUtc) ?? to.AddMinutes(-Math.Max(1, windowMinutes));

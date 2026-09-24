@@ -364,10 +364,10 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return response;
     }
 
-    public async Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(EquipmentDto equipment, ParamTuneSettingsResponse settings, int windowMinutes = 30, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken ct = default)
+    public async Task<ParamTuneRuntimeResponse> GetTuneRuntimeAsync(EquipmentDto equipment, ParamTuneSettingsResponse settings, int windowMinutes = 30, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken ct = default, bool historyOnly = false)
     {
         ArgumentNullException.ThrowIfNull(equipment);
-        windowMinutes =Math.Clamp(windowMinutes, 1, 240);
+        windowMinutes = Math.Clamp(windowMinutes, 1, 240);
 
         var to = NormalizeUtc(toUtc) ?? DateTime.UtcNow;
         var from = NormalizeUtc(fromUtc) ?? to.AddMinutes(-windowMinutes);
@@ -376,31 +376,29 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
             from = to.AddMinutes(-windowMinutes);
 
         settings.EquipmentName = equipment.Name;
-
         var supported = equipment.TypeGroup == EquipmentTypeGroup.VGA;
 
         var response = new ParamTuneRuntimeResponse
+        {
+            EquipmentName = equipment.Name,
+            TypeGroup = equipment.TypeGroup,
+            Supported = supported,
+            Settings = settings,
+            Time = DateTime.Now,
+            Trend = new ParamTrendResponse
             {
                 EquipmentName = equipment.Name,
                 TypeGroup = equipment.TypeGroup,
                 Supported = supported,
-                Settings = settings,
-                Time = DateTime.Now,
-                Trend = new ParamTrendResponse
-                {
-                    EquipmentName = equipment.Name,
-                    TypeGroup = equipment.TypeGroup,
-                    Supported = supported,
-                    FromUtc = from,
-                    ToUtc = to
-                }
-            };
+                FromUtc = from,
+                ToUtc = to
+            }
+        };
 
         if (!supported)
         {
             response.Message = "PID Tune is supported only for VGA equipment.";
             response.Trend.Message = response.Message;
-
             return response;
         }
 
@@ -412,58 +410,72 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
 
         response.ManTuneMin = 0;
         response.ManTuneMax = 100;
-        response.ManTuneValue = await ReadEquipmentNumericItemAsync(equipment.Name, "ManTune", ct) ?? await ReadEquipmentNumericItemAsync(equipment.Name, "Man", ct);
-        response.PvValue = await TryReadNumericTagAsync(settings.Pv, ct);
-        response.SpValue = await TryReadNumericTagAsync(settings.Sp, ct);
 
-         // Test Kp читается только online. В Series/Points он не добавляется и trend-reference не запрашивается.
-        response.TestKpValue = await TryReadNumericTagAsync(settings.TestKpTag, ct);
-        settings.TestKpFound = !string.IsNullOrWhiteSpace(settings.TestKpTag) && response.TestKpValue.HasValue;
+        // При загрузке истории текущие значения не нужны. Иначе они повторно
+        // читаются для каждого временного блока суточного графика.
+        if (!historyOnly)
+        {
+            response.ManTuneValue = await ReadEquipmentNumericItemAsync(equipment.Name, "ManTune", ct)
+                ?? await ReadEquipmentNumericItemAsync(equipment.Name, "Man", ct);
+
+            response.PvValue = await TryReadNumericTagAsync(settings.Pv, ct);
+            response.SpValue = await TryReadNumericTagAsync(settings.Sp, ct);
+
+            // Test Kp используется только как текущее значение и не входит в историю.
+            response.TestKpValue = await TryReadNumericTagAsync(settings.TestKpTag, ct);
+            settings.TestKpFound = !string.IsNullOrWhiteSpace(settings.TestKpTag) && response.TestKpValue.HasValue;
+        }
+
         response.Trend.AxisYMin = tuneAxisMin;
         response.Trend.AxisYMax = tuneAxisMax;
 
         response.Trend.Series.Add(new ParamTrendItemDto
-            {
-                Name = "ManTune",
-                Color = "#4F81BD",
-                NativeMin = 0,
-                NativeMax = 100
-            });
+        {
+            Name = "ManTune",
+            Color = "#4F81BD",
+            NativeMin = 0,
+            NativeMax = 100
+        });
 
         if (!string.IsNullOrWhiteSpace(settings.Sp))
         {
             response.Trend.Series.Add(new ParamTrendItemDto
-                {
-                    Name = "Sp",
-                    Color = "#F59E0B",
-                    NativeMin = spRange.Min,
-                    NativeMax = spRange.Max
-                });
+            {
+                Name = "Sp",
+                Color = "#F59E0B",
+                NativeMin = spRange.Min,
+                NativeMax = spRange.Max
+            });
         }
 
         if (!string.IsNullOrWhiteSpace(settings.Pv))
         {
             response.Trend.Series.Add(new ParamTrendItemDto
-                {
-                    Name = "Pv",
-                    Color = "#2E7D32",
-                    NativeMin = pvRange.Min,
-                    NativeMax = pvRange.Max
-                });
+            {
+                Name = "Pv",
+                Color = "#2E7D32",
+                NativeMin = pvRange.Min,
+                NativeMax = pvRange.Max
+            });
         }
 
-        var manRef = await ResolveTrendNameAsync(equipment.Name, "ManTune", ct) ?? await ResolveTrendNameAsync(equipment.Name, "Man", ct);
+        var manRef = await ResolveTrendNameAsync(equipment.Name, "ManTune", ct)
+            ?? await ResolveTrendNameAsync(equipment.Name, "Man", ct);
+
         await AppendTuneTrendPointsAsync(response.Trend, "ManTune", manRef, from, to, 0, 100, tuneAxisMin, tuneAxisMax, ct);
 
         var spRef = await ResolveRawTrendRefAsync(settings.Sp, ct);
-        settings.SpTrendFound = spRef is not null && response.SpValue.HasValue;
+        settings.SpTrendFound = spRef is not null && (historyOnly || response.SpValue.HasValue);
         await AppendTuneTrendPointsAsync(response.Trend, "Sp", spRef, from, to, spRange.Min, spRange.Max, tuneAxisMin, tuneAxisMax, ct);
 
         var pvRef = await ResolveRawTrendRefAsync(settings.Pv, ct);
-        settings.PvTrendFound = pvRef is not null && response.PvValue.HasValue;
+        settings.PvTrendFound = pvRef is not null && (historyOnly || response.PvValue.HasValue);
         await AppendTuneTrendPointsAsync(response.Trend, "Pv", pvRef, from, to, pvRange.Min, pvRange.Max, tuneAxisMin, tuneAxisMax, ct);
 
-        response.Trend.Points = response.Trend.Points.OrderBy(point => point.Time).ThenBy(point => point.Series, StringComparer.OrdinalIgnoreCase).ToList();
+        response.Trend.Points = response.Trend.Points
+            .OrderBy(point => point.Time)
+            .ThenBy(point => point.Series, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         if (response.Trend.Points.Count == 0)
             response.Trend.Message = "No PID Tune trend points were returned for the selected time window.";
