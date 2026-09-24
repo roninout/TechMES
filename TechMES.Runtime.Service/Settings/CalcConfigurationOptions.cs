@@ -10,7 +10,7 @@ public sealed class CalcConfigurationOptions
 {
     /// <summary>
     /// Разрешает POST, PUT и DELETE для /api/calc/jobs.
-    /// GET и ручной Calc Test остаются доступными всегда.
+    /// GET каталога и API проверки расчётов остаются доступны рабочим панелям.
     /// </summary>
     public bool EditingEnabled { get; set; }
 }

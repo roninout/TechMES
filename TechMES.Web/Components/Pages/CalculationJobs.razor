@@ -5,28 +5,21 @@
 @inject CalcApiClient CalcApi
 @inject DialogService DialogService
 @inject NotificationService NotificationService
-@inject NavigationManager NavigationManager
 
 <PageTitle>Calculation jobs</PageTitle>
 
 <div class="calc-jobs-page">
     <div class="calc-jobs-toolbar">
-        <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Secondary"
-                      Disabled="@_isBusy" Click="@BeginNew" />
+        <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Secondary" Disabled="@_isBusy" Click="@BeginNew" />
 
-        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light"
-                      Disabled="@_isBusy" Click="@RefreshAsync" />
-
-        <RadzenButton Text="Test calculations" Icon="calculate" ButtonStyle="ButtonStyle.Light"
-                      Disabled="@_isBusy" Click="@OpenTester" />
+        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_isBusy" Click="@RefreshAsync" />
 
         <div class="calc-jobs-toolbar-spacer"></div>
 
         <div class="calc-service-status">
             <span>Calc Service</span>
 
-            <RadzenBadge Text="@GetCalcServiceStatusText()"
-                         BadgeStyle="@GetCalcServiceBadgeStyle()" />
+            <RadzenBadge Text="@GetCalcServiceStatusText()" BadgeStyle="@GetCalcServiceBadgeStyle()" />
 
             @if (_serviceStatus?.LastHeartbeatReceivedAtUtc is { } heartbeatUtc)
             {
@@ -37,8 +30,7 @@
 
             @if ((_serviceStatus?.ActiveInstanceCount ?? 0) > 1)
             {
-                <RadzenBadge Text="@($"Instances: {_serviceStatus!.ActiveInstanceCount}")"
-                             BadgeStyle="BadgeStyle.Warning" />
+                <RadzenBadge Text="@($"Instances: {_serviceStatus!.ActiveInstanceCount}")" BadgeStyle="BadgeStyle.Warning" />
             }
         </div>
 
@@ -1216,11 +1208,6 @@
     {
         var normalized = (value ?? "").Trim();
         return normalized.Length == 0 ? null : normalized;
-    }
-
-    private void OpenTester()
-    {
-        NavigationManager.NavigateTo("/calculations/test");
     }
 
     private void ClearStatus()
