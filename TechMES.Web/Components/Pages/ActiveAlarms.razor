@@ -10,16 +10,17 @@
         <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_httpLoading" Click="@RefreshAsync" />
 
         <span class="active-alarms-spacer"></span>
-        <RadzenBadge Text="@($"Count: {_items.Count}")" BadgeStyle="BadgeStyle.Light" />
 
-        @if (_isRefreshing && _items.Count > 0)
+        @if (_isRefreshing)
         {
-            <span class="active-alarms-status">
-                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" ShowValue="false" Style="width: 20px; height: 20px;" />
-                @(_isComplete ? "Refreshing alarms" : "Loading remaining alarms") — @(_scannedCount > 0 ? $"{_scannedCount} read" : "Checking SCADA")
+            <span class="active-alarms-spinner" title="Reading active alarms from SCADA" aria-label="Reading active alarms from SCADA">
+                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" ShowValue="false" Style="width: 24px; height: 24px;" />
             </span>
         }
-        else if (_loadedAt is not null && _isComplete)
+
+        <RadzenBadge Text="@($"Count: {_items.Count}")" BadgeStyle="BadgeStyle.Light" />
+
+        @if (_loadedAt is not null)
         {
             <span class="active-alarms-status">Updated: @_loadedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
         }
@@ -33,14 +34,6 @@
     @if (!string.IsNullOrEmpty(_error))
     {
         <div class="active-alarms-error">@_error</div>
-    }
-
-    @if (_isRefreshing && _items.Count == 0)
-    {
-        <div class="active-alarms-initial-loading">
-            <span>Loading active alarms...</span>
-            <TechMesLoadingBar Label="Loading active alarms" />
-        </div>
     }
 
     <RadzenDataGrid @ref="_grid" Data="@_items" TItem="ActiveAlarmDto" AllowFiltering="true" AllowSorting="true"
@@ -71,9 +64,7 @@
     private DateTimeOffset? _loadedAt;
     private bool _httpLoading;
     private bool _isRefreshing;
-    private bool _isComplete;
     private bool _truncated;
-    private int _scannedCount;
     private string _error = "";
     private long _version;
 
@@ -95,8 +86,8 @@
     }
 
     /// <summary>
-    /// При новой версии снимка обновляет данные и внутреннее состояние RadzenDataGrid.
-    /// Ошибка сети не удаляет последний полученный список.
+    /// При новой версии снимка обновляет таблицу. Ошибка сети не удаляет
+    /// последний полученный список и время его загрузки.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -120,9 +111,7 @@
             }
 
             _isRefreshing = result.IsRefreshing;
-            _isComplete = result.IsComplete;
             _truncated = result.Truncated;
-            _scannedCount = result.ScannedCount;
             _error = result.RefreshError ?? "";
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)
@@ -131,7 +120,9 @@
         catch (Exception)
         {
             _isRefreshing = false;
-            _error = _loadedAt is null ? "Cannot load active alarms from Runtime Service." : "Cannot refresh active alarms. Showing the last available data.";
+            _error = _loadedAt is null
+                ? "Cannot load active alarms from Runtime Service."
+                : "Cannot refresh active alarms. Showing the last available data.";
         }
         finally
         {
@@ -140,7 +131,7 @@
     }
 
     /// <summary>
-    /// Пока страница открыта, опрашивает состояние Runtime каждые 3 секунды.
+    /// Пока страница открыта, опрашивает Runtime каждые три секунды.
     /// Строки повторно передаются только при изменении версии снимка.
     /// </summary>
     private async Task PollAsync()

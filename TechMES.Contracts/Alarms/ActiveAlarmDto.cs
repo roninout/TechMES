@@ -19,7 +19,7 @@ public sealed class ActiveAlarmDto
 }
 
 /// <summary>
-/// Состояние опубликованного снимка и текущего фонового чтения.
+/// Состояние последнего завершённого снимка и текущего фонового чтения.
 /// При NotModified=true WEB сохраняет свой список Items.
 /// </summary>
 public sealed class ActiveAlarmsResponse
@@ -28,8 +28,6 @@ public sealed class ActiveAlarmsResponse
     public IReadOnlyList<ActiveAlarmDto> Items { get; init; } = [];
     public bool Truncated { get; init; }
     public bool IsRefreshing { get; init; }
-    public int ScannedCount { get; init; }
-    public bool IsComplete { get; init; }
     public string? RefreshError { get; init; }
     public long Version { get; init; }
     public bool NotModified { get; init; }

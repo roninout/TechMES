@@ -20,6 +20,13 @@
     flex: 1;
 }
 
+.active-alarms-spinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+}
+
 .active-alarms-status {
     display: inline-flex;
     align-items: center;
@@ -34,13 +41,6 @@
 
 .active-alarms-tag {
     overflow-wrap: anywhere;
-}
-
-.active-alarms-initial-loading {
-    display: block;
-    width: 100%;
-    min-width: 0;
-    font-size: 0.875rem;
 }
 
 ::deep .active-alarms-grid {

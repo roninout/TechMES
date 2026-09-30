@@ -848,10 +848,10 @@ namespace CtApi
         }
 
         /// <summary>
-        /// Читает активную сводку порциями. Первые 60 записей доступны потребителю,
-        /// пока оставшаяся часть ещё читается из CtApi. Native handle всегда закрывается.
+        /// Читает ограниченный полный снимок активных аварий.
+        /// Native handle закрывается даже при отмене или ошибке.
         /// </summary>
-        public (IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated) FindAlarms(string query, int maxRows, string[] properties, Action<IReadOnlyList<Dictionary<string, string>>>? onBatch = null, CancellationToken ct = default)
+        public (IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated) FindAlarms(string query, int maxRows, string[] properties, CancellationToken ct = default)
         {
             if (maxRows is < 1 or > 5000)
                 throw new ArgumentOutOfRangeException(nameof(maxRows));
@@ -873,7 +873,6 @@ namespace CtApi
             }
 
             var rows = new List<Dictionary<string, string>>();
-            var batch = new List<Dictionary<string, string>>(60);
 
             try
             {
@@ -894,26 +893,11 @@ namespace CtApi
                     }
 
                     rows.Add(row);
-                    batch.Add(row);
-
-                    if (batch.Count == 60)
-                    {
-                        onBatch?.Invoke(batch.ToArray());
-                        batch.Clear();
-                    }
 
                     if (rows.Count == maxRows)
-                    {
-                        if (batch.Count > 0)
-                            onBatch?.Invoke(batch.ToArray());
-
                         return (rows, CtFindNext(findHandle, ref objectHandle));
-                    }
                 }
                 while (CtFindNext(findHandle, ref objectHandle));
-
-                if (batch.Count > 0)
-                    onBatch?.Invoke(batch.ToArray());
 
                 return (rows, false);
             }

@@ -24,13 +24,10 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     private readonly object _stateLock = new();
 
     private ActiveAlarmsResponse? _snapshot;
-    private List<ActiveAlarmDto>? _buildingItems;
     private Task? _refreshTask;
     private CancellationTokenSource? _scanStop;
     private DateTimeOffset _nextRefreshAt;
-    private DateTimeOffset _refreshStartedAt;
     private string? _refreshError;
-    private int _scannedCount;
     private long _version;
 
     public CtApiActiveAlarmProvider(ICtApiNativeClient client, IConfiguration configuration, ILogger<CtApiActiveAlarmProvider> logger)
@@ -41,9 +38,9 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// Возвращает опубликованные данные немедленно. Автоматический обход начинается
-    /// через 30 секунд после окончания прошлого; ручной Refresh запускает его раньше.
-    /// Каждый запрос открытой страницы продлевает выполняющийся обход на 12 секунд.
+    /// Возвращает последний завершённый снимок немедленно. Новый обход начинается
+    /// через 30 секунд после предыдущего или по ручному Refresh.
+    /// Открытая страница продлевает выполняющийся обход при каждом опросе.
     /// </summary>
     public Task<ActiveAlarmsResponse> GetActiveAsync(bool forceRefresh = false, long knownVersion = 0, CancellationToken ct = default)
     {
@@ -53,18 +50,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         {
             if ((_refreshTask is null || _refreshTask.IsCompleted) && (forceRefresh || DateTimeOffset.UtcNow >= _nextRefreshAt))
             {
-                // Незавершённую выборку после ошибки собираем заново.
-                if (_snapshot is { IsComplete: false })
-                {
-                    _snapshot = null;
-                    _version++;
-                }
-
-                _buildingItems = null;
                 _nextRefreshAt = DateTimeOffset.MaxValue;
                 _refreshError = null;
-                _scannedCount = 0;
-                _refreshStartedAt = DateTimeOffset.UtcNow;
                 _scanStop = new CancellationTokenSource();
                 _scanStop.CancelAfter(TimeSpan.FromSeconds(12));
 
@@ -72,8 +59,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 _refreshTask = Task.Run(() => RefreshCoreAsync(scanToken));
             }
 
-            // Если страница перестанет опрашивать Runtime, выполняющийся обход
-            // будет отменён. Несколько открытых страниц продлевают один общий обход.
+            // Если страница перестала опрашивать Runtime, обход отменится.
+            // Несколько открытых страниц продлевают один общий обход.
             if (_scanStop is not null && _refreshTask is { IsCompleted: false } && !_scanStop.IsCancellationRequested)
                 _scanStop.CancelAfter(TimeSpan.FromSeconds(12));
 
@@ -85,8 +72,6 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 LoadedAtUtc = _snapshot?.LoadedAtUtc,
                 Truncated = _snapshot?.Truncated ?? false,
                 IsRefreshing = _refreshTask is { IsCompleted: false },
-                ScannedCount = _scannedCount,
-                IsComplete = _snapshot?.IsComplete ?? false,
                 RefreshError = _refreshError,
                 Version = _version,
                 NotModified = notModified
@@ -95,8 +80,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// Во время первой загрузки публикует промежуточные снимки. Во время
-    /// повторного обхода прежний полный список остаётся на экране.
+    /// Получает полный снимок одним запросом CtApi и публикует его только после
+    /// успешного окончания обхода. Пока он выполняется, WEB видит прежний снимок.
     /// </summary>
     private async Task RefreshCoreAsync(CancellationToken ct)
     {
@@ -105,16 +90,19 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         try
         {
             var query = $"CTAPIAlarm(0,0,{_area})";
-            var (rows, truncated) = await _client.FindAlarmsAsync(query, MaxRows, Properties, onBatch: PublishProgress, ct: ct);
+            var (rows, truncated) = await _client.FindAlarmsAsync(query, MaxRows, Properties, ct);
             EnsureNames(rows);
 
             var items = rows.Select(ToAlarm).OrderByDescending(alarm => alarm.OccurredAt).ToList();
 
             lock (_stateLock)
             {
-                _snapshot = new ActiveAlarmsResponse { Items = items, Truncated = truncated, IsComplete = true, LoadedAtUtc = DateTimeOffset.UtcNow };
-                _buildingItems = null;
-                _scannedCount = rows.Count;
+                _snapshot = new ActiveAlarmsResponse
+                {
+                    Items = items,
+                    Truncated = truncated,
+                    LoadedAtUtc = DateTimeOffset.UtcNow
+                };
                 _version++;
                 _refreshError = null;
                 _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(30);
@@ -127,14 +115,6 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
             lock (_stateLock)
             {
                 _nextRefreshAt = DateTimeOffset.UtcNow;
-                _scannedCount = 0;
-                _buildingItems = null;
-
-                if (_snapshot is { IsComplete: false })
-                {
-                    _snapshot = null;
-                    _version++;
-                }
             }
 
             _logger.LogInformation("Active alarm scan stopped after {DurationMs} ms because the page is no longer polling.", watch.ElapsedMilliseconds);
@@ -143,8 +123,9 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         {
             lock (_stateLock)
             {
-                _buildingItems = null;
-                _refreshError = _snapshot is null ? "The alarm list could not be loaded. Runtime will retry." : "Alarm refresh failed; the last available data is shown.";
+                _refreshError = _snapshot is null
+                    ? "The alarm list could not be loaded. Runtime will retry."
+                    : "Alarm refresh failed; the last available data is shown.";
                 _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(30);
             }
 
@@ -157,44 +138,6 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 _scanStop?.Dispose();
                 _scanStop = null;
             }
-        }
-    }
-
-    /// <summary>
-    /// Получает порции по 60 строк от native обхода. При первой загрузке
-    /// публикует 60 строк, затем обновляет таблицу через каждые 300.
-    /// При повторном обходе меняет лишь счётчик, сохраняя полный список.
-    /// </summary>
-    private void PublishProgress(IReadOnlyList<Dictionary<string, string>> batch)
-    {
-        lock (_stateLock)
-        {
-            _scannedCount += batch.Count;
-
-            // Эта запись создаётся при каждом обходе, даже когда уже есть кэш.
-            // Она покажет, сколько времени CtApi требуется до первых 60 строк.
-            if (_scannedCount == 60)
-                _logger.LogInformation("First 60 active alarms read after {DurationMs} ms.", (DateTimeOffset.UtcNow - _refreshStartedAt).TotalMilliseconds);
-
-            if (_snapshot?.IsComplete == true)
-                return;
-
-            EnsureNames(batch);
-            _buildingItems ??= [];
-            _buildingItems.AddRange(batch.Select(ToAlarm));
-
-            if (_buildingItems.Count != 60 && _buildingItems.Count % 300 != 0)
-                return;
-
-            _snapshot = new ActiveAlarmsResponse
-            {
-                Items = _buildingItems.OrderByDescending(alarm => alarm.OccurredAt).ToArray(),
-                IsComplete = false,
-                LoadedAtUtc = DateTimeOffset.UtcNow
-            };
-            _version++;
-
-            _logger.LogInformation("Partial active alarm snapshot published. Count={Count}, DurationMs={DurationMs}", _buildingItems.Count, (DateTimeOffset.UtcNow - _refreshStartedAt).TotalMilliseconds);
         }
     }
 
