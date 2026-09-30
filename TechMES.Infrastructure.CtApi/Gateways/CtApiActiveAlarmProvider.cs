@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using TechMES.Application.Alarms;
@@ -8,13 +9,14 @@ using TechMES.Infrastructure.CtApi.Native;
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
 /// <summary>
-/// Хранит последний успешный снимок аварий. HTTP-запросы WEB читают память,
-/// а продолжительный опрос CtApi выполняется отдельно от HTTP-запроса.
+/// Сохраняет последний снимок активных аварий. WEB читает его из памяти,
+/// а длительный обход CtApi выполняется в одном фоновом задании.
 /// </summary>
 public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 {
-    private const int MaxRows = 1000;
-    private static readonly string[] Properties = ["TAG", "NAME", "DESC", "AREA", "CATEGORY", "STATE", "ONDATE", "OFFDATE", "ACKDATE"];
+    private const int MaxRows = 5000;
+    private static readonly string[] Properties = ["TAG", "NAME", "DESC", "AREA", "CATEGORY", "ONDATEEXT", "ONDATE", "ONTIME", "OFFDATE", "ACKDATE", "SUMTYPE", "SUMSTATE"];
+    private static readonly string[] DateTimeFormats = ["dd/MM/yyyy HH:mm:ss", "d/M/yyyy H:mm:ss", "dd/MM/yyyy HH:mm", "d/M/yyyy H:mm", "dd.MMyyyy HH:mm:ss", "d.M.yyyy H:mm:ss", "dd.MM.yyyy HH:mm", "d.M.yyyy H:mm"];
 
     private readonly ICtApiNativeClient _client;
     private readonly ILogger<CtApiActiveAlarmProvider> _logger;
@@ -25,6 +27,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     private Task? _refreshTask;
     private DateTimeOffset _nextRefreshAt;
     private string? _refreshError;
+    private int _scannedCount;
     private long _version;
 
     public CtApiActiveAlarmProvider(ICtApiNativeClient client, IConfiguration configuration, ILogger<CtApiActiveAlarmProvider> logger)
@@ -35,8 +38,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// Немедленно возвращает последний успешный снимок. При необходимости запускает
-    /// один фоновый опрос CtApi для всех открытых WEB-клиентов.
+    /// Возвращает опубликованные данные немедленно. Автоматический обход начинается
+    /// через 30 секунд после окончания прошлого; ручной Refresh запускает его раньше.
     /// </summary>
     public Task<ActiveAlarmsResponse> GetActiveAsync(bool forceRefresh = false, long knownVersion = 0, CancellationToken ct = default)
     {
@@ -44,11 +47,11 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 
         lock (_stateLock)
         {
-            var now = DateTimeOffset.UtcNow;
-
-            if ((_refreshTask is null || _refreshTask.IsCompleted) && (forceRefresh || now >= _nextRefreshAt))
+            if ((_refreshTask is null || _refreshTask.IsCompleted) && (forceRefresh || DateTimeOffset.UtcNow >= _nextRefreshAt))
             {
-                _nextRefreshAt = now.AddMinutes(1);
+                _nextRefreshAt = DateTimeOffset.MaxValue;
+                _refreshError = null;
+                _scannedCount = 0;
                 _refreshTask = Task.Run(RefreshCoreAsync);
             }
 
@@ -56,10 +59,12 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 
             return Task.FromResult(new ActiveAlarmsResponse
             {
-                Items = notModified ? Array.Empty<ActiveAlarmDto>() : (_snapshot?.Items ?? Array.Empty<ActiveAlarmDto>()),
+                Items = notModified ? [] : (_snapshot?.Items ?? []),
                 LoadedAtUtc = _snapshot?.LoadedAtUtc,
                 Truncated = _snapshot?.Truncated ?? false,
                 IsRefreshing = _refreshTask is { IsCompleted: false },
+                ScannedCount = _scannedCount,
+                IsComplete = _snapshot?.IsComplete ?? false,
                 RefreshError = _refreshError,
                 Version = _version,
                 NotModified = notModified
@@ -68,8 +73,9 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// Выполняет полный опрос вне HTTP-запроса. При ошибке сохраняет прежний снимок
-    /// и назначает повторную попытку; после успеха атомарно публикует новый список.
+    /// При первой загрузке публикует первые 60 строк и обновляет счётчик прогресса
+    /// на каждой следующей порции. При очередном опросе прежний список остаётся
+    /// на экране до окончания полного обхода.
     /// </summary>
     private async Task RefreshCoreAsync()
     {
@@ -77,40 +83,28 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 
         try
         {
-            // Сохраняем запрос из текущей ветки. Проверку STATE/OFFDATE уточним сравнением конкретных аварий с интерфейсом Plant SCADA.
             var query = $"CTAPIAlarm(0,0,{_area})";
-            var (rows, truncated) = await _client.FindAlarmsAsync(query, MaxRows, Properties);
+            var (rows, truncated) = await _client.FindAlarmsAsync(query, MaxRows, Properties, onBatch: PublishProgress);
+            EnsureNames(rows);
 
-            if (rows.Any(row => string.IsNullOrWhiteSpace(Get(row, "TAG")) && string.IsNullOrWhiteSpace(Get(row, "NAME"))))
-                throw new InvalidOperationException("CtApi returned an alarm without TAG/NAME. Verify alarm property names.");
-
-            var items = rows.Where(IsOn).Select(ToAlarm).ToList();
-
-            var snapshot = new ActiveAlarmsResponse
-            {
-                Items = items,
-                Truncated = truncated,
-                LoadedAtUtc = DateTimeOffset.UtcNow
-            };
+            var items = rows.Select(ToAlarm).OrderByDescending(alarm => alarm.OccurredAt).ToList();
 
             lock (_stateLock)
             {
-                _snapshot = snapshot;
+                _snapshot = new ActiveAlarmsResponse { Items = items, Truncated = truncated, IsComplete = true, LoadedAtUtc = DateTimeOffset.UtcNow };
+                _scannedCount = rows.Count;
                 _version++;
                 _refreshError = null;
-                _nextRefreshAt = DateTimeOffset.UtcNow.AddMinutes(1);
+                _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(30);
             }
 
-            _logger.LogInformation("Active alarms refreshed. Read={ReadCount}, Active={ActiveCount}, Truncated={Truncated}, DurationMs={DurationMs}", rows.Count, items.Count, truncated, watch.ElapsedMilliseconds);
+            _logger.LogInformation("Active alarms refreshed. Count={Count}, Truncated={Truncated}, DurationMs={DurationMs}", items.Count, truncated, watch.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
             lock (_stateLock)
             {
-                _refreshError = _snapshot is null
-                    ? "The alarm list could not be loaded. Runtime will retry."
-                    : "The alarm list could not be refreshed. Showing the last successful snapshot.";
-
+                _refreshError = _snapshot is null ? "The alarm list could not be loaded. Runtime will retry." : "Alarm refresh failed; the last available data is shown.";
                 _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(30);
             }
 
@@ -119,39 +113,82 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// Исключает снятые, но ещё не квитированные аварии по существующему правилу.
+    /// Обратный вызов из native обхода. Под блокировкой сохраняется только короткая
+    /// операция с памятью; последующие вызовы CtApi сюда не добавляются.
     /// </summary>
-    private static bool IsOn(IReadOnlyDictionary<string, string> row)
+    private void PublishProgress(IReadOnlyList<Dictionary<string, string>> batch)
     {
-        if (!string.IsNullOrWhiteSpace(Get(row, "OFFDATE")))
-            return false;
+        lock (_stateLock)
+        {
+            _scannedCount += batch.Count;
 
-        return !Get(row, "STATE").Equals("OFF", StringComparison.OrdinalIgnoreCase);
+            if (_snapshot is not null)
+                return;
+
+            EnsureNames(batch);
+            _snapshot = new ActiveAlarmsResponse
+            {
+                Items = batch.Select(ToAlarm).OrderByDescending(alarm => alarm.OccurredAt).ToList(),
+                IsComplete = false,
+                LoadedAtUtc = DateTimeOffset.UtcNow
+            };
+            _version++;
+        }
     }
 
     /// <summary>
-    /// Возвращает поле CtApi или пустую строку, если поле недоступно.
+    /// Пустые имена обычно означают неверные поля CtApi; такой ответ не подменяет
+    /// последний корректный снимок пустым списком.
     /// </summary>
-    private static string Get(IReadOnlyDictionary<string, string> row, string key)
+    private static void EnsureNames(IEnumerable<IReadOnlyDictionary<string, string>> rows)
     {
-        return row.TryGetValue(key, out var value) ? value : "";
+        if (rows.Any(row => string.IsNullOrWhiteSpace(Get(row, "TAG")) && string.IsNullOrWhiteSpace(Get(row, "NAME"))))
+            throw new InvalidOperationException("CtApi returned an alarm without TAG/NAME. Verify alarm property names.");
     }
 
     /// <summary>
-    /// Преобразует строку в DTO и оставляет исходные значения для диагностики.
+    /// CTAPIAlarm с Type=0 уже возвращает активные аварии: ON/ACK,
+    /// ON/UNACK и OFF/UNACK. OFFDATE не исключает строку из этого списка.
     /// </summary>
     private static ActiveAlarmDto ToAlarm(Dictionary<string, string> row)
     {
+        var date = Get(row, "ONDATEEXT");
+        if (string.IsNullOrWhiteSpace(date))
+            date = Get(row, "ONDATE");
+
+        var occurredAtText = $"{date} {Get(row, "ONTIME")}".Trim();
+        var occurredAt = DateTime.TryParseExact(occurredAtText, DateTimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ? parsed : (DateTime?)null;
+        var acknowledged = IsSet(Get(row, "ACKDATE"));
+        var off = IsSet(Get(row, "OFFDATE"));
+
         return new ActiveAlarmDto
         {
             Tag = string.IsNullOrWhiteSpace(Get(row, "TAG")) ? Get(row, "NAME") : Get(row, "TAG"),
             Description = Get(row, "DESC"),
             Area = Get(row, "AREA"),
             Category = Get(row, "CATEGORY"),
-            State = Get(row, "STATE"),
+            State = off ? "OFF / unacknowledged" : acknowledged ? "ON / acknowledged" : "ON / unacknowledged",
+            OccurredAt = occurredAt,
+            OccurredAtText = occurredAtText,
             OnDate = Get(row, "ONDATE"),
             AckDate = Get(row, "ACKDATE"),
             RawFields = row
         };
+    }
+
+    /// <summary>
+    /// Неприменимые даты CtApi могут передаваться пустой строкой или нулём.
+    /// </summary>
+    private static bool IsSet(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value) && value.Trim() != "0" && value.Trim() != "00/00/0000";
+    }
+
+    /// <summary>
+    /// Сохраняет отсутствие необязательного свойства как пустое значение.
+    /// </summary>
+    private static string Get(IReadOnlyDictionary<string, string> row, string key)
+    {
+        return row.TryGetValue(key, out var value) ? value : "";
     }
 }

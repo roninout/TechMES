@@ -256,8 +256,9 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
 
     /// <summary>
     /// Сериализует поиск аварий с чтением тегов, health check и остальными native вызовами.
+    /// Прочитанные порции передаются вызывающему коду до завершения полного обхода.
     /// </summary>
-    public async Task<(IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated)> FindAlarmsAsync(string query, int maxRows, IReadOnlyList<string> properties, CancellationToken ct = default)
+    public async Task<(IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated)> FindAlarmsAsync(string query, int maxRows, IReadOnlyList<string> properties, Action<IReadOnlyList<Dictionary<string, string>>>? onBatch = null, CancellationToken ct = default)
     {
         await _apiGate.WaitAsync(ct);
 
@@ -266,7 +267,7 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
             EnsureOpen();
             ct.ThrowIfCancellationRequested();
 
-            return await Task.Run(() => _ctApi.FindAlarms(query, maxRows, properties.ToArray()), ct);
+            return await Task.Run(() => _ctApi.FindAlarms(query, maxRows, properties.ToArray(), onBatch, ct), ct);
         }
         finally
         {

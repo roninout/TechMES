@@ -24,3 +24,20 @@
     min-height: 0;
     overflow: auto;
 }
+
+.active-alarms-status {
+    color: var(--rz-text-secondary-color);
+    white-space: nowrap;
+}
+
+.active-alarms-error {
+    color: var(--rz-danger);
+}
+
+.active-alarms-tag {
+    overflow-wrap: anywhere;
+}
+
+::deep .active-alarms-progress {
+    height: 5px;
+}

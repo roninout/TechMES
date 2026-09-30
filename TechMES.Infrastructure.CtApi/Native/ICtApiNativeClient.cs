@@ -65,7 +65,7 @@ public interface ICtApiNativeClient
     /// <summary>
     /// Читает ограниченный снимок списка аварий Plant SCADA.
     /// </summary>
-    Task<(IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated)> FindAlarmsAsync(string query, int maxRows, IReadOnlyList<string> properties, CancellationToken ct = default);
+    Task<(IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated)> FindAlarmsAsync(string query, int maxRows, IReadOnlyList<string> properties, Action<IReadOnlyList<Dictionary<string, string>>>? onBatch = null, CancellationToken ct = default);
 
     // Отдельные строгие операции для контрольных тегов: ошибки нельзя считать успешной записью.
     Task<string?> ReadControlTagAsync(string tagName, CancellationToken ct = default) => TagReadAsync(tagName, ct);

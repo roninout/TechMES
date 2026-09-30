@@ -848,17 +848,18 @@ namespace CtApi
         }
 
         /// <summary>
-        /// Читает ограниченную выборку аварий. При достижении лимита сообщает об усечении.
-        /// Native handle закрывается даже при исключении во время чтения полей.
+        /// Читает активную сводку порциями. Первые 60 записей доступны потребителю,
+        /// пока оставшаяся часть ещё читается из CtApi. Native handle всегда закрывается.
         /// </summary>
-        public (IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated) FindAlarms(string query, int maxRows, params string[] properties)
+        public (IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated) FindAlarms(string query, int maxRows, string[] properties, Action<IReadOnlyList<Dictionary<string, string>>>? onBatch = null, CancellationToken ct = default)
         {
-            if (maxRows is < 1 or > 1000)
+            if (maxRows is < 1 or > 5000)
                 throw new ArgumentOutOfRangeException(nameof(maxRows));
 
+            ct.ThrowIfCancellationRequested();
             var objectHandle = IntPtr.Zero;
 
-            // Обнуляем ошибку до вызова: отсутствие записей не должно наследовать код ошибки от предыдущей операции CtApi.
+            // Отсутствие записей не должно наследовать код ошибки от предыдущего native вызова.
             Marshal.SetLastPInvokeError(0);
 
             var findHandle = CtFindFirstEx(_ctapi, query, null, null, ref objectHandle, 0);
@@ -872,11 +873,13 @@ namespace CtApi
             }
 
             var rows = new List<Dictionary<string, string>>();
+            var batch = new List<Dictionary<string, string>>(60);
 
             try
             {
                 do
                 {
+                    ct.ThrowIfCancellationRequested();
                     var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
                     foreach (var property in properties)
@@ -884,19 +887,33 @@ namespace CtApi
                         var buffer = new StringBuilder(4096);
                         var length = UIntPtr.Zero;
 
-                        // Неизвестные для конкретной версии поля пока оставляем пустыми.
-                        // Обязательное имя аварии проверяет provider ниже.
+                        // Необязательное поле может отсутствовать в конкретной версии CtApi.
                         row[property] = CtGetProperty(objectHandle, property, buffer, (uint)buffer.Capacity, ref length, 129)
                             ? buffer.ToString()
                             : string.Empty;
                     }
 
                     rows.Add(row);
+                    batch.Add(row);
+
+                    if (batch.Count == 60)
+                    {
+                        onBatch?.Invoke(batch.ToArray());
+                        batch.Clear();
+                    }
 
                     if (rows.Count == maxRows)
+                    {
+                        if (batch.Count > 0)
+                            onBatch?.Invoke(batch.ToArray());
+
                         return (rows, CtFindNext(findHandle, ref objectHandle));
+                    }
                 }
                 while (CtFindNext(findHandle, ref objectHandle));
+
+                if (batch.Count > 0)
+                    onBatch?.Invoke(batch.ToArray());
 
                 return (rows, false);
             }

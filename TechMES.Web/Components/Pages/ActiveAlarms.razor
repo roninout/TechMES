@@ -7,53 +7,53 @@
 <div class="active-alarms-page">
     <div class="active-alarms-toolbar">
         <h3>Active alarms</h3>
-
-        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light"
-                      Disabled="@(_httpLoading || _isRefreshing)" Click="@RefreshAsync" />
+        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_httpLoading" Click="@RefreshAsync" />
 
         <span class="active-alarms-spacer"></span>
         <RadzenBadge Text="@($"Count: {_items.Count}")" BadgeStyle="BadgeStyle.Light" />
 
-        @if (_isRefreshing && _loadedAt is not null)
+        @if (_isRefreshing)
         {
-            <span>Refreshing...</span>
+            <span class="active-alarms-status">Reading Plant SCADA: @_scannedCount records...</span>
+        }
+        else if (_loadedAt is not null && _isComplete)
+        {
+            <span class="active-alarms-status">Updated: @_loadedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
         }
 
-        @if (_loadedAt is not null)
+        @if (_truncated)
         {
-            <span>Loaded: @_loadedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+            <span class="active-alarms-status">Limit reached: first @_items.Count records</span>
         }
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
     {
-        <RadzenAlert AlertStyle="@(_loadedAt is null ? AlertStyle.Danger : AlertStyle.Warning)" ShowIcon="true">
-            @_error
-        </RadzenAlert>
+        <div class="active-alarms-error">@_error</div>
     }
 
-    @if (_truncated)
+    @if (_isRefreshing)
     {
-        <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
-            The alarm list reached the 1000 row limit. Only part of the SCADA alarm summary is shown.
-        </RadzenAlert>
+        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" class="active-alarms-progress" />
     }
 
-    @if (_isRefreshing && _loadedAt is null)
-    {
-        <TechMesLoadingBar />
-    }
-
-    <RadzenDataGrid Data="@_items" TItem="ActiveAlarmDto" AllowFiltering="true"
-                    AllowSorting="true" AllowPaging="true" PageSize="30"
-                    Density="Density.Compact" class="active-alarms-grid">
+    <RadzenDataGrid Data="@_items" TItem="ActiveAlarmDto" AllowFiltering="true" AllowSorting="true"
+                    AllowPaging="true" PageSize="30" Density="Density.Compact" class="active-alarms-grid">
         <Columns>
-            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Tag" Title="Tag" Width="220px" />
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="OccurredAt" Title="Occurred" Width="180px" SortOrder="SortOrder.Descending">
+                <Template Context="alarm">
+                    <span title="@alarm.OccurredAtText">@(alarm.OccurredAt?.ToString("dd.MM.yyyy HH:mm:ss") ?? alarm.OccurredAtText)</span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Tag" Title="Tag" Width="340px">
+                <Template Context="alarm">
+                    <span class="active-alarms-tag" title="@alarm.Tag">@alarm.Tag</span>
+                </Template>
+            </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Description" Title="Description" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Area" Title="Area" Width="100px" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Category" Title="Category" Width="120px" />
-            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="State" Title="State" Width="110px" />
-            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="OnDate" Title="On" Width="170px" />
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="State" Title="State" Width="190px" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="AckDate" Title="Acknowledged" Width="170px" />
         </Columns>
     </RadzenDataGrid>
@@ -62,24 +62,28 @@
 @code {
     private readonly CancellationTokenSource _stop = new();
     private List<ActiveAlarmDto> _items = [];
+    private Task? _pollTask;
     private DateTimeOffset? _loadedAt;
     private bool _httpLoading;
     private bool _isRefreshing;
+    private bool _isComplete;
     private bool _truncated;
+    private int _scannedCount;
     private string _error = "";
     private long _version;
 
     /// <summary>
-    /// Получает состояние кэша при открытии и запускает лёгкий опрос Runtime.
+    /// Показывает кэш Runtime сразу и затем наблюдает за фоновым обходом CtApi.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync(forceRefresh: false);
-        _ = PollAsync();
+        _pollTask = PollAsync();
     }
 
     /// <summary>
-    /// Кнопка просит Runtime начать новый опрос CtApi. Текущий список остаётся видимым.
+    /// Ручной Refresh запускает обход, если другой ещё не выполняется.
+    /// Подпись кнопки не зависит от длительности нативного чтения.
     /// </summary>
     private Task RefreshAsync()
     {
@@ -87,8 +91,8 @@
     }
 
     /// <summary>
-    /// Применяет только новый успешный снимок. Ошибка HTTP или CtApi
-    /// не стирает ранее показанные аварии.
+    /// Список обновляется только при новом номере версии. Ошибка сети
+    /// сохраняет последний успешно полученный список.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -105,11 +109,13 @@
             {
                 _items = result.Items.ToList();
                 _loadedAt = result.LoadedAtUtc;
-                _truncated = result.Truncated;
                 _version = result.Version;
             }
 
             _isRefreshing = result.IsRefreshing;
+            _isComplete = result.IsComplete;
+            _truncated = result.Truncated;
+            _scannedCount = result.ScannedCount;
             _error = result.RefreshError ?? "";
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)
@@ -118,10 +124,7 @@
         catch (Exception)
         {
             _isRefreshing = false;
-
-            _error = _loadedAt is null
-                ? "Cannot load active alarms from Runtime Service."
-                : "Cannot refresh active alarms. Showing the last successful snapshot.";
+            _error = _loadedAt is null ? "Cannot load active alarms from Runtime Service." : "Cannot refresh active alarms. Showing the last available data.";
         }
         finally
         {
@@ -130,14 +133,14 @@
     }
 
     /// <summary>
-    /// WEB спрашивает состояние кэша каждые 10 секунд. Неизменившийся
-    /// список аварий заново по сети не передаётся.
+    /// Во время загрузки быстро обновляет прогресс. Runtime отправляет строки
+    /// повторно только при изменении версии снимка.
     /// </summary>
     private async Task PollAsync()
     {
         try
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
 
             while (await timer.WaitForNextTickAsync(_stop.Token))
             {
@@ -154,12 +157,15 @@
     }
 
     /// <summary>
-    /// Останавливает опрос при уходе со страницы.
+    /// Останавливает опрос до освобождения его CancellationTokenSource.
     /// </summary>
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _stop.Cancel();
+
+        if (_pollTask is not null)
+            await _pollTask;
+
         _stop.Dispose();
-        return ValueTask.CompletedTask;
     }
 }
