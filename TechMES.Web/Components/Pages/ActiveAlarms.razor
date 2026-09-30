@@ -14,7 +14,10 @@
 
         @if (_isRefreshing && _items.Count > 0)
         {
-            <span class="active-alarms-status">@(_isComplete ? "Refreshing alarms" : "Loading remaining alarms"): @_scannedCount read...</span>
+            <span class="active-alarms-status">
+                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" ShowValue="false" Style="width: 20px; height: 20px;" />
+                @(_isComplete ? "Refreshing alarms" : "Loading remaining alarms") — @(_scannedCount > 0 ? $"{_scannedCount} read" : "Checking SCADA")
+            </span>
         }
         else if (_loadedAt is not null && _isComplete)
         {
@@ -36,7 +39,7 @@
     {
         <div class="active-alarms-initial-loading">
             <span>Loading active alarms...</span>
-            <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" ShowValue="false" Style="width: 100%; height: 10px;" />
+            <TechMesLoadingBar Label="Loading active alarms" />
         </div>
     }
 
@@ -54,7 +57,6 @@
                 </Template>
             </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Description" Title="Description" />
-            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Area" Title="Area" Width="100px" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Category" Title="Category" Width="120px" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="State" Title="State" Width="190px" />
         </Columns>
@@ -76,7 +78,7 @@
     private long _version;
 
     /// <summary>
-    /// Показывает кэш Runtime сразу и затем наблюдает за фоновым обходом CtApi.
+    /// Показывает кэш Runtime и начинает наблюдать за фоновым обходом CtApi.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
@@ -85,7 +87,7 @@
     }
 
     /// <summary>
-    /// Ручной Refresh запускает обход, если другой ещё не выполняется.
+    /// Ручной Refresh просит Runtime начать обход, если он ещё не выполняется.
     /// </summary>
     private Task RefreshAsync()
     {
@@ -93,8 +95,8 @@
     }
 
     /// <summary>
-    /// Обновляет таблицу при новой версии снимка. При ошибке сохраняет
-    /// последний полученный список аварий.
+    /// При новой версии снимка обновляет данные и внутреннее состояние RadzenDataGrid.
+    /// Ошибка сети не удаляет последний полученный список.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -113,8 +115,6 @@
                 _loadedAt = result.LoadedAtUtc;
                 _version = result.Version;
 
-                // Radzen хранит состояние страницы таблицы. Обновляем её и после
-                // первых 60 строк, и после публикации полного снимка.
                 if (_grid is not null)
                     await _grid.Reload();
             }
@@ -141,7 +141,7 @@
 
     /// <summary>
     /// Пока страница открыта, опрашивает состояние Runtime каждые 3 секунды.
-    /// Неизменившийся список аварий повторно по сети не передаётся.
+    /// Строки повторно передаются только при изменении версии снимка.
     /// </summary>
     private async Task PollAsync()
     {
@@ -164,7 +164,7 @@
     }
 
     /// <summary>
-    /// При уходе со страницы прекращает запросы и освобождает ресурсы опроса.
+    /// При уходе со страницы прекращает опрос Runtime.
     /// </summary>
     public async ValueTask DisposeAsync()
     {

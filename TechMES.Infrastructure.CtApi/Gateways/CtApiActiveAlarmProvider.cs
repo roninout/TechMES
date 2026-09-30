@@ -24,6 +24,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     private readonly object _stateLock = new();
 
     private ActiveAlarmsResponse? _snapshot;
+    private List<ActiveAlarmDto>? _buildingItems;
     private Task? _refreshTask;
     private CancellationTokenSource? _scanStop;
     private DateTimeOffset _nextRefreshAt;
@@ -52,6 +53,14 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         {
             if ((_refreshTask is null || _refreshTask.IsCompleted) && (forceRefresh || DateTimeOffset.UtcNow >= _nextRefreshAt))
             {
+                // Незавершённую выборку после ошибки собираем заново.
+                if (_snapshot is { IsComplete: false })
+                {
+                    _snapshot = null;
+                    _version++;
+                }
+
+                _buildingItems = null;
                 _nextRefreshAt = DateTimeOffset.MaxValue;
                 _refreshError = null;
                 _scannedCount = 0;
@@ -63,8 +72,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 _refreshTask = Task.Run(() => RefreshCoreAsync(scanToken));
             }
 
-            // Открытая страница опрашивает Runtime каждые 3 секунды.
-            // Если запросы прекратятся, CancellationToken прервёт обход CtApi.
+            // Если страница перестанет опрашивать Runtime, выполняющийся обход
+            // будет отменён. Несколько открытых страниц продлевают один общий обход.
             if (_scanStop is not null && _refreshTask is { IsCompleted: false } && !_scanStop.IsCancellationRequested)
                 _scanStop.CancelAfter(TimeSpan.FromSeconds(12));
 
@@ -86,8 +95,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// При первой загрузке публикует первые 60 строк. При последующих обновлениях
-    /// сохраняет прежний полный список до окончания нового обхода.
+    /// Во время первой загрузки публикует промежуточные снимки. Во время
+    /// повторного обхода прежний полный список остаётся на экране.
     /// </summary>
     private async Task RefreshCoreAsync(CancellationToken ct)
     {
@@ -104,6 +113,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
             lock (_stateLock)
             {
                 _snapshot = new ActiveAlarmsResponse { Items = items, Truncated = truncated, IsComplete = true, LoadedAtUtc = DateTimeOffset.UtcNow };
+                _buildingItems = null;
                 _scannedCount = rows.Count;
                 _version++;
                 _refreshError = null;
@@ -118,9 +128,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
             {
                 _nextRefreshAt = DateTimeOffset.UtcNow;
                 _scannedCount = 0;
+                _buildingItems = null;
 
-                // Незавершённый первый снимок нельзя оставлять как актуальный
-                // после ухода последнего пользователя со страницы.
                 if (_snapshot is { IsComplete: false })
                 {
                     _snapshot = null;
@@ -134,6 +143,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         {
             lock (_stateLock)
             {
+                _buildingItems = null;
                 _refreshError = _snapshot is null ? "The alarm list could not be loaded. Runtime will retry." : "Alarm refresh failed; the last available data is shown.";
                 _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(30);
             }
@@ -151,8 +161,9 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// Получает порции от native обхода. Первую порцию показывает пользователю,
-    /// следующие порции учитывает в счётчике до публикации полного снимка.
+    /// Получает порции по 60 строк от native обхода. При первой загрузке
+    /// публикует 60 строк, затем обновляет таблицу через каждые 300.
+    /// При повторном обходе меняет лишь счётчик, сохраняя полный список.
     /// </summary>
     private void PublishProgress(IReadOnlyList<Dictionary<string, string>> batch)
     {
@@ -160,20 +171,30 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         {
             _scannedCount += batch.Count;
 
-            if (_snapshot is not null)
+            // Эта запись создаётся при каждом обходе, даже когда уже есть кэш.
+            // Она покажет, сколько времени CtApi требуется до первых 60 строк.
+            if (_scannedCount == 60)
+                _logger.LogInformation("First 60 active alarms read after {DurationMs} ms.", (DateTimeOffset.UtcNow - _refreshStartedAt).TotalMilliseconds);
+
+            if (_snapshot?.IsComplete == true)
                 return;
 
             EnsureNames(batch);
+            _buildingItems ??= [];
+            _buildingItems.AddRange(batch.Select(ToAlarm));
+
+            if (_buildingItems.Count != 60 && _buildingItems.Count % 300 != 0)
+                return;
+
             _snapshot = new ActiveAlarmsResponse
             {
-                Items = batch.Select(ToAlarm).OrderByDescending(alarm => alarm.OccurredAt).ToList(),
+                Items = _buildingItems.OrderByDescending(alarm => alarm.OccurredAt).ToArray(),
                 IsComplete = false,
                 LoadedAtUtc = DateTimeOffset.UtcNow
             };
             _version++;
 
-            // По этой записи увидим, сколько времени CtApi потратил до первой порции.
-            _logger.LogInformation("First 60 active alarms published after {DurationMs} ms.", (DateTimeOffset.UtcNow - _refreshStartedAt).TotalMilliseconds);
+            _logger.LogInformation("Partial active alarm snapshot published. Count={Count}, DurationMs={DurationMs}", _buildingItems.Count, (DateTimeOffset.UtcNow - _refreshStartedAt).TotalMilliseconds);
         }
     }
 
