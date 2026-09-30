@@ -20,11 +20,6 @@
     flex: 1;
 }
 
-::deep .active-alarms-grid {
-    min-height: 0;
-    overflow: auto;
-}
-
 .active-alarms-status {
     color: var(--rz-text-secondary-color);
     white-space: nowrap;
@@ -38,6 +33,14 @@
     overflow-wrap: anywhere;
 }
 
-::deep .active-alarms-progress {
-    height: 5px;
+.active-alarms-initial-loading {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    font-size: 0.875rem;
+}
+
+::deep .active-alarms-grid {
+    min-height: 0;
+    overflow: auto;
 }

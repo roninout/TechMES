@@ -12,9 +12,9 @@
         <span class="active-alarms-spacer"></span>
         <RadzenBadge Text="@($"Count: {_items.Count}")" BadgeStyle="BadgeStyle.Light" />
 
-        @if (_isRefreshing)
+        @if (_isRefreshing && _items.Count > 0)
         {
-            <span class="active-alarms-status">Reading Plant SCADA: @_scannedCount records...</span>
+            <span class="active-alarms-status">@(_isComplete ? "Refreshing alarms" : "Loading remaining alarms"): @_scannedCount read...</span>
         }
         else if (_loadedAt is not null && _isComplete)
         {
@@ -32,12 +32,15 @@
         <div class="active-alarms-error">@_error</div>
     }
 
-    @if (_isRefreshing)
+    @if (_isRefreshing && _items.Count == 0)
     {
-        <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" class="active-alarms-progress" />
+        <div class="active-alarms-initial-loading">
+            <span>Loading active alarms...</span>
+            <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" ShowValue="false" Style="width: 100%; height: 10px;" />
+        </div>
     }
 
-    <RadzenDataGrid Data="@_items" TItem="ActiveAlarmDto" AllowFiltering="true" AllowSorting="true"
+    <RadzenDataGrid @ref="_grid" Data="@_items" TItem="ActiveAlarmDto" AllowFiltering="true" AllowSorting="true"
                     AllowPaging="true" PageSize="30" Density="Density.Compact" class="active-alarms-grid">
         <Columns>
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="OccurredAt" Title="Occurred" Width="180px" SortOrder="SortOrder.Descending">
@@ -54,7 +57,6 @@
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Area" Title="Area" Width="100px" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Category" Title="Category" Width="120px" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="State" Title="State" Width="190px" />
-            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="AckDate" Title="Acknowledged" Width="170px" />
         </Columns>
     </RadzenDataGrid>
 </div>
@@ -62,6 +64,7 @@
 @code {
     private readonly CancellationTokenSource _stop = new();
     private List<ActiveAlarmDto> _items = [];
+    private RadzenDataGrid<ActiveAlarmDto>? _grid;
     private Task? _pollTask;
     private DateTimeOffset? _loadedAt;
     private bool _httpLoading;
@@ -83,7 +86,6 @@
 
     /// <summary>
     /// Ручной Refresh запускает обход, если другой ещё не выполняется.
-    /// Подпись кнопки не зависит от длительности нативного чтения.
     /// </summary>
     private Task RefreshAsync()
     {
@@ -91,8 +93,8 @@
     }
 
     /// <summary>
-    /// Список обновляется только при новом номере версии. Ошибка сети
-    /// сохраняет последний успешно полученный список.
+    /// Обновляет таблицу при новой версии снимка. При ошибке сохраняет
+    /// последний полученный список аварий.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -110,6 +112,11 @@
                 _items = result.Items.ToList();
                 _loadedAt = result.LoadedAtUtc;
                 _version = result.Version;
+
+                // Radzen хранит состояние страницы таблицы. Обновляем её и после
+                // первых 60 строк, и после публикации полного снимка.
+                if (_grid is not null)
+                    await _grid.Reload();
             }
 
             _isRefreshing = result.IsRefreshing;
@@ -133,8 +140,8 @@
     }
 
     /// <summary>
-    /// Во время загрузки быстро обновляет прогресс. Runtime отправляет строки
-    /// повторно только при изменении версии снимка.
+    /// Пока страница открыта, опрашивает состояние Runtime каждые 3 секунды.
+    /// Неизменившийся список аварий повторно по сети не передаётся.
     /// </summary>
     private async Task PollAsync()
     {
@@ -157,7 +164,7 @@
     }
 
     /// <summary>
-    /// Останавливает опрос до освобождения его CancellationTokenSource.
+    /// При уходе со страницы прекращает запросы и освобождает ресурсы опроса.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
