@@ -1,0 +1,151 @@
+﻿@page "/alarms"
+@implements IAsyncDisposable
+@inject ActiveAlarmApiClient AlarmApi
+
+<PageTitle>Active alarms</PageTitle>
+
+<div class="active-alarms-page">
+    <div class="active-alarms-toolbar">
+        <h3>Active alarms</h3>
+
+        <RadzenButton Text="Refresh"
+                      Icon="refresh"
+                      ButtonStyle="ButtonStyle.Light"
+                      Disabled="@_loading"
+                      Click="@RefreshAsync" />
+
+        <span class="active-alarms-spacer"></span>
+
+        <RadzenBadge Text="@($"Count: {_items.Count}")" BadgeStyle="BadgeStyle.Light" />
+
+        @if (_loadedAt is not null)
+        {
+            <span>Loaded: @_loadedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true">
+            @_error
+        </RadzenAlert>
+    }
+
+    @if (_truncated)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
+            The alarm list reached the 250 row limit. Only part of the SCADA alarm summary is shown.
+        </RadzenAlert>
+    }
+
+    @if (_loading)
+    {
+        <TechMesLoadingBar />
+    }
+
+    <RadzenDataGrid Data="@_items"
+                    TItem="ActiveAlarmDto"
+                    AllowFiltering="true"
+                    AllowSorting="true"
+                    AllowPaging="true"
+                    PageSize="30"
+                    Density="Density.Compact"
+                    class="active-alarms-grid">
+        <Columns>
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Tag" Title="Tag" Width="220px" />
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Description" Title="Description" />
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Area" Title="Area" Width="100px" />
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Category" Title="Category" Width="120px" />
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="State" Title="State" Width="110px" />
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="OnDate" Title="On" Width="170px" />
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="AckDate" Title="Acknowledged" Width="170px" />
+        </Columns>
+    </RadzenDataGrid>
+</div>
+
+@code {
+    private readonly CancellationTokenSource _stop = new();
+    private List<ActiveAlarmDto> _items = [];
+    private DateTimeOffset? _loadedAt;
+    private bool _loading;
+    private bool _truncated;
+    private string _error = "";
+
+    /// <summary>
+    /// Загружает первый снимок и запускает обновление только на время жизни страницы.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+        _ = PollAsync();
+    }
+
+    /// <summary>
+    /// При ошибке убирает старые строки: их нельзя выдавать за текущие аварии.
+    /// </summary>
+    private async Task RefreshAsync()
+    {
+        if (_loading || _stop.IsCancellationRequested)
+            return;
+
+        _loading = true;
+
+        try
+        {
+            var result = await AlarmApi.GetActiveAsync(_stop.Token);
+
+            _items = result.Items.ToList();
+            _loadedAt = result.LoadedAtUtc;
+            _truncated = result.Truncated;
+            _error = "";
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+        }
+        catch (Exception)
+        {
+            _items = [];
+            _loadedAt = null;
+            _truncated = false;
+            _error = "Cannot load active alarms from Plant SCADA.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Не создаёт параллельные запросы: следующий цикл начинается после завершения предыдущего.
+    /// </summary>
+    private async Task PollAsync()
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+
+            while (await timer.WaitForNextTickAsync(_stop.Token))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshAsync();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Останавливает таймер и текущий HTTP-запрос при закрытии страницы.
+    /// </summary>
+    public ValueTask DisposeAsync()
+    {
+        _stop.Cancel();
+        _stop.Dispose();
+
+        return ValueTask.CompletedTask;
+    }
+}

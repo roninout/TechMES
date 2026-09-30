@@ -103,6 +103,9 @@ builder.Services.AddScoped<CalcProcessInputResolver>();
 builder.Services.AddScoped<EventLogApiClient>();
 builder.Services.AddScoped<SoeApiClient>();
 
+// Клиент списка аварий Plant SCADA.
+builder.Services.AddScoped<ActiveAlarmApiClient>();
+
 // Клиент каталога расчётов и ручного WEB-тестирования.
 builder.Services.AddScoped<CalcApiClient>();
 

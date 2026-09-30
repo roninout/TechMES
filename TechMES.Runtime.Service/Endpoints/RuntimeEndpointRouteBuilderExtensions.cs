@@ -9,13 +9,9 @@ namespace TechMES.Runtime.Service.Endpoints;
 public static class RuntimeEndpointRouteBuilderExtensions
 {
     /// <summary>
-    /// Регистрирует API модулей Runtime.Service.
-    ///
-    /// Calc endpoints на этом этапе предоставляют только каталог
-    /// алгоритмов и ручное read-only тестирование.
+    /// Регистрирует HTTP API модулей Runtime.Service.
     /// </summary>
-    public static IEndpointRouteBuilder MapRuntimeEndpoints(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapRuntimeEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapHealthEndpoints();
         app.MapMessageEndpoints();
@@ -24,6 +20,7 @@ public static class RuntimeEndpointRouteBuilderExtensions
         app.MapParamEndpoints();
         app.MapEventLogEndpoints();
         app.MapSoeEndpoints();
+        app.MapActiveAlarmEndpoints();
         app.MapScadaEndpoints();
         app.MapCalcEndpoints();
 

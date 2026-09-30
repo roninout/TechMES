@@ -847,6 +847,66 @@ namespace CtApi
             }
         }
 
+        /// <summary>
+        /// Читает ограниченную выборку аварий. При достижении лимита сообщает об усечении.
+        /// Native handle закрывается даже при исключении во время чтения полей.
+        /// </summary>
+        public (IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated) FindAlarms(string query, int maxRows, params string[] properties)
+        {
+            if (maxRows is < 1 or > 1000)
+                throw new ArgumentOutOfRangeException(nameof(maxRows));
+
+            var objectHandle = IntPtr.Zero;
+
+            // Обнуляем ошибку до вызова: отсутствие записей не должно наследовать
+            // код ошибки от предыдущей операции CtApi.
+            Marshal.SetLastPInvokeError(0);
+
+            var findHandle = CtFindFirstEx(_ctapi, query, null, null, ref objectHandle, 0);
+            if (findHandle == IntPtr.Zero)
+            {
+                var errorCode = Marshal.GetLastWin32Error();
+                if (errorCode != 0)
+                    throw new Win32Exception(errorCode, $"CtApi alarm query failed: {query}");
+
+                return (Array.Empty<Dictionary<string, string>>(), false);
+            }
+
+            var rows = new List<Dictionary<string, string>>();
+
+            try
+            {
+                do
+                {
+                    var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var property in properties)
+                    {
+                        var buffer = new StringBuilder(4096);
+                        var length = UIntPtr.Zero;
+
+                        // Неизвестные для конкретной версии поля пока оставляем пустыми.
+                        // Обязательное имя аварии проверяет provider ниже.
+                        row[property] = CtGetProperty(objectHandle, property, buffer, (uint)buffer.Capacity, ref length, 129)
+                            ? buffer.ToString()
+                            : string.Empty;
+                    }
+
+                    rows.Add(row);
+
+                    if (rows.Count == maxRows)
+                        return (rows, CtFindNext(findHandle, ref objectHandle));
+                }
+                while (CtFindNext(findHandle, ref objectHandle));
+
+                return (rows, false);
+            }
+            finally
+            {
+                CtFindClose(findHandle);
+            }
+        }
+
 
     }
 }

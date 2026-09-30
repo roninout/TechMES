@@ -4,6 +4,7 @@ using TechMES.Application.Calc;
 using TechMES.Application.Param;
 using TechMES.Application.Scada;
 using TechMES.Application.Soe;
+using TechMES.Application.Alarms;
 using TechMES.Infrastructure.CtApi.Gateways;
 using TechMES.Infrastructure.CtApi.Native;
 using TechMES.Infrastructure.CtApi.Settings;
@@ -23,6 +24,7 @@ public static class CtApiServiceCollectionExtensions
 
         if (string.Equals(provider, "Mock", StringComparison.OrdinalIgnoreCase))
         {
+            services.AddSingleton<IActiveAlarmProvider, UnavailableActiveAlarmProvider>();
             services.AddSingleton<IPlantScadaGateway, MockPlantScadaGateway>();
             services.AddSingleton<IEquipmentParamProvider>(_ => new UnavailableEquipmentParamProvider("Param read-only is unavailable in Mock CtApi mode."));
             services.AddSingleton<IEquipmentSoeProvider>(_ => new UnavailableEquipmentSoeProvider("SOE is unavailable in Mock CtApi mode."));
@@ -30,41 +32,46 @@ public static class CtApiServiceCollectionExtensions
         }
         else if (string.Equals(provider, "Disabled", StringComparison.OrdinalIgnoreCase))
         {
+            services.AddSingleton<IActiveAlarmProvider, UnavailableActiveAlarmProvider>();
             services.AddSingleton<IPlantScadaGateway, DisabledPlantScadaGateway>();
             services.AddSingleton<IEquipmentParamProvider>(_ => new UnavailableEquipmentParamProvider("Param read-only is unavailable because CtApi is disabled."));
             services.AddSingleton<IEquipmentSoeProvider>(_ => new UnavailableEquipmentSoeProvider("SOE is unavailable because CtApi is disabled."));
-            services.AddSingleton<ICalcModelCatalogProvider>(_ => new UnavailableCalcModelCatalogProvider( "Calc SCADA catalog is unavailable because CtApi is disabled."));
+            services.AddSingleton<ICalcModelCatalogProvider>(_ => new UnavailableCalcModelCatalogProvider("Calc SCADA catalog is unavailable because CtApi is disabled."));
         }
         else if (string.Equals(provider, "CtApi", StringComparison.OrdinalIgnoreCase))
         {
-            // Один ICtApiNativeClient используется всеми CtApi-модулями. Внутренний gate native client сериализует обращения к CtApi.
-            services.AddSingleton<ICtApiNativeClient>(provider =>
+            services.AddSingleton<IActiveAlarmProvider, CtApiActiveAlarmProvider>();
+
+            // Все модули используют один failover client; native gate сериализует вызовы DLL.
+            services.AddSingleton<ICtApiNativeClient>(serviceProvider =>
             {
-                var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<CtApiOptions>>().Value;
-                var logger = provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CtApiNativeClient>>();
+                var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<CtApiOptions>>().Value;
+                var logger = serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CtApiNativeClient>>();
 
-                CtApiNativeClient Create(string server) => new(Microsoft.Extensions.Options.Options.Create(new CtApiOptions
-                {
-                    Path = options.Path,
-                    Server = server,
-                    User = options.User,
-                    Password = options.Password,
-                    HealthCheckTag = options.HealthCheckTag
-                }), logger);
+                CtApiNativeClient Create(string server) => new(
+                    Microsoft.Extensions.Options.Options.Create(new CtApiOptions
+                    {
+                        Path = options.Path,
+                        Server = server,
+                        User = options.User,
+                        Password = options.Password,
+                        HealthCheckTag = options.HealthCheckTag
+                    }),
+                    logger);
 
-                return new CtApiFailoverClient(options, Create(options.Server), Create(options.ServerSecondary), provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CtApiFailoverClient>>());
+                return new CtApiFailoverClient(options, Create(options.Server), Create(options.ServerSecondary), serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CtApiFailoverClient>>());
             });
 
             services.AddSingleton<IPlantScadaGateway, CtApiPlantScadaGateway>();
             services.AddSingleton<IEquipmentParamProvider, CtApiEquipmentParamProvider>();
             services.AddSingleton<IEquipmentSoeProvider, CtApiEquipmentSoeProvider>();
 
-            // Calc Catalog не загружается при Runtime startup.
+            // Calc Catalog не загружается при старте Runtime.
             services.AddSingleton<ICalcModelCatalogProvider, CtApiCalcModelCatalogProvider>();
         }
         else
         {
-            throw new InvalidOperationException($"Неизвестный CtApi:Provider = '{provider}'. " + "Поддерживаются значения: Disabled, Mock, CtApi.");
+            throw new InvalidOperationException($"Неизвестный CtApi:Provider = '{provider}'. Поддерживаются значения: Disabled, Mock, CtApi.");
         }
 
         return services;

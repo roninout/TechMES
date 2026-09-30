@@ -422,6 +422,14 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
 
     public Task<IReadOnlyList<Dictionary<string, string>>> FindAsync(string tableName, string? filter, string? cluster, IReadOnlyList<string> properties, CancellationToken ct = default) => UseAsync(c => c.FindAsync(tableName, filter, cluster, properties, ct), ct);
 
+    /// <summary>
+    /// Читает аварии с сервера, который сейчас выбран общим механизмом failover.
+    /// </summary>
+    public Task<(IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated)> FindAlarmsAsync(string query, int maxRows, IReadOnlyList<string> properties, CancellationToken ct = default)
+    {
+        return UseAsync(client => client.FindAlarmsAsync(query, maxRows, properties, ct), ct);
+    }
+
     public async Task TagWriteAsync(string tagName, string? value, CancellationToken ct = default) => await UseAsync(async c => { await c.TagWriteAsync(tagName, value, ct); return true; }, ct);
 
     private async Task CloseClientAsync(int index)
