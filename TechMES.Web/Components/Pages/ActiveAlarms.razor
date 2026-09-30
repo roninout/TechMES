@@ -8,15 +8,16 @@
     <div class="active-alarms-toolbar">
         <h3>Active alarms</h3>
 
-        <RadzenButton Text="Refresh"
-                      Icon="refresh"
-                      ButtonStyle="ButtonStyle.Light"
-                      Disabled="@_loading"
-                      Click="@RefreshAsync" />
+        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                      Disabled="@(_httpLoading || _isRefreshing)" Click="@RefreshAsync" />
 
         <span class="active-alarms-spacer"></span>
-
         <RadzenBadge Text="@($"Count: {_items.Count}")" BadgeStyle="BadgeStyle.Light" />
+
+        @if (_isRefreshing && _loadedAt is not null)
+        {
+            <span>Refreshing...</span>
+        }
 
         @if (_loadedAt is not null)
         {
@@ -26,7 +27,7 @@
 
     @if (!string.IsNullOrEmpty(_error))
     {
-        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true">
+        <RadzenAlert AlertStyle="@(_loadedAt is null ? AlertStyle.Danger : AlertStyle.Warning)" ShowIcon="true">
             @_error
         </RadzenAlert>
     }
@@ -34,23 +35,18 @@
     @if (_truncated)
     {
         <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
-            The alarm list reached the 250 row limit. Only part of the SCADA alarm summary is shown.
+            The alarm list reached the 1000 row limit. Only part of the SCADA alarm summary is shown.
         </RadzenAlert>
     }
 
-    @if (_loading)
+    @if (_isRefreshing && _loadedAt is null)
     {
         <TechMesLoadingBar />
     }
 
-    <RadzenDataGrid Data="@_items"
-                    TItem="ActiveAlarmDto"
-                    AllowFiltering="true"
-                    AllowSorting="true"
-                    AllowPaging="true"
-                    PageSize="30"
-                    Density="Density.Compact"
-                    class="active-alarms-grid">
+    <RadzenDataGrid Data="@_items" TItem="ActiveAlarmDto" AllowFiltering="true"
+                    AllowSorting="true" AllowPaging="true" PageSize="30"
+                    Density="Density.Compact" class="active-alarms-grid">
         <Columns>
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Tag" Title="Tag" Width="220px" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Description" Title="Description" />
@@ -67,68 +63,87 @@
     private readonly CancellationTokenSource _stop = new();
     private List<ActiveAlarmDto> _items = [];
     private DateTimeOffset? _loadedAt;
-    private bool _loading;
+    private bool _httpLoading;
+    private bool _isRefreshing;
     private bool _truncated;
     private string _error = "";
+    private long _version;
 
     /// <summary>
-    /// Загружает первый снимок и запускает обновление только на время жизни страницы.
+    /// Получает состояние кэша при открытии и запускает лёгкий опрос Runtime.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        await RefreshAsync();
+        await LoadAsync(forceRefresh: false);
         _ = PollAsync();
     }
 
     /// <summary>
-    /// При ошибке убирает старые строки: их нельзя выдавать за текущие аварии.
+    /// Кнопка просит Runtime начать новый опрос CtApi. Текущий список остаётся видимым.
     /// </summary>
-    private async Task RefreshAsync()
+    private Task RefreshAsync()
     {
-        if (_loading || _stop.IsCancellationRequested)
+        return LoadAsync(forceRefresh: true);
+    }
+
+    /// <summary>
+    /// Применяет только новый успешный снимок. Ошибка HTTP или CtApi
+    /// не стирает ранее показанные аварии.
+    /// </summary>
+    private async Task LoadAsync(bool forceRefresh)
+    {
+        if (_httpLoading || _stop.IsCancellationRequested)
             return;
 
-        _loading = true;
+        _httpLoading = true;
 
         try
         {
-            var result = await AlarmApi.GetActiveAsync(_stop.Token);
+            var result = await AlarmApi.GetActiveAsync(forceRefresh, _version, _stop.Token);
 
-            _items = result.Items.ToList();
-            _loadedAt = result.LoadedAtUtc;
-            _truncated = result.Truncated;
-            _error = "";
+            if (!result.NotModified && result.LoadedAtUtc is not null)
+            {
+                _items = result.Items.ToList();
+                _loadedAt = result.LoadedAtUtc;
+                _truncated = result.Truncated;
+                _version = result.Version;
+            }
+
+            _isRefreshing = result.IsRefreshing;
+            _error = result.RefreshError ?? "";
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)
         {
         }
         catch (Exception)
         {
-            _items = [];
-            _loadedAt = null;
-            _truncated = false;
-            _error = "Cannot load active alarms from Plant SCADA.";
+            _isRefreshing = false;
+
+            _error = _loadedAt is null
+                ? "Cannot load active alarms from Runtime Service."
+                : "Cannot refresh active alarms. Showing the last successful snapshot.";
         }
         finally
         {
-            _loading = false;
+            _httpLoading = false;
         }
     }
 
     /// <summary>
-    /// Не создаёт параллельные запросы: следующий цикл начинается после завершения предыдущего.
+    /// WEB спрашивает состояние кэша каждые 10 секунд. Неизменившийся
+    /// список аварий заново по сети не передаётся.
     /// </summary>
     private async Task PollAsync()
     {
         try
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
 
             while (await timer.WaitForNextTickAsync(_stop.Token))
             {
                 await InvokeAsync(async () =>
                 {
-                    await RefreshAsync();
+                    await LoadAsync(forceRefresh: false);
                     StateHasChanged();
                 });
             }
@@ -139,13 +154,12 @@
     }
 
     /// <summary>
-    /// Останавливает таймер и текущий HTTP-запрос при закрытии страницы.
+    /// Останавливает опрос при уходе со страницы.
     /// </summary>
     public ValueTask DisposeAsync()
     {
         _stop.Cancel();
         _stop.Dispose();
-
         return ValueTask.CompletedTask;
     }
 }

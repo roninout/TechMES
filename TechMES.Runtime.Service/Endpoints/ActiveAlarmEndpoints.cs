@@ -8,16 +8,16 @@ namespace TechMES.Runtime.Service.Endpoints;
 public static class ActiveAlarmEndpoints
 {
     /// <summary>
-    /// Подключает endpoint чтения. Подробная ошибка остаётся в журнале Runtime,
-    /// а WEB получает безопасное сообщение и HTTP 503.
+    /// Отдаёт кэшированный снимок. refresh=true запускает обновление, а version
+    /// позволяет не передавать строки, которые WEB уже получил.
     /// </summary>
     public static IEndpointRouteBuilder MapActiveAlarmEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/alarms/active", async (IActiveAlarmProvider provider, ILoggerFactory loggerFactory, CancellationToken ct) =>
+        app.MapGet("/api/alarms/active", async (IActiveAlarmProvider provider, ILoggerFactory loggerFactory, bool? refresh, long? version, CancellationToken ct) =>
         {
             try
             {
-                return Results.Ok(await provider.GetActiveAsync(ct));
+                return Results.Ok(await provider.GetActiveAsync(refresh == true, version.GetValueOrDefault(), ct));
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -26,7 +26,6 @@ public static class ActiveAlarmEndpoints
             catch (Exception ex)
             {
                 loggerFactory.CreateLogger("ActiveAlarmEndpoints").LogError(ex, "Failed to read active alarms from Plant SCADA.");
-
                 return Results.Problem("Active alarms could not be loaded from Plant SCADA.", statusCode: 503);
             }
         });

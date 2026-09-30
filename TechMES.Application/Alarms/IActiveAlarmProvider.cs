@@ -3,9 +3,10 @@
 namespace TechMES.Application.Alarms;
 
 /// <summary>
-/// Контракт получения снимка аварий. Runtime.Service не зависит от CtApi.dll.
+/// Контракт снимка активных аварий для Runtime.Service.
+/// knownVersion позволяет не передавать неизменившийся список повторно.
 /// </summary>
 public interface IActiveAlarmProvider
 {
-    Task<ActiveAlarmsResponse> GetActiveAsync(CancellationToken ct = default);
+    Task<ActiveAlarmsResponse> GetActiveAsync(bool forceRefresh = false, long knownVersion = 0, CancellationToken ct = default);
 }

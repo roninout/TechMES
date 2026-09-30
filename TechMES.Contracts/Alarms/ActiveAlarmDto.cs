@@ -17,12 +17,16 @@ public sealed class ActiveAlarmDto
 }
 
 /// <summary>
-/// Результат одного опроса. Truncated показывает, что CtApi вернул больше строк,
-/// чем мы разрешили читать за один цикл.
+/// Состояние последнего успешного снимка и текущего фонового обновления.
+/// При NotModified=true массив Items намеренно пуст: WEB уже хранит эту версию.
 /// </summary>
 public sealed class ActiveAlarmsResponse
 {
-    public DateTimeOffset LoadedAtUtc { get; init; }
+    public DateTimeOffset? LoadedAtUtc { get; init; }
     public IReadOnlyList<ActiveAlarmDto> Items { get; init; } = [];
     public bool Truncated { get; init; }
+    public bool IsRefreshing { get; init; }
+    public string? RefreshError { get; init; }
+    public long Version { get; init; }
+    public bool NotModified { get; init; }
 }

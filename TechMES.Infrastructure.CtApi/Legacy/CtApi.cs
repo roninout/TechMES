@@ -858,8 +858,7 @@ namespace CtApi
 
             var objectHandle = IntPtr.Zero;
 
-            // Обнуляем ошибку до вызова: отсутствие записей не должно наследовать
-            // код ошибки от предыдущей операции CtApi.
+            // Обнуляем ошибку до вызова: отсутствие записей не должно наследовать код ошибки от предыдущей операции CtApi.
             Marshal.SetLastPInvokeError(0);
 
             var findHandle = CtFindFirstEx(_ctapi, query, null, null, ref objectHandle, 0);

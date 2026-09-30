@@ -3,11 +3,11 @@
 namespace TechMES.Application.Alarms;
 
 /// <summary>
-/// Явно сообщает об отсутствии аварийного источника в режимах Mock и Disabled.
+/// Явно сообщает, что в режимах Mock и Disabled нет источника аварий CtApi.
 /// </summary>
 public sealed class UnavailableActiveAlarmProvider : IActiveAlarmProvider
 {
-    public Task<ActiveAlarmsResponse> GetActiveAsync(CancellationToken ct = default)
+    public Task<ActiveAlarmsResponse> GetActiveAsync(bool forceRefresh = false, long knownVersion = 0, CancellationToken ct = default)
     {
         throw new InvalidOperationException("Active alarms require a connected CtApi provider.");
     }

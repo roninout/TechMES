@@ -4,7 +4,7 @@ using TechMES.Contracts.Alarms;
 namespace TechMES.Web.Clients;
 
 /// <summary>
-/// WEB обращается к Runtime.Service; напрямую CtApi.dll в WEB не загружается.
+/// Получает состояние снимка из Runtime.Service; к CtApi WEB не обращается.
 /// </summary>
 public sealed class ActiveAlarmApiClient
 {
@@ -16,12 +16,15 @@ public sealed class ActiveAlarmApiClient
     }
 
     /// <summary>
-    /// Загружает один снимок текущей сводки.
+    /// Передаёт номер уже показанного снимка. Если он не менялся, Runtime
+    /// вернёт NotModified=true без повторной передачи всех аварий.
     /// </summary>
-    public async Task<ActiveAlarmsResponse> GetActiveAsync(CancellationToken ct = default)
+    public async Task<ActiveAlarmsResponse> GetActiveAsync(bool forceRefresh = false, long knownVersion = 0, CancellationToken ct = default)
     {
         var client = _clients.CreateClient("RuntimeService");
+        var url = $"api/alarms/active?version={knownVersion}&refresh={forceRefresh.ToString().ToLowerInvariant()}";
 
-        return await client.GetFromJsonAsync<ActiveAlarmsResponse>("api/alarms/active", ct) ?? throw new InvalidOperationException("Runtime returned an empty alarm response.");
+        return await client.GetFromJsonAsync<ActiveAlarmsResponse>(url, ct)
+            ?? throw new InvalidOperationException("Runtime returned an empty alarm response.");
     }
 }
