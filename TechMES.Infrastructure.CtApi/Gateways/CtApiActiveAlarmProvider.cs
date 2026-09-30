@@ -21,6 +21,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     private readonly ICtApiNativeClient _client;
     private readonly ILogger<CtApiActiveAlarmProvider> _logger;
     private readonly int _area;
+    private readonly bool _useLegacyActiveAlarmQuery;
     private readonly object _stateLock = new();
 
     private ActiveAlarmsResponse? _snapshot;
@@ -35,6 +36,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         _client = client;
         _logger = logger;
         _area = configuration.GetValue("CtApi:AlarmArea", -1);
+        _useLegacyActiveAlarmQuery = configuration.GetValue("CtApi:UseLegacyActiveAlarmQuery", false);
     }
 
     /// <summary>
@@ -80,7 +82,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// Получает полный снимок одним запросом CtApi и публикует его только после
+    /// Получает полный снимок выбранным способом и публикует его только после
     /// успешного окончания обхода. Пока он выполняется, WEB видит прежний снимок.
     /// </summary>
     private async Task RefreshCoreAsync(CancellationToken ct)
@@ -89,11 +91,15 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 
         try
         {
-            var query = $"CTAPIAlarm(0,0,{_area})";
-            var (rows, truncated) = await _client.FindAlarmsAsync(query, MaxRows, Properties, ct);
+            var (rows, truncated) = _useLegacyActiveAlarmQuery
+                ? await ReadCtApiAlarmAsync(ct)
+                : await ReadAlarmSummaryAsync(ct);
+
             EnsureNames(rows);
 
-            var items = rows.Select(ToAlarm).OrderByDescending(alarm => alarm.OccurredAt).ToList();
+            var items = _useLegacyActiveAlarmQuery
+                ? rows.Select(ToAlarm).OrderByDescending(alarm => alarm.OccurredAt).ToList()
+                : BuildAlarmSummaryItems(rows);
 
             lock (_stateLock)
             {
@@ -108,7 +114,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(30);
             }
 
-            _logger.LogInformation("Active alarms refreshed. Count={Count}, Truncated={Truncated}, DurationMs={DurationMs}", items.Count, truncated, watch.ElapsedMilliseconds);
+            _logger.LogInformation("Active alarms refreshed. Source={Source}, RawCount={RawCount}, DisplayedCount={Count}, Truncated={Truncated}, DurationMs={DurationMs}", _useLegacyActiveAlarmQuery ? "CTAPIAlarm" : "AlarmSummary", rows.Count, items.Count, truncated, watch.ElapsedMilliseconds);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -139,6 +145,49 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 _scanStop = null;
             }
         }
+    }
+
+    /// <summary>
+    /// Прежний способ чтения полной сводки. Остаётся в проекте для сравнения
+    /// и возврата через CtApi:UseLegacyActiveAlarmQuery=true.
+    /// </summary>
+    private async Task<(IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated)> ReadCtApiAlarmAsync(CancellationToken ct)
+    {
+        var query = $"CTAPIAlarm(0,0,{_area})";
+        var watch = Stopwatch.StartNew();
+        var result = await _client.FindAlarmsAsync(query, MaxRows, Properties, ct);
+
+        _logger.LogInformation("CTAPIAlarm read completed. RawCount={Count}, Truncated={Truncated}, ReadDurationMs={DurationMs}", result.Rows.Count, result.Truncated, watch.ElapsedMilliseconds);
+        return result;
+    }
+
+    /// <summary>
+    /// Экспериментально читает строки таблицы AlarmSummary через тот же native
+    /// цикл ctFindFirstEx/ctFindNext/ctGetProperty и отдельно измеряет чтение.
+    /// </summary>
+    private async Task<(IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated)> ReadAlarmSummaryAsync(CancellationToken ct)
+    {
+        var watch = Stopwatch.StartNew();
+        var result = await _client.FindAlarmsAsync("AlarmSummary", MaxRows, Properties, ct);
+
+        _logger.LogInformation("AlarmSummary read completed. RawCount={Count}, Truncated={Truncated}, ReadDurationMs={DurationMs}", result.Rows.Count, result.Truncated, watch.ElapsedMilliseconds);
+        return result;
+    }
+
+    /// <summary>
+    /// Оставляет ON-аварии и неквитированные OFF-аварии, возникшие вчера или
+    /// сегодня по локальному времени Runtime. Квитированные OFF исключаются.
+    /// </summary>
+    private static List<ActiveAlarmDto> BuildAlarmSummaryItems(IReadOnlyList<Dictionary<string, string>> rows)
+    {
+        var yesterday = DateTime.Today.AddDays(-1);
+        var tomorrow = DateTime.Today.AddDays(1);
+
+        return rows.Where(row => !IsSet(Get(row, "OFFDATE")) || !IsSet(Get(row, "ACKDATE")))
+            .Select(ToAlarm)
+            .Where(alarm => alarm.OccurredAt >= yesterday && alarm.OccurredAt < tomorrow)
+            .OrderByDescending(alarm => alarm.OccurredAt)
+            .ToList();
     }
 
     /// <summary>
