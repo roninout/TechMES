@@ -41,21 +41,44 @@
     <RadzenDataGrid @ref="_grid" Data="@_items" TItem="ActiveAlarmDto" AllowFiltering="true" AllowSorting="true"
                     AllowPaging="true" PageSize="30" Density="Density.Compact" class="active-alarms-grid">
         <Columns>
-            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="OccurredAt" Title="Occurred" Width="180px" SortOrder="SortOrder.Descending">
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Width="48px" Title="" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                <Template Context="alarm">
+                    @switch (alarm.Priority)
+                    {
+                        case 1:
+                            <span class="active-alarms-priority is-alarm" title="Alarm" aria-label="Alarm"><RadzenIcon Icon="error" /></span>
+                            break;
+                        case 2:
+                            <span class="active-alarms-priority is-warning" title="Warning" aria-label="Warning"><RadzenIcon Icon="warning" /></span>
+                            break;
+                        case 3:
+                            <span class="active-alarms-priority is-info" title="Info" aria-label="Info"><RadzenIcon Icon="info" /></span>
+                            break;
+                        default:
+                            <span class="active-alarms-priority" title="Unknown priority" aria-label="Unknown priority"><RadzenIcon Icon="help_outline" /></span>
+                            break;
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="OccurredAt" Title="Date" Width="180px" SortOrder="SortOrder.Descending">
                 <Template Context="alarm">
                     <span title="@alarm.OccurredAtText">@(alarm.OccurredAt?.ToString("dd.MM.yyyy HH:mm:ss") ?? alarm.OccurredAtText)</span>
                 </Template>
             </RadzenDataGridColumn>
+
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Tag" Title="Tag" Width="340px">
                 <Template Context="alarm">
                     <span class="active-alarms-tag" title="@alarm.Tag">@alarm.Tag</span>
                 </Template>
             </RadzenDataGridColumn>
+
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Description" Title="Description" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Category" Title="Category" Width="120px" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="State" Title="State" Width="190px" />
         </Columns>
     </RadzenDataGrid>
+
 </div>
 
 @code {
@@ -72,7 +95,7 @@
     private long? _refreshDurationMs;
 
     /// <summary>
-    // Показывает кэш Runtime и начинает наблюдать за фоновым чтением ODBC.
+    /// Показывает кэш Runtime и начинает наблюдать за фоновым чтением ODBC.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {

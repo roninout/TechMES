@@ -155,15 +155,15 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         var openDurationMs = watch.ElapsedMilliseconds;
 
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT FullName, Comment, AlarmCategory, AlarmState, AlarmDesc, OnTime, ConditionActiveTime, AckTime FROM CiAdvancedAlarm WHERE AlarmState <> 0";
+        command.CommandText = "SELECT FullName, Comment, Priority, AlarmCategory, AlarmState, AlarmDesc, OnTime, ConditionActiveTime, AckTime FROM CiAdvancedAlarm WHERE AlarmState <> 0";
         command.CommandTimeout = 120;
 
         using var reader = await command.ExecuteReaderAsync(ct);
         var executeDurationMs = watch.ElapsedMilliseconds - openDurationMs;
         var columns = Enumerable.Range(0, reader.FieldCount).ToDictionary(reader.GetName, index => index, StringComparer.OrdinalIgnoreCase);
 
-        if (!columns.ContainsKey("FullName") || !columns.ContainsKey("AlarmState"))
-            throw new InvalidOperationException("CiAdvancedAlarm must return FullName and AlarmState columns.");
+        if (!columns.ContainsKey("FullName") || !columns.ContainsKey("AlarmState") || !columns.ContainsKey("Priority"))
+            throw new InvalidOperationException("CiAdvancedAlarm must return FullName, AlarmState and Priority columns.");
 
         var items = new List<ActiveAlarmDto>();
 
@@ -227,12 +227,15 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 
         var occurredAt = LocalTimestamp("OnTime", "ConditionActiveTime");
         var occurredAtText = occurredAt?.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture) ?? "";
+        var priorityText = Value("Priority");
+        var priority = int.TryParse(priorityText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPriority) ? parsedPriority : (int?)null;
 
         var fields = new Dictionary<string, string>
         {
             ["FullName"] = tag,
             ["AlarmState"] = Value("AlarmState"),
             ["AlarmDesc"] = Value("AlarmDesc"),
+            ["Priority"] = priorityText,
             ["OnTime"] = Value("OnTime")
         };
 
@@ -240,6 +243,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         {
             Tag = tag,
             Description = Value("Comment"),
+            Priority = priority,
             Category = Value("AlarmCategory"),
             State = Value("AlarmDesc"),
             OccurredAt = occurredAt,
@@ -249,4 +253,5 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
             RawFields = fields
         };
     }
+
 }

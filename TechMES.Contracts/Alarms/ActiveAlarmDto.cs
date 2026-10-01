@@ -8,6 +8,7 @@ public sealed class ActiveAlarmDto
 {
     public string Tag { get; init; } = "";
     public string Description { get; init; } = "";
+    public int? Priority { get; init; }
     public string Category { get; init; } = "";
     public string State { get; init; } = "";
     public DateTime? OccurredAt { get; init; }
