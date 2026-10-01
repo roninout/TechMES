@@ -31,4 +31,6 @@ public sealed class ActiveAlarmsResponse
     public string? RefreshError { get; init; }
     public long Version { get; init; }
     public bool NotModified { get; init; }
+    public long? ReadDurationMs { get; init; }
+    public long? RefreshDurationMs { get; init; }
 }

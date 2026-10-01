@@ -5,6 +5,7 @@
 <PageTitle>Active alarms</PageTitle>
 
 <div class="active-alarms-page">
+
     <div class="active-alarms-toolbar">
         <h3>Active alarms</h3>
         <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_httpLoading" Click="@RefreshAsync" />
@@ -23,6 +24,11 @@
         @if (_loadedAt is not null)
         {
             <span class="active-alarms-status">Updated: @_loadedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+        }
+
+        @if (_readDurationMs is not null)
+        {
+            <span class="active-alarms-status">Read: @_readDurationMs ms · Refresh: @_refreshDurationMs ms</span>
         }
 
         @if (_truncated)
@@ -67,6 +73,8 @@
     private bool _truncated;
     private string _error = "";
     private long _version;
+    private long? _readDurationMs;
+    private long? _refreshDurationMs;
 
     /// <summary>
     /// Показывает кэш Runtime и начинает наблюдать за фоновым обходом CtApi.
@@ -86,8 +94,8 @@
     }
 
     /// <summary>
-    /// При новой версии снимка обновляет таблицу. Ошибка сети не удаляет
-    /// последний полученный список и время его загрузки.
+    /// При новой версии снимка обновляет таблицу и длительность фактического чтения.
+    /// Ошибка сети не удаляет последний полученный список.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -105,6 +113,8 @@
                 _items = result.Items.ToList();
                 _loadedAt = result.LoadedAtUtc;
                 _version = result.Version;
+                _readDurationMs = result.ReadDurationMs;
+                _refreshDurationMs = result.RefreshDurationMs;
 
                 if (_grid is not null)
                     await _grid.Reload();

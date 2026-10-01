@@ -5,6 +5,8 @@ using Microsoft.Extensions.Logging;
 using TechMES.Application.Alarms;
 using TechMES.Contracts.Alarms;
 using TechMES.Infrastructure.CtApi.Native;
+using System.Data.Common;
+using System.Data.Odbc;
 
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
@@ -22,6 +24,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     private readonly ILogger<CtApiActiveAlarmProvider> _logger;
     private readonly int _area;
     private readonly bool _useLegacyActiveAlarmQuery;
+    private readonly string? _alarmOdbcConnectionString;
+    private readonly int[] _activeStateCodes;
     private readonly object _stateLock = new();
 
     private ActiveAlarmsResponse? _snapshot;
@@ -37,6 +41,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         _logger = logger;
         _area = configuration.GetValue("CtApi:AlarmArea", -1);
         _useLegacyActiveAlarmQuery = configuration.GetValue("CtApi:UseLegacyActiveAlarmQuery", false);
+        _alarmOdbcConnectionString = configuration["CtApi:AlarmOdbcConnectionString"];
+        _activeStateCodes = (configuration.GetSection("CtApi:AlarmActiveStateCodes").Get<int[]>() ?? []).Distinct().ToArray();
     }
 
     /// <summary>
@@ -76,14 +82,16 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 IsRefreshing = _refreshTask is { IsCompleted: false },
                 RefreshError = _refreshError,
                 Version = _version,
-                NotModified = notModified
+                NotModified = notModified,
+                ReadDurationMs = _snapshot?.ReadDurationMs,
+                RefreshDurationMs = _snapshot?.RefreshDurationMs
             });
         }
     }
 
     /// <summary>
     /// Получает полный снимок выбранным способом и публикует его только после
-    /// успешного окончания обхода. Пока он выполняется, WEB видит прежний снимок.
+    /// успешного завершения чтения. Пока оно идёт, WEB видит прежний снимок.
     /// </summary>
     private async Task RefreshCoreAsync(CancellationToken ct)
     {
@@ -91,15 +99,27 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 
         try
         {
-            var (rows, truncated) = _useLegacyActiveAlarmQuery
-                ? await ReadCtApiAlarmAsync(ct)
-                : await ReadAlarmSummaryAsync(ct);
+            List<ActiveAlarmDto> items;
+            long readDurationMs;
+            var truncated = false;
 
-            EnsureNames(rows);
+            if (_useLegacyActiveAlarmQuery)
+            {
+                var (rows, wasTruncated) = await ReadCtApiAlarmAsync(ct);
+                EnsureNames(rows);
+                items = rows.Select(ToAlarm).OrderByDescending(alarm => alarm.OccurredAt).ToList();
+                truncated = wasTruncated;
+                readDurationMs = watch.ElapsedMilliseconds;
+            }
+            else
+            {
+                var result = await ReadCiAdvancedAlarmsAsync(ct);
+                items = result.Items;
+                readDurationMs = result.ReadDurationMs;
+            }
 
-            var items = _useLegacyActiveAlarmQuery
-                ? rows.Select(ToAlarm).OrderByDescending(alarm => alarm.OccurredAt).ToList()
-                : BuildAlarmSummaryItems(rows);
+            ct.ThrowIfCancellationRequested();
+            var refreshDurationMs = watch.ElapsedMilliseconds;
 
             lock (_stateLock)
             {
@@ -107,14 +127,23 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 {
                     Items = items,
                     Truncated = truncated,
-                    LoadedAtUtc = DateTimeOffset.UtcNow
+                    LoadedAtUtc = DateTimeOffset.UtcNow,
+                    ReadDurationMs = readDurationMs,
+                    RefreshDurationMs = refreshDurationMs
                 };
+
                 _version++;
                 _refreshError = null;
                 _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(30);
             }
 
-            _logger.LogInformation("Active alarms refreshed. Source={Source}, RawCount={RawCount}, DisplayedCount={Count}, Truncated={Truncated}, DurationMs={DurationMs}", _useLegacyActiveAlarmQuery ? "CTAPIAlarm" : "AlarmSummary", rows.Count, items.Count, truncated, watch.ElapsedMilliseconds);
+            _logger.LogInformation(
+                "Active alarms refreshed. Source={Source}, Count={Count}, Truncated={Truncated}, ReadDurationMs={ReadDurationMs}, RefreshDurationMs={RefreshDurationMs}",
+                _useLegacyActiveAlarmQuery ? "CTAPIAlarm" : "CiAdvancedAlarm",
+                items.Count,
+                truncated,
+                readDurationMs,
+                refreshDurationMs);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -132,6 +161,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 _refreshError = _snapshot is null
                     ? "The alarm list could not be loaded. Runtime will retry."
                     : "Alarm refresh failed; the last available data is shown.";
+
                 _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(30);
             }
 
@@ -145,6 +175,107 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 _scanStop = null;
             }
         }
+    }
+
+    /// <summary>
+    /// Читает из CiAdvancedAlarm только состояния, проверенные на сервере Plant SCADA.
+    /// Запрос выполняется одним блоком без ограничения по дате или порционной загрузки.
+    /// </summary>
+    private async Task<(List<ActiveAlarmDto> Items, long ReadDurationMs)> ReadCiAdvancedAlarmsAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_alarmOdbcConnectionString))
+            throw new InvalidOperationException("CtApi:AlarmOdbcConnectionString is not configured.");
+
+        if (_activeStateCodes.Length == 0)
+            throw new InvalidOperationException("CtApi:AlarmActiveStateCodes is empty. Verify Plant SCADA AlarmState values before enabling ODBC alarms.");
+
+        var watch = Stopwatch.StartNew();
+        using var connection = new OdbcConnection(_alarmOdbcConnectionString);
+        await connection.OpenAsync(ct);
+        var openDurationMs = watch.ElapsedMilliseconds;
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT * FROM CiAdvancedAlarm WHERE AlarmState IN ({string.Join(", ", Enumerable.Repeat("?", _activeStateCodes.Length))})";
+        command.CommandTimeout = 120;
+
+        // ODBC использует позиционные параметры: порядок здесь соответствует порядку знаков ?.
+        foreach (var stateCode in _activeStateCodes)
+            command.Parameters.Add("", OdbcType.Int).Value = stateCode;
+
+        using var reader = await command.ExecuteReaderAsync(ct);
+        var executeDurationMs = watch.ElapsedMilliseconds - openDurationMs;
+        var columns = Enumerable.Range(0, reader.FieldCount).ToDictionary(reader.GetName, index => index, StringComparer.OrdinalIgnoreCase);
+
+        if (!columns.ContainsKey("FullName") || !columns.ContainsKey("AlarmState"))
+            throw new InvalidOperationException("CiAdvancedAlarm must return FullName and AlarmState columns.");
+
+        var items = new List<ActiveAlarmDto>();
+
+        while (await reader.ReadAsync(ct))
+        {
+            ct.ThrowIfCancellationRequested();
+            items.Add(ToCiAdvancedAlarm(reader, columns));
+        }
+
+        items.Sort((left, right) => Nullable.Compare(right.OccurredAt, left.OccurredAt));
+        var readDurationMs = watch.ElapsedMilliseconds;
+
+        _logger.LogInformation(
+            "CiAdvancedAlarm ODBC completed. Count={Count}, OpenMs={OpenMs}, ExecuteMs={ExecuteMs}, FetchAndMapMs={FetchAndMapMs}, ReadDurationMs={ReadDurationMs}",
+            items.Count,
+            openDurationMs,
+            executeDurationMs,
+            readDurationMs - openDurationMs - executeDurationMs,
+            readDurationMs);
+
+        return (items, readDurationMs);
+    }
+
+    /// <summary>
+    /// Переводит строку ODBC в модель существующей WEB-таблицы.
+    /// Отсутствующие необязательные столбцы остаются пустыми до сверки схемы сервера.
+    /// </summary>
+    private static ActiveAlarmDto ToCiAdvancedAlarm(DbDataReader reader, IReadOnlyDictionary<string, int> columns)
+    {
+        string Value(params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (columns.TryGetValue(name, out var ordinal) && !reader.IsDBNull(ordinal))
+                    return Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture) ?? "";
+            }
+
+            return "";
+        }
+
+        var stateCode = Value("AlarmState");
+        var occurredAtText = Value("ConditionActiveTime", "DisplayTime");
+        var occurredAt = DateTime.TryParse(occurredAtText, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) && parsed.Year > 1900 ? parsed : (DateTime?)null;
+        var tag = Value("FullName");
+
+        if (string.IsNullOrWhiteSpace(tag))
+            throw new InvalidOperationException("CiAdvancedAlarm returned a row without FullName.");
+
+        var fields = new Dictionary<string, string>
+        {
+            ["FullName"] = tag,
+            ["AlarmState"] = stateCode,
+            ["ConditionActiveTime"] = occurredAtText
+        };
+
+        return new ActiveAlarmDto
+        {
+            Tag = tag,
+            Description = Value("Description", "AlarmMessage", "Message", "Comment", "Name"),
+            Area = Value("Area"),
+            Category = Value("Category", "AlarmType"),
+            State = $"AlarmState {stateCode}",
+            OccurredAt = occurredAt,
+            OccurredAtText = occurredAtText,
+            OnDate = occurredAt?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "",
+            AckDate = Value("CiAdvancedAlarmState_AcceptTime"),
+            RawFields = fields
+        };
     }
 
     /// <summary>
