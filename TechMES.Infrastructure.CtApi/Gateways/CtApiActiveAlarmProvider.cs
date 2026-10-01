@@ -1,29 +1,21 @@
-﻿using System.Diagnostics;
+﻿using System.Data.Common;
+using System.Data.Odbc;
+using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using TechMES.Application.Alarms;
 using TechMES.Contracts.Alarms;
-using TechMES.Infrastructure.CtApi.Native;
-using System.Data.Common;
-using System.Data.Odbc;
 
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
 /// <summary>
 /// Сохраняет последний снимок активных аварий. WEB читает его из памяти,
-/// а длительный обход CtApi выполняется в одном фоновом задании.
+/// а чтение CiAdvancedAlarm через ODBC выполняется в одном фоновом задании.
 /// </summary>
 public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 {
-    private const int MaxRows = 5000;
-    private static readonly string[] Properties = ["TAG", "NAME", "DESC", "AREA", "CATEGORY", "ONDATEEXT", "ONDATE", "ONTIME", "OFFDATE", "ACKDATE"];
-    private static readonly string[] DateTimeFormats = ["dd/MM/yyyy HH:mm:ss", "d/M/yyyy H:mm:ss", "dd/MM/yyyy HH:mm", "d/M/yyyy H:mm", "dd.MM.yyyy HH:mm:ss", "d.M.yyyy H:mm:ss", "dd.MM.yyyy HH:mm", "d.M.yyyy H:mm"];
-
-    private readonly ICtApiNativeClient _client;
     private readonly ILogger<CtApiActiveAlarmProvider> _logger;
-    private readonly int _area;
-    private readonly bool _useLegacyActiveAlarmQuery;
     private readonly string? _alarmOdbcConnectionString;
     private readonly object _stateLock = new();
 
@@ -34,12 +26,9 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     private string? _refreshError;
     private long _version;
 
-    public CtApiActiveAlarmProvider(ICtApiNativeClient client, IConfiguration configuration, ILogger<CtApiActiveAlarmProvider> logger)
+    public CtApiActiveAlarmProvider(IConfiguration configuration, ILogger<CtApiActiveAlarmProvider> logger)
     {
-        _client = client;
         _logger = logger;
-        _area = configuration.GetValue("CtApi:AlarmArea", -1);
-        _useLegacyActiveAlarmQuery = configuration.GetValue("CtApi:UseLegacyActiveAlarmQuery", false);
         _alarmOdbcConnectionString = configuration["CtApi:AlarmOdbcConnectionString"];
     }
 
@@ -76,7 +65,6 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
             {
                 Items = notModified ? [] : (_snapshot?.Items ?? []),
                 LoadedAtUtc = _snapshot?.LoadedAtUtc,
-                Truncated = _snapshot?.Truncated ?? false,
                 IsRefreshing = _refreshTask is { IsCompleted: false },
                 RefreshError = _refreshError,
                 Version = _version,
@@ -88,7 +76,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// Получает полный снимок выбранным способом и публикует его только после
+    /// Получает полный снимок через ODBC и публикует его только после
     /// успешного завершения чтения. Пока оно идёт, WEB видит прежний снимок.
     /// </summary>
     private async Task RefreshCoreAsync(CancellationToken ct)
@@ -97,24 +85,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 
         try
         {
-            List<ActiveAlarmDto> items;
-            long readDurationMs;
-            var truncated = false;
-
-            if (_useLegacyActiveAlarmQuery)
-            {
-                var (rows, wasTruncated) = await ReadCtApiAlarmAsync(ct);
-                EnsureNames(rows);
-                items = rows.Select(ToAlarm).OrderByDescending(alarm => alarm.OccurredAt).ToList();
-                truncated = wasTruncated;
-                readDurationMs = watch.ElapsedMilliseconds;
-            }
-            else
-            {
-                var result = await ReadCiAdvancedAlarmsAsync(ct);
-                items = result.Items;
-                readDurationMs = result.ReadDurationMs;
-            }
+            var (items, readDurationMs) = await ReadCiAdvancedAlarmsAsync(ct);
 
             ct.ThrowIfCancellationRequested();
             var refreshDurationMs = watch.ElapsedMilliseconds;
@@ -124,7 +95,6 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 _snapshot = new ActiveAlarmsResponse
                 {
                     Items = items,
-                    Truncated = truncated,
                     LoadedAtUtc = DateTimeOffset.UtcNow,
                     ReadDurationMs = readDurationMs,
                     RefreshDurationMs = refreshDurationMs
@@ -135,13 +105,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                 _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(30);
             }
 
-            _logger.LogInformation(
-                "Active alarms refreshed. Source={Source}, Count={Count}, Truncated={Truncated}, ReadDurationMs={ReadDurationMs}, RefreshDurationMs={RefreshDurationMs}",
-                _useLegacyActiveAlarmQuery ? "CTAPIAlarm" : "CiAdvancedAlarm",
-                items.Count,
-                truncated,
-                readDurationMs,
-                refreshDurationMs);
+            _logger.LogInformation("Active alarms refreshed from CiAdvancedAlarm. Count={Count}, ReadDurationMs={ReadDurationMs}, RefreshDurationMs={RefreshDurationMs}", items.Count, readDurationMs, refreshDurationMs);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -212,19 +176,17 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         items.Sort((left, right) => Nullable.Compare(right.OccurredAt, left.OccurredAt));
         var readDurationMs = watch.ElapsedMilliseconds;
 
-        _logger.LogInformation("CiAdvancedAlarm ODBC completed. Count={Count}, OpenMs={OpenMs}, ExecuteMs={ExecuteMs}, FetchAndMapMs={FetchAndMapMs}, ReadDurationMs={ReadDurationMs}",
-            items.Count,
-            openDurationMs,
-            executeDurationMs,
-            readDurationMs - openDurationMs - executeDurationMs,
-            readDurationMs);
+        _logger.LogInformation(
+            "CiAdvancedAlarm ODBC completed. Count={Count}, OpenMs={OpenMs}, ExecuteMs={ExecuteMs}, FetchAndMapMs={FetchAndMapMs}, ReadDurationMs={ReadDurationMs}",
+            items.Count, openDurationMs, executeDurationMs, readDurationMs - openDurationMs - executeDurationMs, readDurationMs);
 
         return (items, readDurationMs);
     }
 
     /// <summary>
-    /// Переводит строку ODBC в существующую модель WEB-таблицы. Время
-    /// возникновения берём из OnTime; ConditionActiveTime служит запасным полем.
+    /// Переводит строку ODBC в модель WEB-таблицы. Время возникновения берём
+    /// из OnTime; ConditionActiveTime служит запасным полем. Значения ODBC
+    /// считаем UTC и переводим в локальный часовой пояс Runtime Service.
     /// </summary>
     private static ActiveAlarmDto ToCiAdvancedAlarm(DbDataReader reader, IReadOnlyDictionary<string, int> columns)
     {
@@ -239,7 +201,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
             return "";
         }
 
-        DateTime? Timestamp(params string[] names)
+        DateTime? LocalTimestamp(params string[] names)
         {
             foreach (var name in names)
             {
@@ -248,21 +210,22 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 
                 var raw = reader.GetValue(ordinal);
 
-                if (raw is DateTime timestamp)
-                    return timestamp.Year > 1900 ? timestamp : null;
+                if (raw is DateTime timestamp && timestamp.Year > 1900)
+                    return DateTime.SpecifyKind(timestamp, DateTimeKind.Utc).ToLocalTime();
 
-                if (DateTime.TryParse(Convert.ToString(raw, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
-                    return parsed.Year > 1900 ? parsed : null;
+                if (DateTime.TryParse(Convert.ToString(raw, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) && parsed.Year > 1900)
+                    return DateTime.SpecifyKind(parsed, DateTimeKind.Utc).ToLocalTime();
             }
 
             return null;
         }
 
         var tag = Value("FullName");
+
         if (string.IsNullOrWhiteSpace(tag))
             throw new InvalidOperationException("CiAdvancedAlarm returned a row without FullName.");
 
-        var occurredAt = Timestamp("OnTime", "ConditionActiveTime");
+        var occurredAt = LocalTimestamp("OnTime", "ConditionActiveTime");
         var occurredAtText = occurredAt?.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture) ?? "";
 
         var fields = new Dictionary<string, string>
@@ -270,7 +233,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
             ["FullName"] = tag,
             ["AlarmState"] = Value("AlarmState"),
             ["AlarmDesc"] = Value("AlarmDesc"),
-            ["OnTime"] = occurredAtText
+            ["OnTime"] = Value("OnTime")
         };
 
         return new ActiveAlarmDto
@@ -282,107 +245,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
             OccurredAt = occurredAt,
             OccurredAtText = occurredAtText,
             OnDate = occurredAt?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "",
-            AckDate = Timestamp("AckTime")?.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture) ?? "",
+            AckDate = LocalTimestamp("AckTime")?.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture) ?? "",
             RawFields = fields
         };
-    }
-
-    /// <summary>
-    /// Прежний способ чтения полной сводки. Остаётся в проекте для сравнения
-    /// и возврата через CtApi:UseLegacyActiveAlarmQuery=true.
-    /// </summary>
-    private async Task<(IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated)> ReadCtApiAlarmAsync(CancellationToken ct)
-    {
-        var query = $"CTAPIAlarm(0,0,{_area})";
-        var watch = Stopwatch.StartNew();
-        var result = await _client.FindAlarmsAsync(query, MaxRows, Properties, ct);
-
-        _logger.LogInformation("CTAPIAlarm read completed. RawCount={Count}, Truncated={Truncated}, ReadDurationMs={DurationMs}", result.Rows.Count, result.Truncated, watch.ElapsedMilliseconds);
-        return result;
-    }
-
-    /// <summary>
-    /// Экспериментально читает строки таблицы AlarmSummary через тот же native
-    /// цикл ctFindFirstEx/ctFindNext/ctGetProperty и отдельно измеряет чтение.
-    /// </summary>
-    private async Task<(IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated)> ReadAlarmSummaryAsync(CancellationToken ct)
-    {
-        var watch = Stopwatch.StartNew();
-        var result = await _client.FindAlarmsAsync("AlarmSummary", MaxRows, Properties, ct);
-
-        _logger.LogInformation("AlarmSummary read completed. RawCount={Count}, Truncated={Truncated}, ReadDurationMs={DurationMs}", result.Rows.Count, result.Truncated, watch.ElapsedMilliseconds);
-        return result;
-    }
-
-    /// <summary>
-    /// Оставляет ON-аварии и неквитированные OFF-аварии, возникшие вчера или
-    /// сегодня по локальному времени Runtime. Квитированные OFF исключаются.
-    /// </summary>
-    private static List<ActiveAlarmDto> BuildAlarmSummaryItems(IReadOnlyList<Dictionary<string, string>> rows)
-    {
-        var yesterday = DateTime.Today.AddDays(-1);
-        var tomorrow = DateTime.Today.AddDays(1);
-
-        return rows.Where(row => !IsSet(Get(row, "OFFDATE")) || !IsSet(Get(row, "ACKDATE")))
-            .Select(ToAlarm)
-            .Where(alarm => alarm.OccurredAt >= yesterday && alarm.OccurredAt < tomorrow)
-            .OrderByDescending(alarm => alarm.OccurredAt)
-            .ToList();
-    }
-
-    /// <summary>
-    /// Пустые имена обычно означают неверные поля CtApi; такой ответ
-    /// не подменяет последний корректный снимок пустым списком.
-    /// </summary>
-    private static void EnsureNames(IEnumerable<IReadOnlyDictionary<string, string>> rows)
-    {
-        if (rows.Any(row => string.IsNullOrWhiteSpace(Get(row, "TAG")) && string.IsNullOrWhiteSpace(Get(row, "NAME"))))
-            throw new InvalidOperationException("CtApi returned an alarm without TAG/NAME. Verify alarm property names.");
-    }
-
-    /// <summary>
-    /// CTAPIAlarm с Type=0 уже возвращает активные аварии. OFFDATE
-    /// не исключает неквитированную строку из этого списка.
-    /// </summary>
-    private static ActiveAlarmDto ToAlarm(Dictionary<string, string> row)
-    {
-        var date = Get(row, "ONDATEEXT");
-        if (string.IsNullOrWhiteSpace(date))
-            date = Get(row, "ONDATE");
-
-        var occurredAtText = $"{date} {Get(row, "ONTIME")}".Trim();
-        var occurredAt = DateTime.TryParseExact(occurredAtText, DateTimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ? parsed : (DateTime?)null;
-        var acknowledged = IsSet(Get(row, "ACKDATE"));
-        var off = IsSet(Get(row, "OFFDATE"));
-
-        return new ActiveAlarmDto
-        {
-            Tag = string.IsNullOrWhiteSpace(Get(row, "TAG")) ? Get(row, "NAME") : Get(row, "TAG"),
-            Description = Get(row, "DESC"),
-            Area = Get(row, "AREA"),
-            Category = Get(row, "CATEGORY"),
-            State = off ? "OFF / unacknowledged" : acknowledged ? "ON / acknowledged" : "ON / unacknowledged",
-            OccurredAt = occurredAt,
-            OccurredAtText = occurredAtText,
-            OnDate = Get(row, "ONDATE"),
-            AckDate = Get(row, "ACKDATE"),
-            RawFields = row
-        };
-    }
-
-    /// <summary>
-    /// Неприменимые даты CtApi могут передаваться пустой строкой или нулём.
-    /// </summary>
-    private static bool IsSet(string value)
-    {
-        return !string.IsNullOrWhiteSpace(value) && value.Trim() != "0" && value.Trim() != "00/00/0000";
-    }
-
-    /// <summary>
-    /// Сохраняет отсутствие необязательного свойства как пустое значение.
-    /// </summary>
-    private static string Get(IReadOnlyDictionary<string, string> row, string key)
-    {
-        return row.TryGetValue(key, out var value) ? value : "";
     }
 }

@@ -255,27 +255,6 @@ public sealed class CtApiNativeClient : ICtApiNativeClient, IAsyncDisposable
     }
 
     /// <summary>
-    /// Сериализует поиск аварий с другими native вызовами и возвращает
-    /// завершённый снимок после закрытия native handle.
-    /// </summary>
-    public async Task<(IReadOnlyList<Dictionary<string, string>> Rows, bool Truncated)> FindAlarmsAsync(string query, int maxRows, IReadOnlyList<string> properties, CancellationToken ct = default)
-    {
-        await _apiGate.WaitAsync(ct);
-
-        try
-        {
-            EnsureOpen();
-            ct.ThrowIfCancellationRequested();
-
-            return await Task.Run(() => _ctApi.FindAlarms(query, maxRows, properties.ToArray(), ct), ct);
-        }
-        finally
-        {
-            _apiGate.Release();
-        }
-    }
-
-    /// <summary>
     /// Последний результат проверки именно этого CtApi-соединения.
     /// Используется в Diagnostics; не заменяет результат TryProbeConnectionAsync.
     /// </summary>

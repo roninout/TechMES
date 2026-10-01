@@ -31,10 +31,6 @@
             <span class="active-alarms-status">Read: @_readDurationMs ms · Refresh: @_refreshDurationMs ms</span>
         }
 
-        @if (_truncated)
-        {
-            <span class="active-alarms-status">Limit reached: first @_items.Count records</span>
-        }
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -70,14 +66,13 @@
     private DateTimeOffset? _loadedAt;
     private bool _httpLoading;
     private bool _isRefreshing;
-    private bool _truncated;
     private string _error = "";
     private long _version;
     private long? _readDurationMs;
     private long? _refreshDurationMs;
 
     /// <summary>
-    /// Показывает кэш Runtime и начинает наблюдать за фоновым обходом CtApi.
+    // Показывает кэш Runtime и начинает наблюдать за фоновым чтением ODBC.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
@@ -121,7 +116,6 @@
             }
 
             _isRefreshing = result.IsRefreshing;
-            _truncated = result.Truncated;
             _error = result.RefreshError ?? "";
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)
