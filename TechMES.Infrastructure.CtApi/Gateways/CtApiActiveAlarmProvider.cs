@@ -25,7 +25,6 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     private readonly int _area;
     private readonly bool _useLegacyActiveAlarmQuery;
     private readonly string? _alarmOdbcConnectionString;
-    private readonly int[] _activeStateCodes;
     private readonly object _stateLock = new();
 
     private ActiveAlarmsResponse? _snapshot;
@@ -42,7 +41,6 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         _area = configuration.GetValue("CtApi:AlarmArea", -1);
         _useLegacyActiveAlarmQuery = configuration.GetValue("CtApi:UseLegacyActiveAlarmQuery", false);
         _alarmOdbcConnectionString = configuration["CtApi:AlarmOdbcConnectionString"];
-        _activeStateCodes = (configuration.GetSection("CtApi:AlarmActiveStateCodes").Get<int[]>() ?? []).Distinct().ToArray();
     }
 
     /// <summary>
@@ -178,16 +176,14 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// Читает из CiAdvancedAlarm только состояния, проверенные на сервере Plant SCADA.
-    /// Запрос выполняется одним блоком без ограничения по дате или порционной загрузки.
+    /// Читает текущие аварии из CiAdvancedAlarm одним запросом. В проверенной
+    /// на данном сервере выборке AlarmState=0 означает Normal. Текст состояния
+    /// получаем из AlarmDesc, не преобразуя числовые коды в приложении.
     /// </summary>
     private async Task<(List<ActiveAlarmDto> Items, long ReadDurationMs)> ReadCiAdvancedAlarmsAsync(CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_alarmOdbcConnectionString))
             throw new InvalidOperationException("CtApi:AlarmOdbcConnectionString is not configured.");
-
-        if (_activeStateCodes.Length == 0)
-            throw new InvalidOperationException("CtApi:AlarmActiveStateCodes is empty. Verify Plant SCADA AlarmState values before enabling ODBC alarms.");
 
         var watch = Stopwatch.StartNew();
         using var connection = new OdbcConnection(_alarmOdbcConnectionString);
@@ -195,12 +191,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         var openDurationMs = watch.ElapsedMilliseconds;
 
         using var command = connection.CreateCommand();
-        command.CommandText = $"SELECT * FROM CiAdvancedAlarm WHERE AlarmState IN ({string.Join(", ", Enumerable.Repeat("?", _activeStateCodes.Length))})";
+        command.CommandText = "SELECT FullName, Comment, AlarmCategory, AlarmState, AlarmDesc, OnTime, ConditionActiveTime, AckTime FROM CiAdvancedAlarm WHERE AlarmState <> 0";
         command.CommandTimeout = 120;
-
-        // ODBC использует позиционные параметры: порядок здесь соответствует порядку знаков ?.
-        foreach (var stateCode in _activeStateCodes)
-            command.Parameters.Add("", OdbcType.Int).Value = stateCode;
 
         using var reader = await command.ExecuteReaderAsync(ct);
         var executeDurationMs = watch.ElapsedMilliseconds - openDurationMs;
@@ -220,8 +212,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
         items.Sort((left, right) => Nullable.Compare(right.OccurredAt, left.OccurredAt));
         var readDurationMs = watch.ElapsedMilliseconds;
 
-        _logger.LogInformation(
-            "CiAdvancedAlarm ODBC completed. Count={Count}, OpenMs={OpenMs}, ExecuteMs={ExecuteMs}, FetchAndMapMs={FetchAndMapMs}, ReadDurationMs={ReadDurationMs}",
+        _logger.LogInformation("CiAdvancedAlarm ODBC completed. Count={Count}, OpenMs={OpenMs}, ExecuteMs={ExecuteMs}, FetchAndMapMs={FetchAndMapMs}, ReadDurationMs={ReadDurationMs}",
             items.Count,
             openDurationMs,
             executeDurationMs,
@@ -232,8 +223,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// Переводит строку ODBC в модель существующей WEB-таблицы.
-    /// Отсутствующие необязательные столбцы остаются пустыми до сверки схемы сервера.
+    /// Переводит строку ODBC в существующую модель WEB-таблицы. Время
+    /// возникновения берём из OnTime; ConditionActiveTime служит запасным полем.
     /// </summary>
     private static ActiveAlarmDto ToCiAdvancedAlarm(DbDataReader reader, IReadOnlyDictionary<string, int> columns)
     {
@@ -248,32 +239,50 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
             return "";
         }
 
-        var stateCode = Value("AlarmState");
-        var occurredAtText = Value("ConditionActiveTime", "DisplayTime");
-        var occurredAt = DateTime.TryParse(occurredAtText, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) && parsed.Year > 1900 ? parsed : (DateTime?)null;
-        var tag = Value("FullName");
+        DateTime? Timestamp(params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (!columns.TryGetValue(name, out var ordinal) || reader.IsDBNull(ordinal))
+                    continue;
 
+                var raw = reader.GetValue(ordinal);
+
+                if (raw is DateTime timestamp)
+                    return timestamp.Year > 1900 ? timestamp : null;
+
+                if (DateTime.TryParse(Convert.ToString(raw, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+                    return parsed.Year > 1900 ? parsed : null;
+            }
+
+            return null;
+        }
+
+        var tag = Value("FullName");
         if (string.IsNullOrWhiteSpace(tag))
             throw new InvalidOperationException("CiAdvancedAlarm returned a row without FullName.");
+
+        var occurredAt = Timestamp("OnTime", "ConditionActiveTime");
+        var occurredAtText = occurredAt?.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture) ?? "";
 
         var fields = new Dictionary<string, string>
         {
             ["FullName"] = tag,
-            ["AlarmState"] = stateCode,
-            ["ConditionActiveTime"] = occurredAtText
+            ["AlarmState"] = Value("AlarmState"),
+            ["AlarmDesc"] = Value("AlarmDesc"),
+            ["OnTime"] = occurredAtText
         };
 
         return new ActiveAlarmDto
         {
             Tag = tag,
-            Description = Value("Description", "AlarmMessage", "Message", "Comment", "Name"),
-            Area = Value("Area"),
-            Category = Value("Category", "AlarmType"),
-            State = $"AlarmState {stateCode}",
+            Description = Value("Comment"),
+            Category = Value("AlarmCategory"),
+            State = Value("AlarmDesc"),
             OccurredAt = occurredAt,
             OccurredAtText = occurredAtText,
             OnDate = occurredAt?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "",
-            AckDate = Value("CiAdvancedAlarmState_AcceptTime"),
+            AckDate = Timestamp("AckTime")?.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture) ?? "",
             RawFields = fields
         };
     }
