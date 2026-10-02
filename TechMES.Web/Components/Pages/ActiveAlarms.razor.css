@@ -58,10 +58,6 @@
 
 .active-alarms-column-chart,
 .active-alarms-donut-chart {
-    min-width: 0;
-}
-
-.active-alarms-donut-chart {
     padding-left: 16px;
     border-left: 1px solid var(--rz-base-300);
 }
@@ -74,8 +70,18 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 240px;
+    min-height: 320px;
     color: var(--rz-text-secondary-color);
+}
+
+.active-alarms-donut-chart ::deep .active-alarms-donut-content {
+    color: var(--rz-text-color);
+    line-height: 1.2;
+}
+
+    .active-alarms-donut-chart ::deep .active-alarms-donut-content strong {
+        margin-top: 4px;
+        font-size: 1.35rem;
 }
 
 ::deep .active-alarms-grid {
@@ -102,6 +108,10 @@
 
     .active-alarms-priority.is-info {
         color: var(--rz-info);
+    }
+
+    .active-alarms-priority.is-system {
+        color: #8b5cf6;
     }
 
     .active-alarms-priority.is-unacknowledged {

@@ -42,9 +42,10 @@
         <div class="active-alarms-chart-shell">
             <div class="active-alarms-charts">
                 <div class="active-alarms-column-chart">
-                    <h4>Active alarms by station <span class="active-alarms-chart-selection">Selected: @(_selectedStation ?? "All")</span></h4>
+                    @* <h4>Active alarms by station <span class="active-alarms-chart-selection">Selected: @(_selectedStation ?? "All")</span></h4> *@
+                    <h4>Active alarms by station: @(_selectedStation ?? "All")</h4>
 
-                    <RadzenChart Style="height: 240px; width: 100%;" SeriesClick="@OnStationClickAsync">
+                    <RadzenChart Style="height: 320px; width: 100%;" SeriesClick="@OnStationClickAsync">
                         <RadzenColumnSeries Data="@_stationCounts" CategoryProperty="Station" ValueProperty="Height" Title="Alarms">
                             <ChildContent>
                                 @foreach (var station in _stationCounts)
@@ -69,16 +70,25 @@
                 </div>
 
                 <div class="active-alarms-donut-chart">
-                    <h4>Priority — @(_selectedStation ?? "All")</h4>
+                    <h4>Type: @(_selectedStation ?? "All")</h4>
 
                     @if (_priorityCounts.Any(item => item.Count > 0))
                     {
-                        <RadzenChart Style="height: 240px; width: 100%;">
-                            <RadzenDonutSeries Data="@_priorityCounts" CategoryProperty="Name" ValueProperty="Count" Fills="@PriorityColors">
+                        <RadzenChart Style="height: 320px; width: 100%;">
+                            <RadzenDonutSeries Data="@_priorityCounts" CategoryProperty="Name" ValueProperty="Count" Fills="@PriorityColors"
+                                               FillMode="FillMode.Gradient" SegmentGap="0.5" CornerRadius="2" Radius="108">
                                 <ChildContent>
-                                    <RadzenSeriesDataLabels Visible="true" Appearance="DataLabelAppearance.Chip" FormatString="{0:0}" />
+                                    <RadzenSeriesDataLabels Visible="false" />
                                 </ChildContent>
+
+                                <TitleTemplate>
+                                    <div class="rz-donut-content active-alarms-donut-content">
+                                        <span>Total alarms</span>
+                                        <strong>@_items.Count.ToString("N0")</strong>
+                                    </div>
+                                </TitleTemplate>
                             </RadzenDonutSeries>
+
                             <RadzenLegend Position="LegendPosition.Bottom" />
                         </RadzenChart>
                     }
@@ -94,33 +104,13 @@
     <RadzenDataGrid @ref="_grid" Data="@_items" TItem="ActiveAlarmDto" AllowFiltering="true" AllowSorting="true"
                     AllowPaging="true" PageSize="30" Density="Density.Compact" class="active-alarms-grid">
         <Columns>
-            <RadzenDataGridColumn TItem="ActiveAlarmDto" Width="48px" Title="" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
 
+            <RadzenDataGridColumn TItem="ActiveAlarmDto" Width="48px" Title="" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
                 <Template Context="alarm">
                     <span class="@GetPriorityCssClass(alarm)" title="@GetPriorityTitle(alarm.Priority)" aria-label="@GetPriorityTitle(alarm.Priority)">
                         <RadzenIcon Icon="@GetPriorityIcon(alarm.Priority)" />
                     </span>
                 </Template>
-
-@*                 <Template Context="alarm">
-                    @switch (alarm.Priority)
-                    {
-                        case 1:
-                            <span class="active-alarms-priority is-alarm" title="Alarm" aria-label="Alarm"><RadzenIcon Icon="error" /></span>
-                            break;
-                        case 2:
-                            <span class="active-alarms-priority is-warning" title="Warning" aria-label="Warning"><RadzenIcon Icon="warning" /></span>
-                            break;
-                        case 3:
-                            <span class="active-alarms-priority is-info" title="Info" aria-label="Info"><RadzenIcon Icon="info" /></span>
-                            break;
-                        default:
-                            <span class="active-alarms-priority is-info" title="Unknown priority" aria-label="Unknown priority"><RadzenIcon Icon="help_outline" /></span>
-                            break;
-                    }
-
-                </Template> *@
-
             </RadzenDataGridColumn>
 
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="OccurredAt" Title="Date" Width="180px" SortOrder="SortOrder.Descending">
@@ -138,6 +128,7 @@
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Description" Title="Description" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Category" Title="Category" Width="120px" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="State" Title="State" Width="190px" />
+
         </Columns>
     </RadzenDataGrid>
 
@@ -146,7 +137,10 @@
 @code {
     private readonly CancellationTokenSource _stop = new();
     private readonly List<ActiveAlarmDto> _allItems = [];
-    private static readonly string[] PriorityColors = ["var(--rz-danger)", "var(--rz-warning)", "var(--rz-info)"];
+
+    // Порядок цветов соответствует порядку секторов: Alarm, Warning, Info, System, Unknown.
+    private static readonly string[] PriorityColors = ["var(--rz-danger)", "var(--rz-warning)", "var(--rz-info)", "#8b5cf6", "var(--rz-text-secondary-color)"];
+
     private List<ActiveAlarmDto> _items = [];
     private List<StationAlarmCount> _stationCounts = [];
     private List<PriorityAlarmCount> _priorityCounts = [];
@@ -268,38 +262,87 @@
     }
 
     /// <summary>
-    /// Подсчитывает Priority 1, 2 и 3. Нулевые позиции сохраняют порядок цветов.
+    /// Считает пять кодов Priority. Коды 0 и 3 относятся к одной группе Info.
+    /// Неожиданные значения показываются отдельно, чтобы сумма секторов
+    /// всегда совпадала с количеством строк выбранной станции.
     /// </summary>
     private static List<PriorityAlarmCount> BuildPriorityCounts(IEnumerable<ActiveAlarmDto> alarms)
     {
-        var counts = new int[3];
+        var counts = new int[5];
+        var unknownCount = 0;
 
         foreach (var alarm in alarms)
         {
-            if (alarm.Priority is >= 1 and <= 3)
-                counts[alarm.Priority.Value - 1]++;
+            if (alarm.Priority is >= 0 and <= 4)
+                counts[alarm.Priority.Value]++;
+            else
+                unknownCount++;
         }
 
-        return [new("Alarm", counts[0]), new("Warning", counts[1]), new("Info", counts[2])];
+        var alarmCount = counts[1];
+        var warningCount = counts[2];
+        var infoCount = counts[0] + counts[3];
+        var systemCount = counts[4];
+
+        var result = new List<PriorityAlarmCount>
+    {
+        new($"Alarm ({alarmCount:N0})", alarmCount),
+        new($"Warning ({warningCount:N0})", warningCount),
+        new($"Info ({infoCount:N0})", infoCount),
+        new($"System ({systemCount:N0})", systemCount)
+    };
+
+        if (unknownCount > 0)
+            result.Add(new PriorityAlarmCount($"Unknown ({unknownCount:N0})", unknownCount));
+
+        return result;
     }
 
     /// <summary>
-    /// Выбирает цвет Priority и включает мигание для неподтверждённой аварии.
+    /// Выбирает цвет по Priority и добавляет мигание для Unacknowledged.
+    /// Это правило действует также для System.
     /// </summary>
     private static string GetPriorityCssClass(ActiveAlarmDto alarm)
     {
-        var level = alarm.Priority switch { 1 => "is-alarm", 2 => "is-warning", _ => "is-info" };
-        return IsUnacknowledged(alarm) ? $"active-alarms-priority {level} is-unacknowledged" : $"active-alarms-priority {level}";
+        var level = alarm.Priority switch
+        {
+            0 or 3 => "is-info",
+            1 => "is-alarm",
+            2 => "is-warning",
+            4 => "is-system",
+            _ => "is-unknown"
+        };
+
+        return IsUnacknowledged(alarm)
+            ? $"active-alarms-priority {level} is-unacknowledged"
+            : $"active-alarms-priority {level}";
     }
 
-    /// <summary>Сохраняет прежнюю иконку для каждого значения Priority.</summary>
-    private static string GetPriorityIcon(int? priority) => priority switch { 1 => "error", 2 => "warning", 3 => "info", _ => "help_outline" };
+    /// <summary>Возвращает иконку для каждого кода Priority.</summary>
+    private static string GetPriorityIcon(int? priority) =>
+        priority switch
+        {
+            0 or 3 => "info",
+            1 => "error",
+            2 => "warning",
+            4 => "dns",
+            _ => "help_outline"
+        };
 
-    /// <summary>Подписывает иконку для подсказки и экранного диктора.</summary>
-    private static string GetPriorityTitle(int? priority) => priority switch { 1 => "Alarm", 2 => "Warning", 3 => "Info", _ => "Unknown priority" };
+    /// <summary>Показывает тип аварии в подсказке к иконке.</summary>
+    private static string GetPriorityTitle(int? priority) =>
+        priority switch
+        {
+            0 or 3 => "Info",
+            1 => "Alarm",
+            2 => "Warning",
+            4 => "System",
+            _ => $"Unknown priority: {priority?.ToString() ?? "NULL"}"
+        };
 
     /// <summary>Читает расшифрованное состояние AlarmDesc, полученное через ODBC.</summary>
-    private static bool IsUnacknowledged(ActiveAlarmDto alarm) => alarm.State.Contains("Unacknowledged", StringComparison.OrdinalIgnoreCase);
+    private static bool IsUnacknowledged(ActiveAlarmDto alarm) =>
+        alarm.State.Contains("Unacknowledged", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Считает аварии по станциям и добавляет первой колонку All.
