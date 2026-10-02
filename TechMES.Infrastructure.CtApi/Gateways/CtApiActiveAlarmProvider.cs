@@ -25,11 +25,19 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     private DateTimeOffset _nextRefreshAt;
     private string? _refreshError;
     private long _version;
+    private readonly int _alarmOdbcRequestTimeoutSeconds;
 
+    /// <summary>
+    /// Читает настройки подключения ODBC и ограничения времени запроса.
+    /// Значение 120 секунд сохраняет прежнее поведение для старого appsettings.
+    /// </summary>
     public CtApiActiveAlarmProvider(IConfiguration configuration, ILogger<CtApiActiveAlarmProvider> logger)
     {
         _logger = logger;
         _alarmOdbcConnectionString = configuration["CtApi:AlarmOdbcConnectionString"];
+        _alarmOdbcRequestTimeoutSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRequestTimeoutSeconds"], out var timeoutSeconds) && timeoutSeconds > 0
+                ? timeoutSeconds
+                : 120;
     }
 
     /// <summary>
@@ -156,7 +164,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT FullName, Comment, Priority, AlarmCategory, AlarmState, AlarmDesc, OnTime, ConditionActiveTime, AckTime FROM CiAdvancedAlarm WHERE AlarmState <> 0";
-        command.CommandTimeout = 120;
+        command.CommandTimeout = _alarmOdbcRequestTimeoutSeconds;
 
         using var reader = await command.ExecuteReaderAsync(ct);
         var executeDurationMs = watch.ElapsedMilliseconds - openDurationMs;

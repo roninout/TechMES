@@ -27,6 +27,8 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     private string _ctApiHealthCheckTag = "";
     private string _runtimeDatabaseConnectionString = "";
     private string _runtimeEventDatabaseConnectionString = "";
+    private string _runtimeAlarmOdbcConnectionString = "";
+    private int _runtimeAlarmOdbcRequestTimeoutSeconds = 120;
     private bool _paramWritesEnabled;
     private bool _paramWritesDryRun;
     private bool _paramWritesRequireComment;
@@ -246,7 +248,7 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// PostgreSQL connection string основной БД.
+    /// Строка подключения к основной базе PostgreSQL.
     /// </summary>
     public string RuntimeDatabaseConnectionString
     {
@@ -255,12 +257,30 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// PostgreSQL connection string БД событий.
+    /// Строка подключения к базе событий PostgreSQL.
     /// </summary>
     public string RuntimeEventDatabaseConnectionString
     {
         get => _runtimeEventDatabaseConnectionString;
         set => SetProperty(ref _runtimeEventDatabaseConnectionString, value);
+    }
+
+    /// <summary>
+    /// Строка подключения ODBC для чтения активных аварий из CiAdvancedAlarm.
+    /// </summary>
+    public string RuntimeAlarmOdbcConnectionString
+    {
+        get => _runtimeAlarmOdbcConnectionString;
+        set => SetProperty(ref _runtimeAlarmOdbcConnectionString, value);
+    }
+
+    /// <summary>
+    /// Максимальное время выполнения ODBC-запроса активных аварий в секундах.
+    /// </summary>
+    public int RuntimeAlarmOdbcRequestTimeoutSeconds
+    {
+        get => _runtimeAlarmOdbcRequestTimeoutSeconds;
+        set => SetProperty(ref _runtimeAlarmOdbcRequestTimeoutSeconds, value);
     }
 
     /// <summary>

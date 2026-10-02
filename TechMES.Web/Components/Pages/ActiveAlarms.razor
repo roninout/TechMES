@@ -103,7 +103,6 @@
     <RadzenDataGrid @ref="_grid" Data="@_items" TItem="ActiveAlarmDto" AllowFiltering="true" AllowSorting="true"
                     AllowPaging="true" PageSize="30" Density="Density.Compact" class="active-alarms-grid">
         <Columns>
-
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Width="48px" Title="" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
                 <Template Context="alarm">
                     <span class="@GetPriorityCssClass(alarm)" title="@GetPriorityTitle(alarm.Priority)" aria-label="@GetPriorityTitle(alarm.Priority)">
@@ -125,9 +124,7 @@
             </RadzenDataGridColumn>
 
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Description" Title="Description" />
-            <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="Category" Title="Category" Width="120px" />
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="State" Title="State" Width="190px" />
-
         </Columns>
     </RadzenDataGrid>
 

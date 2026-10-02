@@ -1865,6 +1865,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             TypedAppSettings.RuntimeDatabaseConnectionString = GetString(runtime, "Database", "ConnectionString");
             TypedAppSettings.RuntimeEventDatabaseConnectionString = GetString(runtime, "EventDatabase", "ConnectionString");
 
+            // Исходное значение ODBC берётся из текущего Runtime appsettings, без второй копии строки в коде Maintenance.
+            TypedAppSettings.RuntimeAlarmOdbcConnectionString = GetString(runtime, "CtApi", "AlarmOdbcConnectionString");
+            TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds = GetInt(runtime, 120, "CtApi", "AlarmOdbcRequestTimeoutSeconds");
+
             TypedAppSettings.ParamWritesEnabled = GetBool(runtime, false, "ParamWrites", "Enabled");
             TypedAppSettings.ParamWritesDryRun = GetBool(runtime, false, "ParamWrites", "DryRun");
             TypedAppSettings.ParamWritesRequireComment = GetBool(runtime, false, "ParamWrites", "RequireComment");
@@ -1933,6 +1937,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// </summary>
     private void SaveTypedRuntimeWebAppSettings()
     {
+        if (TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds <= 0)
+            throw new InvalidOperationException("ODBC Request timeout must be greater than zero.");
+
         NormalizeAuthenticationSettingsForSave();
 
         // Старый Param DryRun больше не управляется UI.
@@ -2045,6 +2052,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
         SetValue(root, TypedAppSettings.RuntimeDatabaseConnectionString, "Database", "ConnectionString");
         SetValue(root, TypedAppSettings.RuntimeEventDatabaseConnectionString, "EventDatabase", "ConnectionString");
+
+        // ODBC используется Runtime для чтения CiAdvancedAlarm. Значения сохраняются рядом с остальными настройками CtApi, хотя редактируются на вкладке Data base.
+        SetValue(root, TypedAppSettings.RuntimeAlarmOdbcConnectionString, "CtApi", "AlarmOdbcConnectionString");
+        SetValue(root, TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds, "CtApi", "AlarmOdbcRequestTimeoutSeconds");
+
         SetValue(root, TypedAppSettings.ParamWritesEnabled, "ParamWrites", "Enabled");
         SetValue(root, false, "ParamWrites", "DryRun");
         SetValue(root, TypedAppSettings.ParamWritesRequireComment, "ParamWrites", "RequireComment");
