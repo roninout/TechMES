@@ -40,30 +40,54 @@
     @if (_stationCounts.Count > 0)
     {
         <div class="active-alarms-chart-shell">
-            <h4>Active alarms by station <span class="active-alarms-chart-selection">Selected: @(_selectedStation ?? "All")</span></h4>
+            <div class="active-alarms-charts">
+                <div class="active-alarms-column-chart">
+                    <h4>Active alarms by station <span class="active-alarms-chart-selection">Selected: @(_selectedStation ?? "All")</span></h4>
 
-            <RadzenChart Style="height: 240px; width: 100%;" SeriesClick="@OnStationClickAsync">
-                <RadzenColumnSeries Data="@_stationCounts" CategoryProperty="Station" ValueProperty="Height" Title="Alarms">
-                    <ChildContent>
-                        @foreach (var station in _stationCounts)
-                        {
-                            <RadzenSeriesAnnotation Data="@station" Text="@station.Count.ToString()" OffsetY="-12" />
-                        }
-                    </ChildContent>
+                    <RadzenChart Style="height: 240px; width: 100%;" SeriesClick="@OnStationClickAsync">
+                        <RadzenColumnSeries Data="@_stationCounts" CategoryProperty="Station" ValueProperty="Height" Title="Alarms">
+                            <ChildContent>
+                                @foreach (var station in _stationCounts)
+                                {
+                                    <RadzenSeriesAnnotation Data="@station" Text="@station.Count.ToString()" Fill="var(--rz-text-color)" OffsetY="-12" />
+                                }
+                            </ChildContent>
 
-                    <TooltipTemplate Context="station">
-                        <div>@station.Station — Alarms: @station.Count</div>
-                        @if (station.IsAll)
-                        {
-                            <small>Column height matches the busiest station</small>
-                        }
-                    </TooltipTemplate>
-                </RadzenColumnSeries>
+                            <TooltipTemplate Context="station">
+                                <div>@station.Station — Alarms: @station.Count</div>
+                                @if (station.IsAll)
+                                {
+                                    <small>Column height matches the busiest station</small>
+                                }
+                            </TooltipTemplate>
+                        </RadzenColumnSeries>
 
-                <RadzenCategoryAxis />
-                <RadzenValueAxis Min="0" FormatString="{0:0}" />
-                <RadzenLegend Visible="false" />
-            </RadzenChart>
+                        <RadzenCategoryAxis />
+                        <RadzenValueAxis Min="0" FormatString="{0:0}" />
+                        <RadzenLegend Visible="false" />
+                    </RadzenChart>
+                </div>
+
+                <div class="active-alarms-donut-chart">
+                    <h4>Priority — @(_selectedStation ?? "All")</h4>
+
+                    @if (_priorityCounts.Any(item => item.Count > 0))
+                    {
+                        <RadzenChart Style="height: 240px; width: 100%;">
+                            <RadzenDonutSeries Data="@_priorityCounts" CategoryProperty="Name" ValueProperty="Count" Fills="@PriorityColors">
+                                <ChildContent>
+                                    <RadzenSeriesDataLabels Visible="true" Appearance="DataLabelAppearance.Chip" FormatString="{0:0}" />
+                                </ChildContent>
+                            </RadzenDonutSeries>
+                            <RadzenLegend Position="LegendPosition.Bottom" />
+                        </RadzenChart>
+                    }
+                    else
+                    {
+                        <div class="active-alarms-donut-empty">No priority data</div>
+                    }
+                </div>
+            </div>
         </div>
     }
 
@@ -71,7 +95,14 @@
                     AllowPaging="true" PageSize="30" Density="Density.Compact" class="active-alarms-grid">
         <Columns>
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Width="48px" Title="" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+
                 <Template Context="alarm">
+                    <span class="@GetPriorityCssClass(alarm)" title="@GetPriorityTitle(alarm.Priority)" aria-label="@GetPriorityTitle(alarm.Priority)">
+                        <RadzenIcon Icon="@GetPriorityIcon(alarm.Priority)" />
+                    </span>
+                </Template>
+
+@*                 <Template Context="alarm">
                     @switch (alarm.Priority)
                     {
                         case 1:
@@ -87,7 +118,9 @@
                             <span class="active-alarms-priority is-info" title="Unknown priority" aria-label="Unknown priority"><RadzenIcon Icon="help_outline" /></span>
                             break;
                     }
-                </Template>
+
+                </Template> *@
+
             </RadzenDataGridColumn>
 
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Property="OccurredAt" Title="Date" Width="180px" SortOrder="SortOrder.Descending">
@@ -113,9 +146,12 @@
 @code {
     private readonly CancellationTokenSource _stop = new();
     private readonly List<ActiveAlarmDto> _allItems = [];
+    private static readonly string[] PriorityColors = ["var(--rz-danger)", "var(--rz-warning)", "var(--rz-info)"];
     private List<ActiveAlarmDto> _items = [];
     private List<StationAlarmCount> _stationCounts = [];
+    private List<PriorityAlarmCount> _priorityCounts = [];
     private string? _selectedStation;
+
     private RadzenDataGrid<ActiveAlarmDto>? _grid;
     private Task? _pollTask;
     private DateTimeOffset? _loadedAt;
@@ -217,7 +253,8 @@
     }
 
     /// <summary>
-    /// Меняет содержимое списка таблицы, сохраняя его ссылку для RadzenDataGrid.
+    /// Меняет содержимое таблицы, сохраняя ссылку на список для фильтров Radzen.
+    /// Одновременно пересчитывает распределение Priority выбранной станции.
     /// </summary>
     private void ApplyStationSelection()
     {
@@ -225,7 +262,44 @@
         _items.AddRange(_selectedStation is null
             ? _allItems
             : _allItems.Where(alarm => string.Equals(GetStation(alarm.Tag), _selectedStation, StringComparison.Ordinal)));
+
+        // Donut использует выбор станции, но не зависит от фильтров колонок таблицы.
+        _priorityCounts = BuildPriorityCounts(_items);
     }
+
+    /// <summary>
+    /// Подсчитывает Priority 1, 2 и 3. Нулевые позиции сохраняют порядок цветов.
+    /// </summary>
+    private static List<PriorityAlarmCount> BuildPriorityCounts(IEnumerable<ActiveAlarmDto> alarms)
+    {
+        var counts = new int[3];
+
+        foreach (var alarm in alarms)
+        {
+            if (alarm.Priority is >= 1 and <= 3)
+                counts[alarm.Priority.Value - 1]++;
+        }
+
+        return [new("Alarm", counts[0]), new("Warning", counts[1]), new("Info", counts[2])];
+    }
+
+    /// <summary>
+    /// Выбирает цвет Priority и включает мигание для неподтверждённой аварии.
+    /// </summary>
+    private static string GetPriorityCssClass(ActiveAlarmDto alarm)
+    {
+        var level = alarm.Priority switch { 1 => "is-alarm", 2 => "is-warning", _ => "is-info" };
+        return IsUnacknowledged(alarm) ? $"active-alarms-priority {level} is-unacknowledged" : $"active-alarms-priority {level}";
+    }
+
+    /// <summary>Сохраняет прежнюю иконку для каждого значения Priority.</summary>
+    private static string GetPriorityIcon(int? priority) => priority switch { 1 => "error", 2 => "warning", 3 => "info", _ => "help_outline" };
+
+    /// <summary>Подписывает иконку для подсказки и экранного диктора.</summary>
+    private static string GetPriorityTitle(int? priority) => priority switch { 1 => "Alarm", 2 => "Warning", 3 => "Info", _ => "Unknown priority" };
+
+    /// <summary>Читает расшифрованное состояние AlarmDesc, полученное через ODBC.</summary>
+    private static bool IsUnacknowledged(ActiveAlarmDto alarm) => alarm.State.Contains("Unacknowledged", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Считает аварии по станциям и добавляет первой колонку All.
@@ -263,6 +337,7 @@
     }
 
     public sealed record StationAlarmCount(string Station, int Count, int Height, bool IsAll = false);
+    public sealed record PriorityAlarmCount(string Name, int Count);
 
     /// <summary>
     /// Пока страница открыта, опрашивает Runtime каждые три секунды.

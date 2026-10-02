@@ -50,9 +50,33 @@
     border-radius: 4px;
 }
 
-    .active-alarms-chart-shell h4 {
-        margin: 0 0 8px;
-    }
+.active-alarms-charts {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+    gap: 16px;
+}
+
+.active-alarms-column-chart,
+.active-alarms-donut-chart {
+    min-width: 0;
+}
+
+.active-alarms-donut-chart {
+    padding-left: 16px;
+    border-left: 1px solid var(--rz-base-300);
+}
+
+.active-alarms-chart-shell h4 {
+    margin: 0 0 8px;
+}
+
+.active-alarms-donut-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+    color: var(--rz-text-secondary-color);
+}
 
 ::deep .active-alarms-grid {
     min-height: 0;
@@ -68,16 +92,44 @@
     color: var(--rz-text-secondary-color);
 }
 
-.active-alarms-priority.is-alarm {
-    color: var(--rz-danger);
+    .active-alarms-priority.is-alarm {
+        color: var(--rz-danger);
+    }
+
+    .active-alarms-priority.is-warning {
+        color: var(--rz-warning);
+    }
+
+    .active-alarms-priority.is-info {
+        color: var(--rz-info);
+    }
+
+    .active-alarms-priority.is-unacknowledged {
+        animation: active-alarms-blink 1.2s step-end infinite;
+    }
+
+@keyframes active-alarms-blink {
+    50% {
+        opacity: 0.15;
+    }
 }
 
-.active-alarms-priority.is-warning {
-    color: var(--rz-warning);
+@media (prefers-reduced-motion: reduce) {
+    .active-alarms-priority.is-unacknowledged {
+        animation: none;
+    }
 }
 
-.active-alarms-priority.is-info {
-    color: var(--rz-info);
+@media (max-width: 900px) {
+    .active-alarms-charts {
+        grid-template-columns: 1fr;
+    }
+
+    .active-alarms-donut-chart {
+        padding: 16px 0 0;
+        border-left: 0;
+        border-top: 1px solid var(--rz-base-300);
+    }
 }
 
 .active-alarms-chart-selection {
