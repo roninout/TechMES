@@ -12,9 +12,9 @@
     gap: 12px;
 }
 
-    .active-alarms-toolbar h3 {
-        margin: 0;
-    }
+.active-alarms-toolbar h3 {
+    margin: 0;
+}
 
 .active-alarms-spacer {
     flex: 1;
@@ -43,9 +43,21 @@
     overflow-wrap: anywhere;
 }
 
+.active-alarms-chart-shell {
+    flex: none;
+    padding: 12px 16px;
+    border: 1px solid var(--rz-base-300);
+    border-radius: 4px;
+}
+
+    .active-alarms-chart-shell h4 {
+        margin: 0 0 8px;
+    }
+
 ::deep .active-alarms-grid {
     min-height: 0;
     overflow: auto;
+    flex: 1;
 }
 
 .active-alarms-priority {

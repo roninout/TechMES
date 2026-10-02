@@ -30,12 +30,24 @@
         {
             <span class="active-alarms-status">Read: @_readDurationMs ms · Refresh: @_refreshDurationMs ms</span>
         }
-
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
     {
         <div class="active-alarms-error">@_error</div>
+    }
+
+    @if (_stationCounts.Count > 0)
+    {
+        <div class="active-alarms-chart-shell">
+            <h4>Active alarms by station</h4>
+
+            <RadzenChart Style="height: 240px; width: 100%;">
+                <RadzenColumnSeries Data="@_stationCounts" CategoryProperty="Station" ValueProperty="Count" Title="Alarms" />
+                <RadzenCategoryAxis />
+                <RadzenValueAxis Min="0" FormatString="{0:0}" />
+            </RadzenChart>
+        </div>
     }
 
     <RadzenDataGrid @ref="_grid" Data="@_items" TItem="ActiveAlarmDto" AllowFiltering="true" AllowSorting="true"
@@ -55,7 +67,7 @@
                             <span class="active-alarms-priority is-info" title="Info" aria-label="Info"><RadzenIcon Icon="info" /></span>
                             break;
                         default:
-                            <span class="active-alarms-priority" title="Unknown priority" aria-label="Unknown priority"><RadzenIcon Icon="help_outline" /></span>
+                            <span class="active-alarms-priority is-info" title="Unknown priority" aria-label="Unknown priority"><RadzenIcon Icon="help_outline" /></span>
                             break;
                     }
                 </Template>
@@ -84,6 +96,7 @@
 @code {
     private readonly CancellationTokenSource _stop = new();
     private List<ActiveAlarmDto> _items = [];
+    private List<StationAlarmCount> _stationCounts = [];
     private RadzenDataGrid<ActiveAlarmDto>? _grid;
     private Task? _pollTask;
     private DateTimeOffset? _loadedAt;
@@ -112,7 +125,8 @@
     }
 
     /// <summary>
-    /// При новой версии снимка обновляет таблицу и длительность фактического чтения.
+    /// Обновляет содержимое существующего списка, сохраняя его ссылку для Radzen.
+    /// Диаграмму пересчитывает только при получении нового снимка аварий.
     /// Ошибка сети не удаляет последний полученный список.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
@@ -128,7 +142,11 @@
 
             if (!result.NotModified && result.LoadedAtUtc is not null)
             {
-                _items = result.Items.ToList();
+                // При замене объекта Data Radzen сбрасывает настройки колонок.
+                _items.Clear();
+                _items.AddRange(result.Items);
+                _stationCounts = BuildStationCounts(_items);
+
                 _loadedAt = result.LoadedAtUtc;
                 _version = result.Version;
                 _readDurationMs = result.ReadDurationMs;
@@ -156,6 +174,26 @@
             _httpLoading = false;
         }
     }
+
+    /// <summary>
+    /// Группирует полный снимок активных аварий по первому сегменту тега.
+    /// Например, S01.H02.M01.Interlock0 относится к станции S01.
+    /// Теги без разделителя станции не добавляет на диаграмму.
+    /// </summary>
+    private static List<StationAlarmCount> BuildStationCounts(IEnumerable<ActiveAlarmDto> alarms)
+    {
+        return alarms
+            .Select(alarm => alarm.Tag.Trim())
+            .Where(tag => tag.Contains('.'))
+            .Select(tag => tag.Split('.', 2)[0].Trim().ToUpperInvariant())
+            .Where(station => station.Length > 0)
+            .GroupBy(station => station, StringComparer.Ordinal)
+            .Select(group => new StationAlarmCount(group.Key, group.Count()))
+            .OrderBy(item => item.Station, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    public sealed record StationAlarmCount(string Station, int Count);
 
     /// <summary>
     /// Пока страница открыта, опрашивает Runtime каждые три секунды.
