@@ -40,12 +40,29 @@
     @if (_stationCounts.Count > 0)
     {
         <div class="active-alarms-chart-shell">
-            <h4>Active alarms by station</h4>
+            <h4>Active alarms by station <span class="active-alarms-chart-selection">Selected: @(_selectedStation ?? "All")</span></h4>
 
-            <RadzenChart Style="height: 240px; width: 100%;">
-                <RadzenColumnSeries Data="@_stationCounts" CategoryProperty="Station" ValueProperty="Count" Title="Alarms" />
+            <RadzenChart Style="height: 240px; width: 100%;" SeriesClick="@OnStationClickAsync">
+                <RadzenColumnSeries Data="@_stationCounts" CategoryProperty="Station" ValueProperty="Height" Title="Alarms">
+                    <ChildContent>
+                        @foreach (var station in _stationCounts)
+                        {
+                            <RadzenSeriesAnnotation Data="@station" Text="@station.Count.ToString()" OffsetY="-12" />
+                        }
+                    </ChildContent>
+
+                    <TooltipTemplate Context="station">
+                        <div>@station.Station — Alarms: @station.Count</div>
+                        @if (station.IsAll)
+                        {
+                            <small>Column height matches the busiest station</small>
+                        }
+                    </TooltipTemplate>
+                </RadzenColumnSeries>
+
                 <RadzenCategoryAxis />
                 <RadzenValueAxis Min="0" FormatString="{0:0}" />
+                <RadzenLegend Visible="false" />
             </RadzenChart>
         </div>
     }
@@ -95,8 +112,10 @@
 
 @code {
     private readonly CancellationTokenSource _stop = new();
+    private readonly List<ActiveAlarmDto> _allItems = [];
     private List<ActiveAlarmDto> _items = [];
     private List<StationAlarmCount> _stationCounts = [];
+    private string? _selectedStation;
     private RadzenDataGrid<ActiveAlarmDto>? _grid;
     private Task? _pollTask;
     private DateTimeOffset? _loadedAt;
@@ -125,8 +144,8 @@
     }
 
     /// <summary>
-    /// Обновляет содержимое существующего списка, сохраняя его ссылку для Radzen.
-    /// Диаграмму пересчитывает только при получении нового снимка аварий.
+    /// Обновляет полный снимок, диаграмму и строки выбранной станции.
+    /// Ссылка на Data таблицы остаётся прежней, сохраняя её настройки.
     /// Ошибка сети не удаляет последний полученный список.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
@@ -142,10 +161,16 @@
 
             if (!result.NotModified && result.LoadedAtUtc is not null)
             {
-                // При замене объекта Data Radzen сбрасывает настройки колонок.
-                _items.Clear();
-                _items.AddRange(result.Items);
-                _stationCounts = BuildStationCounts(_items);
+                // Не заменяем Data новым List: Radzen сохраняет фильтры и сортировку.
+                _allItems.Clear();
+                _allItems.AddRange(result.Items);
+                _stationCounts = BuildStationCounts(_allItems);
+
+                // Если на выбранной станции больше нет аварий, возвращаем All.
+                if (_selectedStation is not null && !_stationCounts.Any(station => station.Station == _selectedStation))
+                    _selectedStation = null;
+
+                ApplyStationSelection();
 
                 _loadedAt = result.LoadedAtUtc;
                 _version = result.Version;
@@ -176,24 +201,68 @@
     }
 
     /// <summary>
-    /// Группирует полный снимок активных аварий по первому сегменту тега.
-    /// Например, S01.H02.M01.Interlock0 относится к станции S01.
-    /// Теги без разделителя станции не добавляет на диаграмму.
+    /// При выборе колонки показывает аварии её станции. All снимает выбор станции.
+    /// Первую страницу открываем, чтобы после смены станции не остаться на пустой странице.
     /// </summary>
-    private static List<StationAlarmCount> BuildStationCounts(IEnumerable<ActiveAlarmDto> alarms)
+    private async Task OnStationClickAsync(SeriesClickEventArgs args)
     {
-        return alarms
-            .Select(alarm => alarm.Tag.Trim())
-            .Where(tag => tag.Contains('.'))
-            .Select(tag => tag.Split('.', 2)[0].Trim().ToUpperInvariant())
-            .Where(station => station.Length > 0)
-            .GroupBy(station => station, StringComparer.Ordinal)
-            .Select(group => new StationAlarmCount(group.Key, group.Count()))
-            .OrderBy(item => item.Station, StringComparer.Ordinal)
-            .ToList();
+        if (args.Data is not StationAlarmCount station)
+            return;
+
+        _selectedStation = station.IsAll ? null : station.Station;
+        ApplyStationSelection();
+
+        if (_grid is not null)
+            await _grid.FirstPage(true);
     }
 
-    public sealed record StationAlarmCount(string Station, int Count);
+    /// <summary>
+    /// Меняет содержимое списка таблицы, сохраняя его ссылку для RadzenDataGrid.
+    /// </summary>
+    private void ApplyStationSelection()
+    {
+        _items.Clear();
+        _items.AddRange(_selectedStation is null
+            ? _allItems
+            : _allItems.Where(alarm => string.Equals(GetStation(alarm.Tag), _selectedStation, StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// Считает аварии по станциям и добавляет первой колонку All.
+    /// Count — фактическое число аварий, Height — высота колонки на диаграмме.
+    /// </summary>
+    private static List<StationAlarmCount> BuildStationCounts(IReadOnlyCollection<ActiveAlarmDto> alarms)
+    {
+        var stations = alarms
+            .Select(alarm => GetStation(alarm.Tag))
+            .Where(station => station is not null)
+            .GroupBy(station => station!, StringComparer.Ordinal)
+            .Select(group => new StationAlarmCount(group.Key, group.Count(), group.Count()))
+            .OrderBy(item => item.Station, StringComparer.Ordinal)
+            .ToList();
+
+        if (stations.Count == 0)
+            return [];
+
+        var highestStationCount = stations.Max(station => station.Count);
+        stations.Insert(0, new StationAlarmCount("All", alarms.Count, highestStationCount, IsAll: true));
+        return stations;
+    }
+
+    /// <summary>
+    /// Из S01.H02.M01.Interlock0 извлекает S01; теги без станции пропускает.
+    /// </summary>
+    private static string? GetStation(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag))
+            return null;
+
+        var dot = tag.IndexOf('.');
+        var station = dot > 0 ? tag[..dot].Trim().ToUpperInvariant() : "";
+        return station.Length > 0 ? station : null;
+    }
+
+    public sealed record StationAlarmCount(string Station, int Count, int Height, bool IsAll = false);
 
     /// <summary>
     /// Пока страница открыта, опрашивает Runtime каждые три секунды.
