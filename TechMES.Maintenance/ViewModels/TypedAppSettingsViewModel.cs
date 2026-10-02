@@ -29,6 +29,7 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     private string _runtimeEventDatabaseConnectionString = "";
     private string _runtimeAlarmOdbcConnectionString = "";
     private int _runtimeAlarmOdbcRequestTimeoutSeconds = 120;
+    private int _runtimeAlarmOdbcRefreshPeriodSeconds = 30;
     private bool _paramWritesEnabled;
     private bool _paramWritesDryRun;
     private bool _paramWritesRequireComment;
@@ -275,12 +276,21 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Максимальное время выполнения ODBC-запроса активных аварий в секундах.
+    /// Максимальное время выполнения одного ODBC-запроса в секундах.
     /// </summary>
     public int RuntimeAlarmOdbcRequestTimeoutSeconds
     {
         get => _runtimeAlarmOdbcRequestTimeoutSeconds;
         set => SetProperty(ref _runtimeAlarmOdbcRequestTimeoutSeconds, value);
+    }
+
+    /// <summary>
+    /// Интервал между завершением чтения аварий и следующим автоматическим запросом.
+    /// </summary>
+    public int RuntimeAlarmOdbcRefreshPeriodSeconds
+    {
+        get => _runtimeAlarmOdbcRefreshPeriodSeconds;
+        set => SetProperty(ref _runtimeAlarmOdbcRefreshPeriodSeconds, value);
     }
 
     /// <summary>

@@ -1192,7 +1192,7 @@
                             </StackPanel>
                         </views:MaintenanceSection>
 
-                        <views:MaintenanceSection Header="ODBC / Active alarms" Margin="0,0,0,12">
+                        <views:MaintenanceSection Header="ODBC" Margin="0,0,0,12">
                             <StackPanel Margin="12">
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
@@ -1211,10 +1211,22 @@
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Request timeout, s" Style="{StaticResource SettingsFieldLabel}" />
+                                    <TextBlock Text="Max request timeout, s" Style="{StaticResource SettingsFieldLabel}" />
                                     <StackPanel Grid.Column="1">
                                         <ui:TextBox Text="{Binding TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="Максимальное время выполнения одного ODBC-запроса, в секундах." Style="{StaticResource SettingsHintText}" />
+                                        <TextBlock Text="Максимальное время выполнения одного ODBC-запроса." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Request timeout, s" Style="{StaticResource SettingsFieldLabel}" />
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.RuntimeAlarmOdbcRefreshPeriodSeconds, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Интервал между автоматическими чтениями активных аварий." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>

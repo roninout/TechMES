@@ -1865,9 +1865,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             TypedAppSettings.RuntimeDatabaseConnectionString = GetString(runtime, "Database", "ConnectionString");
             TypedAppSettings.RuntimeEventDatabaseConnectionString = GetString(runtime, "EventDatabase", "ConnectionString");
 
-            // Исходное значение ODBC берётся из текущего Runtime appsettings, без второй копии строки в коде Maintenance.
+            // Настройки ODBC хранятся в Runtime appsettings; старые файлы получают исходные интервалы.
             TypedAppSettings.RuntimeAlarmOdbcConnectionString = GetString(runtime, "CtApi", "AlarmOdbcConnectionString");
             TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds = GetInt(runtime, 120, "CtApi", "AlarmOdbcRequestTimeoutSeconds");
+            TypedAppSettings.RuntimeAlarmOdbcRefreshPeriodSeconds = GetInt(runtime, 30, "CtApi", "AlarmOdbcRefreshPeriodSeconds");
 
             TypedAppSettings.ParamWritesEnabled = GetBool(runtime, false, "ParamWrites", "Enabled");
             TypedAppSettings.ParamWritesDryRun = GetBool(runtime, false, "ParamWrites", "DryRun");
@@ -1938,6 +1939,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     private void SaveTypedRuntimeWebAppSettings()
     {
         if (TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds <= 0)
+            throw new InvalidOperationException("ODBC Max request timeout must be greater than zero.");
+
+        if (TypedAppSettings.RuntimeAlarmOdbcRefreshPeriodSeconds <= 0)
             throw new InvalidOperationException("ODBC Request timeout must be greater than zero.");
 
         NormalizeAuthenticationSettingsForSave();
@@ -2053,9 +2057,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         SetValue(root, TypedAppSettings.RuntimeDatabaseConnectionString, "Database", "ConnectionString");
         SetValue(root, TypedAppSettings.RuntimeEventDatabaseConnectionString, "EventDatabase", "ConnectionString");
 
-        // ODBC используется Runtime для чтения CiAdvancedAlarm. Значения сохраняются рядом с остальными настройками CtApi, хотя редактируются на вкладке Data base.
+        // Оба интервала принадлежат Runtime: первый ограничивает SQL-запрос, второй задаёт паузу перед следующим автоматическим чтением.
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcConnectionString, "CtApi", "AlarmOdbcConnectionString");
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds, "CtApi", "AlarmOdbcRequestTimeoutSeconds");
+        SetValue(root, TypedAppSettings.RuntimeAlarmOdbcRefreshPeriodSeconds, "CtApi", "AlarmOdbcRefreshPeriodSeconds");
 
         SetValue(root, TypedAppSettings.ParamWritesEnabled, "ParamWrites", "Enabled");
         SetValue(root, false, "ParamWrites", "DryRun");

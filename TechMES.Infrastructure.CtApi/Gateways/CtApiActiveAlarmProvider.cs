@@ -18,6 +18,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     private readonly ILogger<CtApiActiveAlarmProvider> _logger;
     private readonly string? _alarmOdbcConnectionString;
     private readonly object _stateLock = new();
+    private readonly int _alarmOdbcRequestTimeoutSeconds;
+    private readonly int _alarmOdbcRefreshPeriodSeconds;
 
     private ActiveAlarmsResponse? _snapshot;
     private Task? _refreshTask;
@@ -25,24 +27,27 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     private DateTimeOffset _nextRefreshAt;
     private string? _refreshError;
     private long _version;
-    private readonly int _alarmOdbcRequestTimeoutSeconds;
 
     /// <summary>
-    /// Читает настройки подключения ODBC и ограничения времени запроса.
-    /// Значение 120 секунд сохраняет прежнее поведение для старого appsettings.
+    /// Читает ограничение времени ODBC-запроса и интервал автоматического обновления.
+    /// Значения 120 и 30 секунд сохраняют поведение старых appsettings.
     /// </summary>
     public CtApiActiveAlarmProvider(IConfiguration configuration, ILogger<CtApiActiveAlarmProvider> logger)
     {
         _logger = logger;
         _alarmOdbcConnectionString = configuration["CtApi:AlarmOdbcConnectionString"];
+
         _alarmOdbcRequestTimeoutSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRequestTimeoutSeconds"], out var timeoutSeconds) && timeoutSeconds > 0
-                ? timeoutSeconds
-                : 120;
+            ? timeoutSeconds
+            : 120;
+
+        _alarmOdbcRefreshPeriodSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRefreshPeriodSeconds"], out var refreshSeconds) && refreshSeconds > 0
+            ? refreshSeconds
+            : 30;
     }
 
     /// <summary>
-    /// Возвращает последний завершённый снимок немедленно. Новый обход начинается
-    /// через 30 секунд после предыдущего или по ручному Refresh.
+    /// Возвращает последний завершённый снимок немедленно. Новый обход начинается после заданного интервала с момента завершения предыдущего.
     /// Открытая страница продлевает выполняющийся обход при каждом опросе.
     /// </summary>
     public Task<ActiveAlarmsResponse> GetActiveAsync(bool forceRefresh = false, long knownVersion = 0, CancellationToken ct = default)
@@ -85,7 +90,8 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 
     /// <summary>
     /// Получает полный снимок через ODBC и публикует его только после
-    /// успешного завершения чтения. Пока оно идёт, WEB видит прежний снимок.
+    /// успешного завершения чтения. Пока запрос выполняется, WEB видит прежний снимок.
+    /// Следующий автоматический запрос планируется после завершения текущего.
     /// </summary>
     private async Task RefreshCoreAsync(CancellationToken ct)
     {
@@ -110,7 +116,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 
                 _version++;
                 _refreshError = null;
-                _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(30);
+                _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(_alarmOdbcRefreshPeriodSeconds);
             }
 
             _logger.LogInformation("Active alarms refreshed from CiAdvancedAlarm. Count={Count}, ReadDurationMs={ReadDurationMs}, RefreshDurationMs={RefreshDurationMs}", items.Count, readDurationMs, refreshDurationMs);
@@ -132,7 +138,7 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
                     ? "The alarm list could not be loaded. Runtime will retry."
                     : "Alarm refresh failed; the last available data is shown.";
 
-                _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(30);
+                _nextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(_alarmOdbcRefreshPeriodSeconds);
             }
 
             _logger.LogError(ex, "Active alarm refresh failed after {DurationMs} ms.", watch.ElapsedMilliseconds);
