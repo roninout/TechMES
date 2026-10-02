@@ -42,7 +42,6 @@
         <div class="active-alarms-chart-shell">
             <div class="active-alarms-charts">
                 <div class="active-alarms-column-chart">
-                    @* <h4>Active alarms by station <span class="active-alarms-chart-selection">Selected: @(_selectedStation ?? "All")</span></h4> *@
                     <h4>Active alarms by station: @(_selectedStation ?? "All")</h4>
 
                     <RadzenChart Style="height: 320px; width: 100%;" SeriesClick="@OnStationClickAsync">
