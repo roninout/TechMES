@@ -6,36 +6,47 @@
 <PageTitle>Alarm history</PageTitle>
 
 <div class="active-alarms-page">
+
     <div class="active-alarms-toolbar">
-        <h3>Alarm history</h3>
-        <RadzenButton Text="Active alarms" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@(() => Navigation.NavigateTo("/alarms"))" />
+        <div class="active-alarms-toolbar-left">
 
-        <RadzenDateRangePicker Value="@_selectedRange" ValueChanged="@OnRangeChanged"
-                       NavigationMode="DatePickerNavigationMode.DrillDown"
-                       DisplayMonths="2" AllowClear="false" DateFormat="dd.MM.yyyy"
-                       Style="width: 290px;" />
+            <RadzenSelectBar TValue="string" Value="@("history")" ValueChanged="@OnAlarmViewChanged" AriaLabel="Alarm view">
+                <Items>
+                    <RadzenSelectBarItem Text=" Active alarms" Value="@("active")" Icon="notifications_active" />
+                    <RadzenSelectBarItem Text=" Alarm history" Value="@("history")" Icon="history" />
+                </Items>
+            </RadzenSelectBar>
 
-        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_httpLoading" Click="@RefreshAsync" />
-        <span class="active-alarms-spacer"></span>
+            <RadzenDateRangePicker Value="@_selectedRange" ValueChanged="@OnRangeChanged"
+                                   NavigationMode="DatePickerNavigationMode.DrillDown"
+                                   DisplayMonths="2" AllowClear="false" DateFormat="dd.MM.yyyy"
+                                   Style="width: 290px;" />
+        </div>
 
-        @if (_isRefreshing)
-        {
-            <span class="active-alarms-spinner" title="Reading alarm history from SCADA" aria-label="Reading alarm history from SCADA">
-                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" ShowValue="false" Style="width: 24px; height: 24px;" />
-            </span>
-        }
+        <h2 class="active-alarms-toolbar-title">Alarm history</h2>
 
-        <RadzenBadge Text="@($"Count: {_allItems.Count}")" BadgeStyle="BadgeStyle.Light" />
+        <div class="active-alarms-toolbar-right">
+            @if (_isRefreshing)
+            {
+                <span class="active-alarms-spinner" title="Reading alarm history from SCADA" aria-label="Reading alarm history from SCADA">
+                    <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" ShowValue="false" Style="width: 24px; height: 24px;" />
+                </span>
+            }
 
-        @if (_loadedAt is not null)
-        {
-            <span class="active-alarms-status">Updated: @_loadedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
-        }
+            <RadzenBadge Text="@($"Count: {_allItems.Count}")" BadgeStyle="BadgeStyle.Light" />
 
-        @if (_readDurationMs is not null)
-        {
-            <span class="active-alarms-status">Read: @_readDurationMs ms</span>
-        }
+            @if (_loadedAt is not null)
+            {
+                <span class="active-alarms-status">Updated: @_loadedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+            }
+
+            @if (_readDurationMs is not null)
+            {
+                <span class="active-alarms-status">Read: @_readDurationMs ms</span>
+            }
+
+            <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_httpLoading" Click="@RefreshAsync" />
+        </div>
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -219,6 +230,16 @@
 
         if (_grid is not null)
             await _grid.FirstPage(true);
+    }
+
+    /// <summary>
+    /// Переключает SelectBar на страницу активных аварий.
+    /// Текущая страница сама задаёт выбранное положение переключателя.
+    /// </summary>
+    private void OnAlarmViewChanged(string value)
+    {
+        if (value == "active")
+            Navigation.NavigateTo("/alarms");
     }
 
     /// <summary>
