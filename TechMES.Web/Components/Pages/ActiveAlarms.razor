@@ -1,6 +1,7 @@
 ﻿@page "/alarms"
 @implements IAsyncDisposable
 @inject ActiveAlarmApiClient AlarmApi
+@inject NavigationManager Navigation
 
 <PageTitle>Active alarms</PageTitle>
 
@@ -9,6 +10,7 @@
     <div class="active-alarms-toolbar">
         <h3>Active alarms</h3>
         <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_httpLoading" Click="@RefreshAsync" />
+        <RadzenButton Text="History" Icon="history" ButtonStyle="ButtonStyle.Light" Click="@(() => Navigation.NavigateTo("/alarms/history"))" />
 
         <span class="active-alarms-spacer"></span>
 

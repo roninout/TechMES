@@ -1,0 +1,152 @@
+.active-alarms-page {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+    min-height: 0;
+}
+
+.active-alarms-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+    .active-alarms-toolbar h3 {
+        margin: 0;
+    }
+
+.active-alarms-spacer {
+    flex: 1;
+}
+
+.active-alarms-spinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+}
+
+.active-alarms-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--rz-text-secondary-color);
+    white-space: nowrap;
+}
+
+.active-alarms-error {
+    color: var(--rz-danger);
+}
+
+.active-alarms-tag {
+    overflow-wrap: anywhere;
+}
+
+.active-alarms-chart-shell {
+    flex: none;
+    padding: 12px 16px;
+    border: 1px solid var(--rz-base-300);
+    border-radius: 4px;
+}
+
+.active-alarms-charts {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
+    gap: 16px;
+}
+
+.active-alarms-column-chart,
+.active-alarms-donut-chart {
+    padding-left: 16px;
+    border-left: 1px solid var(--rz-base-300);
+}
+
+.active-alarms-donut-chart {
+    width: 100%;
+    max-width: 420px;
+    box-sizing: border-box;
+}
+
+.active-alarms-donut-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 320px;
+    color: var(--rz-text-secondary-color);
+}
+
+.active-alarms-donut-chart ::deep .active-alarms-donut-content {
+    color: var(--rz-text-color);
+    line-height: 1.2;
+}
+
+    .active-alarms-donut-chart ::deep .active-alarms-donut-content strong {
+        margin-top: 4px;
+        font-size: 1.35rem;
+    }
+
+::deep .active-alarms-grid {
+    min-height: 0;
+    overflow: auto;
+    flex: 1;
+}
+
+.active-alarms-priority {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    color: var(--rz-text-secondary-color);
+}
+
+    .active-alarms-priority.is-alarm {
+        color: var(--rz-danger);
+    }
+
+    .active-alarms-priority.is-warning {
+        color: var(--rz-warning);
+    }
+
+    .active-alarms-priority.is-info {
+        color: var(--rz-info);
+    }
+
+    .active-alarms-priority.is-system {
+        color: #8b5cf6;
+    }
+
+    .active-alarms-priority.is-unacknowledged {
+        animation: active-alarms-blink 1.2s step-end infinite;
+    }
+
+@keyframes active-alarms-blink {
+    50% {
+        opacity: 0.15;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .active-alarms-priority.is-unacknowledged {
+        animation: none;
+    }
+}
+
+@media (max-width: 900px) {
+    .active-alarms-charts {
+        grid-template-columns: 1fr;
+    }
+
+    .active-alarms-donut-chart {
+        padding: 16px 0 0;
+        border-left: 0;
+        border-top: 1px solid var(--rz-base-300);
+    }
+}
+
+.active-alarms-chart-selection {
+    margin-left: 12px;
+    font-size: 0.85rem;
+    font-weight: normal;
+    color: var(--rz-text-secondary-color);
+}

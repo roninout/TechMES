@@ -1,0 +1,362 @@
+﻿@page "/alarms/history"
+@implements IAsyncDisposable
+@inject AlarmSummaryApiClient SummaryApi
+@inject NavigationManager Navigation
+
+<PageTitle>Alarm history</PageTitle>
+
+<div class="active-alarms-page">
+    <div class="active-alarms-toolbar">
+        <h3>Alarm history</h3>
+        <RadzenButton Text="Active alarms" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@(() => Navigation.NavigateTo("/alarms"))" />
+
+        <RadzenDatePicker TValue="DateTime" Value="@_selectedDate" Change="@OnDateChanged"
+                          DateFormat="dd.MM.yyyy" Style="width: 160px;" />
+
+        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_httpLoading" Click="@RefreshAsync" />
+        <span class="active-alarms-spacer"></span>
+
+        @if (_isRefreshing)
+        {
+            <span class="active-alarms-spinner" title="Reading alarm history from SCADA" aria-label="Reading alarm history from SCADA">
+                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" ShowValue="false" Style="width: 24px; height: 24px;" />
+            </span>
+        }
+
+        <RadzenBadge Text="@($"Count: {_allItems.Count}")" BadgeStyle="BadgeStyle.Light" />
+
+        @if (_loadedAt is not null)
+        {
+            <span class="active-alarms-status">Updated: @_loadedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+        }
+
+        @if (_readDurationMs is not null)
+        {
+            <span class="active-alarms-status">Read: @_readDurationMs ms</span>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="active-alarms-error">@_error</div>
+    }
+
+    @if (_stationCounts.Count > 0)
+    {
+        <div class="active-alarms-chart-shell">
+            <div class="active-alarms-charts">
+                <div class="active-alarms-column-chart">
+                    <h4>Alarm history by station: @(_selectedStation ?? "All")</h4>
+
+                    <RadzenChart Style="height: 320px; width: 100%;" SeriesClick="@OnStationClickAsync">
+                        <RadzenColumnSeries Data="@_stationCounts" CategoryProperty="Station" ValueProperty="Height"
+                                            Title="Alarms" Fills="@StationColumnFills">
+                            <ChildContent>
+                                @foreach (var station in _stationCounts)
+                                {
+                                    <RadzenSeriesAnnotation Data="@station" Text="@station.Count.ToString()" Fill="var(--rz-text-color)" OffsetY="-12" />
+                                }
+                            </ChildContent>
+
+                            <TooltipTemplate Context="station">
+                                <div>@station.Station — Alarms: @station.Count</div>
+                            </TooltipTemplate>
+                        </RadzenColumnSeries>
+
+                        <RadzenCategoryAxis />
+                        <RadzenValueAxis Min="0" FormatString="{0:0}" />
+                        <RadzenLegend Visible="false" />
+                    </RadzenChart>
+                </div>
+
+                <div class="active-alarms-donut-chart">
+                    <h4>Severity: @(_selectedStation ?? "All")</h4>
+
+                    @if (_severityCounts.Count > 0)
+                    {
+                        <RadzenChart Style="height: 320px; width: 100%;">
+                            <RadzenDonutSeries Data="@_severityCounts" CategoryProperty="Name" ValueProperty="Count"
+                                               Fills="@SeverityColors" FillMode="FillMode.Gradient"
+                                               SegmentGap="0.5" CornerRadius="2" Radius="108">
+                                <ChildContent>
+                                    <RadzenSeriesDataLabels Visible="false" />
+                                </ChildContent>
+
+                                <TitleTemplate>
+                                    <div class="rz-donut-content active-alarms-donut-content">
+                                        <span>Total alarms</span>
+                                        <strong>@_items.Count.ToString("N0")</strong>
+                                    </div>
+                                </TitleTemplate>
+                            </RadzenDonutSeries>
+
+                            <RadzenLegend Position="LegendPosition.Bottom" />
+                        </RadzenChart>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <RadzenDataGrid @ref="_grid" Data="@_items" TItem="AlarmSummaryDto" AllowFiltering="true"
+                    AllowSorting="true" AllowPaging="true" PageSize="30" Density="Density.Compact"
+                    class="active-alarms-grid">
+        <Columns>
+            <RadzenDataGridColumn TItem="AlarmSummaryDto" Width="48px" Title="" Filterable="false"
+                                  Sortable="false" TextAlign="TextAlign.Center">
+                <Template Context="alarm">
+                    <span class="active-alarms-priority" title="@alarm.Severity" aria-label="@alarm.Severity">
+                        <RadzenIcon Icon="notifications_active" />
+                    </span>
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="AlarmSummaryDto" Property="ActiveAt" Title="Date" Width="180px"
+                                  SortOrder="SortOrder.Descending">
+                <Template Context="alarm">
+                    @(alarm.ActiveAt?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="AlarmSummaryDto" Property="Tag" Title="Tag" Width="340px">
+                <Template Context="alarm">
+                    <span class="active-alarms-tag" title="@alarm.Tag">@alarm.Tag</span>
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="AlarmSummaryDto" Property="Description" Title="Description" />
+        </Columns>
+    </RadzenDataGrid>
+</div>
+
+@code {
+    private static readonly string[] Palette =
+    [
+        "var(--rz-danger)", "var(--rz-warning)", "var(--rz-info)",
+        "#8b5cf6", "var(--rz-success)"
+    ];
+
+    private readonly CancellationTokenSource _stop = new();
+    private readonly List<AlarmSummaryDto> _allItems = [];
+
+    private List<AlarmSummaryDto> _items = [];
+    private List<StationCount> _stationCounts = [];
+    private List<SeverityCount> _severityCounts = [];
+    private RadzenDataGrid<AlarmSummaryDto>? _grid;
+    private Task? _pollTask;
+    private DateTime _selectedDate = DateTime.Today;
+    private DateTimeOffset? _loadedAt;
+    private string? _selectedStation;
+    private string _error = "";
+    private long _version;
+    private long? _readDurationMs;
+    private bool _httpLoading;
+    private bool _isRefreshing;
+
+    private IEnumerable<string> StationColumnFills => _stationCounts.Select(station =>
+        station.IsAll ? "var(--rz-base-500)" : "var(--rz-success-darker)");
+
+    private IEnumerable<string> SeverityColors => _severityCounts.Select((_, index) =>
+        Palette[index % Palette.Length]);
+
+    /// <summary>
+    /// Загружает выбранный день и начинает наблюдать за фоновым ODBC-чтением.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync(false);
+        _pollTask = PollAsync();
+    }
+
+    /// <summary>
+    /// При смене дня очищает снимок предыдущей даты и запрашивает историю
+    /// за новый день. Пустое значение не допускается для исторической выборки.
+    /// </summary>
+    private async Task OnDateChanged(DateTime? value)
+    {
+        if (value is null || value.Value.Date == _selectedDate.Date)
+            return;
+
+        _selectedDate = value.Value.Date;
+        _version = 0;
+        _loadedAt = null;
+        _readDurationMs = null;
+        _selectedStation = null;
+        _error = "";
+
+        _allItems.Clear();
+        _items.Clear();
+        _stationCounts.Clear();
+        _severityCounts.Clear();
+
+        await LoadAsync(false);
+
+        if (_grid is not null)
+            await _grid.FirstPage(true);
+    }
+
+    /// <summary>
+    /// Принудительно перечитывает выбранный день.
+    /// </summary>
+    private Task RefreshAsync()
+    {
+        return LoadAsync(true);
+    }
+
+    /// <summary>
+    /// Заменяет строки после завершения нового снимка. Ссылка на список таблицы
+    /// остаётся прежней, поэтому Radzen сохраняет сортировку и фильтры.
+    /// </summary>
+    private async Task LoadAsync(bool forceRefresh)
+    {
+        if (_httpLoading || _stop.IsCancellationRequested)
+            return;
+
+        _httpLoading = true;
+
+        try
+        {
+            var date = DateOnly.FromDateTime(_selectedDate);
+            var result = await SummaryApi.GetAsync(date, forceRefresh, _version, _stop.Token);
+
+            if (!result.NotModified && result.LoadedAtUtc is not null)
+            {
+                _allItems.Clear();
+                _allItems.AddRange(result.Items);
+                _stationCounts = BuildStationCounts(_allItems);
+
+                if (_selectedStation is not null && !_stationCounts.Any(station => station.Station == _selectedStation))
+                    _selectedStation = null;
+
+                ApplyStationSelection();
+                _version = result.Version;
+                _loadedAt = result.LoadedAtUtc;
+                _readDurationMs = result.ReadDurationMs;
+
+                if (_grid is not null)
+                    await _grid.Reload();
+            }
+
+            _isRefreshing = result.IsRefreshing;
+            _error = result.RefreshError ?? "";
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+        }
+        catch (Exception)
+        {
+            _isRefreshing = false;
+            _error = _loadedAt is null
+                ? "Cannot load alarm history from Runtime Service."
+                : "Cannot refresh alarm history. Showing the last available data.";
+        }
+        finally
+        {
+            _httpLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Показывает строки выбранной станции и пересчитывает donut по SeverityDesc.
+    /// </summary>
+    private void ApplyStationSelection()
+    {
+        _items.Clear();
+        _items.AddRange(_selectedStation is null
+            ? _allItems
+            : _allItems.Where(alarm => string.Equals(GetStation(alarm.Tag), _selectedStation, StringComparison.Ordinal)));
+
+        _severityCounts = _items
+            .GroupBy(alarm => string.IsNullOrWhiteSpace(alarm.Severity) ? "Unknown" : alarm.Severity.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => new SeverityCount(group.Key, group.Count()))
+            .OrderByDescending(group => group.Count)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Колонка All имеет высоту наиболее загруженной станции,
+    /// но её подпись показывает действительное число записей.
+    /// </summary>
+    private static List<StationCount> BuildStationCounts(IReadOnlyCollection<AlarmSummaryDto> alarms)
+    {
+        var stations = alarms
+            .Select(alarm => GetStation(alarm.Tag))
+            .Where(station => station is not null)
+            .GroupBy(station => station!, StringComparer.Ordinal)
+            .Select(group => new StationCount(group.Key, group.Count(), group.Count()))
+            .OrderBy(station => station.Station, StringComparer.Ordinal)
+            .ToList();
+
+        if (stations.Count == 0)
+            return [];
+
+        stations.Insert(0, new StationCount("All", alarms.Count, stations.Max(station => station.Count), IsAll: true));
+        return stations;
+    }
+
+    /// <summary>
+    /// Из Source вида S01.H02.M01 извлекает имя станции S01.
+    /// </summary>
+    private static string? GetStation(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return null;
+
+        var dot = source.IndexOf('.');
+        return dot > 0 ? source[..dot].Trim().ToUpperInvariant() : null;
+    }
+
+    /// <summary>
+    /// Клик по All снимает фильтр станции; остальные колонки выбирают станцию.
+    /// </summary>
+    private async Task OnStationClickAsync(SeriesClickEventArgs args)
+    {
+        if (args.Data is not StationCount station)
+            return;
+
+        _selectedStation = station.IsAll ? null : station.Station;
+        ApplyStationSelection();
+
+        if (_grid is not null)
+            await _grid.FirstPage(true);
+    }
+
+    /// <summary>
+    /// Пока страница открыта, WEB узнаёт о завершении чтения каждые три секунды.
+    /// </summary>
+    private async Task PollAsync()
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+
+            while (await timer.WaitForNextTickAsync(_stop.Token))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadAsync(false);
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+        }
+    }
+
+    /// <summary>
+    /// При уходе со страницы прекращает опрос Runtime.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        _stop.Cancel();
+
+        if (_pollTask is not null)
+            await _pollTask;
+
+        _stop.Dispose();
+    }
+
+    private sealed record StationCount(string Station, int Count, int Height, bool IsAll = false);
+    private sealed record SeverityCount(string Name, int Count);
+}

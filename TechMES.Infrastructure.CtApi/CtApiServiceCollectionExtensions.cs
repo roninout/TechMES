@@ -25,6 +25,7 @@ public static class CtApiServiceCollectionExtensions
         if (string.Equals(provider, "Mock", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IActiveAlarmProvider, UnavailableActiveAlarmProvider>();
+            services.AddSingleton<IAlarmSummaryProvider, UnavailableAlarmSummaryProvider>();
             services.AddSingleton<IPlantScadaGateway, MockPlantScadaGateway>();
             services.AddSingleton<IEquipmentParamProvider>(_ => new UnavailableEquipmentParamProvider("Param read-only is unavailable in Mock CtApi mode."));
             services.AddSingleton<IEquipmentSoeProvider>(_ => new UnavailableEquipmentSoeProvider("SOE is unavailable in Mock CtApi mode."));
@@ -33,6 +34,7 @@ public static class CtApiServiceCollectionExtensions
         else if (string.Equals(provider, "Disabled", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IActiveAlarmProvider, UnavailableActiveAlarmProvider>();
+            services.AddSingleton<IAlarmSummaryProvider, UnavailableAlarmSummaryProvider>();
             services.AddSingleton<IPlantScadaGateway, DisabledPlantScadaGateway>();
             services.AddSingleton<IEquipmentParamProvider>(_ => new UnavailableEquipmentParamProvider("Param read-only is unavailable because CtApi is disabled."));
             services.AddSingleton<IEquipmentSoeProvider>(_ => new UnavailableEquipmentSoeProvider("SOE is unavailable because CtApi is disabled."));
@@ -41,6 +43,7 @@ public static class CtApiServiceCollectionExtensions
         else if (string.Equals(provider, "CtApi", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IActiveAlarmProvider, CtApiActiveAlarmProvider>();
+            services.AddSingleton<IAlarmSummaryProvider, CtApiAlarmSummaryProvider>();
 
             // Все модули используют один failover client; native gate сериализует вызовы DLL.
             services.AddSingleton<ICtApiNativeClient>(serviceProvider =>

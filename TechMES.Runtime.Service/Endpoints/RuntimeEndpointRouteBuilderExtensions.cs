@@ -21,6 +21,7 @@ public static class RuntimeEndpointRouteBuilderExtensions
         app.MapEventLogEndpoints();
         app.MapSoeEndpoints();
         app.MapActiveAlarmEndpoints();
+        app.MapAlarmSummaryEndpoints();
         app.MapScadaEndpoints();
         app.MapCalcEndpoints();
 
