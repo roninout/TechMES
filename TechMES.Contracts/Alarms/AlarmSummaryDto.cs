@@ -1,21 +1,22 @@
 ﻿namespace TechMES.Contracts.Alarms;
 
 /// <summary>
-/// Запись истории аварий из CDBAlarmSummary.
-/// Время уже переведено Runtime Service из UTC в локальное время сервера.
+/// Запись истории из CDBAlarmSummary. Priority берётся из текущего определения тега в CiAdvancedAlarm, время переведено Runtime в локальное.
 /// </summary>
 public sealed class AlarmSummaryDto
 {
     public string RecordId { get; init; } = "";
     public string Tag { get; init; } = "";
     public string Description { get; init; } = "";
+    public string StateDesc { get; init; } = "";
     public string Severity { get; init; } = "";
     public int? SeverityValue { get; init; }
+    public int? Priority { get; init; }
     public DateTime? ActiveAt { get; init; }
 }
 
 /// <summary>
-/// Состояние чтения выбранного дня. WEB получает список только при смене Version.
+/// Снимок истории за выбранный диапазон. Если NotModified=true, WEB оставляет у себя ранее полученный список.
 /// </summary>
 public sealed class AlarmSummaryResponse
 {

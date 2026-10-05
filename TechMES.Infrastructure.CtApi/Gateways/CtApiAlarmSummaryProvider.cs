@@ -1,4 +1,5 @@
-﻿using System.Data.Odbc;
+﻿using System.Data.Common;
+using System.Data.Odbc;
 using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
@@ -9,12 +10,14 @@ using TechMES.Contracts.Alarms;
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
 /// <summary>
-/// Хранит отдельный снимок истории для каждого запрошенного дня.
-/// Чтение ODBC продолжается, пока открытая страница опрашивает Runtime.
+/// Хранит отдельный снимок истории для каждого диапазона дат.
+/// Долгое ODBC-чтение выполняется в фоне, пока WEB опрашивает Runtime.
 /// </summary>
 public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
 {
-    private sealed class DayState
+    private readonly record struct RangeKey(DateOnly From, DateOnly To);
+
+    private sealed class RangeState
     {
         public List<AlarmSummaryDto>? Items { get; set; }
         public Task? ReadTask { get; set; }
@@ -28,14 +31,13 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
     }
 
     private readonly object _gate = new();
-    private readonly Dictionary<DateOnly, DayState> _days = [];
+    private readonly Dictionary<RangeKey, RangeState> _ranges = [];
     private readonly ILogger<CtApiAlarmSummaryProvider> _logger;
     private readonly string? _connectionString;
     private readonly int _requestTimeoutSeconds;
 
     /// <summary>
-    /// Использует ту же строку подключения и тот же максимальный timeout,
-    /// которые уже редактируются в Maintenance для активных аварий.
+    /// Использует настройки ODBC, редактируемые в Maintenance.
     /// </summary>
     public CtApiAlarmSummaryProvider(IConfiguration configuration, ILogger<CtApiAlarmSummaryProvider> logger)
     {
@@ -47,27 +49,32 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
     }
 
     /// <summary>
-    /// Возвращает готовый снимок немедленно и при необходимости запускает чтение дня.
-    /// Дни, к которым давно не обращались, удаляются из памяти после завершения задания.
+    /// Немедленно возвращает последний завершённый снимок и при необходимости
+    /// запускает одно фоновое чтение выбранного диапазона.
     /// </summary>
-    public Task<AlarmSummaryResponse> GetAsync(DateOnly date, bool forceRefresh = false, long knownVersion = 0, CancellationToken ct = default)
+    public Task<AlarmSummaryResponse> GetAsync(DateOnly from, DateOnly to, bool forceRefresh = false, long knownVersion = 0, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
+
+        if (to < from || to == DateOnly.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(to), "Invalid alarm history date range.");
 
         lock (_gate)
         {
             var now = DateTimeOffset.UtcNow;
 
-            foreach (var oldDate in _days.Where(pair => now - pair.Value.LastPollAt > TimeSpan.FromMinutes(15)
+            foreach (var oldKey in _ranges.Where(pair => now - pair.Value.LastPollAt > TimeSpan.FromMinutes(15)
                 && pair.Value.ReadTask is not { IsCompleted: false }).Select(pair => pair.Key).ToArray())
             {
-                _days.Remove(oldDate);
+                _ranges.Remove(oldKey);
             }
 
-            if (!_days.TryGetValue(date, out var state))
+            var key = new RangeKey(from, to);
+
+            if (!_ranges.TryGetValue(key, out var state))
             {
-                state = new DayState { LastPollAt = now };
-                _days.Add(date, state);
+                state = new RangeState { LastPollAt = now };
+                _ranges.Add(key, state);
             }
 
             state.LastPollAt = now;
@@ -81,12 +88,12 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
                     state.Stop.CancelAfter(TimeSpan.FromSeconds(12));
 
                     var scanToken = state.Stop.Token;
-                    state.ReadTask = Task.Run(() => ReadAndPublishAsync(date, state, scanToken));
+                    state.ReadTask = Task.Run(() => ReadAndPublishAsync(key, state, scanToken));
                 }
             }
 
-            // Когда страница закрывается, этот вызов прекращается; незавершённое
-            // чтение будет отменено после 12 секунд без опроса.
+            // Открытая страница продлевает чтение. После закрытия страницы
+            // задание отменяется, если драйвер ODBC поддерживает отмену.
             if (state.Stop is not null && state.ReadTask is { IsCompleted: false } && !state.Stop.IsCancellationRequested)
                 state.Stop.CancelAfter(TimeSpan.FromSeconds(12));
 
@@ -106,14 +113,14 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
     }
 
     /// <summary>
-    /// Заменяет снимок только после полного успешного чтения выбранного дня.
-    /// Ошибка сохраняет предыдущие строки для этой даты.
+    /// Публикует новый снимок только после завершения обоих ODBC-запросов.
+    /// Ошибка оставляет прежний снимок выбранного диапазона доступным WEB.
     /// </summary>
-    private async Task ReadAndPublishAsync(DateOnly date, DayState state, CancellationToken ct)
+    private async Task ReadAndPublishAsync(RangeKey key, RangeState state, CancellationToken ct)
     {
         try
         {
-            var (items, durationMs) = await ReadDayAsync(date, ct);
+            var (items, durationMs) = await ReadRangeAsync(key, ct);
             ct.ThrowIfCancellationRequested();
 
             lock (_gate)
@@ -125,14 +132,14 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
                 state.Version++;
             }
 
-            _logger.LogInformation("CDBAlarmSummary loaded for {Date}. Count={Count}, DurationMs={DurationMs}", date, items.Count, durationMs);
+            _logger.LogInformation("CDBAlarmSummary loaded from {From} to {To}. Count={Count}, DurationMs={DurationMs}", key.From, key.To, items.Count, durationMs);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             lock (_gate)
                 state.RetryAt = DateTimeOffset.UtcNow;
 
-            _logger.LogInformation("CDBAlarmSummary read for {Date} stopped because the page is no longer polling.", date);
+            _logger.LogInformation("CDBAlarmSummary read from {From} to {To} stopped after WEB polling ended.", key.From, key.To);
         }
         catch (Exception ex)
         {
@@ -145,7 +152,7 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
                 state.RetryAt = DateTimeOffset.UtcNow.AddSeconds(30);
             }
 
-            _logger.LogError(ex, "CDBAlarmSummary read failed for {Date}.", date);
+            _logger.LogError(ex, "CDBAlarmSummary read failed from {From} to {To}.", key.From, key.To);
         }
         finally
         {
@@ -158,17 +165,17 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
     }
 
     /// <summary>
-    /// Читает только один локальный день. Параметры ODBC позиционные:
-    /// начало дня включено, начало следующего дня исключено.
-    /// Как и у активных аварий, значения TIMESTAMP считаются временем UTC.
+    /// Читает приоритеты определений и историю одним подключением ODBC.
+    /// Дни диапазона включительны; верхняя граница SQL — начало дня после To.
+    /// По принятому сейчас правилу TIMESTAMP в ODBC содержит время UTC.
     /// </summary>
-    private async Task<(List<AlarmSummaryDto> Items, long DurationMs)> ReadDayAsync(DateOnly date, CancellationToken ct)
+    private async Task<(List<AlarmSummaryDto> Items, long DurationMs)> ReadRangeAsync(RangeKey key, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_connectionString))
             throw new InvalidOperationException("CtApi:AlarmOdbcConnectionString is not configured.");
 
-        var localStart = DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
-        var localEnd = DateTime.SpecifyKind(date.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
+        var localStart = DateTime.SpecifyKind(key.From.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
+        var localEnd = DateTime.SpecifyKind(key.To.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
         var utcStart = TimeZoneInfo.ConvertTimeToUtc(localStart, TimeZoneInfo.Local);
         var utcEnd = TimeZoneInfo.ConvertTimeToUtc(localEnd, TimeZoneInfo.Local);
         var watch = Stopwatch.StartNew();
@@ -176,33 +183,42 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
         using var connection = new OdbcConnection(_connectionString);
         await connection.OpenAsync(ct);
 
+        // Читаем весь справочник один раз. WHERE AlarmState <> 0 здесь
+        // недопустим: историческая авария уже может быть неактивной.
+        var priorities = await ReadPrioritiesAsync(connection, ct);
+        var items = new List<AlarmSummaryDto>();
+
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT RecordId, Source, CustomStringField2, SeverityDesc, SeverityValue, ActiveTime FROM CDBAlarmSummary WHERE ActiveTime >= ? AND ActiveTime < ?";
+        command.CommandText = "SELECT RecordId, Source, CustomStringField2, StateDesc, SeverityDesc, SeverityValue, ActiveTime FROM CDBAlarmSummary WHERE ActiveTime >= ? AND ActiveTime < ?";
         command.CommandTimeout = _requestTimeoutSeconds;
         command.Parameters.Add("fromUtc", OdbcType.DateTime).Value = utcStart;
         command.Parameters.Add("toUtc", OdbcType.DateTime).Value = utcEnd;
 
         using var reader = await command.ExecuteReaderAsync(ct);
-        var items = new List<AlarmSummaryDto>();
 
         while (await reader.ReadAsync(ct))
         {
             ct.ThrowIfCancellationRequested();
 
-            var rawDate = reader.IsDBNull(5) ? (DateTime?)null : reader.GetDateTime(5);
-            var activeAt = rawDate is { Year: > 1900 } ? DateTime.SpecifyKind(rawDate.Value, DateTimeKind.Utc).ToLocalTime() : (DateTime?)null;
+            var tag = ReadText(reader, 1).Trim();
+            var rawDate = reader.IsDBNull(6) ? (DateTime?)null : reader.GetDateTime(6);
+            var activeAt = rawDate is { Year: > 1900 }
+                ? DateTime.SpecifyKind(rawDate.Value, DateTimeKind.Utc).ToLocalTime()
+                : (DateTime?)null;
 
-            var severityValue = reader.IsDBNull(4)
+            var severityValue = reader.IsDBNull(5)
                 ? (int?)null
-                : Convert.ToInt32(reader.GetValue(4), CultureInfo.InvariantCulture);
+                : Convert.ToInt32(reader.GetValue(5), CultureInfo.InvariantCulture);
 
             items.Add(new AlarmSummaryDto
             {
                 RecordId = ReadText(reader, 0),
-                Tag = ReadText(reader, 1),
+                Tag = tag,
                 Description = CleanDescription(ReadText(reader, 2)),
-                Severity = ReadText(reader, 3),
+                StateDesc = ReadText(reader, 3),
+                Severity = ReadText(reader, 4),
                 SeverityValue = severityValue,
+                Priority = priorities.TryGetValue(tag, out var priority) ? priority : null,
                 ActiveAt = activeAt
             });
         }
@@ -212,25 +228,54 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
     }
 
     /// <summary>
-    /// Преобразует NULL в пустую строку без изменения текста остальных полей.
+    /// Создаёт словарь FullName → Priority. Отсутствующий тег или пустое
+    /// значение приоритета позднее отображаются как Unknown.
     /// </summary>
-    private static string ReadText(System.Data.Common.DbDataReader reader, int ordinal)
+    private async Task<Dictionary<string, int?>> ReadPrioritiesAsync(OdbcConnection connection, CancellationToken ct)
     {
-        return reader.IsDBNull(ordinal)
-            ? ""
-            : Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture) ?? "";
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT FullName, Priority FROM CiAdvancedAlarm";
+        command.CommandTimeout = _requestTimeoutSeconds;
+
+        using var reader = await command.ExecuteReaderAsync(ct);
+        var priorities = new Dictionary<string, int?>(StringComparer.OrdinalIgnoreCase);
+
+        while (await reader.ReadAsync(ct))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var tag = ReadText(reader, 0).Trim();
+
+            if (tag.Length == 0)
+                continue;
+
+            var priorityText = ReadText(reader, 1);
+            var priority = int.TryParse(priorityText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : (int?)null;
+
+            priorities[tag] = priority;
+        }
+
+        _logger.LogInformation("CiAdvancedAlarm priorities loaded. Tags={Count}", priorities.Count);
+        return priorities;
+    }
+
+    /// <summary>
+    /// Безопасно преобразует nullable поле ODBC в строку.
+    /// </summary>
+    private static string ReadText(DbDataReader reader, int ordinal)
+    {
+        return reader.IsDBNull(ordinal) ? "" : Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture) ?? "";
     }
 
     /// <summary>
     /// Удаляет только внешнюю пару @(...) из CustomStringField2.
-    /// Скобки внутри самого описания остаются на месте.
     /// </summary>
     private static string CleanDescription(string value)
     {
         var text = value.Trim();
 
-        return text.StartsWith("@(", StringComparison.Ordinal) && text.EndsWith(')')
-            ? text[2..^1].Trim()
-            : text;
+        return text.StartsWith("@(", StringComparison.Ordinal) && text.EndsWith(')') ? text[2..^1].Trim() : text;
     }
 }
