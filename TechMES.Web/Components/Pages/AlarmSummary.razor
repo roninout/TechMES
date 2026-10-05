@@ -177,23 +177,26 @@
     }
 
     /// <summary>
-    /// Принимает только завершённый диапазон. Сбрасывает данные прежних дат
-    /// и запрашивает новый снимок, не подмешивая ответ старого запроса.
+    /// Сохраняет промежуточный выбор после первого клика, чтобы повторная
+    /// отрисовка страницы не возвращала старый диапазон. Историю загружает
+    /// только после выбора второй даты.
     /// </summary>
     private async Task OnRangeChanged(DateRange value)
     {
-        if (value?.Start is null || value.End is null)
+        if (value is null)
+            return;
+
+        // Radzen вызывает ValueChanged дважды: сначала Start без End,
+        // затем завершённый диапазон. Оба состояния должны попасть в Value.
+        _selectedRange = value;
+
+        if (value.Start is null || value.End is null)
             return;
 
         var from = DateOnly.FromDateTime(value.Start.Value.Date);
         var to = DateOnly.FromDateTime(value.End.Value.Date);
 
-        if (to < from || to == DateOnly.MaxValue)
-            return;
-
-        _selectedRange = new DateRange(value.Start.Value.Date, value.End.Value.Date);
-
-        if (from == _from && to == _to)
+        if (to < from || to == DateOnly.MaxValue || (from == _from && to == _to))
             return;
 
         _from = from;
@@ -210,8 +213,8 @@
         _stationCounts.Clear();
         _priorityCounts.Clear();
 
-        // Если предыдущий HTTP-запрос ещё идёт, следующий тик PollAsync
-        // запустит запрос уже для нового диапазона.
+        // Если HTTP-запрос прежнего диапазона ещё выполняется, очередной
+        // опрос страницы запросит новый диапазон после его завершения.
         await LoadAsync(false);
 
         if (_grid is not null)
