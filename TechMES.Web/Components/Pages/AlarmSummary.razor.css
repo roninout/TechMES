@@ -230,21 +230,22 @@
     min-height: 0;
 }
 
-    .alarm-history-table ::deep .active-alarms-grid {
-        flex: 1;
-        min-width: 0;
-    }
+.alarm-history-table ::deep .active-alarms-grid {
+    flex: 1;
+    min-width: 0;
+}
 
 .alarm-history-list {
     min-width: 0;
     min-height: 0;
+    background-color: var(--rz-grid-background-color, var(--rz-base-background-color));
 }
 
     .alarm-history-list ::deep .rz-listbox {
         min-height: 0;
         border: 0;
         box-shadow: none;
-        background: transparent;
+        background-color: var(--rz-grid-background-color, var(--rz-base-background-color));
     }
 
     .alarm-history-list ::deep .alarm-history-list-item {
