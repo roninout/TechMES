@@ -263,3 +263,22 @@
         height: 240px;
     }
 }
+
+.alarm-history-list ::deep .alarm-history-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+.alarm-history-list ::deep .alarm-history-list-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.alarm-history-list ::deep .alarm-history-list-item .rz-badge {
+    flex: none;
+}

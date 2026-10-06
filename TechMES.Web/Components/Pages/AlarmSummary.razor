@@ -149,15 +149,29 @@
         <aside class="alarm-history-list">
             <h4>Equipment</h4>
 
-            <RadzenListBox TValue="string" Data="@_tagPrefixes" Value="@_selectedTagPrefix"
-                           Change="@OnTagPrefixChangedAsync" Style="width: 100%; height: 100%;"
-                           InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Equipment filter" })" />
+            <RadzenListBox TValue="string" Data="@_tagPrefixes" TextProperty="Name" ValueProperty="Name"
+                           Value="@_selectedTagPrefix" Change="@OnTagPrefixChangedAsync"
+                           Style="width: 100%; height: 100%;"
+                           InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Equipment filter" })">
+                <Template Context="item">
+                    @{
+                        var equipment = (TagPrefixCount)item;
+                    }
+
+                    <div class="alarm-history-list-item">
+                        <span class="alarm-history-list-name" title="@equipment.Name">@equipment.Name</span>
+                        <RadzenBadge Text="@equipment.Count.ToString("N0")" BadgeStyle="BadgeStyle.Light" />
+                    </div>
+                </Template>
+            </RadzenListBox>
         </aside>
+
     </div>
 
 </div>
 
 @code {
+
     private static readonly string[] Palette =
     [
         "var(--rz-danger)", "var(--rz-warning)", "var(--rz-info)",
@@ -172,7 +186,7 @@
     private List<PriorityCount> _priorityCounts = [];
     private RadzenDataGrid<AlarmSummaryDto>? _grid;
     private RadzenDataGridColumn<AlarmSummaryDto>? _tagColumn;
-    private List<string> _tagPrefixes = ["All"];
+    private List<TagPrefixCount> _tagPrefixes = [new("All", 0)];
     private string _selectedTagPrefix = "All";
     private Task? _pollTask;
     private DateRange _selectedRange = new(DateTime.Today.AddDays(-1), DateTime.Today);
@@ -186,11 +200,8 @@
     private bool _httpLoading;
     private bool _isRefreshing;
 
-    private IEnumerable<string> StationColumnFills => _stationCounts.Select(station =>
-        station.IsAll ? "var(--rz-base-500)" : "var(--rz-success-darker)");
-
-    private IEnumerable<string> PriorityColors => _priorityCounts.Select((_, index) =>
-        Palette[index % Palette.Length]);
+    private IEnumerable<string> StationColumnFills => _stationCounts.Select(station => station.IsAll ? "var(--rz-base-500)" : "var(--rz-success-darker)");
+    private IEnumerable<string> PriorityColors => _priorityCounts.Select((_, index) => Palette[index % Palette.Length]);
 
     /// <summary>
     /// По умолчанию выбирает вчера и сегодня, запрашивает снимок и начинает
@@ -241,7 +252,7 @@
 
         // Новый период начинает новый список оборудования и показывает все теги.
         _selectedTagPrefix = "All";
-        _tagPrefixes = ["All"];
+        _tagPrefixes = [new TagPrefixCount("All", 0)];
         await ApplyTagPrefixFilterAsync();
 
         // Если HTTP-запрос прежнего диапазона ещё выполняется, очередной
@@ -271,9 +282,9 @@
     }
 
     /// <summary>
-    /// Получает снимок выбранного диапазона. Ответ для прежнего диапазона
-    /// игнорируется, если оператор изменил даты во время HTTP-запроса.
-    /// Ссылка на список таблицы остаётся прежней для сохранения фильтров.
+    /// Получает снимок выбранного диапазона. Ответ прежнего диапазона игнорируется,
+    /// если оператор изменил даты во время HTTP-запроса.
+    /// Сохраняет фильтры и сортировку таблицы при обновлении данных.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -297,25 +308,25 @@
                 _allItems.AddRange(result.Items);
                 _stationCounts = BuildStationCounts(_allItems);
 
-                // Если выбранное оборудование исчезло из нового снимка,
-                // BuildTagPrefixes переключит выбор на All.
-                var previousTagPrefix = _selectedTagPrefix;
-                BuildTagPrefixes();
-
                 if (_selectedStation is not null && !_stationCounts.Any(station => station.Station == _selectedStation))
                     _selectedStation = null;
 
+                // Список оборудования строится из тех же строк станции,
+                // которые передаются в таблицу.
+                var previousTagPrefix = _selectedTagPrefix;
                 ApplyStationSelection();
+                BuildTagPrefixes();
+
                 _version = result.Version;
                 _loadedAt = result.LoadedAtUtc;
                 _readDurationMs = result.ReadDurationMs;
 
                 if (_grid is not null)
                 {
-                    // Обновляем строки, сохраняя фильтры и сортировку таблицы.
                     await _grid.Reload();
 
-                    // При исчезновении оборудования снимаем прежний фильтр Tag.
+                    // Если оборудование исчезло из нового снимка, снимаем
+                    // установленный через ListBox фильтр колонки Tag.
                     if (previousTagPrefix != _selectedTagPrefix)
                         await ApplyTagPrefixFilterAsync();
                 }
@@ -473,21 +484,23 @@
     }
 
     /// <summary>
-    /// Формирует список по полному снимку выбранного периода.
-    /// Первый элемент всегда сбрасывает фильтр оборудования.
+    /// Строит список оборудования из строк выбранной станции.
+    /// Count показывает число записей истории за текущий период и станцию.
     /// </summary>
     private void BuildTagPrefixes()
     {
-        var prefixes = _allItems
+        var prefixes = _items
             .Select(alarm => GetTagPrefix(alarm.Tag))
             .Where(prefix => !string.IsNullOrWhiteSpace(prefix))
-            .Select(prefix => prefix!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(prefix => prefix, StringComparer.OrdinalIgnoreCase);
+            .GroupBy(prefix => prefix!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new TagPrefixCount(group.Key, group.Count()))
+            .OrderBy(prefix => prefix.Name, StringComparer.OrdinalIgnoreCase);
 
-        _tagPrefixes = ["All", .. prefixes];
+        _tagPrefixes = [new TagPrefixCount("All", _items.Count), .. prefixes];
 
-        if (!_tagPrefixes.Contains(_selectedTagPrefix, StringComparer.OrdinalIgnoreCase))
+        // При выборе другой станции ранее выбранного оборудования
+        // может не оказаться в новом списке.
+        if (!_tagPrefixes.Any(prefix => string.Equals(prefix.Name, _selectedTagPrefix, StringComparison.OrdinalIgnoreCase)))
             _selectedTagPrefix = "All";
     }
 
@@ -517,7 +530,8 @@
     }
 
     /// <summary>
-    /// Клик по All снимает выбор станции.
+    /// Выбирает станцию, обновляет её оборудование и строки таблицы.
+    /// Если выбранного оборудования в станции нет, снимает фильтр Tag.
     /// </summary>
     private async Task OnStationClickAsync(SeriesClickEventArgs args)
     {
@@ -525,9 +539,17 @@
             return;
 
         _selectedStation = station.IsAll ? null : station.Station;
-        ApplyStationSelection();
 
-        if (_grid is not null)
+        var previousTagPrefix = _selectedTagPrefix;
+        ApplyStationSelection();
+        BuildTagPrefixes();
+
+        if (_grid is null)
+            return;
+
+        if (previousTagPrefix != _selectedTagPrefix)
+            await ApplyTagPrefixFilterAsync();
+        else
             await _grid.FirstPage(true);
     }
 
@@ -568,5 +590,6 @@
     }
 
     private sealed record StationCount(string Station, int Count, int Height, bool IsAll = false);
+    private sealed record TagPrefixCount(string Name, int Count);
     private sealed record PriorityCount(string Name, int Count);
 }
