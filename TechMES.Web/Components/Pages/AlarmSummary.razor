@@ -82,41 +82,48 @@
                     </RadzenChart>
                 </div>
 
-                <div class="active-alarms-donut-chart">
-                    <h4>Priority: @(_selectedStation ?? "All")</h4>
+                <div class="alarm-history-details">
+                    <h4>Alarm details</h4>
 
-                    @if (_priorityCounts.Count > 0)
+                    @if (SelectedAlarm is { } alarm)
                     {
-                        <RadzenChart Style="height: 320px; width: 100%;">
-                            <RadzenDonutSeries Data="@_priorityCounts" CategoryProperty="Name" ValueProperty="Count"
-                                               Fills="@PriorityColors" FillMode="FillMode.Gradient"
-                                               SegmentGap="0.5" CornerRadius="2" Radius="108">
-                                <ChildContent>
-                                    <RadzenSeriesDataLabels Visible="false" />
-                                </ChildContent>
+                        <div class="alarm-history-details-tag" title="@alarm.Tag">@alarm.Tag</div>
 
-                                <TitleTemplate>
-                                    <div class="rz-donut-content active-alarms-donut-content">
-                                        <span>Total alarms</span>
-                                        <strong>@_items.Count.ToString("N0")</strong>
-                                    </div>
-                                </TitleTemplate>
-                            </RadzenDonutSeries>
+                        <dl class="alarm-history-details-fields">
+                            <dt>Active time</dt>
+                            <dd>@FormatAlarmTime(alarm.ActiveAt)</dd>
 
-                            <RadzenLegend Position="LegendPosition.Bottom" />
-                        </RadzenChart>
+                            <dt>Inactive time</dt>
+                            <dd>@FormatAlarmTime(alarm.InactiveAt)</dd>
+
+                            <dt>Duration</dt>
+                            <dd>@(alarm.Duration?.ToString("N0") ?? "—")</dd>
+
+                            <dt>Ack time</dt>
+                            <dd>@FormatAlarmTime(alarm.AckAt)</dd>
+
+                            <dt>Ack user</dt>
+                            <dd>@FormatAlarmText(alarm.AckUserName)</dd>
+
+                            <dt>Client address desc</dt>
+                            <dd>@FormatAlarmText(alarm.ClientAddressDesc)</dd>
+                        </dl>
+                    }
+                    else
+                    {
+                        <div class="alarm-history-details-empty">Select an alarm in the table.</div>
                     }
                 </div>
-
             </div>
         </div>
     }
 
-    <div class="alarm-history-content">
+    <div class="alarm-history-content @(_tagPrefixes.Count > 1 ? "" : "alarm-history-content-full")">
         <div class="alarm-history-table">
             <RadzenDataGrid @ref="_grid" Data="@_items" TItem="AlarmSummaryDto" AllowFiltering="true"
                             AllowSorting="true" AllowPaging="true" PageSize="30" Density="Density.Compact"
-                            class="active-alarms-grid">
+                            SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="true"
+                            @bind-Value="_selectedRows" class="active-alarms-grid">
                 <Columns>
                     <RadzenDataGridColumn TItem="AlarmSummaryDto" Width="48px" Title=""
                                           Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
@@ -146,42 +153,39 @@
             </RadzenDataGrid>
         </div>
 
-        <aside class="alarm-history-list">
-            <RadzenListBox TValue="string" Data="@_tagPrefixes" TextProperty="Name" ValueProperty="Name"
-                           Value="@_selectedTagPrefix" Change="@OnTagPrefixChangedAsync"
-                           Style="width: 100%; height: 100%;"
-                           InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Equipment filter" })">
-                <Template Context="item">
-                    @{
-                        var equipment = (TagPrefixCount)item;
-                    }
+        @if (_tagPrefixes.Count > 1)
+        {
+            <aside class="alarm-history-list">
+                <RadzenListBox TValue="string" Data="@_tagPrefixes" TextProperty="Name" ValueProperty="Name"
+                               Value="@_selectedTagPrefix" Change="@OnTagPrefixChangedAsync"
+                               Style="width: 100%; height: 100%;"
+                               InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Equipment filter" })">
+                    <Template Context="item">
+                        @{
+                            var equipment = (TagPrefixCount)item;
+                        }
 
-                    <div class="alarm-history-list-item">
-                        <span class="alarm-history-list-name" title="@equipment.Name">@equipment.Name</span>
-                        <RadzenBadge Text="@equipment.Count.ToString("N0")" BadgeStyle="BadgeStyle.Light" />
-                    </div>
-                </Template>
-            </RadzenListBox>
-        </aside>
-
+                        <div class="alarm-history-list-item">
+                            <span class="alarm-history-list-name" title="@equipment.Name">@equipment.Name</span>
+                            <RadzenBadge Text="@equipment.Count.ToString("N0")" BadgeStyle="BadgeStyle.Light" />
+                        </div>
+                    </Template>
+                </RadzenListBox>
+            </aside>
+        }
     </div>
 
 </div>
 
 @code {
 
-    private static readonly string[] Palette =
-    [
-        "var(--rz-danger)", "var(--rz-warning)", "var(--rz-info)",
-        "#8b5cf6", "var(--rz-text-secondary-color)"
-    ];
-
     private readonly CancellationTokenSource _stop = new();
     private readonly List<AlarmSummaryDto> _allItems = [];
 
     private List<AlarmSummaryDto> _items = [];
+    private IList<AlarmSummaryDto> _selectedRows = [];
+    private AlarmSummaryDto? SelectedAlarm => _selectedRows.FirstOrDefault();
     private List<StationCount> _stationCounts = [];
-    private List<PriorityCount> _priorityCounts = [];
     private RadzenDataGrid<AlarmSummaryDto>? _grid;
     private RadzenDataGridColumn<AlarmSummaryDto>? _tagColumn;
     private List<TagPrefixCount> _tagPrefixes = [new("All", 0)];
@@ -199,7 +203,6 @@
     private bool _isRefreshing;
 
     private IEnumerable<string> StationColumnFills => _stationCounts.Select(station => station.IsAll ? "var(--rz-base-500)" : "var(--rz-success-darker)");
-    private IEnumerable<string> PriorityColors => _priorityCounts.Select((_, index) => Palette[index % Palette.Length]);
 
     /// <summary>
     /// По умолчанию выбирает вчера и сегодня, запрашивает снимок и начинает
@@ -246,7 +249,7 @@
         _allItems.Clear();
         _items.Clear();
         _stationCounts.Clear();
-        _priorityCounts.Clear();
+        _selectedRows = [];
 
         // Новый период начинает новый список оборудования и показывает все теги.
         _selectedTagPrefix = "All";
@@ -280,9 +283,8 @@
     }
 
     /// <summary>
-    /// Получает снимок выбранного диапазона. Ответ прежнего диапазона игнорируется,
-    /// если оператор изменил даты во время HTTP-запроса.
-    /// Сохраняет фильтры и сортировку таблицы при обновлении данных.
+    /// Получает снимок выбранного диапазона и сохраняет выделение той же записи
+    /// по RecordId, когда Runtime присылает обновлённые объекты DTO.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -302,6 +304,8 @@
 
             if (!result.NotModified && result.LoadedAtUtc is not null)
             {
+                var selectedRecordId = SelectedAlarm?.RecordId;
+
                 _allItems.Clear();
                 _allItems.AddRange(result.Items);
                 _stationCounts = BuildStationCounts(_allItems);
@@ -309,11 +313,14 @@
                 if (_selectedStation is not null && !_stationCounts.Any(station => station.Station == _selectedStation))
                     _selectedStation = null;
 
-                // Список оборудования строится из тех же строк станции,
-                // которые передаются в таблицу.
                 var previousTagPrefix = _selectedTagPrefix;
                 ApplyStationSelection();
                 BuildTagPrefixes();
+
+                var selected = string.IsNullOrWhiteSpace(selectedRecordId)
+                    ? null
+                    : _items.FirstOrDefault(alarm => string.Equals(alarm.RecordId, selectedRecordId, StringComparison.Ordinal));
+                _selectedRows = selected is null ? [] : [selected];
 
                 _version = result.Version;
                 _loadedAt = result.LoadedAtUtc;
@@ -323,8 +330,6 @@
                 {
                     await _grid.Reload();
 
-                    // Если оборудование исчезло из нового снимка, снимаем
-                    // установленный через ListBox фильтр колонки Tag.
                     if (previousTagPrefix != _selectedTagPrefix)
                         await ApplyTagPrefixFilterAsync();
                 }
@@ -353,8 +358,7 @@
     }
 
     /// <summary>
-    /// Фильтрует строки по выбранной станции и считает приоритеты для donut.
-    /// Коды 0 и 3 относятся к группе Info.
+    /// Передаёт таблице строки выбранной станции.
     /// </summary>
     private void ApplyStationSelection()
     {
@@ -362,28 +366,6 @@
         _items.AddRange(_selectedStation is null
             ? _allItems
             : _allItems.Where(alarm => string.Equals(GetStation(alarm.Tag), _selectedStation, StringComparison.Ordinal)));
-
-        var counts = new int[5];
-        var unknownCount = 0;
-
-        foreach (var alarm in _items)
-        {
-            if (alarm.Priority is >= 0 and <= 4)
-                counts[alarm.Priority.Value]++;
-            else
-                unknownCount++;
-        }
-
-        _priorityCounts =
-        [
-            new($"Alarm ({counts[1]:N0})", counts[1]),
-            new($"Warning ({counts[2]:N0})", counts[2]),
-            new($"Info ({counts[0] + counts[3]:N0})", counts[0] + counts[3]),
-            new($"System ({counts[4]:N0})", counts[4])
-        ];
-
-        if (unknownCount > 0)
-            _priorityCounts.Add(new PriorityCount($"Unknown ({unknownCount:N0})", unknownCount));
     }
 
     /// <summary>
@@ -482,6 +464,22 @@
     }
 
     /// <summary>
+    /// Отображает уже переведённое Runtime локальное время.
+    /// </summary>
+    private static string FormatAlarmTime(DateTime? value)
+    {
+        return value?.ToString("dd.MM.yyyy HH:mm:ss") ?? "—";
+    }
+
+    /// <summary>
+    /// Пустые дополнительные поля истории показывает единообразно.
+    /// </summary>
+    private static string FormatAlarmText(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "—" : value;
+    }
+
+    /// <summary>
     /// Строит список оборудования из строк выбранной станции.
     /// Count показывает число записей истории за текущий период и станцию.
     /// </summary>
@@ -518,18 +516,17 @@
     }
 
     /// <summary>
-    /// Выбор оборудования меняет только фильтр колонки Tag.
-    /// Элемент All снимает этот фильтр.
+    /// Выбор оборудования меняет фильтр Tag и снимает выделение прежней строки.
     /// </summary>
     private async Task OnTagPrefixChangedAsync(object? value)
     {
         _selectedTagPrefix = value as string ?? "All";
+        _selectedRows = [];
         await ApplyTagPrefixFilterAsync();
     }
 
     /// <summary>
-    /// Выбирает станцию, обновляет её оборудование и строки таблицы.
-    /// Если выбранного оборудования в станции нет, снимает фильтр Tag.
+    /// Выбирает станцию, обновляет оборудование и снимает выделение прежней строки.
     /// </summary>
     private async Task OnStationClickAsync(SeriesClickEventArgs args)
     {
@@ -537,6 +534,7 @@
             return;
 
         _selectedStation = station.IsAll ? null : station.Station;
+        _selectedRows = [];
 
         var previousTagPrefix = _selectedTagPrefix;
         ApplyStationSelection();
@@ -589,5 +587,5 @@
 
     private sealed record StationCount(string Station, int Count, int Height, bool IsAll = false);
     private sealed record TagPrefixCount(string Name, int Count);
-    private sealed record PriorityCount(string Name, int Count);
+
 }

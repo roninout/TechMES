@@ -1,7 +1,8 @@
 ﻿namespace TechMES.Contracts.Alarms;
 
 /// <summary>
-/// Запись истории из CDBAlarmSummary. Priority берётся из текущего определения тега в CiAdvancedAlarm, время переведено Runtime в локальное.
+/// Запись истории из CDBAlarmSummary.
+/// Priority берётся из CiAdvancedAlarm; время Runtime переводит из UTC в локальное.
 /// </summary>
 public sealed class AlarmSummaryDto
 {
@@ -13,6 +14,11 @@ public sealed class AlarmSummaryDto
     public int? SeverityValue { get; init; }
     public int? Priority { get; init; }
     public DateTime? ActiveAt { get; init; }
+    public DateTime? InactiveAt { get; init; }
+    public long? Duration { get; init; }
+    public DateTime? AckAt { get; init; }
+    public string AckUserName { get; init; } = "";
+    public string ClientAddressDesc { get; init; } = "";
 }
 
 /// <summary>

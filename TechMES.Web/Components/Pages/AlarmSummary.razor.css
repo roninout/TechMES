@@ -75,34 +75,45 @@
 }
 
 .active-alarms-column-chart,
-.active-alarms-donut-chart {
+.alarm-history-details {
     padding-left: 16px;
     border-left: 1px solid var(--rz-base-300);
 }
 
-.active-alarms-donut-chart {
-    width: 100%;
-    max-width: 420px;
-    box-sizing: border-box;
+.alarm-history-details {
+    min-width: 0;
 }
 
-.active-alarms-donut-empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 320px;
+    .alarm-history-details h4 {
+        margin-top: 0;
+    }
+
+.alarm-history-details-tag {
+    margin-bottom: 16px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.alarm-history-details-fields {
+    display: grid;
+    grid-template-columns: 125px minmax(0, 1fr);
+    gap: 10px 12px;
+    margin: 0;
+}
+
+    .alarm-history-details-fields dt {
+        color: var(--rz-text-secondary-color);
+    }
+
+    .alarm-history-details-fields dd {
+        min-width: 0;
+        margin: 0;
+        overflow-wrap: anywhere;
+    }
+
+.alarm-history-details-empty {
     color: var(--rz-text-secondary-color);
 }
-
-.active-alarms-donut-chart ::deep .active-alarms-donut-content {
-    color: var(--rz-text-color);
-    line-height: 1.2;
-}
-
-    .active-alarms-donut-chart ::deep .active-alarms-donut-content strong {
-        margin-top: 4px;
-        font-size: 1.35rem;
-    }
 
 ::deep .active-alarms-grid {
     min-height: 0;
@@ -155,7 +166,7 @@
         grid-template-columns: 1fr;
     }
 
-    .active-alarms-donut-chart {
+    .alarm-history-details {
         padding: 16px 0 0;
         border-left: 0;
         border-top: 1px solid var(--rz-base-300);
@@ -222,6 +233,11 @@
     gap: 12px;
     flex: 1;
     min-height: 0;
+}
+
+/* Если в списке остался только All, отдаём таблице всю ширину. */
+.alarm-history-content-full {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .alarm-history-table {

@@ -165,7 +165,7 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
     }
 
     /// <summary>
-    /// Читает приоритеты определений и историю одним подключением ODBC.
+    /// Читает определения приоритетов и историю одним подключением ODBC.
     /// Дни диапазона включительны; верхняя граница SQL — начало дня после To.
     /// По принятому сейчас правилу TIMESTAMP в ODBC содержит время UTC.
     /// </summary>
@@ -183,13 +183,18 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
         using var connection = new OdbcConnection(_connectionString);
         await connection.OpenAsync(ct);
 
-        // Читаем весь справочник один раз. WHERE AlarmState <> 0 здесь
-        // недопустим: историческая авария уже может быть неактивной.
+        // Исторические записи могут относиться к уже неактивным авариям,
+        // поэтому справочник приоритетов читаем без фильтра по состоянию.
         var priorities = await ReadPrioritiesAsync(connection, ct);
         var items = new List<AlarmSummaryDto>();
 
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT RecordId, Source, CustomStringField2, StateDesc, SeverityDesc, SeverityValue, ActiveTime FROM CDBAlarmSummary WHERE ActiveTime >= ? AND ActiveTime < ?";
+        command.CommandText = """
+        SELECT RecordId, Source, CustomStringField2, StateDesc, SeverityDesc, SeverityValue,
+               ActiveTime, InactiveTime, CustomNumericField13, AckTime, AckUserName, ClientAddressDesc
+        FROM CDBAlarmSummary
+        WHERE ActiveTime >= ? AND ActiveTime < ?
+        """;
         command.CommandTimeout = _requestTimeoutSeconds;
         command.Parameters.Add("fromUtc", OdbcType.DateTime).Value = utcStart;
         command.Parameters.Add("toUtc", OdbcType.DateTime).Value = utcEnd;
@@ -201,14 +206,12 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
             ct.ThrowIfCancellationRequested();
 
             var tag = ReadText(reader, 1).Trim();
-            var rawDate = reader.IsDBNull(6) ? (DateTime?)null : reader.GetDateTime(6);
-            var activeAt = rawDate is { Year: > 1900 }
-                ? DateTime.SpecifyKind(rawDate.Value, DateTimeKind.Utc).ToLocalTime()
-                : (DateTime?)null;
-
             var severityValue = reader.IsDBNull(5)
                 ? (int?)null
                 : Convert.ToInt32(reader.GetValue(5), CultureInfo.InvariantCulture);
+            var duration = reader.IsDBNull(8)
+                ? (long?)null
+                : Convert.ToInt64(reader.GetValue(8), CultureInfo.InvariantCulture);
 
             items.Add(new AlarmSummaryDto
             {
@@ -219,7 +222,12 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
                 Severity = ReadText(reader, 4),
                 SeverityValue = severityValue,
                 Priority = priorities.TryGetValue(tag, out var priority) ? priority : null,
-                ActiveAt = activeAt
+                ActiveAt = ReadLocalTimestamp(reader, 6),
+                InactiveAt = ReadLocalTimestamp(reader, 7),
+                Duration = duration,
+                AckAt = ReadLocalTimestamp(reader, 9),
+                AckUserName = ReadText(reader, 10).Trim(),
+                ClientAddressDesc = ReadText(reader, 11).Trim()
             });
         }
 
@@ -259,6 +267,21 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
 
         _logger.LogInformation("CiAdvancedAlarm priorities loaded. Tags={Count}", priorities.Count);
         return priorities;
+    }
+
+    /// <summary>
+    /// Переводит TIMESTAMP из ODBC в локальное время.
+    /// Пустую дату и служебные значения без реального времени не показывает.
+    /// </summary>
+    private static DateTime? ReadLocalTimestamp(DbDataReader reader, int ordinal)
+    {
+        if (reader.IsDBNull(ordinal))
+            return null;
+
+        var value = reader.GetDateTime(ordinal);
+        return value.Year > 1900
+            ? DateTime.SpecifyKind(value, DateTimeKind.Utc).ToLocalTime()
+            : null;
     }
 
     /// <summary>
