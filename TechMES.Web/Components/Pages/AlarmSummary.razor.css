@@ -236,49 +236,43 @@
     }
 
 .alarm-history-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
     min-width: 0;
     min-height: 0;
-    padding: 12px;
-    border: 1px solid var(--rz-base-300);
-    border-radius: 4px;
 }
-
-    .alarm-history-list h4 {
-        margin: 0;
-    }
 
     .alarm-history-list ::deep .rz-listbox {
         min-height: 0;
+        border: 0;
+        box-shadow: none;
+        background: transparent;
     }
 
-@media (max-width: 900px) {
+    .alarm-history-list ::deep .alarm-history-list-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .alarm-history-list ::deep .alarm-history-list-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .alarm-history-list ::deep .alarm-history-list-item .rz-badge {
+        flex: none;
+    }
+
+/* На планшете список скрывается, а таблица занимает всю доступную ширину. */
+@media (max-width: 1366px) {
     .alarm-history-content {
         grid-template-columns: minmax(0, 1fr);
     }
 
     .alarm-history-list {
-        height: 240px;
+        display: none;
     }
-}
-
-.alarm-history-list ::deep .alarm-history-list-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    width: 100%;
-    min-width: 0;
-}
-
-.alarm-history-list ::deep .alarm-history-list-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.alarm-history-list ::deep .alarm-history-list-item .rz-badge {
-    flex: none;
 }
