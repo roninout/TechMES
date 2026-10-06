@@ -112,36 +112,48 @@
         </div>
     }
 
-    <RadzenDataGrid @ref="_grid" Data="@_items" TItem="AlarmSummaryDto" AllowFiltering="true"
-                    AllowSorting="true" AllowPaging="true" PageSize="30" Density="Density.Compact"
-                    class="active-alarms-grid">
-        <Columns>
-            <RadzenDataGridColumn TItem="AlarmSummaryDto" Width="48px" Title=""
-                                  Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
-                <Template Context="alarm">
-                    <span class="@GetPriorityCssClass(alarm)" title="@GetPriorityTitle(alarm.Priority)" aria-label="@GetPriorityTitle(alarm.Priority)">
-                        <RadzenIcon Icon="@GetPriorityIcon(alarm.Priority)" />
-                    </span>
-                </Template>
-            </RadzenDataGridColumn>
+    <div class="alarm-history-content">
+        <div class="alarm-history-table">
+            <RadzenDataGrid @ref="_grid" Data="@_items" TItem="AlarmSummaryDto" AllowFiltering="true"
+                            AllowSorting="true" AllowPaging="true" PageSize="30" Density="Density.Compact"
+                            class="active-alarms-grid">
+                <Columns>
+                    <RadzenDataGridColumn TItem="AlarmSummaryDto" Width="48px" Title=""
+                                          Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                        <Template Context="alarm">
+                            <span class="@GetPriorityCssClass(alarm)" title="@GetPriorityTitle(alarm.Priority)" aria-label="@GetPriorityTitle(alarm.Priority)">
+                                <RadzenIcon Icon="@GetPriorityIcon(alarm.Priority)" />
+                            </span>
+                        </Template>
+                    </RadzenDataGridColumn>
 
-            <RadzenDataGridColumn TItem="AlarmSummaryDto" Property="ActiveAt" Title="Date" Width="180px"
-                                  SortOrder="SortOrder.Descending">
-                <Template Context="alarm">
-                    @(alarm.ActiveAt?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
-                </Template>
-            </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="AlarmSummaryDto" Property="ActiveAt" Title="Date" Width="180px"
+                                          SortOrder="SortOrder.Descending">
+                        <Template Context="alarm">
+                            @(alarm.ActiveAt?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
+                        </Template>
+                    </RadzenDataGridColumn>
 
-            <RadzenDataGridColumn TItem="AlarmSummaryDto" Property="Tag" Title="Tag" Width="340px">
-                <Template Context="alarm">
-                    <span class="active-alarms-tag" title="@alarm.Tag">@alarm.Tag</span>
-                </Template>
-            </RadzenDataGridColumn>
+                    <RadzenDataGridColumn @ref="_tagColumn" TItem="AlarmSummaryDto" Property="Tag" Title="Tag" Width="340px">
+                        <Template Context="alarm">
+                            <span class="active-alarms-tag" title="@alarm.Tag">@alarm.Tag</span>
+                        </Template>
+                    </RadzenDataGridColumn>
 
-            <RadzenDataGridColumn TItem="AlarmSummaryDto" Property="Description" Title="Description" />
-            <RadzenDataGridColumn TItem="AlarmSummaryDto" Property="StateDesc" Title="State" Width="190px" />
-        </Columns>
-    </RadzenDataGrid>
+                    <RadzenDataGridColumn TItem="AlarmSummaryDto" Property="Description" Title="Description" />
+                    <RadzenDataGridColumn TItem="AlarmSummaryDto" Property="StateDesc" Title="State" Width="190px" />
+                </Columns>
+            </RadzenDataGrid>
+        </div>
+
+        <aside class="alarm-history-list">
+            <h4>Equipment</h4>
+
+            <RadzenListBox TValue="string" Data="@_tagPrefixes" Value="@_selectedTagPrefix"
+                           Change="@OnTagPrefixChangedAsync" Style="width: 100%; height: 100%;"
+                           InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Equipment filter" })" />
+        </aside>
+    </div>
 
 </div>
 
@@ -159,6 +171,9 @@
     private List<StationCount> _stationCounts = [];
     private List<PriorityCount> _priorityCounts = [];
     private RadzenDataGrid<AlarmSummaryDto>? _grid;
+    private RadzenDataGridColumn<AlarmSummaryDto>? _tagColumn;
+    private List<string> _tagPrefixes = ["All"];
+    private string _selectedTagPrefix = "All";
     private Task? _pollTask;
     private DateRange _selectedRange = new(DateTime.Today.AddDays(-1), DateTime.Today);
     private DateOnly _from = DateOnly.FromDateTime(DateTime.Today.AddDays(-1));
@@ -224,6 +239,11 @@
         _stationCounts.Clear();
         _priorityCounts.Clear();
 
+        // Новый период начинает новый список оборудования и показывает все теги.
+        _selectedTagPrefix = "All";
+        _tagPrefixes = ["All"];
+        await ApplyTagPrefixFilterAsync();
+
         // Если HTTP-запрос прежнего диапазона ещё выполняется, очередной
         // опрос страницы запросит новый диапазон после его завершения.
         await LoadAsync(false);
@@ -251,8 +271,8 @@
     }
 
     /// <summary>
-    /// Получает снимок диапазона. Ответ для прежнего диапазона игнорируется,
-    /// если оператор успел изменить выбор во время HTTP-запроса.
+    /// Получает снимок выбранного диапазона. Ответ для прежнего диапазона
+    /// игнорируется, если оператор изменил даты во время HTTP-запроса.
     /// Ссылка на список таблицы остаётся прежней для сохранения фильтров.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
@@ -277,6 +297,11 @@
                 _allItems.AddRange(result.Items);
                 _stationCounts = BuildStationCounts(_allItems);
 
+                // Если выбранное оборудование исчезло из нового снимка,
+                // BuildTagPrefixes переключит выбор на All.
+                var previousTagPrefix = _selectedTagPrefix;
+                BuildTagPrefixes();
+
                 if (_selectedStation is not null && !_stationCounts.Any(station => station.Station == _selectedStation))
                     _selectedStation = null;
 
@@ -286,7 +311,14 @@
                 _readDurationMs = result.ReadDurationMs;
 
                 if (_grid is not null)
+                {
+                    // Обновляем строки, сохраняя фильтры и сортировку таблицы.
                     await _grid.Reload();
+
+                    // При исчезновении оборудования снимаем прежний фильтр Tag.
+                    if (previousTagPrefix != _selectedTagPrefix)
+                        await ApplyTagPrefixFilterAsync();
+                }
             }
 
             _isRefreshing = result.IsRefreshing;
@@ -418,6 +450,70 @@
 
         var dot = source.IndexOf('.');
         return dot > 0 ? source[..dot].Trim().ToUpperInvariant() : null;
+    }
+
+    /// <summary>
+    /// Для группировки оборудования берёт первые две части тега.
+    /// Например, S01.H06_2.SIC01.AlarmHealth превращается в S01.H06_2.
+    /// </summary>
+    private static string? GetTagPrefix(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag))
+            return null;
+
+        var firstDot = tag.IndexOf('.');
+        if (firstDot <= 0)
+            return null;
+
+        var secondDot = tag.IndexOf('.', firstDot + 1);
+        if (secondDot <= firstDot + 1)
+            return null;
+
+        return tag[..secondDot].Trim();
+    }
+
+    /// <summary>
+    /// Формирует список по полному снимку выбранного периода.
+    /// Первый элемент всегда сбрасывает фильтр оборудования.
+    /// </summary>
+    private void BuildTagPrefixes()
+    {
+        var prefixes = _allItems
+            .Select(alarm => GetTagPrefix(alarm.Tag))
+            .Where(prefix => !string.IsNullOrWhiteSpace(prefix))
+            .Select(prefix => prefix!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(prefix => prefix, StringComparer.OrdinalIgnoreCase);
+
+        _tagPrefixes = ["All", .. prefixes];
+
+        if (!_tagPrefixes.Contains(_selectedTagPrefix, StringComparer.OrdinalIgnoreCase))
+            _selectedTagPrefix = "All";
+    }
+
+    /// <summary>
+    /// Применяет выбор ListBox как фильтр Contains непосредственно к колонке Tag.
+    /// Фильтры остальных колонок и сортировку таблицы не сбрасывает.
+    /// </summary>
+    private async Task ApplyTagPrefixFilterAsync()
+    {
+        if (_grid is null || _tagColumn is null)
+            return;
+
+        _tagColumn.SetFilterOperator(FilterOperator.Contains);
+        _tagColumn.SetFilterValue(_selectedTagPrefix == "All" ? null! : _selectedTagPrefix, true);
+        await _grid.ApplyFilter(_tagColumn, true);
+        await _grid.FirstPage(true);
+    }
+
+    /// <summary>
+    /// Выбор оборудования меняет только фильтр колонки Tag.
+    /// Элемент All снимает этот фильтр.
+    /// </summary>
+    private async Task OnTagPrefixChangedAsync(object? value)
+    {
+        _selectedTagPrefix = value as string ?? "All";
+        await ApplyTagPrefixFilterAsync();
     }
 
     /// <summary>

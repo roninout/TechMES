@@ -215,3 +215,51 @@
         flex-wrap: wrap;
     }
 }
+
+.alarm-history-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 250px;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+}
+
+.alarm-history-table {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+}
+
+    .alarm-history-table ::deep .active-alarms-grid {
+        flex: 1;
+        min-width: 0;
+    }
+
+.alarm-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    padding: 12px;
+    border: 1px solid var(--rz-base-300);
+    border-radius: 4px;
+}
+
+    .alarm-history-list h4 {
+        margin: 0;
+    }
+
+    .alarm-history-list ::deep .rz-listbox {
+        min-height: 0;
+    }
+
+@media (max-width: 900px) {
+    .alarm-history-content {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .alarm-history-list {
+        height: 240px;
+    }
+}
