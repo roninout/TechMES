@@ -87,21 +87,43 @@
 
                     @if (SelectedAlarm is { } alarm)
                     {
+                        var timeline = BuildAlarmTimeline(alarm);
+
                         <div class="alarm-history-details-tag" title="@alarm.Tag">@alarm.Tag</div>
 
+                        <div class="alarm-history-details-duration">
+                            Duration: @FormatAlarmDuration(alarm.Duration)
+                        </div>
+
+                        @if (timeline.Count > 0)
+                        {
+                            <div class="alarm-history-timeline">
+                                <div class="alarm-history-timeline-rail" aria-hidden="true">
+                                    @for (var i = 0; i < timeline.Count - 1; i++)
+                                    {
+                                        var isActive = IsActiveTimelineSegment(alarm, timeline[i], timeline[i + 1]);
+
+                                        <span class="alarm-history-timeline-segment @(isActive ? "is-active" : "is-waiting")"></span>
+                                    }
+                                </div>
+
+                                <div class="alarm-history-timeline-events" style="@($"--alarm-event-count: {timeline.Count}")">
+                                    @foreach (var entry in timeline)
+                                    {
+                                        <div class="alarm-history-timeline-event">
+                                            <span class="alarm-history-timeline-point @(entry.Order == 2 ? "is-ack" : "")" aria-hidden="true"></span>
+                                            <span class="alarm-history-timeline-label">@entry.Label</span>
+                                            <strong>@entry.Time.ToString("HH:mm:ss")</strong>
+                                            <span class="alarm-history-timeline-date">@entry.Time.ToString("dd.MM.yyyy")</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="alarm-history-timeline-note">Event positions show sequence, not elapsed time.</div>
+                        }
+
                         <dl class="alarm-history-details-fields">
-                            <dt>Active time</dt>
-                            <dd>@FormatAlarmTime(alarm.ActiveAt)</dd>
-
-                            <dt>Inactive time</dt>
-                            <dd>@FormatAlarmTime(alarm.InactiveAt)</dd>
-
-                            <dt>Duration</dt>
-                            <dd>@(alarm.Duration?.ToString("N0") ?? "—")</dd>
-
-                            <dt>Ack time</dt>
-                            <dd>@FormatAlarmTime(alarm.AckAt)</dd>
-
                             <dt>Ack user</dt>
                             <dd>@FormatAlarmText(alarm.AckUserName)</dd>
 
@@ -114,6 +136,7 @@
                         <div class="alarm-history-details-empty">Select an alarm in the table.</div>
                     }
                 </div>
+
             </div>
         </div>
     }
@@ -461,6 +484,71 @@
             return null;
 
         return tag[..secondDot].Trim();
+    }
+
+    private sealed record AlarmTimelineEvent(string Label, DateTime Time, int Order);
+
+    /// <summary>
+    /// Располагает события аварии по фактическому времени.
+    /// Порядок Active, Inactive, Ack не предполагается заранее: квитирование
+    /// может произойти как до окончания аварии, так и после него.
+    /// </summary>
+    private static List<AlarmTimelineEvent> BuildAlarmTimeline(AlarmSummaryDto alarm)
+    {
+        var events = new List<AlarmTimelineEvent>(3);
+
+        if (alarm.ActiveAt is { } activeAt)
+            events.Add(new AlarmTimelineEvent("Active time", activeAt, 0));
+
+        if (alarm.InactiveAt is { } inactiveAt)
+            events.Add(new AlarmTimelineEvent("Inactive time", inactiveAt, 1));
+
+        if (alarm.AckAt is { } ackAt)
+            events.Add(new AlarmTimelineEvent("Ack time", ackAt, 2));
+
+        return events.OrderBy(entry => entry.Time).ThenBy(entry => entry.Order).ToList();
+    }
+
+    /// <summary>
+    /// Подсвечивает только часть шкалы между возникновением и окончанием аварии.
+    /// Ack не продлевает длительность аварии независимо от его положения.
+    /// </summary>
+    private static bool IsActiveTimelineSegment(AlarmSummaryDto alarm, AlarmTimelineEvent from, AlarmTimelineEvent to)
+    {
+        return alarm.ActiveAt is { } activeAt
+            && alarm.InactiveAt is { } inactiveAt
+            && from.Time >= activeAt
+            && to.Time <= inactiveAt;
+    }
+
+    /// <summary>
+    /// CustomNumericField13 содержит длительность в миллисекундах.
+    /// Показывает её в удобном виде, сохраняя точность до миллисекунды.
+    /// </summary>
+    private static string FormatAlarmDuration(long? durationMs)
+    {
+        if (durationMs is null || durationMs < 0)
+            return "—";
+
+        var totalSeconds = durationMs.Value / 1000;
+        var milliseconds = durationMs.Value % 1000;
+        var totalMinutes = totalSeconds / 60;
+        var totalHours = totalMinutes / 60;
+        var days = totalHours / 24;
+        var hours = totalHours % 24;
+        var minutes = totalMinutes % 60;
+        var seconds = totalSeconds % 60;
+
+        if (days > 0)
+            return $"{days} d {hours} h {minutes} min {seconds:00}.{milliseconds:000} s";
+
+        if (totalHours > 0)
+            return $"{totalHours} h {minutes} min {seconds:00}.{milliseconds:000} s";
+
+        if (totalMinutes > 0)
+            return $"{totalMinutes} min {seconds:00}.{milliseconds:000} s";
+
+        return $"{seconds}.{milliseconds:000} s";
     }
 
     /// <summary>

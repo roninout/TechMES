@@ -94,6 +94,99 @@
     overflow-wrap: anywhere;
 }
 
+.alarm-history-details-duration {
+    margin-bottom: 12px;
+    color: var(--rz-info);
+    font-weight: 600;
+}
+
+.alarm-history-timeline {
+    position: relative;
+    margin: 4px 0 0;
+}
+
+.alarm-history-timeline-rail {
+    display: flex;
+    align-items: center;
+    height: 12px;
+    margin: 0 6px;
+}
+
+.alarm-history-timeline-segment {
+    flex: 1;
+    min-width: 0;
+}
+
+    .alarm-history-timeline-segment.is-active {
+        height: 7px;
+        background-color: var(--rz-info);
+    }
+
+    .alarm-history-timeline-segment.is-waiting {
+        height: 2px;
+        background: repeating-linear-gradient( 90deg, var(--rz-text-secondary-color) 0 7px, transparent 7px 13px );
+    }
+
+.alarm-history-timeline-events {
+    display: grid;
+    grid-template-columns: repeat(var(--alarm-event-count), minmax(0, 1fr));
+    margin-top: -12px;
+    position: relative;
+}
+
+.alarm-history-timeline-event {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+    text-align: center;
+    font-size: 0.85rem;
+}
+
+    .alarm-history-timeline-event:first-child {
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .alarm-history-timeline-event:last-child {
+        align-items: flex-end;
+        text-align: right;
+    }
+
+    .alarm-history-timeline-event:only-child {
+        align-items: flex-start;
+        text-align: left;
+    }
+
+.alarm-history-timeline-point {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    border-radius: 50%;
+    background-color: var(--rz-info);
+    margin-bottom: 12px;
+}
+
+    .alarm-history-timeline-point.is-ack {
+        background-color: var(--rz-text-secondary-color);
+    }
+
+.alarm-history-timeline-label,
+.alarm-history-timeline-date {
+    color: var(--rz-text-secondary-color);
+}
+
+.alarm-history-timeline-event strong {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.alarm-history-timeline-note {
+    margin: 14px 0 20px;
+    color: var(--rz-text-secondary-color);
+    font-size: 0.8rem;
+}
+
 .alarm-history-details-fields {
     display: grid;
     grid-template-columns: 125px minmax(0, 1fr);
@@ -101,15 +194,15 @@
     margin: 0;
 }
 
-    .alarm-history-details-fields dt {
-        color: var(--rz-text-secondary-color);
-    }
+.alarm-history-details-fields dt {
+    color: var(--rz-text-secondary-color);
+}
 
-    .alarm-history-details-fields dd {
-        min-width: 0;
-        margin: 0;
-        overflow-wrap: anywhere;
-    }
+.alarm-history-details-fields dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
 
 .alarm-history-details-empty {
     color: var(--rz-text-secondary-color);
@@ -129,25 +222,25 @@
     color: var(--rz-text-secondary-color);
 }
 
-    .active-alarms-priority.is-alarm {
-        color: var(--rz-danger);
-    }
+.active-alarms-priority.is-alarm {
+    color: var(--rz-danger);
+}
 
-    .active-alarms-priority.is-warning {
-        color: var(--rz-warning);
-    }
+.active-alarms-priority.is-warning {
+    color: var(--rz-warning);
+}
 
-    .active-alarms-priority.is-info {
-        color: var(--rz-info);
-    }
+.active-alarms-priority.is-info {
+    color: var(--rz-info);
+}
 
-    .active-alarms-priority.is-system {
-        color: #8b5cf6;
-    }
+.active-alarms-priority.is-system {
+    color: #8b5cf6;
+}
 
-    .active-alarms-priority.is-unacknowledged {
-        animation: active-alarms-blink 1.2s step-end infinite;
-    }
+.active-alarms-priority.is-unacknowledged {
+    animation: active-alarms-blink 1.2s step-end infinite;
+}
 
 @keyframes active-alarms-blink {
     50% {
