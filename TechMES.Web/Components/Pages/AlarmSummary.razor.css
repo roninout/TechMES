@@ -222,6 +222,12 @@
     }
 
 .alarm-history-details-empty {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    text-align: center;
     color: var(--rz-text-secondary-color);
 }
 
@@ -381,6 +387,17 @@
         gap: 8px;
         width: 100%;
         min-width: 0;
+    }
+
+    .alarm-history-list ::deep .alarm-history-list-identity {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .alarm-history-list ::deep .alarm-history-list-identity .rz-icon {
+        flex: none;
     }
 
     .alarm-history-list ::deep .alarm-history-list-name {

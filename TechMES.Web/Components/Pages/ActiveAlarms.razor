@@ -152,8 +152,10 @@
 
     private List<ActiveAlarmDto> _items = [];
     private List<StationAlarmCount> _stationCounts = [];
-    // Цвета следуют порядку _stationCounts: All — первая колонка, далее станции.
-    private IEnumerable<string> StationColumnFills => _stationCounts.Select(station => station.IsAll ? "var(--rz-base-500)" : "var(--rz-success-darker)");
+    /// <summary>
+    /// All оставляет нейтральный цвет; станции с активными авариями выделяются красным.
+    /// </summary>
+    private IEnumerable<string> StationColumnFills => _stationCounts.Select(station => station.IsAll ? "var(--rz-base-500)" : "var(--rz-danger-darker)");
     private List<PriorityAlarmCount> _priorityCounts = [];
     private string? _selectedStation;
 
