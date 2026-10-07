@@ -190,11 +190,11 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
 
         using var command = connection.CreateCommand();
         command.CommandText = """
-        SELECT RecordId, Source, CustomStringField2, StateDesc, SeverityDesc, SeverityValue,
-               ActiveTime, InactiveTime, CustomNumericField13, AckTime, AckUserName, ClientAddressDesc
-        FROM CDBAlarmSummary
-        WHERE ActiveTime >= ? AND ActiveTime < ?
-        """;
+    SELECT RecordId, Source, CustomStringField2, StateDesc, SeverityDesc, SeverityValue,
+           ActiveTime, InactiveTime, CustomNumericField13, AckTime, AckUserName, ClientAddressDesc, Id
+    FROM CDBAlarmSummary
+    WHERE ActiveTime >= ? AND ActiveTime < ?
+    """;
         command.CommandTimeout = _requestTimeoutSeconds;
         command.Parameters.Add("fromUtc", OdbcType.DateTime).Value = utcStart;
         command.Parameters.Add("toUtc", OdbcType.DateTime).Value = utcEnd;
@@ -212,10 +212,14 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
             var duration = reader.IsDBNull(8)
                 ? (long?)null
                 : Convert.ToInt64(reader.GetValue(8), CultureInfo.InvariantCulture);
+            var id = reader.IsDBNull(12)
+                ? (int?)null
+                : Convert.ToInt32(reader.GetValue(12), CultureInfo.InvariantCulture);
 
             items.Add(new AlarmSummaryDto
             {
                 RecordId = ReadText(reader, 0),
+                Id = id,
                 Tag = tag,
                 Description = CleanDescription(ReadText(reader, 2)),
                 StateDesc = ReadText(reader, 3),

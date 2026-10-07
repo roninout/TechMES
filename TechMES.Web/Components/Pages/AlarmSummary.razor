@@ -89,47 +89,57 @@
                     {
                         var timeline = BuildAlarmTimeline(alarm);
 
-                        <div class="alarm-history-details-tag" title="@alarm.Tag">@alarm.Tag</div>
+                        <div class="alarm-history-details-tag" title="@alarm.Tag">
+                            <span class="@GetPriorityCssClass(alarm)" title="@GetPriorityTitle(alarm.Priority)">
+                                <RadzenIcon Icon="@GetPriorityIcon(alarm.Priority)" />
+                            </span>
 
-                        <div class="alarm-history-details-duration">
-                            Duration: @FormatAlarmDuration(alarm.Duration)
+                            <strong>@(alarm.Id is { } id ? $"{alarm.Tag} ({id})" : alarm.Tag)</strong>
                         </div>
 
-                        @if (timeline.Count > 0)
-                        {
-                            <div class="alarm-history-timeline">
-                                <div class="alarm-history-timeline-rail" aria-hidden="true">
-                                    @for (var i = 0; i < timeline.Count - 1; i++)
-                                    {
-                                        var isActive = IsActiveTimelineSegment(alarm, timeline[i], timeline[i + 1]);
-
-                                        <span class="alarm-history-timeline-segment @(isActive ? "is-active" : "is-waiting")"></span>
-                                    }
-                                </div>
-
-                                <div class="alarm-history-timeline-events" style="@($"--alarm-event-count: {timeline.Count}")">
-                                    @foreach (var entry in timeline)
-                                    {
-                                        <div class="alarm-history-timeline-event">
-                                            <span class="alarm-history-timeline-point @(entry.Order == 2 ? "is-ack" : "")" aria-hidden="true"></span>
-                                            <span class="alarm-history-timeline-label">@entry.Label</span>
-                                            <strong>@entry.Time.ToString("HH:mm:ss")</strong>
-                                            <span class="alarm-history-timeline-date">@entry.Time.ToString("dd.MM.yyyy")</span>
-                                        </div>
-                                    }
-                                </div>
+                        <div class="alarm-history-details-center">
+                            <div class="alarm-history-details-duration">
+                                Duration: @FormatAlarmDuration(alarm.Duration)
                             </div>
 
-                            <div class="alarm-history-timeline-note">Event positions show sequence, not elapsed time.</div>
-                        }
+                            @if (timeline.Count > 0)
+                            {
+                                <div class="alarm-history-timeline">
+                                    <div class="alarm-history-timeline-rail" aria-hidden="true">
+                                        @for (var i = 0; i < timeline.Count - 1; i++)
+                                        {
+                                            var isActive = IsActiveTimelineSegment(alarm, timeline[i], timeline[i + 1]);
 
-                        <dl class="alarm-history-details-fields">
-                            <dt>Ack user</dt>
-                            <dd>@FormatAlarmText(alarm.AckUserName)</dd>
+                                            <span class="alarm-history-timeline-segment @(isActive ? "is-active" : "is-waiting")"></span>
+                                        }
+                                    </div>
 
-                            <dt>Client address desc</dt>
-                            <dd>@FormatAlarmText(alarm.ClientAddressDesc)</dd>
-                        </dl>
+                                    <div class="alarm-history-timeline-events" style="@($"--alarm-event-count: {timeline.Count}")">
+                                        @foreach (var entry in timeline)
+                                        {
+                                            <div class="alarm-history-timeline-event">
+                                                <span class="alarm-history-timeline-point @(entry.Order == 2 ? "is-ack" : "")" aria-hidden="true"></span>
+                                                <span class="alarm-history-timeline-label">@entry.Label</span>
+                                                <strong>@entry.Time.ToString("HH:mm:ss")</strong>
+                                                <span class="alarm-history-timeline-date">@entry.Time.ToString("dd.MM.yyyy")</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="alarm-history-details-footer">
+                            <span class="alarm-history-details-footer-item" title="Ack user" aria-label="@($"Ack user: {FormatAlarmText(alarm.AckUserName)}")">
+                                <RadzenIcon Icon="person" />
+                                <span>@FormatAlarmText(alarm.AckUserName)</span>
+                            </span>
+
+                            <span class="alarm-history-details-footer-item" title="Client address desc" aria-label="@($"Client address desc: {FormatAlarmText(alarm.ClientAddressDesc)}")">
+                                <RadzenIcon Icon="computer" />
+                                <span>@FormatAlarmText(alarm.ClientAddressDesc)</span>
+                            </span>
+                        </div>
                     }
                     else
                     {

@@ -81,6 +81,8 @@
 }
 
 .alarm-history-details {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
 }
 
@@ -89,9 +91,26 @@
     }
 
 .alarm-history-details-tag {
-    margin-bottom: 16px;
-    font-weight: 600;
-    overflow-wrap: anywhere;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin-bottom: 12px;
+}
+
+    .alarm-history-details-tag strong {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        font-weight: 600;
+    }
+
+.alarm-history-details-center {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 0;
+    padding: 12px 0;
 }
 
 .alarm-history-details-duration {
@@ -124,7 +143,7 @@
 
     .alarm-history-timeline-segment.is-waiting {
         height: 2px;
-        background: repeating-linear-gradient( 90deg, var(--rz-text-secondary-color) 0 7px, transparent 7px 13px );
+        background: repeating-linear-gradient(90deg, var(--rz-text-secondary-color) 0 7px, transparent 7px 13px);
     }
 
 .alarm-history-timeline-events {
@@ -181,28 +200,26 @@
     font-weight: 600;
 }
 
-.alarm-history-timeline-note {
-    margin: 14px 0 20px;
-    color: var(--rz-text-secondary-color);
-    font-size: 0.8rem;
+.alarm-history-details-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rz-base-300);
 }
 
-.alarm-history-details-fields {
-    display: grid;
-    grid-template-columns: 125px minmax(0, 1fr);
-    gap: 10px 12px;
-    margin: 0;
-}
-
-.alarm-history-details-fields dt {
-    color: var(--rz-text-secondary-color);
-}
-
-.alarm-history-details-fields dd {
+.alarm-history-details-footer-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
-    margin: 0;
-    overflow-wrap: anywhere;
 }
+
+    .alarm-history-details-footer-item span {
+        overflow-wrap: anywhere;
+    }
 
 .alarm-history-details-empty {
     color: var(--rz-text-secondary-color);

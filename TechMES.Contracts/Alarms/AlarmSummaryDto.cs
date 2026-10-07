@@ -7,6 +7,7 @@
 public sealed class AlarmSummaryDto
 {
     public string RecordId { get; init; } = "";
+    public int? Id { get; init; }
     public string Tag { get; init; } = "";
     public string Description { get; init; } = "";
     public string StateDesc { get; init; } = "";
