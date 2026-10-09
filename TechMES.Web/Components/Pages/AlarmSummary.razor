@@ -8,19 +8,14 @@
 <div class="active-alarms-page">
 
     <div class="active-alarms-toolbar">
-        <div class="active-alarms-toolbar-left">
 
+        <div class="active-alarms-toolbar-left">
             <RadzenSelectBar TValue="string" Value="@("history")" ValueChanged="@OnAlarmViewChanged" AriaLabel="Alarm view">
                 <Items>
                     <RadzenSelectBarItem Text=" Active alarms" Value="@("active")" Icon="notifications_active" />
                     <RadzenSelectBarItem Text=" Alarm history" Value="@("history")" Icon="history" />
                 </Items>
             </RadzenSelectBar>
-
-            <RadzenDateRangePicker Value="@_selectedRange" ValueChanged="@OnRangeChanged"
-                                   NavigationMode="DatePickerNavigationMode.DrillDown"
-                                   DisplayMonths="2" AllowClear="false" DateFormat="dd.MM.yyyy"
-                                   Style="width: 290px;" />
         </div>
 
         <h2 class="active-alarms-toolbar-title">Alarm history</h2>
@@ -61,27 +56,41 @@
         <div class="active-alarms-chart-shell">
             <div class="active-alarms-charts">
                 <div class="active-alarms-column-chart">
-                    <h4>Alarm history by station: @(_selectedStation ?? "All")</h4>
+                    <div class="alarm-history-chart-header">
+                        <h4>Alarm history by station: @(_selectedStation ?? "All")</h4>
 
-                    <RadzenChart Style="height: 320px; width: 100%;" SeriesClick="@OnStationClickAsync">
-                        <RadzenColumnSeries Data="@_stationCounts" CategoryProperty="Station" ValueProperty="Height"
-                                            Title="Alarms" Fills="@StationColumnFills">
-                            <ChildContent>
-                                @foreach (var station in _stationCounts)
-                                {
-                                    <RadzenSeriesAnnotation Data="@station" Text="@station.Count.ToString()" Fill="var(--rz-text-color)" OffsetY="-12" />
-                                }
-                            </ChildContent>
+                        <RadzenDateRangePicker Value="@_selectedRange" ValueChanged="@OnRangeChanged"
+                                               NavigationMode="DatePickerNavigationMode.DrillDown"
+                                               DisplayMonths="2" AllowClear="false" DateFormat="dd.MM.yyyy"
+                                               Style="width: 290px; max-width: 100%;" />
+                    </div>
 
-                            <TooltipTemplate Context="station">
-                                <div>@station.Station — Alarms: @station.Count</div>
-                            </TooltipTemplate>
-                        </RadzenColumnSeries>
+                    @if (_stationCounts.Count > 0)
+                    {
+                        <RadzenChart Style="height: 320px; width: 100%;" SeriesClick="@OnStationClickAsync">
+                            <RadzenColumnSeries Data="@_stationCounts" CategoryProperty="Station" ValueProperty="Height"
+                                                Title="Alarms" Fills="@StationColumnFills">
+                                <ChildContent>
+                                    @foreach (var station in _stationCounts)
+                                    {
+                                        <RadzenSeriesAnnotation Data="@station" Text="@station.Count.ToString()" Fill="var(--rz-text-color)" OffsetY="-12" />
+                                    }
+                                </ChildContent>
 
-                        <RadzenCategoryAxis />
-                        <RadzenValueAxis Min="0" FormatString="{0:0}" />
-                        <RadzenLegend Visible="false" />
-                    </RadzenChart>
+                                <TooltipTemplate Context="station">
+                                    <div>@station.Station — Alarms: @station.Count</div>
+                                </TooltipTemplate>
+                            </RadzenColumnSeries>
+
+                            <RadzenCategoryAxis />
+                            <RadzenValueAxis Min="0" FormatString="{0:0}" />
+                            <RadzenLegend Visible="false" />
+                        </RadzenChart>
+                    }
+                    else
+                    {
+                        <div class="alarm-history-chart-empty">No alarms in the selected period.</div>
+                    }
                 </div>
 
                 <div class="alarm-history-details">
@@ -155,7 +164,6 @@
                         <div class="alarm-history-details-empty">Select an alarm in the table.</div>
                     }
                 </div>
-
             </div>
         </div>
     }

@@ -74,6 +74,27 @@
     gap: 16px;
 }
 
+.alarm-history-chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 12px 0 16px;
+    min-width: 0;
+}
+
+    .alarm-history-chart-header h4 {
+        margin: 0;
+    }
+
+.alarm-history-chart-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 320px;
+    color: var(--rz-text-secondary-color);
+}
+
 .active-alarms-column-chart,
 .alarm-history-details {
     padding-left: 16px;
