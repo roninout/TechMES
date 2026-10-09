@@ -86,9 +86,26 @@
     min-width: 0;
 }
 
-    .alarm-history-details h4 {
-        margin-top: 0;
-    }
+.alarm-history-details-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 88px;
+}
+
+.alarm-history-details-header h4 {
+    margin: 0;
+}
+
+.alarm-history-details-refresh {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    white-space: nowrap;
+    color: var(--rz-text-secondary-color);
+}
 
 .alarm-history-details-tag {
     display: flex;
