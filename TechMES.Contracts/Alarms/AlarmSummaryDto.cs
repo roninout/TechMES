@@ -24,6 +24,7 @@ public sealed class AlarmSummaryDto
 
 /// <summary>
 /// Снимок истории за выбранный диапазон. Если NotModified=true, WEB оставляет у себя ранее полученный список.
+/// RefreshPeriodSeconds передаёт WEB интервал ODBC-опроса, заданный в Maintenance.
 /// </summary>
 public sealed class AlarmSummaryResponse
 {
@@ -34,4 +35,5 @@ public sealed class AlarmSummaryResponse
     public long Version { get; init; }
     public bool NotModified { get; init; }
     public long? ReadDurationMs { get; init; }
+    public int RefreshPeriodSeconds { get; init; } = 30;
 }

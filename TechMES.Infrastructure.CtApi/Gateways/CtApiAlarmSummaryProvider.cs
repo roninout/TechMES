@@ -35,22 +35,28 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
     private readonly ILogger<CtApiAlarmSummaryProvider> _logger;
     private readonly string? _connectionString;
     private readonly int _requestTimeoutSeconds;
+    private readonly int _refreshPeriodSeconds;
 
     /// <summary>
     /// Использует настройки ODBC, редактируемые в Maintenance.
+    /// История и активные аварии получают интервал из одного параметра Runtime.
     /// </summary>
     public CtApiAlarmSummaryProvider(IConfiguration configuration, ILogger<CtApiAlarmSummaryProvider> logger)
     {
         _logger = logger;
         _connectionString = configuration["CtApi:AlarmOdbcConnectionString"];
-        _requestTimeoutSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRequestTimeoutSeconds"], out var seconds) && seconds > 0
-            ? seconds
+        _requestTimeoutSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRequestTimeoutSeconds"], out var timeoutSeconds) && timeoutSeconds > 0
+            ? timeoutSeconds
             : 120;
+        _refreshPeriodSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRefreshPeriodSeconds"], out var refreshSeconds) && refreshSeconds > 0
+            ? refreshSeconds
+            : 30;
     }
 
     /// <summary>
     /// Немедленно возвращает последний завершённый снимок и при необходимости
     /// запускает одно фоновое чтение выбранного диапазона.
+    /// Вместе со снимком передаёт WEB настроенный интервал автообновления.
     /// </summary>
     public Task<AlarmSummaryResponse> GetAsync(DateOnly from, DateOnly to, bool forceRefresh = false, long knownVersion = 0, CancellationToken ct = default)
     {
@@ -107,7 +113,8 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
                 RefreshError = state.Error,
                 Version = state.Version,
                 NotModified = notModified,
-                ReadDurationMs = state.ReadDurationMs
+                ReadDurationMs = state.ReadDurationMs,
+                RefreshPeriodSeconds = _refreshPeriodSeconds
             });
         }
     }

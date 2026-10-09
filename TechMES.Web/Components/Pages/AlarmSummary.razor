@@ -45,8 +45,11 @@
                 <span class="active-alarms-status">Read: @_readDurationMs ms</span>
             }
 
+            <RadzenLabel Text="Auto refresh" Component="historyAutoRefresh" class="active-alarms-status" />
+            <RadzenSwitch Name="historyAutoRefresh" Value="@_autoRefresh" Change="@OnAutoRefreshChanged" />
             <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_httpLoading" Click="@RefreshAsync" />
         </div>
+
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -241,6 +244,11 @@
     private bool _httpLoading;
     private bool _isRefreshing;
 
+    // Switch выключен при открытии страницы. Интервал приходит из Runtime.
+    private bool _autoRefresh;
+    private int _refreshPeriodSeconds = 30;
+    private DateTimeOffset? _nextAutoRefreshAtUtc;
+
     /// <summary>
     /// All оставляет нейтральный цвет; станции истории используют основной цвет темы.
     /// </summary>
@@ -325,8 +333,21 @@
     }
 
     /// <summary>
+    /// Включает или останавливает автоматическое чтение выбранного диапазона.
+    /// Первое повторное чтение планируется через настроенный интервал.
+    /// </summary>
+    private void OnAutoRefreshChanged(bool value)
+    {
+        _autoRefresh = value;
+        _nextAutoRefreshAtUtc = value
+            ? DateTimeOffset.UtcNow.AddSeconds(_refreshPeriodSeconds)
+            : null;
+    }
+
+    /// <summary>
     /// Получает снимок выбранного диапазона и сохраняет выделение той же записи
     /// по RecordId, когда Runtime присылает обновлённые объекты DTO.
+    /// После завершения чтения планирует следующий цикл автообновления.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -344,7 +365,11 @@
             if (from != _from || to != _to)
                 return;
 
-            if (!result.NotModified && result.LoadedAtUtc is not null)
+            _refreshPeriodSeconds = result.RefreshPeriodSeconds > 0 ? result.RefreshPeriodSeconds : 30;
+            var wasRefreshing = _isRefreshing;
+            var snapshotUpdated = !result.NotModified && result.LoadedAtUtc is not null;
+
+            if (snapshotUpdated)
             {
                 var selectedRecordId = SelectedAlarm?.RecordId;
 
@@ -379,6 +404,11 @@
 
             _isRefreshing = result.IsRefreshing;
             _error = result.RefreshError ?? "";
+
+            // Интервал, как на странице активных аварий, отсчитывается
+            // после завершения чтения, а не от начала ODBC-запроса.
+            if (_autoRefresh && !_isRefreshing && (wasRefreshing || snapshotUpdated))
+                _nextAutoRefreshAtUtc = DateTimeOffset.UtcNow.AddSeconds(_refreshPeriodSeconds);
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)
         {
@@ -657,7 +687,9 @@
     }
 
     /// <summary>
-    /// Пока страница открыта, проверяет завершение ODBC-чтения каждые три секунды.
+    /// Во время чтения проверяет его завершение каждые три секунды.
+    /// При включённом Switch запускает новое чтение через интервал,
+    /// полученный из той же настройки Runtime, что и для активных аварий.
     /// </summary>
     private async Task PollAsync()
     {
@@ -667,9 +699,28 @@
 
             while (await timer.WaitForNextTickAsync(_stop.Token))
             {
+                // С выключенным Switch и готовым снимком запросы Runtime не нужны.
+                // Незавершённое чтение продолжаем отслеживать до его окончания.
+                if (!_autoRefresh && !_isRefreshing && _loadedAt is not null)
+                    continue;
+
                 await InvokeAsync(async () =>
                 {
-                    await LoadAsync(false);
+                    var now = DateTimeOffset.UtcNow;
+
+                    if (_autoRefresh && _nextAutoRefreshAtUtc is { } nextRefreshAt
+                        && now >= nextRefreshAt && !_isRefreshing && !_httpLoading)
+                    {
+                        // Резервный срок защищает от повторных запросов, если
+                        // Runtime или ODBC ответит ошибкой до начала чтения.
+                        _nextAutoRefreshAtUtc = now.AddSeconds(_refreshPeriodSeconds);
+                        await LoadAsync(true);
+                    }
+                    else
+                    {
+                        await LoadAsync(false);
+                    }
+
                     StateHasChanged();
                 });
             }
