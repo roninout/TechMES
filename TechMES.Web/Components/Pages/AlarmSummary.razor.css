@@ -452,8 +452,8 @@
         flex: none;
     }
 
-/* На планшете список скрывается, а таблица занимает всю доступную ширину. */
-@media (max-width: 1366px) {
+/* Скрываем список на сенсорном устройстве или в узком окне. Таблица занимает всю ширину области истории. */
+@media (max-width: 1366px), (any-pointer: coarse) {
     .alarm-history-content {
         grid-template-columns: minmax(0, 1fr);
     }
