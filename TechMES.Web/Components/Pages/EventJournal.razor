@@ -11,7 +11,21 @@
             <RadzenDateRangePicker Value="@_selectedRange" ValueChanged="@OnRangeChanged"
                                    NavigationMode="DatePickerNavigationMode.DrillDown"
                                    DisplayMonths="2" AllowClear="false" DateFormat="dd.MM.yyyy"
-                                   Style="width: 290px; max-width: 100%;" />
+                                   Style="width: 290px; flex: none;" />
+
+            <div class="event-journal-categories">
+                <RadzenSelectBar TValue="string" Value="@_selectedCategory" ValueChanged="@OnCategoryChanged"
+                                 AriaLabel="Event category" Size="ButtonSize.Small">
+                    <Items>
+                        <RadzenSelectBarItem Text="All" Value="@AllCategories" />
+
+                        @foreach (var category in _categories)
+                        {
+                            <RadzenSelectBarItem @key="category" Text="@category" Value="@category" />
+                        }
+                    </Items>
+                </RadzenSelectBar>
+            </div>
         </div>
 
         <h2 class="event-journal-title">Event Journal</h2>
@@ -47,7 +61,7 @@
     }
 
     <div class="event-journal-table">
-        <RadzenDataGrid Data="@_items" TItem="EventJournalDto" AllowFiltering="true"
+        <RadzenDataGrid @ref="_grid" Data="@_items" TItem="EventJournalDto" AllowFiltering="true"
                         AllowSorting="true" AllowPaging="true" PageSize="30" Density="Density.Compact"
                         class="event-journal-grid">
             <Columns>
@@ -64,6 +78,7 @@
                     </Template>
                 </RadzenDataGridColumn>
 
+                <RadzenDataGridColumn TItem="EventJournalDto" Property="CustomStringField" Title="CustomStringField" Width="220px" />
                 <RadzenDataGridColumn TItem="EventJournalDto" Property="Category" Title="Category" Width="150px" />
                 <RadzenDataGridColumn TItem="EventJournalDto" Property="ClientAddressDesc" Title="Client address" Width="180px" />
                 <RadzenDataGridColumn TItem="EventJournalDto" Property="User" Title="User" Width="160px" />
@@ -75,11 +90,17 @@
 </div>
 
 @code {
+    private const string AllCategories = "__TECHMES_ALL_EVENT_CATEGORIES__";
+
     private readonly CancellationTokenSource _stop = new();
-    private List<EventJournalDto> _items = [];
+    private List<EventJournalDto> _allItems = [];
+    private IReadOnlyList<EventJournalDto> _items = [];
+    private List<string> _categories = [];
+    private string _selectedCategory = AllCategories;
     private DateRange _selectedRange = new(DateTime.Today.AddDays(-1), DateTime.Today);
     private DateOnly _from = DateOnly.FromDateTime(DateTime.Today.AddDays(-1));
     private DateOnly _to = DateOnly.FromDateTime(DateTime.Today);
+    private RadzenDataGrid<EventJournalDto>? _grid;
     private Task? _pollTask;
     private DateTimeOffset? _loadedAt;
     private long? _readDurationMs;
@@ -99,6 +120,7 @@
 
     /// <summary>
     /// Сохраняет первый клик DateRangePicker, а новый запрос запускает после выбора второй даты.
+    /// Новый период начинает с категории All.
     /// </summary>
     private async Task OnRangeChanged(DateRange value)
     {
@@ -123,10 +145,65 @@
         _readDurationMs = null;
         _error = "";
         _isRefreshing = true;
-        _items = [];
+        _selectedCategory = AllCategories;
+        _allItems = [];
+        _items = _allItems;
+        _categories = [];
 
-        // Если прежний HTTP-запрос ещё идёт, следующий проход PollAsync прочитает новый диапазон.
+        if (_grid is not null)
+            await _grid.FirstPage(true);
+
+        // Если HTTP-запрос прежнего диапазона ещё идёт, PollAsync прочитает новый диапазон.
         await LoadAsync(false);
+    }
+
+    /// <summary>
+    /// Применяет выбранную категорию к уже загруженным событиям.
+    /// Запрос к Runtime при переключении SelectBar не выполняется.
+    /// </summary>
+    private async Task OnCategoryChanged(string value)
+    {
+        var selected = string.IsNullOrEmpty(value) ? AllCategories : value;
+
+        if (string.Equals(selected, _selectedCategory, StringComparison.Ordinal))
+            return;
+
+        _selectedCategory = selected;
+        ApplyCategoryFilter();
+
+        if (_grid is not null)
+            await _grid.FirstPage(true);
+    }
+
+    /// <summary>
+    /// Строит кнопки SelectBar из уникальных непустых категорий всего загруженного периода.
+    /// Порядок кнопок остаётся стабильным при повторной загрузке.
+    /// </summary>
+    private void RebuildCategories()
+    {
+        _categories = _allItems
+            .Select(entry => entry.Category?.Trim() ?? "")
+            .Where(category => category.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(category => category, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (_selectedCategory != AllCategories)
+        {
+            var existing = _categories.FirstOrDefault(category => string.Equals(category, _selectedCategory, StringComparison.OrdinalIgnoreCase));
+            _selectedCategory = existing ?? AllCategories;
+        }
+    }
+
+    /// <summary>
+    /// Отображает все записи или записи одной категории без изменения полного снимка.
+    /// Остальные фильтры и сортировка RadzenDataGrid остаются в таблице.
+    /// </summary>
+    private void ApplyCategoryFilter()
+    {
+        _items = _selectedCategory == AllCategories
+            ? _allItems
+            : _allItems.Where(entry => string.Equals(entry.Category?.Trim(), _selectedCategory, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
     /// <summary>
@@ -138,8 +215,8 @@
     }
 
     /// <summary>
-    /// Получает снимок. Во время фонового чтения сохраняет прежние строки,
-    /// а после изменения версии заменяет таблицу целиком.
+    /// Получает снимок. После изменения версии пересчитывает категории и видимые строки.
+    /// При Refresh сохраняет выбранную категорию, пока она есть в новых данных.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -158,7 +235,16 @@
                 return;
 
             if (!response.NotModified && response.LoadedAtUtc is not null)
-                _items = response.Items.ToList();
+            {
+                var previousCategory = _selectedCategory;
+                _allItems = response.Items.ToList();
+
+                RebuildCategories();
+                ApplyCategoryFilter();
+
+                if (previousCategory != _selectedCategory && _grid is not null)
+                    await _grid.FirstPage(true);
+            }
 
             _version = response.Version;
             _loadedAt = response.LoadedAtUtc;
@@ -189,7 +275,7 @@
 
     /// <summary>
     /// Пока Runtime читает ODBC, запрашивает состояние каждые две секунды.
-    /// После закрытия страницы или окончания чтения лишних HTTP-запросов нет.
+    /// После окончания чтения лишних HTTP-запросов нет.
     /// </summary>
     private async Task PollAsync()
     {

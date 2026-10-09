@@ -182,10 +182,10 @@ public sealed class CtApiEventJournalProvider : IEventJournalProvider
 
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT "Time", Message, Category, ClientAddressDesc, "User", Id, AlarmStateDesc
-            FROM CDBEventJournal
-            WHERE "Time" >= ? AND "Time" < ?
-            """;
+        SELECT "Time", Message, CustomStringField, Category, ClientAddressDesc, "User", Id, AlarmStateDesc
+        FROM CDBEventJournal
+        WHERE "Time" >= ? AND "Time" < ?
+        """;
         command.CommandTimeout = _requestTimeoutSeconds;
         command.Parameters.Add("fromUtc", OdbcType.DateTime).Value = utcStart;
         command.Parameters.Add("toUtc", OdbcType.DateTime).Value = utcEnd;
@@ -200,11 +200,12 @@ public sealed class CtApiEventJournalProvider : IEventJournalProvider
             {
                 Date = ReadLocalTimestamp(reader, 0),
                 Description = ReadText(reader, 1),
-                Category = ReadText(reader, 2),
-                ClientAddressDesc = ReadText(reader, 3),
-                User = ReadText(reader, 4),
-                Id = reader.IsDBNull(5) ? null : Convert.ToInt32(reader.GetValue(5), CultureInfo.InvariantCulture),
-                AlarmStateDesc = ReadText(reader, 6)
+                CustomStringField = ReadText(reader, 2),
+                Category = ReadText(reader, 3),
+                ClientAddressDesc = ReadText(reader, 4),
+                User = ReadText(reader, 5),
+                Id = reader.IsDBNull(6) ? null : Convert.ToInt32(reader.GetValue(6), CultureInfo.InvariantCulture),
+                AlarmStateDesc = ReadText(reader, 7)
             });
         }
 

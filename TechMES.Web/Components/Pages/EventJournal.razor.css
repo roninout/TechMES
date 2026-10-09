@@ -9,23 +9,39 @@
 .event-journal-toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-areas:
+        ". title status"
+        "filters filters filters";
     align-items: center;
-    gap: 16px;
+    gap: 12px 16px;
 }
 
-.event-journal-toolbar-left,
-.event-journal-toolbar-right {
+.event-journal-toolbar-left {
+    grid-area: filters;
     display: flex;
     align-items: center;
     gap: 12px;
     min-width: 0;
 }
 
+.event-journal-categories {
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+}
+
 .event-journal-toolbar-right {
+    grid-area: status;
+    display: flex;
+    align-items: center;
     justify-content: flex-end;
+    gap: 12px;
+    min-width: 0;
 }
 
 .event-journal-title {
+    grid-area: title;
     margin: 0;
     font-size: 1.75rem;
     font-weight: 600;
@@ -70,14 +86,22 @@
 @media (max-width: 1100px) {
     .event-journal-toolbar {
         grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "title"
+            "status"
+            "filters";
     }
 
-    .event-journal-title {
-        grid-row: 1;
-    }
-
-    .event-journal-toolbar-left,
     .event-journal-toolbar-right {
+        justify-content: flex-start;
         flex-wrap: wrap;
+    }
+
+    .event-journal-toolbar-left {
+        flex-wrap: wrap;
+    }
+
+    .event-journal-categories {
+        width: 100%;
     }
 }
