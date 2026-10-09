@@ -164,7 +164,7 @@
 
 .alarm-history-details-duration {
     margin-bottom: 12px;
-    color: var(--alarm-details-accent);
+    color: var(--rz-primary-darker);
     font-weight: 600;
 }
 
@@ -187,7 +187,7 @@
 
     .alarm-history-timeline-segment.is-active {
         height: 7px;
-        background-color: var(--alarm-details-accent);
+        background-color: var(--rz-primary-darker);
     }
 
     .alarm-history-timeline-segment.is-waiting {
@@ -231,11 +231,11 @@
     height: 12px;
     flex: none;
     border-radius: 50%;
-    background-color: var(--alarm-details-accent);
+    background-color: var(--rz-primary-darker);
     margin-bottom: 12px;
 }
 
-    /* Квитирование остаётся отдельным событием с нейтральной точкой. */
+    /* Точка Ack остаётся серой, чтобы отличаться от начала и конца аварии. */
     .alarm-history-timeline-point.is-ack {
         background-color: var(--rz-text-secondary-color);
     }
