@@ -104,10 +104,17 @@
 }
 
 .alarm-history-details {
+    /* Обычные станции истории имеют этот цвет в колонковой диаграмме. */
+    --alarm-details-accent: var(--rz-primary-darker);
     display: flex;
     flex-direction: column;
     min-width: 0;
 }
+
+    /* При выборе станции её колонка и шкала Alarm details становятся зелёными. */
+    .alarm-history-details.is-station-selected {
+        --alarm-details-accent: var(--rz-success-darker);
+    }
 
 .alarm-history-details-header {
     display: flex;
@@ -157,7 +164,7 @@
 
 .alarm-history-details-duration {
     margin-bottom: 12px;
-    color: var(--rz-info);
+    color: var(--alarm-details-accent);
     font-weight: 600;
 }
 
@@ -180,7 +187,7 @@
 
     .alarm-history-timeline-segment.is-active {
         height: 7px;
-        background-color: var(--rz-info);
+        background-color: var(--alarm-details-accent);
     }
 
     .alarm-history-timeline-segment.is-waiting {
@@ -224,10 +231,11 @@
     height: 12px;
     flex: none;
     border-radius: 50%;
-    background-color: var(--rz-info);
+    background-color: var(--alarm-details-accent);
     margin-bottom: 12px;
 }
 
+    /* Квитирование остаётся отдельным событием с нейтральной точкой. */
     .alarm-history-timeline-point.is-ack {
         background-color: var(--rz-text-secondary-color);
     }
