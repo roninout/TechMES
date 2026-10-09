@@ -162,8 +162,8 @@ public sealed class CtApiEventJournalProvider : IEventJournalProvider
     }
 
     /// <summary>
-    /// Читает события между локальной полуночью From и началом дня после To.
-    /// Границы переводятся в UTC, как в действующем провайдере истории аварий.
+    /// Читает за выбранный период только Interface Event, System и Archiving.
+    /// Границы локальных дат переводит в UTC, как в истории аварий.
     /// </summary>
     private async Task<(List<EventJournalDto> Items, long DurationMs)> ReadRangeAsync(RangeKey key, CancellationToken ct)
     {
@@ -185,6 +185,7 @@ public sealed class CtApiEventJournalProvider : IEventJournalProvider
         SELECT "Time", Message, CustomStringField, Source, Category, ClientAddressDesc, "User", Id, AlarmStateDesc
         FROM CDBEventJournal
         WHERE "Time" >= ? AND "Time" < ?
+          AND Category IN ('Interface Event', 'System', 'Archiving')
         """;
         command.CommandTimeout = _requestTimeoutSeconds;
         command.Parameters.Add("fromUtc", OdbcType.DateTime).Value = utcStart;

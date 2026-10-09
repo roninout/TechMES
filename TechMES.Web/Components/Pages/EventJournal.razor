@@ -17,12 +17,9 @@
                 <RadzenSelectBar TValue="string" Value="@_selectedCategory" ValueChanged="@OnCategoryChanged"
                                  AriaLabel="Event category" Size="ButtonSize.Small">
                     <Items>
-                        <RadzenSelectBarItem Text="All" Value="@AllCategories" />
-
-                        @foreach (var category in _categories)
-                        {
-                            <RadzenSelectBarItem @key="category" Text="@category" Value="@category" />
-                        }
+                        <RadzenSelectBarItem Text="Interface Event" Value="@InterfaceEventCategory" Icon="touch_app" />
+                        <RadzenSelectBarItem Text="System" Value="@SystemCategory" Icon="settings" />
+                        <RadzenSelectBarItem Text="Archiving" Value="@ArchivingCategory" Icon="archive" />
                     </Items>
                 </RadzenSelectBar>
             </div>
@@ -72,33 +69,29 @@
                     </Template>
                 </RadzenDataGridColumn>
 
-                <RadzenDataGridColumn TItem="EventJournalDto" Property="Description" Title="Description" Width="420px">
+                <RadzenDataGridColumn TItem="EventJournalDto" Property="Description" Title="Description" Width="640px">
                     <Template Context="entry">
                         <span class="event-journal-description" title="@entry.Description">@entry.Description</span>
                     </Template>
                 </RadzenDataGridColumn>
 
                 <RadzenDataGridColumn TItem="EventJournalDto" Property="Source" Title="Source" Width="320px" />
-                <RadzenDataGridColumn TItem="EventJournalDto" Property="CustomStringField" Title="CustomStringField" Width="220px" />
-                <RadzenDataGridColumn TItem="EventJournalDto" Property="Category" Title="Category" Width="150px" />
                 <RadzenDataGridColumn TItem="EventJournalDto" Property="ClientAddressDesc" Title="Client address" Width="180px" />
                 <RadzenDataGridColumn TItem="EventJournalDto" Property="User" Title="User" Width="160px" />
-                <RadzenDataGridColumn TItem="EventJournalDto" Property="Id" Title="Id" Width="110px" />
-                <RadzenDataGridColumn TItem="EventJournalDto" Property="AlarmStateDesc" Title="Alarm state" Width="180px" />
             </Columns>
-
         </RadzenDataGrid>
     </div>
 </div>
 
 @code {
-    private const string AllCategories = "__TECHMES_ALL_EVENT_CATEGORIES__";
+    private const string InterfaceEventCategory = "Interface Event";
+    private const string SystemCategory = "System";
+    private const string ArchivingCategory = "Archiving";
 
     private readonly CancellationTokenSource _stop = new();
     private List<EventJournalDto> _allItems = [];
     private IReadOnlyList<EventJournalDto> _items = [];
-    private List<string> _categories = [];
-    private string _selectedCategory = AllCategories;
+    private string _selectedCategory = InterfaceEventCategory;
     private DateRange _selectedRange = new(DateTime.Today.AddDays(-1), DateTime.Today);
     private DateOnly _from = DateOnly.FromDateTime(DateTime.Today.AddDays(-1));
     private DateOnly _to = DateOnly.FromDateTime(DateTime.Today);
@@ -122,7 +115,7 @@
 
     /// <summary>
     /// Сохраняет первый клик DateRangePicker, а новый запрос запускает после выбора второй даты.
-    /// Новый период начинает с категории All.
+    /// Новый период начинает с категории Interface Event.
     /// </summary>
     private async Task OnRangeChanged(DateRange value)
     {
@@ -147,10 +140,9 @@
         _readDurationMs = null;
         _error = "";
         _isRefreshing = true;
-        _selectedCategory = AllCategories;
+        _selectedCategory = InterfaceEventCategory;
         _allItems = [];
         _items = _allItems;
-        _categories = [];
 
         if (_grid is not null)
             await _grid.FirstPage(true);
@@ -160,17 +152,17 @@
     }
 
     /// <summary>
-    /// Применяет выбранную категорию к уже загруженным событиям.
-    /// Запрос к Runtime при переключении SelectBar не выполняется.
+    /// Переключает видимую категорию без повторного обращения к ODBC.
     /// </summary>
     private async Task OnCategoryChanged(string value)
     {
-        var selected = string.IsNullOrEmpty(value) ? AllCategories : value;
-
-        if (string.Equals(selected, _selectedCategory, StringComparison.Ordinal))
+        if (value != InterfaceEventCategory && value != SystemCategory && value != ArchivingCategory)
             return;
 
-        _selectedCategory = selected;
+        if (string.Equals(value, _selectedCategory, StringComparison.Ordinal))
+            return;
+
+        _selectedCategory = value;
         ApplyCategoryFilter();
 
         if (_grid is not null)
@@ -178,34 +170,14 @@
     }
 
     /// <summary>
-    /// Строит кнопки SelectBar из уникальных непустых категорий всего загруженного периода.
-    /// Порядок кнопок остаётся стабильным при повторной загрузке.
-    /// </summary>
-    private void RebuildCategories()
-    {
-        _categories = _allItems
-            .Select(entry => entry.Category?.Trim() ?? "")
-            .Where(category => category.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(category => category, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (_selectedCategory != AllCategories)
-        {
-            var existing = _categories.FirstOrDefault(category => string.Equals(category, _selectedCategory, StringComparison.OrdinalIgnoreCase));
-            _selectedCategory = existing ?? AllCategories;
-        }
-    }
-
-    /// <summary>
-    /// Отображает все записи или записи одной категории без изменения полного снимка.
-    /// Остальные фильтры и сортировка RadzenDataGrid остаются в таблице.
+    /// Показывает только события выбранной категории. Полный снимок остаётся доступным
+    /// для следующих переключений SelectBar.
     /// </summary>
     private void ApplyCategoryFilter()
     {
-        _items = _selectedCategory == AllCategories
-            ? _allItems
-            : _allItems.Where(entry => string.Equals(entry.Category?.Trim(), _selectedCategory, StringComparison.OrdinalIgnoreCase)).ToList();
+        _items = _allItems
+            .Where(entry => string.Equals(entry.Category?.Trim(), _selectedCategory, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     /// <summary>
@@ -217,8 +189,8 @@
     }
 
     /// <summary>
-    /// Получает снимок. После изменения версии пересчитывает категории и видимые строки.
-    /// При Refresh сохраняет выбранную категорию, пока она есть в новых данных.
+    /// Получает снимок и после изменения версии повторно применяет выбранную категорию.
+    /// Выбор категории сохраняется при Refresh.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -238,14 +210,8 @@
 
             if (!response.NotModified && response.LoadedAtUtc is not null)
             {
-                var previousCategory = _selectedCategory;
                 _allItems = response.Items.ToList();
-
-                RebuildCategories();
                 ApplyCategoryFilter();
-
-                if (previousCategory != _selectedCategory && _grid is not null)
-                    await _grid.FirstPage(true);
             }
 
             _version = response.Version;
