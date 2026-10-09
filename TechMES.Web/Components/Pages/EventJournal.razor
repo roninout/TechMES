@@ -1,5 +1,6 @@
 ﻿@page "/events"
 @using TechMES.Contracts.Events
+@using TechMES.Web.Components.Pages
 @implements IAsyncDisposable
 @inject EventJournalApiClient JournalApi
 
@@ -17,7 +18,7 @@
                 <RadzenSelectBar TValue="string" Value="@_selectedCategory" ValueChanged="@OnCategoryChanged"
                                  AriaLabel="Event category" Size="ButtonSize.Small">
                     <Items>
-                        <RadzenSelectBarItem Text="Interface Event" Value="@InterfaceEventCategory" Icon="touch_app" />
+                        <RadzenSelectBarItem Text="Operation actions" Value="@InterfaceEventCategory" Icon="touch_app" />
                         <RadzenSelectBarItem Text="System" Value="@SystemCategory" Icon="settings" />
                         <RadzenSelectBarItem Text="Archiving" Value="@ArchivingCategory" Icon="archive" />
                     </Items>
@@ -35,7 +36,7 @@
                 </span>
             }
 
-            <RadzenBadge Text="@($"Count: {_items.Count}")" BadgeStyle="BadgeStyle.Light" />
+            <RadzenBadge Text="@($"Count: {VisibleCount}")" BadgeStyle="BadgeStyle.Light" />
 
             @if (_loadedAt is not null)
             {
@@ -58,28 +59,65 @@
     }
 
     <div class="event-journal-table">
-        <RadzenDataGrid @ref="_grid" Data="@_items" TItem="EventJournalDto" AllowFiltering="true"
-                        AllowSorting="true" AllowPaging="true" PageSize="30" Density="Density.Compact"
-                        class="event-journal-grid">
-            <Columns>
-                <RadzenDataGridColumn TItem="EventJournalDto" Property="Date" Title="Date" Width="180px"
-                                      SortOrder="SortOrder.Descending">
-                    <Template Context="entry">
-                        @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
-                    </Template>
-                </RadzenDataGridColumn>
+        @if (_selectedCategory == InterfaceEventCategory)
+        {
+            <RadzenDataGrid @key="_gridRevision" Data="@_operationItems" TItem="OperationActionRow"
+                            AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="30"
+                            Density="Density.Compact" class="event-journal-grid">
+                <Columns>
+                    <RadzenDataGridColumn TItem="OperationActionRow" Property="Date" Title="Date" Width="180px"
+                                          SortOrder="SortOrder.Descending">
+                        <Template Context="entry">
+                            @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
+                        </Template>
+                    </RadzenDataGridColumn>
 
-                <RadzenDataGridColumn TItem="EventJournalDto" Property="Description" Title="Description" Width="640px">
-                    <Template Context="entry">
-                        <span class="event-journal-description" title="@entry.Description">@entry.Description</span>
-                    </Template>
-                </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="OperationActionRow" Property="User" Title="User" Width="160px" />
+                    <RadzenDataGridColumn TItem="OperationActionRow" Property="Equipment" Title="Equipment" Width="220px" />
+                    <RadzenDataGridColumn TItem="OperationActionRow" Property="Action" Title="Action" Width="180px" />
 
-                <RadzenDataGridColumn TItem="EventJournalDto" Property="Source" Title="Source" Width="320px" />
-                <RadzenDataGridColumn TItem="EventJournalDto" Property="ClientAddressDesc" Title="Client address" Width="180px" />
-                <RadzenDataGridColumn TItem="EventJournalDto" Property="User" Title="User" Width="160px" />
-            </Columns>
-        </RadzenDataGrid>
+                    <RadzenDataGridColumn TItem="OperationActionRow" Property="Description" Title="Description" Width="540px">
+                        <Template Context="entry">
+                            <span class="event-journal-description" title="@entry.Description">@entry.Description</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="OperationActionRow" Property="Old" Title="Old" Width="120px" />
+                    <RadzenDataGridColumn TItem="OperationActionRow" Property="New" Title="New" Width="120px" />
+
+                    <RadzenDataGridColumn TItem="OperationActionRow" Property="ClientAddress" Title="Client address" Width="230px">
+                        <Template Context="entry">
+                            <span title="@entry.ClientAddress">@entry.ClientAddress</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        }
+        else
+        {
+            <RadzenDataGrid @key="_gridRevision" Data="@_eventItems" TItem="EventJournalDto"
+                            AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="30"
+                            Density="Density.Compact" class="event-journal-grid">
+                <Columns>
+                    <RadzenDataGridColumn TItem="EventJournalDto" Property="Date" Title="Date" Width="180px"
+                                          SortOrder="SortOrder.Descending">
+                        <Template Context="entry">
+                            @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="EventJournalDto" Property="Description" Title="Description" Width="640px">
+                        <Template Context="entry">
+                            <span class="event-journal-description" title="@entry.Description">@entry.Description</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="EventJournalDto" Property="Source" Title="Source" Width="320px" />
+                    <RadzenDataGridColumn TItem="EventJournalDto" Property="ClientAddressDesc" Title="Client address" Width="180px" />
+                    <RadzenDataGridColumn TItem="EventJournalDto" Property="User" Title="User" Width="160px" />
+                </Columns>
+            </RadzenDataGrid>
+        }
     </div>
 </div>
 
@@ -90,19 +128,22 @@
 
     private readonly CancellationTokenSource _stop = new();
     private List<EventJournalDto> _allItems = [];
-    private IReadOnlyList<EventJournalDto> _items = [];
+    private IReadOnlyList<EventJournalDto> _eventItems = [];
+    private IReadOnlyList<OperationActionRow> _operationItems = [];
     private string _selectedCategory = InterfaceEventCategory;
     private DateRange _selectedRange = new(DateTime.Today.AddDays(-1), DateTime.Today);
     private DateOnly _from = DateOnly.FromDateTime(DateTime.Today.AddDays(-1));
     private DateOnly _to = DateOnly.FromDateTime(DateTime.Today);
-    private RadzenDataGrid<EventJournalDto>? _grid;
     private Task? _pollTask;
     private DateTimeOffset? _loadedAt;
     private long? _readDurationMs;
     private long _version;
+    private int _gridRevision;
     private string _error = "";
     private bool _httpLoading;
     private bool _isRefreshing;
+
+    private int VisibleCount => _selectedCategory == InterfaceEventCategory ? _operationItems.Count : _eventItems.Count;
 
     /// <summary>
     /// Запрашивает вчерашние и сегодняшние события и наблюдает за окончанием фонового ODBC-чтения.
@@ -115,7 +156,7 @@
 
     /// <summary>
     /// Сохраняет первый клик DateRangePicker, а новый запрос запускает после выбора второй даты.
-    /// Новый период начинает с категории Interface Event.
+    /// Для нового диапазона возвращается к Operation actions и первой странице таблицы.
     /// </summary>
     private async Task OnRangeChanged(DateRange value)
     {
@@ -142,19 +183,19 @@
         _isRefreshing = true;
         _selectedCategory = InterfaceEventCategory;
         _allItems = [];
-        _items = _allItems;
-
-        if (_grid is not null)
-            await _grid.FirstPage(true);
+        _eventItems = [];
+        _operationItems = [];
+        _gridRevision++;
 
         // Если HTTP-запрос прежнего диапазона ещё идёт, PollAsync прочитает новый диапазон.
         await LoadAsync(false);
     }
 
     /// <summary>
-    /// Переключает видимую категорию без повторного обращения к ODBC.
+    /// Переключает категорию на уже полученном снимке. Новый экземпляр таблицы сбрасывает
+    /// страницу и фильтры при выборе другой категории, но не при Refresh данных.
     /// </summary>
-    private async Task OnCategoryChanged(string value)
+    private void OnCategoryChanged(string value)
     {
         if (value != InterfaceEventCategory && value != SystemCategory && value != ArchivingCategory)
             return;
@@ -164,20 +205,29 @@
 
         _selectedCategory = value;
         ApplyCategoryFilter();
-
-        if (_grid is not null)
-            await _grid.FirstPage(true);
+        _gridRevision++;
     }
 
     /// <summary>
-    /// Показывает только события выбранной категории. Полный снимок остаётся доступным
-    /// для следующих переключений SelectBar.
+    /// Для Operation actions создаёт разобранные строки. System и Archiving продолжают
+    /// показывать исходные события без преобразования их полей.
     /// </summary>
     private void ApplyCategoryFilter()
     {
-        _items = _allItems
+        var selectedEvents = _allItems
             .Where(entry => string.Equals(entry.Category?.Trim(), _selectedCategory, StringComparison.OrdinalIgnoreCase))
             .ToList();
+
+        if (_selectedCategory == InterfaceEventCategory)
+        {
+            _operationItems = selectedEvents.Select(OperationActionRow.FromEvent).ToList();
+            _eventItems = [];
+        }
+        else
+        {
+            _eventItems = selectedEvents;
+            _operationItems = [];
+        }
     }
 
     /// <summary>
@@ -189,8 +239,8 @@
     }
 
     /// <summary>
-    /// Получает снимок и после изменения версии повторно применяет выбранную категорию.
-    /// Выбор категории сохраняется при Refresh.
+    /// Получает снимок и повторно применяет выбранную категорию при изменении версии.
+    /// Refresh обновляет строки текущей таблицы, сохраняя её фильтры и сортировку.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
