@@ -79,13 +79,15 @@
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    margin: 12px 0 16px;
+    min-height: 32px;
+    margin: 0 0 16px;
     min-width: 0;
 }
 
-    .alarm-history-chart-header h4 {
-        margin: 0;
-    }
+.alarm-history-chart-header h4 {
+    margin: 0;
+    line-height: 32px;
+}
 
 .alarm-history-chart-empty {
     display: flex;
@@ -115,14 +117,16 @@
     min-height: 88px;
 }
 
-.alarm-history-details-header h4 {
-    margin: 0;
-}
+    .alarm-history-details-header h4 {
+        margin: 0;
+        line-height: 32px;
+    }
 
 .alarm-history-details-refresh {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    height: 32px;
     flex: none;
     white-space: nowrap;
     color: var(--rz-text-secondary-color);
