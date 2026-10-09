@@ -47,7 +47,7 @@ public static class CtApiServiceCollectionExtensions
         {
             services.AddSingleton<IActiveAlarmProvider, CtApiActiveAlarmProvider>();
             services.AddSingleton<IAlarmSummaryProvider, CtApiAlarmSummaryProvider>();
-            services.AddSingleton<IEventJournalProvider, UnavailableEventJournalProvider>();
+            services.AddSingleton<IEventJournalProvider, CtApiEventJournalProvider>();
 
             // Все модули используют один failover client; native gate сериализует вызовы DLL.
             services.AddSingleton<ICtApiNativeClient>(serviceProvider =>
