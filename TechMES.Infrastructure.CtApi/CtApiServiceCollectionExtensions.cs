@@ -5,6 +5,7 @@ using TechMES.Application.Param;
 using TechMES.Application.Scada;
 using TechMES.Application.Soe;
 using TechMES.Application.Alarms;
+using TechMES.Application.Events;
 using TechMES.Infrastructure.CtApi.Gateways;
 using TechMES.Infrastructure.CtApi.Native;
 using TechMES.Infrastructure.CtApi.Settings;
@@ -26,6 +27,7 @@ public static class CtApiServiceCollectionExtensions
         {
             services.AddSingleton<IActiveAlarmProvider, UnavailableActiveAlarmProvider>();
             services.AddSingleton<IAlarmSummaryProvider, UnavailableAlarmSummaryProvider>();
+            services.AddSingleton<IEventJournalProvider, UnavailableEventJournalProvider>();
             services.AddSingleton<IPlantScadaGateway, MockPlantScadaGateway>();
             services.AddSingleton<IEquipmentParamProvider>(_ => new UnavailableEquipmentParamProvider("Param read-only is unavailable in Mock CtApi mode."));
             services.AddSingleton<IEquipmentSoeProvider>(_ => new UnavailableEquipmentSoeProvider("SOE is unavailable in Mock CtApi mode."));
@@ -35,6 +37,7 @@ public static class CtApiServiceCollectionExtensions
         {
             services.AddSingleton<IActiveAlarmProvider, UnavailableActiveAlarmProvider>();
             services.AddSingleton<IAlarmSummaryProvider, UnavailableAlarmSummaryProvider>();
+            services.AddSingleton<IEventJournalProvider, UnavailableEventJournalProvider>();
             services.AddSingleton<IPlantScadaGateway, DisabledPlantScadaGateway>();
             services.AddSingleton<IEquipmentParamProvider>(_ => new UnavailableEquipmentParamProvider("Param read-only is unavailable because CtApi is disabled."));
             services.AddSingleton<IEquipmentSoeProvider>(_ => new UnavailableEquipmentSoeProvider("SOE is unavailable because CtApi is disabled."));
@@ -44,6 +47,7 @@ public static class CtApiServiceCollectionExtensions
         {
             services.AddSingleton<IActiveAlarmProvider, CtApiActiveAlarmProvider>();
             services.AddSingleton<IAlarmSummaryProvider, CtApiAlarmSummaryProvider>();
+            services.AddSingleton<IEventJournalProvider, UnavailableEventJournalProvider>();
 
             // Все модули используют один failover client; native gate сериализует вызовы DLL.
             services.AddSingleton<ICtApiNativeClient>(serviceProvider =>

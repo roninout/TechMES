@@ -1,0 +1,83 @@
+.event-journal-page {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+    min-height: 0;
+}
+
+.event-journal-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+}
+
+.event-journal-toolbar-left,
+.event-journal-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.event-journal-toolbar-right {
+    justify-content: flex-end;
+}
+
+.event-journal-title {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.event-journal-spinner {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+}
+
+.event-journal-status {
+    color: var(--rz-text-secondary-color);
+    white-space: nowrap;
+}
+
+.event-journal-error {
+    color: var(--rz-danger);
+}
+
+.event-journal-table {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+    .event-journal-table ::deep .event-journal-grid {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        overflow: auto;
+    }
+
+.event-journal-description {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+    .event-journal-toolbar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .event-journal-title {
+        grid-row: 1;
+    }
+
+    .event-journal-toolbar-left,
+    .event-journal-toolbar-right {
+        flex-wrap: wrap;
+    }
+}

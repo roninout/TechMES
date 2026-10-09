@@ -1,0 +1,224 @@
+﻿@page "/events"
+@using TechMES.Contracts.Events
+@implements IAsyncDisposable
+@inject EventJournalApiClient JournalApi
+
+<PageTitle>Events</PageTitle>
+
+<div class="event-journal-page">
+    <div class="event-journal-toolbar">
+        <div class="event-journal-toolbar-left">
+            <RadzenDateRangePicker Value="@_selectedRange" ValueChanged="@OnRangeChanged"
+                                   NavigationMode="DatePickerNavigationMode.DrillDown"
+                                   DisplayMonths="2" AllowClear="false" DateFormat="dd.MM.yyyy"
+                                   Style="width: 290px; max-width: 100%;" />
+        </div>
+
+        <h2 class="event-journal-title">Event Journal</h2>
+
+        <div class="event-journal-toolbar-right">
+            @if (_isRefreshing)
+            {
+                <span class="event-journal-spinner" title="Reading events from SCADA" aria-label="Reading events from SCADA">
+                    <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" ShowValue="false" Style="width: 24px; height: 24px;" />
+                </span>
+            }
+
+            <RadzenBadge Text="@($"Count: {_items.Count}")" BadgeStyle="BadgeStyle.Light" />
+
+            @if (_loadedAt is not null)
+            {
+                <span class="event-journal-status">Updated: @_loadedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+            }
+
+            @if (_readDurationMs is not null)
+            {
+                <span class="event-journal-status">Read: @_readDurationMs ms</span>
+            }
+
+            <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                          Disabled="@(_httpLoading || _isRefreshing)" Click="@RefreshAsync" />
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="event-journal-error">@_error</div>
+    }
+
+    <div class="event-journal-table">
+        <RadzenDataGrid Data="@_items" TItem="EventJournalDto" AllowFiltering="true"
+                        AllowSorting="true" AllowPaging="true" PageSize="30" Density="Density.Compact"
+                        class="event-journal-grid">
+            <Columns>
+                <RadzenDataGridColumn TItem="EventJournalDto" Property="Date" Title="Date" Width="180px"
+                                      SortOrder="SortOrder.Descending">
+                    <Template Context="entry">
+                        @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="EventJournalDto" Property="Description" Title="Description" Width="420px">
+                    <Template Context="entry">
+                        <span class="event-journal-description" title="@entry.Description">@entry.Description</span>
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="EventJournalDto" Property="Category" Title="Category" Width="150px" />
+                <RadzenDataGridColumn TItem="EventJournalDto" Property="ClientAddressDesc" Title="Client address" Width="180px" />
+                <RadzenDataGridColumn TItem="EventJournalDto" Property="User" Title="User" Width="160px" />
+                <RadzenDataGridColumn TItem="EventJournalDto" Property="Id" Title="Id" Width="110px" />
+                <RadzenDataGridColumn TItem="EventJournalDto" Property="AlarmStateDesc" Title="Alarm state" Width="180px" />
+            </Columns>
+        </RadzenDataGrid>
+    </div>
+</div>
+
+@code {
+    private readonly CancellationTokenSource _stop = new();
+    private List<EventJournalDto> _items = [];
+    private DateRange _selectedRange = new(DateTime.Today.AddDays(-1), DateTime.Today);
+    private DateOnly _from = DateOnly.FromDateTime(DateTime.Today.AddDays(-1));
+    private DateOnly _to = DateOnly.FromDateTime(DateTime.Today);
+    private Task? _pollTask;
+    private DateTimeOffset? _loadedAt;
+    private long? _readDurationMs;
+    private long _version;
+    private string _error = "";
+    private bool _httpLoading;
+    private bool _isRefreshing;
+
+    /// <summary>
+    /// Запрашивает вчерашние и сегодняшние события и наблюдает за окончанием фонового ODBC-чтения.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync(false);
+        _pollTask = PollAsync();
+    }
+
+    /// <summary>
+    /// Сохраняет первый клик DateRangePicker, а новый запрос запускает после выбора второй даты.
+    /// </summary>
+    private async Task OnRangeChanged(DateRange value)
+    {
+        if (value is null)
+            return;
+
+        _selectedRange = value;
+
+        if (value.Start is null || value.End is null)
+            return;
+
+        var from = DateOnly.FromDateTime(value.Start.Value.Date);
+        var to = DateOnly.FromDateTime(value.End.Value.Date);
+
+        if (to < from || to == DateOnly.MaxValue || (from == _from && to == _to))
+            return;
+
+        _from = from;
+        _to = to;
+        _version = 0;
+        _loadedAt = null;
+        _readDurationMs = null;
+        _error = "";
+        _isRefreshing = true;
+        _items = [];
+
+        // Если прежний HTTP-запрос ещё идёт, следующий проход PollAsync прочитает новый диапазон.
+        await LoadAsync(false);
+    }
+
+    /// <summary>
+    /// Повторно загружает выбранный диапазон по нажатию оператора.
+    /// </summary>
+    private Task RefreshAsync()
+    {
+        return LoadAsync(true);
+    }
+
+    /// <summary>
+    /// Получает снимок. Во время фонового чтения сохраняет прежние строки,
+    /// а после изменения версии заменяет таблицу целиком.
+    /// </summary>
+    private async Task LoadAsync(bool forceRefresh)
+    {
+        if (_httpLoading || _stop.IsCancellationRequested)
+            return;
+
+        _httpLoading = true;
+        var from = _from;
+        var to = _to;
+
+        try
+        {
+            var response = await JournalApi.GetAsync(from, to, forceRefresh, _version, _stop.Token);
+
+            if (from != _from || to != _to)
+                return;
+
+            if (!response.NotModified && response.LoadedAtUtc is not null)
+                _items = response.Items.ToList();
+
+            _version = response.Version;
+            _loadedAt = response.LoadedAtUtc;
+            _readDurationMs = response.ReadDurationMs;
+            _isRefreshing = response.IsRefreshing;
+            _error = response.RefreshError ?? "";
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+            // Закрытие страницы прекращает WEB-опрос Runtime.
+        }
+        catch (Exception ex)
+        {
+            if (from == _from && to == _to)
+            {
+                _isRefreshing = false;
+                _error = $"Cannot load Event Journal: {ex.Message}";
+            }
+        }
+        finally
+        {
+            _httpLoading = false;
+
+            if (!_stop.IsCancellationRequested)
+                await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// Пока Runtime читает ODBC, запрашивает состояние каждые две секунды.
+    /// После закрытия страницы или окончания чтения лишних HTTP-запросов нет.
+    /// </summary>
+    private async Task PollAsync()
+    {
+        try
+        {
+            while (!_stop.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), _stop.Token);
+
+                if (_isRefreshing && !_httpLoading)
+                    await InvokeAsync(() => LoadAsync(false));
+            }
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+            // Компонент удалён из страницы.
+        }
+    }
+
+    /// <summary>
+    /// Останавливает опрос Runtime при уходе со страницы Events.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        _stop.Cancel();
+
+        if (_pollTask is not null)
+            await _pollTask;
+
+        _stop.Dispose();
+    }
+}

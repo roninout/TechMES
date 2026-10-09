@@ -107,6 +107,8 @@ builder.Services.AddScoped<SoeApiClient>();
 builder.Services.AddScoped<ActiveAlarmApiClient>();
 builder.Services.AddScoped<AlarmSummaryApiClient>();
 
+builder.Services.AddScoped<EventJournalApiClient>();
+
 // Клиент каталога расчётов и ручного WEB-тестирования.
 builder.Services.AddScoped<CalcApiClient>();
 
