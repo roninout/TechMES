@@ -80,11 +80,13 @@
     border-left: 1px solid var(--rz-base-300);
 }
 
-.active-alarms-donut-chart {
-    width: 100%;
-    max-width: 420px;
-    box-sizing: border-box;
-}
+    /* Выравниваем заголовки обеих диаграмм по строке истории аварий. */
+    .active-alarms-column-chart > h4,
+    .active-alarms-donut-chart > h4 {
+        min-height: 32px;
+        margin: 0 0 16px;
+        line-height: 32px;
+    }
 
 .active-alarms-donut-empty {
     display: flex;
