@@ -8,6 +8,7 @@ public sealed class EventJournalDto
     public DateTime? Date { get; init; }
     public string Description { get; init; } = "";
     public string CustomStringField { get; init; } = "";
+    public string Source { get; init; } = "";
     public string Category { get; init; } = "";
     public string ClientAddressDesc { get; init; } = "";
     public string User { get; init; } = "";

@@ -182,7 +182,7 @@ public sealed class CtApiEventJournalProvider : IEventJournalProvider
 
         using var command = connection.CreateCommand();
         command.CommandText = """
-        SELECT "Time", Message, CustomStringField, Category, ClientAddressDesc, "User", Id, AlarmStateDesc
+        SELECT "Time", Message, CustomStringField, Source, Category, ClientAddressDesc, "User", Id, AlarmStateDesc
         FROM CDBEventJournal
         WHERE "Time" >= ? AND "Time" < ?
         """;
@@ -201,11 +201,12 @@ public sealed class CtApiEventJournalProvider : IEventJournalProvider
                 Date = ReadLocalTimestamp(reader, 0),
                 Description = ReadText(reader, 1),
                 CustomStringField = ReadText(reader, 2),
-                Category = ReadText(reader, 3),
-                ClientAddressDesc = ReadText(reader, 4),
-                User = ReadText(reader, 5),
-                Id = reader.IsDBNull(6) ? null : Convert.ToInt32(reader.GetValue(6), CultureInfo.InvariantCulture),
-                AlarmStateDesc = ReadText(reader, 7)
+                Source = ReadText(reader, 3),
+                Category = ReadText(reader, 4),
+                ClientAddressDesc = ReadText(reader, 5),
+                User = ReadText(reader, 6),
+                Id = reader.IsDBNull(7) ? null : Convert.ToInt32(reader.GetValue(7), CultureInfo.InvariantCulture),
+                AlarmStateDesc = ReadText(reader, 8)
             });
         }
 
