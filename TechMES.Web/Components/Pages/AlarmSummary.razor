@@ -45,9 +45,10 @@
                 <span class="active-alarms-status">Read: @_readDurationMs ms</span>
             }
 
-            <RadzenLabel Text="Auto refresh" Component="historyAutoRefresh" class="active-alarms-status" />
-            <RadzenSwitch Name="historyAutoRefresh" Value="@_autoRefresh" Change="@OnAutoRefreshChanged" />
+@*             <RadzenLabel Text="Auto refresh" Component="historyAutoRefresh" class="active-alarms-status" />
+            <RadzenSwitch Name="historyAutoRefresh" Value="@_autoRefresh" Change="@OnAutoRefreshChanged" /> *@
             <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_httpLoading" Click="@RefreshAsync" />
+
         </div>
 
     </div>
@@ -87,6 +88,9 @@
 
                 <div class="alarm-history-details">
                     <h4>Alarm details</h4>
+
+                    <RadzenLabel Text="Auto refresh" Component="historyAutoRefresh" class="active-alarms-status"/>
+                    <RadzenSwitch Name="historyAutoRefresh" Value="@_autoRefresh" Change="@OnAutoRefreshChanged" />
 
                     @if (SelectedAlarm is { } alarm)
                     {
