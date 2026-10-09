@@ -264,9 +264,23 @@
     private DateTimeOffset? _nextAutoRefreshAtUtc;
 
     /// <summary>
-    /// All оставляет нейтральный цвет; станции истории используют основной цвет темы.
+    /// All остаётся нейтральным. Выбранная станция подсвечивается зелёным,
+    /// остальные станции истории сохраняют основной цвет темы.
     /// </summary>
-    private IEnumerable<string> StationColumnFills => _stationCounts.Select(station => station.IsAll ? "var(--rz-base-500)" : "var(--rz-primary-darker)");
+    private IEnumerable<string> StationColumnFills => _stationCounts.Select(GetStationColumnFill);
+
+    /// <summary>
+    /// Возвращает цвет отдельной колонки диаграммы станций.
+    /// </summary>
+    private string GetStationColumnFill(StationCount station)
+    {
+        if (station.IsAll)
+            return "var(--rz-base-500)";
+
+        return string.Equals(station.Station, _selectedStation, StringComparison.Ordinal)
+            ? "var(--rz-success-darker)"
+            : "var(--rz-primary-darker)";
+    }
 
     /// <summary>
     /// По умолчанию выбирает вчера и сегодня, запрашивает снимок и начинает
