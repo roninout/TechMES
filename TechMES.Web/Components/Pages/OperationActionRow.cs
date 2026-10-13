@@ -14,11 +14,12 @@ public sealed class OperationActionRow
     public string Description { get; init; } = "";
     public string Old { get; init; } = "";
     public string New { get; init; } = "";
-    public string ClientAddress { get; init; } = "";
+    public string Client { get; init; } = "";
+    public string Address { get; init; } = "";
 
     /// <summary>
     /// Разбирает сообщение вида Computer|User|Action [Description]|Old|New|Equipment.
-    /// Если формат неизвестен, сохраняет исходное сообщение в видимой колонке Description.
+    /// Неизвестный формат оставляет видимым как исходный текст в Description.
     /// </summary>
     public static OperationActionRow FromEvent(EventJournalDto entry)
     {
@@ -35,7 +36,8 @@ public sealed class OperationActionRow
                 Description = description,
                 Old = fields[3].Trim(),
                 New = fields[4].Trim(),
-                ClientAddress = FormatClientAddress(fields[0], entry.ClientAddressDesc)
+                Client = fields[0].Trim(),
+                Address = entry.ClientAddressDesc
             };
         }
 
@@ -45,7 +47,7 @@ public sealed class OperationActionRow
             User = entry.User,
             Equipment = entry.Source,
             Description = entry.Description,
-            ClientAddress = entry.ClientAddressDesc
+            Address = entry.ClientAddressDesc
         };
     }
 
@@ -67,22 +69,5 @@ public sealed class OperationActionRow
         description = value[(openingBracket + 1)..closingBracket].Trim();
 
         return !string.IsNullOrWhiteSpace(action);
-    }
-
-    /// <summary>
-    /// Показывает имя компьютера вместе с адресом, который уже прочитан из журнала.
-    /// </summary>
-    private static string FormatClientAddress(string computer, string address)
-    {
-        computer = computer.Trim();
-        address = address.Trim();
-
-        if (string.IsNullOrEmpty(computer))
-            return address;
-
-        if (string.IsNullOrEmpty(address))
-            return computer;
-
-        return $"{computer} ({address})";
     }
 }

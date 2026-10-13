@@ -58,68 +58,127 @@
         <div class="event-journal-error">@_error</div>
     }
 
-    <div class="event-journal-table">
-        @if (_selectedCategory == InterfaceEventCategory)
+    @if (_selectedCategory == InterfaceEventCategory)
+    {
+        <section class="event-journal-station-shell" aria-label="Operation actions by station">
+            <div class="event-journal-station-heading">
+                <h4>Operation actions by station: @(_selectedStation ?? "All")</h4>
+            </div>
+
+            <div class="event-journal-station-scroll">
+                <RadzenCardGroup Responsive="false" class="event-journal-station-group">
+                    @foreach (var station in _stationCards)
+                    {
+                        <RadzenCard @key="station.Name" Variant="Variant.Outlined" class="@GetStationCardCssClass(station)">
+                            <button type="button" class="event-journal-station-button"
+                                    aria-pressed="@IsStationSelected(station)"
+                                    title="@($"{station.Name}: {station.Count:N0} actions")"
+                                    @onclick="() => OnStationClickAsync(station)">
+                                <span class="event-journal-station-name">@station.Name</span>
+                                <strong class="event-journal-station-count">@station.Count.ToString("N0")</strong>
+                            </button>
+                        </RadzenCard>
+                    }
+                </RadzenCardGroup>
+            </div>
+        </section>
+    }
+
+    <div class="event-journal-content @(_selectedCategory == InterfaceEventCategory && _equipmentPrefixes.Count > 1 ? "" : "event-journal-content-full")">
+        
+        <div class="event-journal-table">
+            @if (_selectedCategory == InterfaceEventCategory)
+            {
+                <RadzenDataGrid @key="_gridRevision" @ref="_operationGrid" Data="@_operationItems" TItem="OperationActionRow"
+                                AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="30"
+                                Density="Density.Compact" class="event-journal-grid">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Date" Title="Date" Width="180px"
+                                              SortOrder="SortOrder.Descending">
+                            <Template Context="entry">
+                                @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="User" Title="User" Width="160px" />
+
+                        <RadzenDataGridColumn @ref="_equipmentColumn" TItem="OperationActionRow"
+                                              Property="Equipment" Title="Equipment" Width="220px">
+                            <Template Context="entry">
+                                <span class="event-journal-description" title="@entry.Equipment">@entry.Equipment</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Action" Title="Action" Width="180px" />
+
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Description" Title="Description" Width="540px">
+                            <Template Context="entry">
+                                <span class="event-journal-description" title="@entry.Description">@entry.Description</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Old" Title="Old" Width="120px" />
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="New" Title="New" Width="120px" />
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Client" Title="Client" Width="190px" />
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Address" Title="Address" Width="180px" />
+                    </Columns>
+                </RadzenDataGrid>
+            }
+            else
+            {
+                <RadzenDataGrid @key="_gridRevision" Data="@_eventItems" TItem="EventJournalDto"
+                                AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="30"
+                                Density="Density.Compact" class="event-journal-grid">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="EventJournalDto" Property="Date" Title="Date" Width="180px"
+                                              SortOrder="SortOrder.Descending">
+                            <Template Context="entry">
+                                @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="EventJournalDto" Property="Description" Title="Description" Width="640px">
+                            <Template Context="entry">
+                                <span class="event-journal-description" title="@entry.Description">@entry.Description</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="EventJournalDto" Property="Source" Title="Source" Width="320px" />
+                        <RadzenDataGridColumn TItem="EventJournalDto" Property="ClientAddressDesc" Title="Client address" Width="180px" />
+                        <RadzenDataGridColumn TItem="EventJournalDto" Property="User" Title="User" Width="160px" />
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </div>
+
+        @if (_selectedCategory == InterfaceEventCategory && _equipmentPrefixes.Count > 1)
         {
-            <RadzenDataGrid @key="_gridRevision" Data="@_operationItems" TItem="OperationActionRow"
-                            AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="30"
-                            Density="Density.Compact" class="event-journal-grid">
-                <Columns>
-                    <RadzenDataGridColumn TItem="OperationActionRow" Property="Date" Title="Date" Width="180px"
-                                          SortOrder="SortOrder.Descending">
-                        <Template Context="entry">
-                            @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
-                        </Template>
-                    </RadzenDataGridColumn>
+            <aside class="event-journal-equipment-list">
+                <RadzenListBox TValue="string" Data="@_equipmentPrefixes" TextProperty="Name" ValueProperty="Name"
+                               Value="@_selectedEquipmentPrefix" Change="@OnEquipmentPrefixChangedAsync"
+                               Style="width: 100%; height: 100%;"
+                               InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Equipment filter" })">
+                    <Template Context="item">
+                        @{
+                            var equipment = (EquipmentPrefixCount)item;
+                        }
 
-                    <RadzenDataGridColumn TItem="OperationActionRow" Property="User" Title="User" Width="160px" />
-                    <RadzenDataGridColumn TItem="OperationActionRow" Property="Equipment" Title="Equipment" Width="220px" />
-                    <RadzenDataGridColumn TItem="OperationActionRow" Property="Action" Title="Action" Width="180px" />
+                        <div class="event-journal-list-item">
+                            <span class="event-journal-list-identity">
+                                <RadzenIcon Icon="@(equipment.Name == "All" ? "apps" : "precision_manufacturing")" />
+                                <span class="event-journal-list-name" title="@equipment.Name">@equipment.Name</span>
+                            </span>
 
-                    <RadzenDataGridColumn TItem="OperationActionRow" Property="Description" Title="Description" Width="540px">
-                        <Template Context="entry">
-                            <span class="event-journal-description" title="@entry.Description">@entry.Description</span>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="OperationActionRow" Property="Old" Title="Old" Width="120px" />
-                    <RadzenDataGridColumn TItem="OperationActionRow" Property="New" Title="New" Width="120px" />
-
-                    <RadzenDataGridColumn TItem="OperationActionRow" Property="ClientAddress" Title="Client address" Width="230px">
-                        <Template Context="entry">
-                            <span title="@entry.ClientAddress">@entry.ClientAddress</span>
-                        </Template>
-                    </RadzenDataGridColumn>
-                </Columns>
-            </RadzenDataGrid>
-        }
-        else
-        {
-            <RadzenDataGrid @key="_gridRevision" Data="@_eventItems" TItem="EventJournalDto"
-                            AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="30"
-                            Density="Density.Compact" class="event-journal-grid">
-                <Columns>
-                    <RadzenDataGridColumn TItem="EventJournalDto" Property="Date" Title="Date" Width="180px"
-                                          SortOrder="SortOrder.Descending">
-                        <Template Context="entry">
-                            @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="EventJournalDto" Property="Description" Title="Description" Width="640px">
-                        <Template Context="entry">
-                            <span class="event-journal-description" title="@entry.Description">@entry.Description</span>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="EventJournalDto" Property="Source" Title="Source" Width="320px" />
-                    <RadzenDataGridColumn TItem="EventJournalDto" Property="ClientAddressDesc" Title="Client address" Width="180px" />
-                    <RadzenDataGridColumn TItem="EventJournalDto" Property="User" Title="User" Width="160px" />
-                </Columns>
-            </RadzenDataGrid>
+                            <RadzenBadge Text="@equipment.Count.ToString("N0")" BadgeStyle="BadgeStyle.Light" />
+                        </div>
+                    </Template>
+                </RadzenListBox>
+            </aside>
         }
     </div>
+
 </div>
+
 
 @code {
     private const string InterfaceEventCategory = "Interface Event";
@@ -127,13 +186,21 @@
     private const string ArchivingCategory = "Archiving";
 
     private readonly CancellationTokenSource _stop = new();
+    private readonly List<OperationActionRow> _allOperationItems = [];
+    private readonly List<OperationActionRow> _operationItems = [];
+
     private List<EventJournalDto> _allItems = [];
     private IReadOnlyList<EventJournalDto> _eventItems = [];
-    private IReadOnlyList<OperationActionRow> _operationItems = [];
+    private List<StationCount> _stationCards = [new("All", 0, true)];
+    private List<EquipmentPrefixCount> _equipmentPrefixes = [new("All", 0)];
     private string _selectedCategory = InterfaceEventCategory;
+    private string? _selectedStation;
+    private string _selectedEquipmentPrefix = "All";
     private DateRange _selectedRange = new(DateTime.Today.AddDays(-1), DateTime.Today);
     private DateOnly _from = DateOnly.FromDateTime(DateTime.Today.AddDays(-1));
     private DateOnly _to = DateOnly.FromDateTime(DateTime.Today);
+    private RadzenDataGrid<OperationActionRow>? _operationGrid;
+    private RadzenDataGridColumn<OperationActionRow>? _equipmentColumn;
     private Task? _pollTask;
     private DateTimeOffset? _loadedAt;
     private long? _readDurationMs;
@@ -146,6 +213,34 @@
     private int VisibleCount => _selectedCategory == InterfaceEventCategory ? _operationItems.Count : _eventItems.Count;
 
     /// <summary>
+    /// Проверяет, соответствует ли карточка выбранной станции.
+    /// При отсутствии выбранной станции активной считается All.
+    /// </summary>
+    private bool IsStationSelected(StationCount station)
+    {
+        return station.IsAll
+            ? _selectedStation is null
+            : string.Equals(station.Name, _selectedStation, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Передаёт RadzenCard одно готовое значение class.
+    /// All сохраняет свой нейтральный цвет, выбранная карточка получает увеличенный размер.
+    /// </summary>
+    private string GetStationCardCssClass(StationCount station)
+    {
+        var cssClass = "event-journal-station-card";
+
+        if (station.IsAll)
+            cssClass += " is-all";
+
+        if (IsStationSelected(station))
+            cssClass += " is-selected";
+
+        return cssClass;
+    }
+
+    /// <summary>
     /// Запрашивает вчерашние и сегодняшние события и наблюдает за окончанием фонового ODBC-чтения.
     /// </summary>
     protected override async Task OnInitializedAsync()
@@ -155,8 +250,8 @@
     }
 
     /// <summary>
-    /// Сохраняет первый клик DateRangePicker, а новый запрос запускает после выбора второй даты.
-    /// Для нового диапазона возвращается к Operation actions и первой странице таблицы.
+    /// Запускает новый запрос после выбора обеих дат. Для нового периода возвращает
+    /// категорию Operation actions и сбрасывает выбор станции и оборудования.
     /// </summary>
     private async Task OnRangeChanged(DateRange value)
     {
@@ -182,18 +277,25 @@
         _error = "";
         _isRefreshing = true;
         _selectedCategory = InterfaceEventCategory;
+        _selectedStation = null;
+        _selectedEquipmentPrefix = "All";
         _allItems = [];
         _eventItems = [];
-        _operationItems = [];
+        _allOperationItems.Clear();
+        _operationItems.Clear();
+        _stationCards = [new StationCount("All", 0, true)];
+        _equipmentPrefixes = [new EquipmentPrefixCount("All", 0)];
+        _operationGrid = null;
+        _equipmentColumn = null;
         _gridRevision++;
 
-        // Если HTTP-запрос прежнего диапазона ещё идёт, PollAsync прочитает новый диапазон.
+        // Если HTTP-запрос прежнего периода ещё идёт, PollAsync запросит новый период после его окончания.
         await LoadAsync(false);
     }
 
     /// <summary>
-    /// Переключает категорию на уже полученном снимке. Новый экземпляр таблицы сбрасывает
-    /// страницу и фильтры при выборе другой категории, но не при Refresh данных.
+    /// Переключает категорию на уже полученном снимке без нового обращения к ODBC.
+    /// При переходе между таблицами начинает с All.
     /// </summary>
     private void OnCategoryChanged(string value)
     {
@@ -204,13 +306,17 @@
             return;
 
         _selectedCategory = value;
-        ApplyCategoryFilter();
+        _selectedStation = null;
+        _selectedEquipmentPrefix = "All";
+        _operationGrid = null;
+        _equipmentColumn = null;
         _gridRevision++;
+        ApplyCategoryFilter();
     }
 
     /// <summary>
-    /// Для Operation actions создаёт разобранные строки. System и Archiving продолжают
-    /// показывать исходные события без преобразования их полей.
+    /// Разбирает действия оператора только для Interface Event.
+    /// System и Archiving продолжают использовать свои исходные строки.
     /// </summary>
     private void ApplyCategoryFilter()
     {
@@ -218,20 +324,159 @@
             .Where(entry => string.Equals(entry.Category?.Trim(), _selectedCategory, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        if (_selectedCategory == InterfaceEventCategory)
-        {
-            _operationItems = selectedEvents.Select(OperationActionRow.FromEvent).ToList();
-            _eventItems = [];
-        }
-        else
+        if (_selectedCategory != InterfaceEventCategory)
         {
             _eventItems = selectedEvents;
-            _operationItems = [];
+            _allOperationItems.Clear();
+            _operationItems.Clear();
+            _stationCards = [new StationCount("All", 0, true)];
+            _equipmentPrefixes = [new EquipmentPrefixCount("All", 0)];
+            return;
         }
+
+        _eventItems = [];
+        _allOperationItems.Clear();
+        _allOperationItems.AddRange(selectedEvents.Select(OperationActionRow.FromEvent));
+        BuildStationCards();
+
+        // После Refresh выбранная станция может исчезнуть из нового снимка.
+        if (_selectedStation is not null && !_stationCards.Any(station => string.Equals(station.Name, _selectedStation, StringComparison.OrdinalIgnoreCase)))
+            _selectedStation = null;
+
+        ApplyStationSelection();
+        BuildEquipmentPrefixes();
     }
 
     /// <summary>
-    /// Повторно загружает выбранный диапазон по нажатию оператора.
+    /// Строит карточки станций из Equipment вида S01.H09.TT02.
+    /// All включает также события без распознанной станции.
+    /// </summary>
+    private void BuildStationCards()
+    {
+        var stations = _allOperationItems
+            .Select(action => GetStation(action.Equipment))
+            .Where(station => station is not null)
+            .GroupBy(station => station!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new StationCount(group.Key, group.Count()))
+            .OrderBy(station => station.Name, StringComparer.OrdinalIgnoreCase);
+
+        _stationCards = [new StationCount("All", _allOperationItems.Count, true), .. stations];
+    }
+
+    /// <summary>
+    /// Передаёт таблице все действия или только действия выбранной станции.
+    /// Список обновляется без повторного разбора сообщений.
+    /// </summary>
+    private void ApplyStationSelection()
+    {
+        _operationItems.Clear();
+        _operationItems.AddRange(_selectedStation is null
+            ? _allOperationItems
+            : _allOperationItems.Where(action => string.Equals(GetStation(action.Equipment), _selectedStation, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
+    /// Создаёт правый список оборудования для текущей станции.
+    /// Например, S01.H09.TT02 и S01.H09.TT03 попадут в S01.H09.
+    /// </summary>
+    private void BuildEquipmentPrefixes()
+    {
+        var equipment = _operationItems
+            .Select(action => GetEquipmentPrefix(action.Equipment))
+            .Where(prefix => prefix is not null)
+            .GroupBy(prefix => prefix!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new EquipmentPrefixCount(group.Key, group.Count()))
+            .OrderBy(prefix => prefix.Name, StringComparer.OrdinalIgnoreCase);
+
+        _equipmentPrefixes = [new EquipmentPrefixCount("All", _operationItems.Count), .. equipment];
+
+        if (!_equipmentPrefixes.Any(item => string.Equals(item.Name, _selectedEquipmentPrefix, StringComparison.OrdinalIgnoreCase)))
+            _selectedEquipmentPrefix = "All";
+    }
+
+    /// <summary>
+    /// Возвращает часть Equipment до первой точки: S01.H09.TT02 превращается в S01.
+    /// </summary>
+    private static string? GetStation(string? equipment)
+    {
+        if (string.IsNullOrWhiteSpace(equipment))
+            return null;
+
+        var dot = equipment.IndexOf('.');
+        return dot > 0 ? equipment[..dot].Trim().ToUpperInvariant() : null;
+    }
+
+    /// <summary>
+    /// Возвращает первые две части Equipment для правого списка.
+    /// </summary>
+    private static string? GetEquipmentPrefix(string? equipment)
+    {
+        if (string.IsNullOrWhiteSpace(equipment))
+            return null;
+
+        var firstDot = equipment.IndexOf('.');
+        if (firstDot <= 0)
+            return null;
+
+        var secondDot = equipment.IndexOf('.', firstDot + 1);
+        if (secondDot <= firstDot + 1)
+            return null;
+
+        return equipment[..secondDot].Trim();
+    }
+
+    /// <summary>
+    /// Выбор карточки меняет строки таблицы и содержимое правого списка.
+    /// Остальные фильтры и сортировка DataGrid сохраняются.
+    /// </summary>
+    private async Task OnStationClickAsync(StationCount station)
+    {
+        var selectedStation = station.IsAll ? null : station.Name;
+
+        if (string.Equals(selectedStation, _selectedStation, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _selectedStation = selectedStation;
+        var previousEquipmentPrefix = _selectedEquipmentPrefix;
+
+        ApplyStationSelection();
+        BuildEquipmentPrefixes();
+
+        if (_operationGrid is null)
+            return;
+
+        if (previousEquipmentPrefix != _selectedEquipmentPrefix)
+            await ApplyEquipmentPrefixFilterAsync();
+        else
+            await _operationGrid.FirstPage(true);
+    }
+
+    /// <summary>
+    /// Применяет выбор ListBox через Contains к колонке Equipment.
+    /// Фильтры других колонок остаются на месте.
+    /// </summary>
+    private async Task ApplyEquipmentPrefixFilterAsync()
+    {
+        if (_operationGrid is null || _equipmentColumn is null)
+            return;
+
+        _equipmentColumn.SetFilterOperator(FilterOperator.Contains);
+        _equipmentColumn.SetFilterValue(_selectedEquipmentPrefix == "All" ? null! : _selectedEquipmentPrefix, true);
+        await _operationGrid.ApplyFilter(_equipmentColumn, true);
+        await _operationGrid.FirstPage(true);
+    }
+
+    /// <summary>
+    /// Выбор оборудования в правом списке изменяет только фильтр Equipment.
+    /// </summary>
+    private async Task OnEquipmentPrefixChangedAsync(object? value)
+    {
+        _selectedEquipmentPrefix = value as string ?? "All";
+        await ApplyEquipmentPrefixFilterAsync();
+    }
+
+    /// <summary>
+    /// Повторно читает выбранный период по нажатию Refresh.
     /// </summary>
     private Task RefreshAsync()
     {
@@ -239,8 +484,8 @@
     }
 
     /// <summary>
-    /// Получает снимок и повторно применяет выбранную категорию при изменении версии.
-    /// Refresh обновляет строки текущей таблицы, сохраняя её фильтры и сортировку.
+    /// Получает снимок и обновляет таблицу, карточки и правый список.
+    /// При Refresh сохраняет выбранные станцию, оборудование, фильтры и сортировку.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -260,8 +505,18 @@
 
             if (!response.NotModified && response.LoadedAtUtc is not null)
             {
+                var previousEquipmentPrefix = _selectedEquipmentPrefix;
+
                 _allItems = response.Items.ToList();
                 ApplyCategoryFilter();
+
+                if (_selectedCategory == InterfaceEventCategory && _operationGrid is not null)
+                {
+                    await _operationGrid.Reload();
+
+                    if (previousEquipmentPrefix != _selectedEquipmentPrefix)
+                        await ApplyEquipmentPrefixFilterAsync();
+                }
             }
 
             _version = response.Version;
@@ -325,4 +580,7 @@
 
         _stop.Dispose();
     }
+
+    private sealed record StationCount(string Name, int Count, bool IsAll = false);
+    private sealed record EquipmentPrefixCount(string Name, int Count);
 }

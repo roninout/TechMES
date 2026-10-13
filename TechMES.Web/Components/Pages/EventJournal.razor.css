@@ -65,9 +65,108 @@
     color: var(--rz-danger);
 }
 
+.event-journal-station-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: none;
+    min-width: 0;
+    padding: 12px 16px;
+    border: 1px solid var(--rz-base-300);
+    border-radius: 4px;
+}
+
+.event-journal-station-heading h4 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.event-journal-station-scroll {
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 3px;
+}
+
+    .event-journal-station-scroll ::deep .event-journal-station-group {
+        display: flex;
+        align-items: flex-end;
+        flex-wrap: nowrap;
+        gap: 8px;
+        width: max-content;
+        min-width: 100%;
+    }
+
+    .event-journal-station-scroll ::deep .event-journal-station-card {
+        flex: 0 0 132px;
+        width: 132px;
+        height: 76px;
+        padding: 0;
+        background-color: var(--rz-grid-background-color, var(--rz-base-background-color));
+        border-color: var(--rz-primary-darker);
+        box-shadow: none;
+    }
+
+        .event-journal-station-scroll ::deep .event-journal-station-card.is-all {
+            border-color: var(--rz-base-500);
+        }
+
+        .event-journal-station-scroll ::deep .event-journal-station-card.is-selected {
+            flex-basis: 160px;
+            width: 160px;
+            height: 86px;
+        }
+
+            .event-journal-station-scroll ::deep .event-journal-station-card.is-selected:not(.is-all) {
+                border-color: var(--rz-success-darker);
+                outline: 1px solid var(--rz-success-darker);
+            }
+
+    .event-journal-station-scroll ::deep .event-journal-station-button {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 4px;
+        width: 100%;
+        height: 100%;
+        padding: 12px;
+        border: 0;
+        background: transparent;
+        color: var(--rz-text-color);
+        text-align: left;
+        cursor: pointer;
+    }
+
+        .event-journal-station-scroll ::deep .event-journal-station-button:focus-visible {
+            outline: 2px solid var(--rz-primary);
+            outline-offset: -3px;
+        }
+
+.event-journal-station-name {
+    font-weight: 600;
+}
+
+.event-journal-station-count {
+    font-size: 1.15rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.event-journal-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 250px;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+.event-journal-content-full {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 .event-journal-table {
     display: flex;
-    flex: 1;
     min-width: 0;
     min-height: 0;
 }
@@ -82,6 +181,45 @@
 .event-journal-description {
     overflow-wrap: anywhere;
 }
+
+.event-journal-equipment-list {
+    min-width: 0;
+    min-height: 0;
+    background-color: var(--rz-grid-background-color, var(--rz-base-background-color));
+}
+
+    .event-journal-equipment-list ::deep .rz-listbox {
+        min-height: 0;
+        border: 0;
+        box-shadow: none;
+        background-color: var(--rz-grid-background-color, var(--rz-base-background-color));
+    }
+
+    .event-journal-equipment-list ::deep .event-journal-list-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .event-journal-equipment-list ::deep .event-journal-list-identity {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .event-journal-equipment-list ::deep .event-journal-list-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .event-journal-equipment-list ::deep .event-journal-list-item .rz-badge {
+        flex: none;
+    }
 
 @media (max-width: 1100px) {
     .event-journal-toolbar {
@@ -103,5 +241,15 @@
 
     .event-journal-categories {
         width: 100%;
+    }
+}
+
+@media (max-width: 1366px), (any-pointer: coarse) {
+    .event-journal-content {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .event-journal-equipment-list {
+        display: none;
     }
 }
