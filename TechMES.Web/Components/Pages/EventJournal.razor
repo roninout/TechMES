@@ -1,8 +1,10 @@
 ﻿@page "/events"
 @using TechMES.Contracts.Events
 @using TechMES.Web.Components.Pages
+@using Microsoft.JSInterop
 @implements IAsyncDisposable
 @inject EventJournalApiClient JournalApi
+@inject IJSRuntime JSRuntime
 
 <PageTitle>Events</PageTitle>
 
@@ -60,29 +62,32 @@
 
     @if (_selectedCategory == InterfaceEventCategory)
     {
+
         @if (_loadedAt is not null && _timelineItems.Count > 0)
         {
-            <div class="event-journal-timeline-scroll" aria-label="Latest operation actions">
-                <RadzenTimeline Orientation="Orientation.Horizontal" LinePosition="LinePosition.Center"
-                                AlignItems="AlignItems.Center" class="event-journal-timeline">
-                    <Items>
-                        @for (var index = 0; index < _timelineItems.Count; index++)
-                        {
-                            var action = _timelineItems[index];
+            <div class="event-journal-timeline-layout @(_equipmentPrefixes.Count > 1 ? "" : "event-journal-timeline-layout-full")">
+                <div class="event-journal-timeline-scroll" aria-label="Latest operation actions">
+                    <RadzenTimeline Orientation="Orientation.Horizontal" LinePosition="LinePosition.Center"
+                                    AlignItems="AlignItems.Center" class="event-journal-timeline">
+                        <Items>
+                            @for (var index = 0; index < _timelineItems.Count; index++)
+                            {
+                                var action = _timelineItems[index];
 
-                            <RadzenTimelineItem @key="action" PointStyle="@(index == 0 ? PointStyle.Primary : PointStyle.Base)"
-                                                PointSize="PointSize.Small">
-                                <LabelContent>
-                                    <span class="event-journal-timeline-user"
-                                          title="@(action.Date?.ToString("dd.MM.yyyy HH:mm:ss"))">@action.User</span>
-                                </LabelContent>
-                                <ChildContent>
-                                    <span class="event-journal-timeline-equipment" title="@action.Equipment">@action.Equipment</span>
-                                </ChildContent>
-                            </RadzenTimelineItem>
-                        }
-                    </Items>
-                </RadzenTimeline>
+                                <RadzenTimelineItem @key="action" PointStyle="@(index == 0 ? PointStyle.Primary : PointStyle.Base)"
+                                                    PointSize="PointSize.Small">
+                                    <LabelContent>
+                                        <span class="event-journal-timeline-user"
+                                              title="@(action.Date?.ToString("dd.MM.yyyy HH:mm:ss"))">@action.User</span>
+                                    </LabelContent>
+                                    <ChildContent>
+                                        <span class="event-journal-timeline-equipment" title="@action.Equipment">@action.Equipment</span>
+                                    </ChildContent>
+                                </RadzenTimelineItem>
+                            }
+                        </Items>
+                    </RadzenTimeline>
+                </div>
             </div>
         }
 
@@ -128,7 +133,7 @@
 
     <div class="event-journal-content @(_selectedCategory == InterfaceEventCategory && _equipmentPrefixes.Count > 1 ? "" : "event-journal-content-full")">
         
-        <div class="event-journal-table">
+        <div class="event-journal-table" @ref="_tableHost">
             @if (_selectedCategory == InterfaceEventCategory)
             {
                 <RadzenDataGrid @key="_gridRevision" @ref="_operationGrid" Data="@_operationItems" TItem="OperationActionRow"
@@ -227,7 +232,15 @@
     private const string InterfaceEventCategory = "Interface Event";
     private const string SystemCategory = "System";
     private const string ArchivingCategory = "Archiving";
-    private const int TimelineItemCount = 13;
+    // Минимальная ширина на одну точку с подписью и защитный предел для широких экранов.
+    private const int TimelineItemWidth = 140;
+    private const int TimelineMaxItems = 64;
+
+    private List<OperationActionRow> _timelineCandidates = [];
+    private ElementReference _tableHost;
+    private IJSObjectReference? _timelineModule;
+    private DotNetObjectReference<EventJournal>? _timelineSelfReference;
+    private int _timelineCapacity;
 
     private readonly CancellationTokenSource _stop = new();
     private readonly List<OperationActionRow> _allOperationItems = [];
@@ -287,6 +300,51 @@
             cssClass += " is-selected";
 
         return cssClass;
+    }
+
+    /// <summary>
+    /// После появления таблицы подписывается на изменение ширины её контейнера.
+    /// Наблюдатель создаётся один раз и не зависит от Refresh или категории событий.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _stop.IsCancellationRequested)
+            return;
+
+        try
+        {
+            _timelineModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./techmesEventJournalTimeline.js");
+            _timelineSelfReference = DotNetObjectReference.Create(this);
+
+            await _timelineModule.InvokeVoidAsync("observe", _tableHost, _timelineSelfReference, TimelineItemWidth, TimelineMaxItems);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Страница закрылась во время подключения наблюдателя.
+        }
+    }
+
+    /// <summary>
+    /// Изменяет количество видимых точек при изменении ширины таблицы.
+    /// Использует уже подготовленные записи, не обращаясь повторно к Runtime.
+    /// </summary>
+    [JSInvokable]
+    public Task OnTimelineCapacityChanged(int capacity)
+    {
+        return InvokeAsync(() =>
+        {
+            if (_stop.IsCancellationRequested)
+                return;
+
+            var newCapacity = Math.Clamp(capacity, 1, TimelineMaxItems);
+
+            if (newCapacity == _timelineCapacity)
+                return;
+
+            _timelineCapacity = newCapacity;
+            UpdateTimelineItems();
+            StateHasChanged();
+        });
     }
 
     /// <summary>
@@ -403,6 +461,7 @@
         {
             _eventItems = selectedEvents;
             _timelineItems.Clear();
+            _timelineCandidates.Clear();
             _allOperationItems.Clear();
             _operationItems.Clear();
             _stationCards = [new StationCount("All", 0, true)];
@@ -429,16 +488,26 @@
     }
 
     /// <summary>
-    /// Берёт последние действия за выбранный период. События $Root исключаются
-    /// независимо от положения switch, управляющего основной таблицей.
+    /// Сохраняет последние действия выбранного периода без $Root.
+    /// Источник не зависит от фильтра станции, списка оборудования и switch logged.
     /// </summary>
     private void BuildTimeline(IReadOnlyList<OperationActionRow> actions)
     {
-        _timelineItems = actions
+        _timelineCandidates = actions
             .Where(action => !IsRootEquipment(action))
             .OrderByDescending(action => action.Date ?? DateTime.MinValue)
-            .Take(TimelineItemCount)
+            .Take(TimelineMaxItems)
             .ToList();
+
+        UpdateTimelineItems();
+    }
+
+    /// <summary>
+    /// Показывает столько подготовленных действий, сколько помещается по ширине таблицы.
+    /// </summary>
+    private void UpdateTimelineItems()
+    {
+        _timelineItems = _timelineCandidates.Take(_timelineCapacity).ToList();
     }
 
     /// <summary>
@@ -671,11 +740,30 @@
     }
 
     /// <summary>
-    /// Останавливает опрос Runtime при уходе со страницы Events.
+    /// Останавливает WEB-опрос Runtime и наблюдение за шириной таблицы.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
         _stop.Cancel();
+
+        if (_timelineModule is not null)
+        {
+            try
+            {
+                await _timelineModule.InvokeVoidAsync("disconnect", _tableHost);
+                await _timelineModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Браузерное соединение уже закрыто.
+            }
+            catch (OperationCanceledException)
+            {
+                // JS-вызов отменён при закрытии страницы.
+            }
+        }
+
+        _timelineSelfReference?.Dispose();
 
         if (_pollTask is not null)
             await _pollTask;
