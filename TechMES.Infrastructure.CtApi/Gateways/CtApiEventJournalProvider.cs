@@ -35,17 +35,22 @@ public sealed class CtApiEventJournalProvider : IEventJournalProvider
     private readonly ILogger<CtApiEventJournalProvider> _logger;
     private readonly string? _connectionString;
     private readonly int _requestTimeoutSeconds;
+    private readonly int _refreshPeriodSeconds;
 
     /// <summary>
-    /// Использует уже настроенные в Maintenance ODBC-подключение и максимальное время запроса.
+    /// Использует настроенные в Maintenance ODBC-подключение, предел времени запроса
+    /// и период автоматического обновления страниц ODBC.
     /// </summary>
     public CtApiEventJournalProvider(IConfiguration configuration, ILogger<CtApiEventJournalProvider> logger)
     {
         _logger = logger;
         _connectionString = configuration["CtApi:AlarmOdbcConnectionString"];
-        _requestTimeoutSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRequestTimeoutSeconds"], out var seconds) && seconds > 0
-            ? seconds
+        _requestTimeoutSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRequestTimeoutSeconds"], out var timeoutSeconds) && timeoutSeconds > 0
+            ? timeoutSeconds
             : 120;
+        _refreshPeriodSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRefreshPeriodSeconds"], out var refreshSeconds) && refreshSeconds > 0
+            ? refreshSeconds
+            : 30;
     }
 
     /// <summary>
@@ -105,7 +110,8 @@ public sealed class CtApiEventJournalProvider : IEventJournalProvider
                 RefreshError = state.Error,
                 Version = state.Version,
                 NotModified = notModified,
-                ReadDurationMs = state.ReadDurationMs
+                ReadDurationMs = state.ReadDurationMs,
+                RefreshPeriodSeconds = _refreshPeriodSeconds
             });
         }
     }

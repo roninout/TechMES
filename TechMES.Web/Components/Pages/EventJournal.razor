@@ -39,9 +39,17 @@
                 <span class="event-journal-status">Read: @_readDurationMs ms</span>
             }
 
-            <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light"
-                          Disabled="@(_httpLoading || _isRefreshing)" Click="@RefreshAsync" />
+            <div class="event-journal-refresh-controls">
+                <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                              Disabled="@(_httpLoading || _isRefreshing)" Click="@RefreshAsync" Style="width: 100%;" />
+
+                <div class="event-journal-refresh-option">
+                    <RadzenLabel Text="Auto refresh" Component="eventJournalAutoRefresh" />
+                    <RadzenSwitch Name="eventJournalAutoRefresh" Value="@_autoRefresh" Change="@OnAutoRefreshChanged" />
+                </div>
+            </div>
         </div>
+
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -81,6 +89,7 @@
         @if (_selectedCategory == InterfaceEventCategory)
         {
             <div class="event-journal-station-scroll" role="group" aria-label="Operation actions by station">
+
                 <RadzenCardGroup Responsive="false" class="event-journal-station-group">
                     @foreach (var station in _stationCards)
                     {
@@ -94,11 +103,14 @@
                                     <span class="event-journal-station-name">@station.Name</span>
                                 </span>
 
-                                <span class="event-journal-station-count">@station.Count</span>
+                                <span class="event-journal-station-badge">
+                                    <RadzenBadge Text="@station.Count.ToString()" BadgeStyle="BadgeStyle.Light" />
+                                </span>
                             </button>
                         </RadzenCard>
                     }
                 </RadzenCardGroup>
+
             </div>
         }
         else
@@ -140,6 +152,7 @@
                 <RadzenDataGrid @key="_gridRevision" @ref="_operationGrid" Data="@_operationItems" TItem="OperationActionRow"
                                 AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="40"
                                 Density="Density.Compact" class="event-journal-grid">
+
                     <Columns>
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Date" Title="Date" Width="180px"
                                               SortOrder="SortOrder.Descending">
@@ -148,10 +161,10 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="User" Title="User" Width="160px" />
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="User" Title="User" Width="120px" />
 
                         <RadzenDataGridColumn @ref="_equipmentColumn" TItem="OperationActionRow"
-                                              Property="Equipment" Title="Equipment" Width="220px">
+                                              Property="Equipment" Title="Equipment" Width="180px">
                             <Template Context="entry">
                                 <span class="event-journal-description" title="@entry.Equipment">@entry.Equipment</span>
                             </Template>
@@ -159,7 +172,7 @@
 
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Action" Title="Action" Width="180px" />
 
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Description" Title="Description" Width="540px">
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Description" Title="Description" Width="620px">
                             <Template Context="entry">
                                 <span class="event-journal-description" title="@entry.Description">@entry.Description</span>
                             </Template>
@@ -170,6 +183,7 @@
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Client" Title="Client" Width="190px" Visible="@_showClientColumns" />
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Address" Title="Address" Width="180px" Visible="@_showClientColumns" />
                     </Columns>
+
                 </RadzenDataGrid>
             }
             else
@@ -293,10 +307,17 @@
     private string _error = "";
     private bool _httpLoading;
     private bool _isRefreshing;
+
+    // Switch выключен при открытии страницы. Интервал приходит из Runtime.
+    private bool _autoRefresh;
+    private int _refreshPeriodSeconds = 30;
+    private DateTimeOffset? _nextAutoRefreshAtUtc;
+
     // По умолчанию служебные события Equipment = $Root скрыты.
     private bool _showRootEquipment;
-    // Client и Address при открытии страницы видны; switch управляет только их отображением.
-    private bool _showClientColumns = false;
+
+    // Client и Address при открытии страницы скрыты.
+    private bool _showClientColumns;
 
     private int VisibleCount => _selectedCategory == InterfaceEventCategory ? _operationItems.Count : _eventItems.Count;
 
@@ -681,8 +702,21 @@
     }
 
     /// <summary>
+    /// Включает или останавливает автоматическое чтение выбранного диапазона.
+    /// Первое повторное чтение планируется через период, полученный из Runtime.
+    /// </summary>
+    private void OnAutoRefreshChanged(bool value)
+    {
+        _autoRefresh = value;
+        _nextAutoRefreshAtUtc = value
+            ? DateTimeOffset.UtcNow.AddSeconds(_refreshPeriodSeconds)
+            : null;
+    }
+
+    /// <summary>
     /// Получает снимок и обновляет таблицу, карточки и правый список.
     /// При Refresh сохраняет выбранные станцию, оборудование, фильтры и сортировку.
+    /// Следующий автоматический запрос отсчитывается после окончания чтения.
     /// </summary>
     private async Task LoadAsync(bool forceRefresh)
     {
@@ -700,7 +734,11 @@
             if (from != _from || to != _to)
                 return;
 
-            if (!response.NotModified && response.LoadedAtUtc is not null)
+            _refreshPeriodSeconds = response.RefreshPeriodSeconds > 0 ? response.RefreshPeriodSeconds : 30;
+            var wasRefreshing = _isRefreshing;
+            var snapshotUpdated = !response.NotModified && response.LoadedAtUtc is not null;
+
+            if (snapshotUpdated)
             {
                 var previousEquipmentPrefix = _selectedEquipmentPrefix;
 
@@ -721,6 +759,10 @@
             _readDurationMs = response.ReadDurationMs;
             _isRefreshing = response.IsRefreshing;
             _error = response.RefreshError ?? "";
+
+            // Пока ODBC-запрос идёт, новый цикл не начинаем.
+            if (_autoRefresh && !_isRefreshing && (wasRefreshing || snapshotUpdated))
+                _nextAutoRefreshAtUtc = DateTimeOffset.UtcNow.AddSeconds(_refreshPeriodSeconds);
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)
         {
@@ -744,19 +786,46 @@
     }
 
     /// <summary>
-    /// Пока Runtime читает ODBC, запрашивает состояние каждые две секунды.
-    /// После окончания чтения лишних HTTP-запросов нет.
+    /// Во время чтения проверяет его завершение каждые две секунды.
+    /// При включённом Switch запускает следующий запрос по интервалу Runtime.
+    /// С выключенным Switch и готовым снимком не обращается к Runtime.
     /// </summary>
     private async Task PollAsync()
     {
         try
         {
-            while (!_stop.IsCancellationRequested)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2), _stop.Token);
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
 
-                if (_isRefreshing && !_httpLoading)
-                    await InvokeAsync(() => LoadAsync(false));
+            while (await timer.WaitForNextTickAsync(_stop.Token))
+            {
+                if (_httpLoading)
+                    continue;
+
+                var autoRefreshDue = _autoRefresh && _nextAutoRefreshAtUtc is { } nextRefreshAt
+                    && DateTimeOffset.UtcNow >= nextRefreshAt;
+
+                if (!_isRefreshing && !autoRefreshDue)
+                    continue;
+
+                await InvokeAsync(async () =>
+                {
+                    if (_stop.IsCancellationRequested || _httpLoading)
+                        return;
+
+                    if (_isRefreshing)
+                    {
+                        await LoadAsync(false);
+                        return;
+                    }
+
+                    if (_autoRefresh && _nextAutoRefreshAtUtc is { } nextRefreshAtUtc
+                        && DateTimeOffset.UtcNow >= nextRefreshAtUtc)
+                    {
+                        // Резервируем следующий срок до HTTP-вызова, чтобы ошибка не вызвала частые повторы.
+                        _nextAutoRefreshAtUtc = DateTimeOffset.UtcNow.AddSeconds(_refreshPeriodSeconds);
+                        await LoadAsync(true);
+                    }
+                });
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)

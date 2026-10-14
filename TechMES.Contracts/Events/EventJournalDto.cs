@@ -18,6 +18,7 @@ public sealed class EventJournalDto
 
 /// <summary>
 /// Снимок событий выбранного периода. Версия позволяет WEB не получать повторно неизменённую таблицу.
+/// RefreshPeriodSeconds передаёт интервал автообновления из настройки Maintenance.
 /// </summary>
 public sealed class EventJournalResponse
 {
@@ -28,4 +29,5 @@ public sealed class EventJournalResponse
     public long Version { get; init; }
     public bool NotModified { get; init; }
     public long? ReadDurationMs { get; init; }
+    public int RefreshPeriodSeconds { get; init; } = 30;
 }

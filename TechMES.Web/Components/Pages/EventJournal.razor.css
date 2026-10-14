@@ -40,6 +40,23 @@
     min-width: 0;
 }
 
+/* Refresh и переключатель образуют одну вертикальную группу в правой части заголовка. */
+.event-journal-refresh-controls {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.event-journal-refresh-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    white-space: nowrap;
+}
+
 .event-journal-spinner {
     display: inline-flex;
     align-items: center;
@@ -229,24 +246,16 @@
     font-weight: 400;
 }
 
-/* Количество меньше прежнего и расположено справа в нижней строке. */
-.event-journal-station-scroll ::deep .event-journal-station-count {
-    align-self: flex-end;
-    font-size: 0.85rem;
-    font-variant-numeric: tabular-nums;
-    font-weight: 400;
-}
+    /* Количество стоит у правого края карточки и использует обычный RadzenBadge. */
+    .event-journal-station-scroll ::deep .event-journal-station-badge {
+        align-self: flex-end;
+        line-height: 1;
+    }
 
-/* Цвет выбранной карточки берётся из текущей темы; жирный шрифт применяется только к ней. */
-.event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-button,
-.event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-icon {
-    color: var(--rz-text-color);
-}
-
-.event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-name,
-.event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-count {
-    font-weight: 700;
-}
+    /* Жирным остаётся только имя выбранной станции; бейдж одинаков с правым списком. */
+    .event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-name {
+        font-weight: 700;
+    }
 
 .event-journal-content {
     display: grid;
