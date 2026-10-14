@@ -1,4 +1,5 @@
-﻿using TechMES.Contracts.Events;
+﻿using System.Text.RegularExpressions;
+using TechMES.Contracts.Events;
 
 namespace TechMES.Web.Components.Pages;
 
@@ -19,6 +20,7 @@ public sealed class OperationActionRow
 
     /// <summary>
     /// Разбирает сообщение вида Computer|User|Action [Description]|Old|New|Equipment.
+    /// Очищает только отображаемые User, Action и Description; исходное событие не изменяет.
     /// Неизвестный формат оставляет видимым как исходный текст в Description.
     /// </summary>
     public static OperationActionRow FromEvent(EventJournalDto entry)
@@ -30,7 +32,7 @@ public sealed class OperationActionRow
             return new OperationActionRow
             {
                 Date = entry.Date,
-                User = fields[1].Trim(),
+                User = EventJournalDisplayText.Clean(fields[1]),
                 Equipment = fields[5].Trim(),
                 Action = action,
                 Description = description,
@@ -44,9 +46,9 @@ public sealed class OperationActionRow
         return new OperationActionRow
         {
             Date = entry.Date,
-            User = entry.User,
+            User = EventJournalDisplayText.Clean(entry.User),
             Equipment = entry.Source,
-            Description = entry.Description,
+            Description = EventJournalDisplayText.Clean(entry.Description),
             Address = entry.ClientAddressDesc
         };
     }
@@ -58,6 +60,7 @@ public sealed class OperationActionRow
     {
         action = "";
         description = "";
+        value = value.Trim();
 
         var openingBracket = value.IndexOf('[');
         var closingBracket = value.LastIndexOf(']');
@@ -65,9 +68,32 @@ public sealed class OperationActionRow
         if (openingBracket <= 0 || closingBracket <= openingBracket || closingBracket != value.Length - 1)
             return false;
 
-        action = value[..openingBracket].Trim();
-        description = value[(openingBracket + 1)..closingBracket].Trim();
+        action = EventJournalDisplayText.Clean(value[..openingBracket]);
+        description = EventJournalDisplayText.Clean(value[(openingBracket + 1)..closingBracket]);
 
         return !string.IsNullOrWhiteSpace(action);
+    }
+}
+
+/// <summary>
+/// Готовит текст журнала для отображения: снимает оболочку @(...) и удаляет символ экранирования ^.
+/// Обычные круглые скобки, не начинающиеся с @(, сохраняет.
+/// </summary>
+internal static class EventJournalDisplayText
+{
+    private static readonly Regex WrappedText = new(
+        @"@\(([^()]*)\)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    public static string Clean(string? value)
+    {
+        var text = value?.Trim() ?? "";
+
+        if (text.Length == 0)
+            return "";
+
+        text = text.Replace("^", "", StringComparison.Ordinal);
+        return WrappedText.Replace(text, "$1").Trim();
     }
 }

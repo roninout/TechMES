@@ -495,7 +495,7 @@
 
     /// <summary>
     /// Разбирает действия оператора только для Interface Event.
-    /// System и Archiving продолжают использовать исходные строки.
+    /// Для System и Archiving очищает отображаемые User и Description.
     /// Timeline получает последние события независимо от фильтров станции и оборудования.
     /// </summary>
     private void ApplyCategoryFilter()
@@ -506,7 +506,19 @@
 
         if (_selectedCategory != InterfaceEventCategory)
         {
-            _eventItems = selectedEvents;
+            _eventItems = selectedEvents.Select(entry => new EventJournalDto
+            {
+                Date = entry.Date,
+                Description = EventJournalDisplayText.Clean(entry.Description),
+                CustomStringField = entry.CustomStringField,
+                Source = entry.Source,
+                Category = entry.Category,
+                ClientAddressDesc = entry.ClientAddressDesc,
+                User = EventJournalDisplayText.Clean(entry.User),
+                Id = entry.Id,
+                AlarmStateDesc = entry.AlarmStateDesc
+            }).ToList();
+
             _timelineItems.Clear();
             _timelineCandidates.Clear();
             _allOperationItems.Clear();
