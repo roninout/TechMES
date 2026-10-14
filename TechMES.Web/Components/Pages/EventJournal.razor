@@ -60,6 +60,32 @@
 
     @if (_selectedCategory == InterfaceEventCategory)
     {
+        @if (_loadedAt is not null && _timelineItems.Count > 0)
+        {
+            <div class="event-journal-timeline-scroll" aria-label="Latest operation actions">
+                <RadzenTimeline Orientation="Orientation.Horizontal" LinePosition="LinePosition.Center"
+                                AlignItems="AlignItems.Center" class="event-journal-timeline">
+                    <Items>
+                        @for (var index = 0; index < _timelineItems.Count; index++)
+                        {
+                            var action = _timelineItems[index];
+
+                            <RadzenTimelineItem @key="action" PointStyle="@(index == 0 ? PointStyle.Primary : PointStyle.Base)"
+                                                PointSize="PointSize.Small">
+                                <LabelContent>
+                                    <span class="event-journal-timeline-user"
+                                          title="@(action.Date?.ToString("dd.MM.yyyy HH:mm:ss"))">@action.User</span>
+                                </LabelContent>
+                                <ChildContent>
+                                    <span class="event-journal-timeline-equipment" title="@action.Equipment">@action.Equipment</span>
+                                </ChildContent>
+                            </RadzenTimelineItem>
+                        }
+                    </Items>
+                </RadzenTimeline>
+            </div>
+        }
+
         <div class="event-journal-station-toolbar">
             <div class="event-journal-station-scroll" role="group" aria-label="Operation actions by station">
                 <RadzenCardGroup Responsive="false" class="event-journal-station-group">
@@ -68,14 +94,14 @@
                         <RadzenCard @key="station.Name" Variant="Variant.Filled" class="@GetStationCardCssClass(station)">
                             <button type="button" class="event-journal-station-button"
                                     aria-pressed="@IsStationSelected(station)"
-                                    title="@($"{station.Name}: {station.Count:N0} actions")"
+                                    title="@($"{station.Name}: {station.Count} actions")"
                                     @onclick="() => OnStationClickAsync(station)">
                                 <span class="event-journal-station-header">
                                     <RadzenIcon Icon="@(station.IsAll ? "apps" : "factory")" class="event-journal-station-icon" />
                                     <span class="event-journal-station-name">@station.Name</span>
                                 </span>
 
-                                <span class="event-journal-station-count">@station.Count.ToString("N0")</span>
+                                <span class="event-journal-station-count">@station.Count</span>
                             </button>
                         </RadzenCard>
                     }
@@ -175,12 +201,13 @@
                                 <span class="event-journal-list-name" title="@equipment.Name">@equipment.Name</span>
                             </span>
 
-                            <RadzenBadge Text="@equipment.Count.ToString("N0")" BadgeStyle="BadgeStyle.Light" />
+                            <RadzenBadge Text="@equipment.Count.ToString()" BadgeStyle="BadgeStyle.Light" />
                         </div>
                     </Template>
                 </RadzenListBox>
             </aside>
         }
+
     </div>
 
 </div>
@@ -190,6 +217,7 @@
     private const string InterfaceEventCategory = "Interface Event";
     private const string SystemCategory = "System";
     private const string ArchivingCategory = "Archiving";
+    private const int TimelineItemCount = 10;
 
     private readonly CancellationTokenSource _stop = new();
     private readonly List<OperationActionRow> _allOperationItems = [];
@@ -198,6 +226,7 @@
     private List<EventJournalDto> _allItems = [];
     private IReadOnlyList<EventJournalDto> _eventItems = [];
     private List<StationCount> _stationCards = [new("All", 0, true)];
+    private List<OperationActionRow> _timelineItems = [];
     private List<EquipmentPrefixCount> _equipmentPrefixes = [new("All", 0)];
     private string _selectedCategory = InterfaceEventCategory;
     private string? _selectedStation;
@@ -350,7 +379,7 @@
     /// <summary>
     /// Разбирает действия оператора только для Interface Event.
     /// System и Archiving продолжают использовать исходные строки.
-    /// Служебные действия $Root исключаются до подсчёта станций и оборудования.
+    /// Timeline получает последние события независимо от фильтров станции и оборудования.
     /// </summary>
     private void ApplyCategoryFilter()
     {
@@ -361,6 +390,7 @@
         if (_selectedCategory != InterfaceEventCategory)
         {
             _eventItems = selectedEvents;
+            _timelineItems.Clear();
             _allOperationItems.Clear();
             _operationItems.Clear();
             _stationCards = [new StationCount("All", 0, true)];
@@ -369,19 +399,42 @@
         }
 
         _eventItems = [];
+        var actions = selectedEvents.Select(OperationActionRow.FromEvent).ToList();
+
+        BuildTimeline(actions);
+
         _allOperationItems.Clear();
-        _allOperationItems.AddRange(selectedEvents
-            .Select(OperationActionRow.FromEvent)
-            .Where(action => _showRootEquipment || !string.Equals(action.Equipment.Trim(), "$Root", StringComparison.OrdinalIgnoreCase)));
+        _allOperationItems.AddRange(actions.Where(action => _showRootEquipment || !IsRootEquipment(action)));
 
         BuildStationCards();
 
-        // После переключения или Refresh выбранная станция может исчезнуть из выборки.
+        // После Refresh или переключения $Root выбранная станция может исчезнуть из выборки.
         if (_selectedStation is not null && !_stationCards.Any(station => string.Equals(station.Name, _selectedStation, StringComparison.OrdinalIgnoreCase)))
             _selectedStation = null;
 
         ApplyStationSelection();
         BuildEquipmentPrefixes();
+    }
+
+    /// <summary>
+    /// Берёт последние действия за выбранный период. События $Root исключаются
+    /// независимо от положения switch, управляющего основной таблицей.
+    /// </summary>
+    private void BuildTimeline(IReadOnlyList<OperationActionRow> actions)
+    {
+        _timelineItems = actions
+            .Where(action => !IsRootEquipment(action))
+            .OrderByDescending(action => action.Date ?? DateTime.MinValue)
+            .Take(TimelineItemCount)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Определяет служебное событие входа или выхода по полю Equipment.
+    /// </summary>
+    private static bool IsRootEquipment(OperationActionRow action)
+    {
+        return string.Equals(action.Equipment.Trim(), "$Root", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -65,6 +65,40 @@
     color: var(--rz-danger);
 }
 
+/* Последние действия располагаются между верхними фильтрами и карточками станций. */
+.event-journal-timeline-scroll {
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px 0 4px;
+}
+
+    .event-journal-timeline-scroll ::deep .event-journal-timeline {
+        width: 100%;
+        min-width: 960px;
+        max-width: 1200px;
+        margin-inline: auto;
+    }
+
+    /* User расположен над линией и использует основной цвет текущей темы. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-user {
+        display: block;
+        color: var(--rz-primary);
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Equipment расположен под линией; цвет читается и в светлой теме. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-equipment {
+        display: block;
+        color: var(--rz-text-color);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
 /* Карточки занимают доступную ширину; switch остаётся справа над таблицей. */
 .event-journal-station-toolbar {
     display: flex;
