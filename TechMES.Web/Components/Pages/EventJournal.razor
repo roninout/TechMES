@@ -60,25 +60,33 @@
 
     @if (_selectedCategory == InterfaceEventCategory)
     {
-        <div class="event-journal-station-scroll" role="group" aria-label="Operation actions by station">
-            <RadzenCardGroup Responsive="false" class="event-journal-station-group">
-                @foreach (var station in _stationCards)
-                {
-                    <RadzenCard @key="station.Name" Variant="Variant.Filled" class="@GetStationCardCssClass(station)">
-                        <button type="button" class="event-journal-station-button"
-                                aria-pressed="@IsStationSelected(station)"
-                                title="@($"{station.Name}: {station.Count:N0} actions")"
-                                @onclick="() => OnStationClickAsync(station)">
-                            <span class="event-journal-station-header">
-                                <RadzenIcon Icon="@(station.IsAll ? "apps" : "factory")" class="event-journal-station-icon" />
-                                <span class="event-journal-station-name">@station.Name</span>
-                            </span>
+        <div class="event-journal-station-toolbar">
+            <div class="event-journal-station-scroll" role="group" aria-label="Operation actions by station">
+                <RadzenCardGroup Responsive="false" class="event-journal-station-group">
+                    @foreach (var station in _stationCards)
+                    {
+                        <RadzenCard @key="station.Name" Variant="Variant.Filled" class="@GetStationCardCssClass(station)">
+                            <button type="button" class="event-journal-station-button"
+                                    aria-pressed="@IsStationSelected(station)"
+                                    title="@($"{station.Name}: {station.Count:N0} actions")"
+                                    @onclick="() => OnStationClickAsync(station)">
+                                <span class="event-journal-station-header">
+                                    <RadzenIcon Icon="@(station.IsAll ? "apps" : "factory")" class="event-journal-station-icon" />
+                                    <span class="event-journal-station-name">@station.Name</span>
+                                </span>
 
-                            <span class="event-journal-station-count">@station.Count.ToString("N0")</span>
-                        </button>
-                    </RadzenCard>
-                }
-            </RadzenCardGroup>
+                                <span class="event-journal-station-count">@station.Count.ToString("N0")</span>
+                            </button>
+                        </RadzenCard>
+                    }
+                </RadzenCardGroup>
+            </div>
+
+            <div class="event-journal-root-switch">
+                <span>Show logged</span>
+                <RadzenSwitch Value="@_showRootEquipment" Change="@OnShowRootChanged"
+                              InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Show $Root events" })" />
+            </div>
         </div>
     }
 
@@ -88,7 +96,7 @@
             @if (_selectedCategory == InterfaceEventCategory)
             {
                 <RadzenDataGrid @key="_gridRevision" @ref="_operationGrid" Data="@_operationItems" TItem="OperationActionRow"
-                                AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="30"
+                                AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="40"
                                 Density="Density.Compact" class="event-journal-grid">
                     <Columns>
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Date" Title="Date" Width="180px"
@@ -125,7 +133,7 @@
             else
             {
                 <RadzenDataGrid @key="_gridRevision" Data="@_eventItems" TItem="EventJournalDto"
-                                AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="30"
+                                AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="40"
                                 Density="Density.Compact" class="event-journal-grid">
                     <Columns>
                         <RadzenDataGridColumn TItem="EventJournalDto" Property="Date" Title="Date" Width="180px"
@@ -207,6 +215,8 @@
     private string _error = "";
     private bool _httpLoading;
     private bool _isRefreshing;
+    // По умолчанию служебные события Equipment = $Root скрыты.
+    private bool _showRootEquipment;
 
     private int VisibleCount => _selectedCategory == InterfaceEventCategory ? _operationItems.Count : _eventItems.Count;
 
@@ -313,8 +323,34 @@
     }
 
     /// <summary>
+    /// Показывает или скрывает события Equipment = $Root без повторного чтения ODBC.
+    /// После изменения обновляет карточки станций, список оборудования и таблицу.
+    /// </summary>
+    private async Task OnShowRootChanged(bool showRootEquipment)
+    {
+        if (_showRootEquipment == showRootEquipment)
+            return;
+
+        _showRootEquipment = showRootEquipment;
+        var previousEquipmentPrefix = _selectedEquipmentPrefix;
+
+        ApplyCategoryFilter();
+
+        if (_operationGrid is null)
+            return;
+
+        await _operationGrid.Reload();
+
+        if (previousEquipmentPrefix != _selectedEquipmentPrefix)
+            await ApplyEquipmentPrefixFilterAsync();
+        else
+            await _operationGrid.FirstPage(true);
+    }
+
+    /// <summary>
     /// Разбирает действия оператора только для Interface Event.
-    /// System и Archiving продолжают использовать свои исходные строки.
+    /// System и Archiving продолжают использовать исходные строки.
+    /// Служебные действия $Root исключаются до подсчёта станций и оборудования.
     /// </summary>
     private void ApplyCategoryFilter()
     {
@@ -334,10 +370,13 @@
 
         _eventItems = [];
         _allOperationItems.Clear();
-        _allOperationItems.AddRange(selectedEvents.Select(OperationActionRow.FromEvent));
+        _allOperationItems.AddRange(selectedEvents
+            .Select(OperationActionRow.FromEvent)
+            .Where(action => _showRootEquipment || !string.Equals(action.Equipment.Trim(), "$Root", StringComparison.OrdinalIgnoreCase)));
+
         BuildStationCards();
 
-        // После Refresh выбранная станция может исчезнуть из нового снимка.
+        // После переключения или Refresh выбранная станция может исчезнуть из выборки.
         if (_selectedStation is not null && !_stationCards.Any(station => string.Equals(station.Name, _selectedStation, StringComparison.OrdinalIgnoreCase)))
             _selectedStation = null;
 
