@@ -9,6 +9,7 @@
 <PageTitle>Events</PageTitle>
 
 <div class="event-journal-page">
+
     <div class="event-journal-toolbar">
         <div class="event-journal-toolbar-date">
             <RadzenDateRangePicker Value="@_selectedRange" ValueChanged="@OnRangeChanged"
@@ -39,17 +40,16 @@
                 <span class="event-journal-status">Read: @_readDurationMs ms</span>
             }
 
-            <div class="event-journal-refresh-controls">
-                <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light"
-                              Disabled="@(_httpLoading || _isRefreshing)" Click="@RefreshAsync" Style="width: 100%;" />
-
-                <div class="event-journal-refresh-option">
-                    <RadzenLabel Text="Auto refresh" Component="eventJournalAutoRefresh" />
-                    <RadzenSwitch Name="eventJournalAutoRefresh" Value="@_autoRefresh" Change="@OnAutoRefreshChanged" />
-                </div>
-            </div>
+            <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                          Disabled="@(_httpLoading || _isRefreshing)" Click="@RefreshAsync" />
         </div>
+    </div>
 
+    <div class="event-journal-auto-refresh-row">
+        <div class="event-journal-refresh-option">
+            <RadzenLabel Text="Auto refresh" Component="eventJournalAutoRefresh" />
+            <RadzenSwitch Name="eventJournalAutoRefresh" Value="@_autoRefresh" Change="@OnAutoRefreshChanged" />
+        </div>
     </div>
 
     @if (!string.IsNullOrEmpty(_error))

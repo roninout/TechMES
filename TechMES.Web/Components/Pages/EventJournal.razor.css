@@ -6,9 +6,13 @@
     min-height: 0;
 }
 
+
+
+
+/* Верхняя строка повторяет схему Alarm history: слева дата, заголовок по центру, справа статус и Refresh. */
 .event-journal-toolbar {
     display: grid;
-    grid-template-columns: minmax(290px, 1fr) auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     grid-template-areas: "date title status";
     align-items: center;
     gap: 16px;
@@ -40,13 +44,12 @@
     min-width: 0;
 }
 
-/* Refresh и переключатель образуют одну вертикальную группу в правой части заголовка. */
-.event-journal-refresh-controls {
+/* Переключатель находится ниже Refresh и больше не увеличивает высоту верхней строки. */
+.event-journal-auto-refresh-row {
     display: flex;
-    flex: none;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
+    justify-content: flex-end;
+    min-height: 32px;
+    margin-top: 0;
 }
 
 .event-journal-refresh-option {
@@ -54,7 +57,11 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    margin-top: 6px; /* Увеличь это значение, чтобы опустить переключатель ещё ниже. */
+    width: 250px;
+    min-height: 32px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    color: var(--rz-text-secondary-color);
     white-space: nowrap;
 }
 
@@ -72,7 +79,6 @@
 .event-journal-error {
     color: var(--rz-danger);
 }
-
 
 
 
