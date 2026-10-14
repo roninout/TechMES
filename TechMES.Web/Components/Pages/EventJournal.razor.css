@@ -101,6 +101,7 @@
             box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
         }
 
+    /* Неактивные карточки: текст, число и иконка сероватого цвета темы. */
     .event-journal-station-scroll ::deep .event-journal-station-button {
         display: flex;
         flex-direction: column;
@@ -110,7 +111,7 @@
         padding: 12px;
         border: 0;
         background: transparent;
-        color: var(--rz-text-color);
+        color: var(--rz-text-secondary-color);
         text-align: left;
         cursor: pointer;
     }
@@ -131,6 +132,7 @@
 
     .event-journal-station-scroll ::deep .event-journal-station-icon {
         flex: none;
+        color: var(--rz-text-secondary-color);
         font-size: 1.1rem;
     }
 
@@ -151,7 +153,12 @@
         font-weight: 400;
     }
 
-    /* Жирный шрифт используется только на выбранной карточке, включая All. */
+    /* Цвет выбранной карточки берётся из текущей темы; жирный шрифт применяется только к ней. */
+    .event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-button,
+    .event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-icon {
+        color: var(--rz-text-color);
+    }
+
     .event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-name,
     .event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-count {
         font-weight: 700;
