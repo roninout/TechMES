@@ -65,19 +65,23 @@
     color: var(--rz-danger);
 }
 
-/* Последние действия располагаются между верхними фильтрами и карточками станций. */
-.event-journal-timeline-scroll {
-    min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 8px 0 4px;
-}
+
+
+
+
+    /* Последние действия располагаются слева между верхними фильтрами и карточками станций. */
+    .event-journal-timeline-scroll {
+        min-width: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 8px 0 4px;
+    }
 
     .event-journal-timeline-scroll ::deep .event-journal-timeline {
         width: 100%;
         min-width: 960px;
         max-width: 1200px;
-        margin-inline: auto;
+        margin-inline: 0;
     }
 
     /* User расположен над линией и использует основной цвет текущей темы. */
@@ -99,7 +103,11 @@
         white-space: nowrap;
     }
 
-/* Карточки занимают доступную ширину; switch остаётся справа над таблицей. */
+
+
+
+
+/* Карточки занимают доступную ширину; переключатели остаются справа над таблицей. */
 .event-journal-station-toolbar {
     display: flex;
     align-items: flex-end;
@@ -112,7 +120,14 @@
         min-width: 0;
     }
 
-.event-journal-root-switch {
+.event-journal-switches {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    flex: none;
+}
+
+.event-journal-option-switch {
     display: inline-flex;
     align-items: center;
     gap: 8px;

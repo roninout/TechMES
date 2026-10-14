@@ -108,10 +108,20 @@
                 </RadzenCardGroup>
             </div>
 
-            <div class="event-journal-root-switch">
-                <span>logged</span>
-                <RadzenSwitch Value="@_showRootEquipment" Change="@OnShowRootChanged"
-                              InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Show $Root events" })" />
+            <div class="event-journal-switches">
+
+                <div class="event-journal-option-switch">
+                    <span>client</span>
+                    <RadzenSwitch @bind-Value="_showClientColumns"
+                                  InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Show Client and Address columns" })" />
+                </div>
+
+                <div class="event-journal-option-switch">
+                    <span>logged</span>
+                    <RadzenSwitch Value="@_showRootEquipment" Change="@OnShowRootChanged"
+                                  InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Show $Root events" })" />
+                </div>
+
             </div>
         </div>
     }
@@ -151,8 +161,8 @@
 
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Old" Title="Old" Width="120px" />
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="New" Title="New" Width="120px" />
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Client" Title="Client" Width="190px" />
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Address" Title="Address" Width="180px" />
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Client" Title="Client" Width="190px" Visible="@_showClientColumns" />
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Address" Title="Address" Width="180px" Visible="@_showClientColumns" />
                     </Columns>
                 </RadzenDataGrid>
             }
@@ -217,7 +227,7 @@
     private const string InterfaceEventCategory = "Interface Event";
     private const string SystemCategory = "System";
     private const string ArchivingCategory = "Archiving";
-    private const int TimelineItemCount = 10;
+    private const int TimelineItemCount = 13;
 
     private readonly CancellationTokenSource _stop = new();
     private readonly List<OperationActionRow> _allOperationItems = [];
@@ -246,6 +256,8 @@
     private bool _isRefreshing;
     // По умолчанию служебные события Equipment = $Root скрыты.
     private bool _showRootEquipment;
+    // Client и Address при открытии страницы видны; switch управляет только их отображением.
+    private bool _showClientColumns = false;
 
     private int VisibleCount => _selectedCategory == InterfaceEventCategory ? _operationItems.Count : _eventItems.Count;
 
