@@ -130,11 +130,15 @@
     min-width: 0;
 }
 
+/* Контейнер совпадает по ширине с правым списком: client слева, logged справа. */
 .event-journal-switches {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 16px;
-    flex: none;
+    justify-content: space-between;
+    flex: 0 0 250px;
+    width: 250px;
+    padding: 0 10px 6px;
+    box-sizing: border-box;
 }
 
 .event-journal-option-switch {
@@ -142,7 +146,6 @@
     align-items: center;
     gap: 8px;
     flex: none;
-    padding: 0 4px 6px 0;
     color: var(--rz-text-color);
     white-space: nowrap;
 }
@@ -339,7 +342,8 @@
 }
 
 @media (max-width: 1366px), (any-pointer: coarse) {
-    .event-journal-content {
+    .event-journal-content,
+    .event-journal-timeline-layout {
         grid-template-columns: minmax(0, 1fr);
     }
 
