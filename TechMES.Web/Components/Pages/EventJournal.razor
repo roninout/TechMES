@@ -69,7 +69,7 @@
                 <RadzenCardGroup Responsive="false" class="event-journal-station-group">
                     @foreach (var station in _stationCards)
                     {
-                        <RadzenCard @key="station.Name" Variant="Variant.Outlined" class="@GetStationCardCssClass(station)">
+                        <RadzenCard @key="station.Name" Variant="Variant.Filled" class="@GetStationCardCssClass(station)">
                             <button type="button" class="event-journal-station-button"
                                     aria-pressed="@IsStationSelected(station)"
                                     title="@($"{station.Name}: {station.Count:N0} actions")"

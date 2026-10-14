@@ -85,42 +85,37 @@
     min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 3px;
+    padding: 6px;
 }
 
     .event-journal-station-scroll ::deep .event-journal-station-group {
         display: flex;
         align-items: flex-end;
         flex-wrap: nowrap;
-        gap: 8px;
+        gap: 10px;
         width: max-content;
         min-width: 100%;
     }
 
+    /* Все станции используют одинаковую поверхность без цветного контура. */
     .event-journal-station-scroll ::deep .event-journal-station-card {
         flex: 0 0 132px;
         width: 132px;
         height: 76px;
         padding: 0;
-        background-color: var(--rz-grid-background-color, var(--rz-base-background-color));
-        border-color: var(--rz-primary-darker);
-        box-shadow: none;
+        border: 0;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        overflow: hidden;
     }
 
-        .event-journal-station-scroll ::deep .event-journal-station-card.is-all {
-            border-color: var(--rz-base-500);
-        }
-
+        /* Выбор показывает размер и более заметная тень; цвет границы не меняется. */
         .event-journal-station-scroll ::deep .event-journal-station-card.is-selected {
             flex-basis: 160px;
             width: 160px;
             height: 86px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
         }
-
-            .event-journal-station-scroll ::deep .event-journal-station-card.is-selected:not(.is-all) {
-                border-color: var(--rz-success-darker);
-                outline: 1px solid var(--rz-success-darker);
-            }
 
     .event-journal-station-scroll ::deep .event-journal-station-button {
         display: flex;
@@ -138,8 +133,9 @@
         cursor: pointer;
     }
 
+        /* Видимый фокус оставляем только для управления с клавиатуры. */
         .event-journal-station-scroll ::deep .event-journal-station-button:focus-visible {
-            outline: 2px solid var(--rz-primary);
+            outline: 2px solid var(--rz-text-secondary-color);
             outline-offset: -3px;
         }
 
