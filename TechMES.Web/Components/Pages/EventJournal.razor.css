@@ -65,27 +65,12 @@
     color: var(--rz-danger);
 }
 
-.event-journal-station-shell {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    flex: none;
-    min-width: 0;
-    padding: 12px 16px;
-    border: 1px solid var(--rz-base-300);
-    border-radius: 4px;
-}
-
-.event-journal-station-heading h4 {
-    margin: 0;
-    font-size: 1rem;
-}
-
+/* Карточки находятся прямо над таблицей, без внешней рамки и заголовка. */
 .event-journal-station-scroll {
     min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 6px;
+    padding: 4px 2px 6px;
 }
 
     .event-journal-station-scroll ::deep .event-journal-station-group {
@@ -97,7 +82,6 @@
         min-width: 100%;
     }
 
-    /* Все станции используют одинаковую поверхность без цветного контура. */
     .event-journal-station-scroll ::deep .event-journal-station-card {
         flex: 0 0 132px;
         width: 132px;
@@ -109,7 +93,7 @@
         overflow: hidden;
     }
 
-        /* Выбор показывает размер и более заметная тень; цвет границы не меняется. */
+        /* Выбранная карточка немного больше, но без цветной рамки. */
         .event-journal-station-scroll ::deep .event-journal-station-card.is-selected {
             flex-basis: 160px;
             width: 160px;
@@ -120,9 +104,7 @@
     .event-journal-station-scroll ::deep .event-journal-station-button {
         display: flex;
         flex-direction: column;
-        align-items: flex-start;
         justify-content: space-between;
-        gap: 4px;
         width: 100%;
         height: 100%;
         padding: 12px;
@@ -133,20 +115,47 @@
         cursor: pointer;
     }
 
-        /* Видимый фокус оставляем только для управления с клавиатуры. */
         .event-journal-station-scroll ::deep .event-journal-station-button:focus-visible {
             outline: 2px solid var(--rz-text-secondary-color);
             outline-offset: -3px;
         }
 
-.event-journal-station-name {
-    font-weight: 600;
-}
+    /* Иконка слева, имя станции у правого края верхней строки. */
+    .event-journal-station-scroll ::deep .event-journal-station-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+    }
 
-.event-journal-station-count {
-    font-size: 1.15rem;
-    font-variant-numeric: tabular-nums;
-}
+    .event-journal-station-scroll ::deep .event-journal-station-icon {
+        flex: none;
+        font-size: 1.1rem;
+    }
+
+    .event-journal-station-scroll ::deep .event-journal-station-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-align: right;
+        font-weight: 400;
+    }
+
+    /* Количество меньше прежнего и расположено справа в нижней строке. */
+    .event-journal-station-scroll ::deep .event-journal-station-count {
+        align-self: flex-end;
+        font-size: 0.85rem;
+        font-variant-numeric: tabular-nums;
+        font-weight: 400;
+    }
+
+    /* Жирный шрифт используется только на выбранной карточке, включая All. */
+    .event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-name,
+    .event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-count {
+        font-weight: 700;
+    }
 
 .event-journal-content {
     display: grid;

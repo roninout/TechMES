@@ -60,28 +60,26 @@
 
     @if (_selectedCategory == InterfaceEventCategory)
     {
-        <section class="event-journal-station-shell" aria-label="Operation actions by station">
-            <div class="event-journal-station-heading">
-                <h4>Operation actions by station: @(_selectedStation ?? "All")</h4>
-            </div>
-
-            <div class="event-journal-station-scroll">
-                <RadzenCardGroup Responsive="false" class="event-journal-station-group">
-                    @foreach (var station in _stationCards)
-                    {
-                        <RadzenCard @key="station.Name" Variant="Variant.Filled" class="@GetStationCardCssClass(station)">
-                            <button type="button" class="event-journal-station-button"
-                                    aria-pressed="@IsStationSelected(station)"
-                                    title="@($"{station.Name}: {station.Count:N0} actions")"
-                                    @onclick="() => OnStationClickAsync(station)">
+        <div class="event-journal-station-scroll" role="group" aria-label="Operation actions by station">
+            <RadzenCardGroup Responsive="false" class="event-journal-station-group">
+                @foreach (var station in _stationCards)
+                {
+                    <RadzenCard @key="station.Name" Variant="Variant.Filled" class="@GetStationCardCssClass(station)">
+                        <button type="button" class="event-journal-station-button"
+                                aria-pressed="@IsStationSelected(station)"
+                                title="@($"{station.Name}: {station.Count:N0} actions")"
+                                @onclick="() => OnStationClickAsync(station)">
+                            <span class="event-journal-station-header">
+                                <RadzenIcon Icon="@(station.IsAll ? "apps" : "factory")" class="event-journal-station-icon" />
                                 <span class="event-journal-station-name">@station.Name</span>
-                                <strong class="event-journal-station-count">@station.Count.ToString("N0")</strong>
-                            </button>
-                        </RadzenCard>
-                    }
-                </RadzenCardGroup>
-            </div>
-        </section>
+                            </span>
+
+                            <span class="event-journal-station-count">@station.Count.ToString("N0")</span>
+                        </button>
+                    </RadzenCard>
+                }
+            </RadzenCardGroup>
+        </div>
     }
 
     <div class="event-journal-content @(_selectedCategory == InterfaceEventCategory && _equipmentPrefixes.Count > 1 ? "" : "event-journal-content-full")">
