@@ -8,35 +8,16 @@
 
 .event-journal-toolbar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    grid-template-areas:
-        ". title status"
-        "filters filters filters";
+    grid-template-columns: minmax(290px, 1fr) auto minmax(0, 1fr);
+    grid-template-areas: "date title status";
     align-items: center;
-    gap: 12px 16px;
+    gap: 16px;
 }
 
-.event-journal-toolbar-left {
-    grid-area: filters;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-}
-
-.event-journal-categories {
-    min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-bottom: 2px;
-}
-
-.event-journal-toolbar-right {
-    grid-area: status;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
+.event-journal-toolbar-date {
+    grid-area: date;
+    width: 290px;
+    max-width: 100%;
     min-width: 0;
 }
 
@@ -48,6 +29,15 @@
     line-height: 1.2;
     text-align: center;
     white-space: nowrap;
+}
+
+.event-journal-toolbar-right {
+    grid-area: status;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    min-width: 0;
 }
 
 .event-journal-spinner {
@@ -117,7 +107,7 @@
 
 
 
-/* Карточки занимают доступную ширину; переключатели остаются справа над таблицей. */
+/* Карточки остаются слева, а комбобокс занимает ширину правого списка. */
 .event-journal-station-toolbar {
     display: flex;
     align-items: flex-end;
@@ -125,20 +115,29 @@
     min-width: 0;
 }
 
-.event-journal-station-toolbar .event-journal-station-scroll {
+.event-journal-station-scroll,
+.event-journal-station-spacer {
     flex: 1 1 auto;
     min-width: 0;
 }
 
-/* Контейнер совпадает по ширине с правым списком: client слева, logged справа. */
+.event-journal-category-select {
+    flex: 0 0 250px;
+    width: 250px;
+    min-width: 0;
+}
+
+/* Переключатели стоят у нижнего края правой области. */
 .event-journal-switches {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex: 0 0 250px;
-    width: 250px;
-    padding: 0 10px 6px;
+    gap: 8px;
+    flex: none;
+    width: 100%;
+    padding: 8px 10px;
     box-sizing: border-box;
+    border-top: 1px solid var(--rz-border-color);
 }
 
 .event-journal-option-switch {
@@ -280,9 +279,18 @@
 }
 
 .event-journal-equipment-list {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
     min-height: 0;
+    overflow: hidden;
     background-color: var(--rz-grid-background-color, var(--rz-base-background-color));
+}
+
+.event-journal-equipment-list-box {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .event-journal-equipment-list ::deep .rz-listbox {
@@ -320,23 +328,52 @@
 
 @media (max-width: 1100px) {
     .event-journal-toolbar {
-        grid-template-columns: minmax(0, 1fr);
         grid-template-areas:
-            "title"
-            "status"
-            "filters";
+            "date title ."
+            "status status status";
     }
 
     .event-journal-toolbar-right {
-        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 650px) {
+    .event-journal-toolbar {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "date title"
+            "status status";
+    }
+
+    .event-journal-title {
+        font-size: 1.3rem;
+    }
+
+    .event-journal-station-toolbar {
         flex-wrap: wrap;
     }
 
-    .event-journal-toolbar-left {
-        flex-wrap: wrap;
+    .event-journal-station-scroll,
+    .event-journal-station-spacer {
+        flex-basis: 100%;
     }
 
-    .event-journal-categories {
+    .event-journal-category-select {
+        margin-left: auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .event-journal-toolbar {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "title"
+            "date"
+            "status";
+    }
+
+    .event-journal-toolbar-date {
         width: 100%;
     }
 }

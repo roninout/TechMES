@@ -10,22 +10,11 @@
 
 <div class="event-journal-page">
     <div class="event-journal-toolbar">
-        <div class="event-journal-toolbar-left">
+        <div class="event-journal-toolbar-date">
             <RadzenDateRangePicker Value="@_selectedRange" ValueChanged="@OnRangeChanged"
                                    NavigationMode="DatePickerNavigationMode.DrillDown"
                                    DisplayMonths="2" AllowClear="false" DateFormat="dd.MM.yyyy"
-                                   Style="width: 290px; flex: none;" />
-
-            <div class="event-journal-categories">
-                <RadzenSelectBar TValue="string" Value="@_selectedCategory" ValueChanged="@OnCategoryChanged"
-                                 AriaLabel="Event category" Size="ButtonSize.Small">
-                    <Items>
-                        <RadzenSelectBarItem Text="Operation actions" Value="@InterfaceEventCategory" Icon="touch_app" />
-                        <RadzenSelectBarItem Text="System" Value="@SystemCategory" Icon="settings" />
-                        <RadzenSelectBarItem Text="Archiving" Value="@ArchivingCategory" Icon="archive" />
-                    </Items>
-                </RadzenSelectBar>
-            </div>
+                                   Style="width: 100%; max-width: 290px;" />
         </div>
 
         <h2 class="event-journal-title">Event Journal</h2>
@@ -60,38 +49,37 @@
         <div class="event-journal-error">@_error</div>
     }
 
-    @if (_selectedCategory == InterfaceEventCategory)
+    @if (_selectedCategory == InterfaceEventCategory && _loadedAt is not null && _timelineItems.Count > 0)
     {
+        <div class="event-journal-timeline-layout @(_equipmentPrefixes.Count > 1 ? "" : "event-journal-timeline-layout-full")">
+            <div class="event-journal-timeline-scroll" aria-label="Latest operation actions">
+                <RadzenTimeline Orientation="Orientation.Horizontal" LinePosition="LinePosition.Center"
+                                AlignItems="AlignItems.Center" class="event-journal-timeline">
+                    <Items>
+                        @for (var index = 0; index < _timelineItems.Count; index++)
+                        {
+                            var action = _timelineItems[index];
 
-        @if (_loadedAt is not null && _timelineItems.Count > 0)
-        {
-            <div class="event-journal-timeline-layout @(_equipmentPrefixes.Count > 1 ? "" : "event-journal-timeline-layout-full")">
-                <div class="event-journal-timeline-scroll" aria-label="Latest operation actions">
-                    <RadzenTimeline Orientation="Orientation.Horizontal" LinePosition="LinePosition.Center"
-                                    AlignItems="AlignItems.Center" class="event-journal-timeline">
-                        <Items>
-                            @for (var index = 0; index < _timelineItems.Count; index++)
-                            {
-                                var action = _timelineItems[index];
-
-                                <RadzenTimelineItem @key="action" PointStyle="@(index == 0 ? PointStyle.Primary : PointStyle.Base)"
-                                                    PointSize="PointSize.Small">
-                                    <LabelContent>
-                                        <span class="event-journal-timeline-user"
-                                              title="@(action.Date?.ToString("dd.MM.yyyy HH:mm:ss"))">@action.User</span>
-                                    </LabelContent>
-                                    <ChildContent>
-                                        <span class="event-journal-timeline-equipment" title="@action.Equipment">@action.Equipment</span>
-                                    </ChildContent>
-                                </RadzenTimelineItem>
-                            }
-                        </Items>
-                    </RadzenTimeline>
-                </div>
+                            <RadzenTimelineItem @key="action" PointStyle="@(index == 0 ? PointStyle.Primary : PointStyle.Base)"
+                                                PointSize="PointSize.Small">
+                                <LabelContent>
+                                    <span class="event-journal-timeline-user"
+                                          title="@(action.Date?.ToString("dd.MM.yyyy HH:mm:ss"))">@action.User</span>
+                                </LabelContent>
+                                <ChildContent>
+                                    <span class="event-journal-timeline-equipment" title="@action.Equipment">@action.Equipment</span>
+                                </ChildContent>
+                            </RadzenTimelineItem>
+                        }
+                    </Items>
+                </RadzenTimeline>
             </div>
-        }
+        </div>
+    }
 
-        <div class="event-journal-station-toolbar">
+    <div class="event-journal-station-toolbar">
+        @if (_selectedCategory == InterfaceEventCategory)
+        {
             <div class="event-journal-station-scroll" role="group" aria-label="Operation actions by station">
                 <RadzenCardGroup Responsive="false" class="event-journal-station-group">
                     @foreach (var station in _stationCards)
@@ -112,24 +100,37 @@
                     }
                 </RadzenCardGroup>
             </div>
+        }
+        else
+        {
+            <div class="event-journal-station-spacer"></div>
+        }
 
-            <div class="event-journal-switches">
-
-                <div class="event-journal-option-switch">
-                    <span>client</span>
-                    <RadzenSwitch @bind-Value="_showClientColumns"
-                                  InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Show Client and Address columns" })" />
-                </div>
-
-                <div class="event-journal-option-switch">
-                    <span>logged</span>
-                    <RadzenSwitch Value="@_showRootEquipment" Change="@OnShowRootChanged"
-                                  InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Show $Root events" })" />
-                </div>
-
-            </div>
+        <div class="event-journal-category-select">
+            <RadzenDropDown TValue="string" Data="@EventCategories" TextProperty="Text" ValueProperty="Value"
+                            Value="@_selectedCategory" ValueChanged="@OnCategoryChanged" AllowClear="false"
+                            Style="width: 100%;" AriaLabel="Event category">
+                <Template Context="item">
+                    @{
+                        var category = (EventCategoryOption)item;
+                    }
+                    <span style="display: inline-flex; align-items: center; gap: 8px;">
+                        <RadzenIcon Icon="@category.Icon" />
+                        <span>@category.Text</span>
+                    </span>
+                </Template>
+                <ValueTemplate Context="item">
+                    @{
+                        var category = (EventCategoryOption)item;
+                    }
+                    <span style="display: inline-flex; align-items: center; gap: 8px;">
+                        <RadzenIcon Icon="@category.Icon" />
+                        <span>@category.Text</span>
+                    </span>
+                </ValueTemplate>
+            </RadzenDropDown>
         </div>
-    }
+    </div>
 
     <div class="event-journal-content @(_selectedCategory == InterfaceEventCategory && _equipmentPrefixes.Count > 1 ? "" : "event-journal-content-full")">
         
@@ -201,25 +202,41 @@
         @if (_selectedCategory == InterfaceEventCategory && _equipmentPrefixes.Count > 1)
         {
             <aside class="event-journal-equipment-list">
-                <RadzenListBox TValue="string" Data="@_equipmentPrefixes" TextProperty="Name" ValueProperty="Name"
-                               Value="@_selectedEquipmentPrefix" Change="@OnEquipmentPrefixChangedAsync"
-                               Style="width: 100%; height: 100%;"
-                               InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Equipment filter" })">
-                    <Template Context="item">
-                        @{
-                            var equipment = (EquipmentPrefixCount)item;
-                        }
+                <div class="event-journal-equipment-list-box">
+                    <RadzenListBox TValue="string" Data="@_equipmentPrefixes" TextProperty="Name" ValueProperty="Name"
+                                   Value="@_selectedEquipmentPrefix" Change="@OnEquipmentPrefixChangedAsync"
+                                   Style="width: 100%; height: 100%;"
+                                   InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Equipment filter" })">
+                        <Template Context="item">
+                            @{
+                                var equipment = (EquipmentPrefixCount)item;
+                            }
 
-                        <div class="event-journal-list-item">
-                            <span class="event-journal-list-identity">
-                                <RadzenIcon Icon="@(equipment.Name == "All" ? "apps" : "precision_manufacturing")" />
-                                <span class="event-journal-list-name" title="@equipment.Name">@equipment.Name</span>
-                            </span>
+                            <div class="event-journal-list-item">
+                                <span class="event-journal-list-identity">
+                                    <RadzenIcon Icon="@(equipment.Name == "All" ? "apps" : "precision_manufacturing")" />
+                                    <span class="event-journal-list-name" title="@equipment.Name">@equipment.Name</span>
+                                </span>
 
-                            <RadzenBadge Text="@equipment.Count.ToString()" BadgeStyle="BadgeStyle.Light" />
-                        </div>
-                    </Template>
-                </RadzenListBox>
+                                <RadzenBadge Text="@equipment.Count.ToString()" BadgeStyle="BadgeStyle.Light" />
+                            </div>
+                        </Template>
+                    </RadzenListBox>
+                </div>
+
+                <div class="event-journal-switches">
+                    <div class="event-journal-option-switch">
+                        <span>client</span>
+                        <RadzenSwitch @bind-Value="_showClientColumns"
+                                      InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Show Client and Address columns" })" />
+                    </div>
+
+                    <div class="event-journal-option-switch">
+                        <span>logged</span>
+                        <RadzenSwitch Value="@_showRootEquipment" Change="@OnShowRootChanged"
+                                      InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Show $Root events" })" />
+                    </div>
+                </div>
             </aside>
         }
 
@@ -232,6 +249,15 @@
     private const string InterfaceEventCategory = "Interface Event";
     private const string SystemCategory = "System";
     private const string ArchivingCategory = "Archiving";
+
+    // Подписи и иконки категорий используются в списке и в выбранном значении комбобокса.
+    private static readonly EventCategoryOption[] EventCategories =
+    [
+        new(InterfaceEventCategory, "Operation actions", "touch_app"),
+        new(SystemCategory, "System", "settings"),
+        new(ArchivingCategory, "Archiving", "archive")
+    ];
+
     // Минимальная ширина на одну точку с подписью и защитный предел для широких экранов.
     private const int TimelineItemWidth = 140;
     private const int TimelineMaxItems = 64;
@@ -773,4 +799,5 @@
 
     private sealed record StationCount(string Name, int Count, bool IsAll = false);
     private sealed record EquipmentPrefixCount(string Name, int Count);
+    private sealed record EventCategoryOption(string Value, string Text, string Icon);
 }
