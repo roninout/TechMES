@@ -44,23 +44,22 @@
     min-width: 0;
 }
 
-/* Переключатель находится ниже Refresh и больше не увеличивает высоту верхней строки. */
+/* Отдельная строка сохраняет компактную высоту верхней панели. */
 .event-journal-auto-refresh-row {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     min-height: 32px;
     margin-top: 0;
 }
 
+/* Надпись и Switch стоят рядом, как в Alarm history, у правого края Refresh. */
 .event-journal-refresh-option {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
-    width: 250px;
-    min-height: 32px;
-    padding: 0 8px;
-    box-sizing: border-box;
+    height: 32px;
+    flex: none;
     color: var(--rz-text-secondary-color);
     white-space: nowrap;
 }
