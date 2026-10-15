@@ -478,6 +478,40 @@
 
 
 
+    /* Заголовок Operation actions использует ту же высоту, что и строки данных. */
+    .event-journal-table ::deep .event-journal-operation-grid .rz-grid-table > thead > tr > th {
+        height: var(--event-journal-operation-row-height);
+        padding-top: 0;
+        padding-bottom: 0;
+        vertical-align: middle;
+        box-sizing: border-box;
+    }
+
+    /* Убираем стандартные вертикальные отступы внутреннего контейнера заголовка Radzen. */
+    .event-journal-table ::deep .event-journal-operation-grid .rz-grid-table > thead > tr > th > div {
+        height: calc(var(--event-journal-operation-row-height) - 1px);
+        min-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        box-sizing: border-box;
+    }
+
+    /* Подписи заголовка выравниваем по высоте содержимого строк. */
+    .event-journal-table ::deep .event-journal-operation-grid .rz-column-title {
+        line-height: var(--event-journal-value-icon-size);
+    }
+
+    /* Весь элемент Timeline доступен для нажатия. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-item {
+        cursor: pointer;
+    }
+
+    /* Подчёркивание при наведении показывает возможность перехода к записи. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-item:hover .event-journal-timeline-user,
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-item:hover .event-journal-timeline-equipment {
+        text-decoration: underline;
+    }
+
 
 @media (max-width: 480px) {
     .event-journal-toolbar {

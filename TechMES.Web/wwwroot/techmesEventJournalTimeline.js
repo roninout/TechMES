@@ -69,3 +69,26 @@ export function disconnect(element) {
 
     observers.delete(element);
 }
+
+// После отрисовки показывает выбранную строку, не меняя горизонтальную прокрутку таблицы.
+export function scrollToSelectedRow(element) {
+    const grid = element?.querySelector(".event-journal-operation-grid");
+    const viewport = grid?.querySelector(".rz-data-grid-data");
+    const row = grid?.querySelector('tbody tr[aria-selected="true"]');
+
+    if (!viewport || !row) {
+        return;
+    }
+
+    const viewportBounds = viewport.getBoundingClientRect();
+    const rowBounds = row.getBoundingClientRect();
+    const headerHeight = grid.querySelector("thead")?.getBoundingClientRect().height ?? 0;
+    const visibleTop = viewportBounds.top + headerHeight;
+    const visibleBottom = viewportBounds.bottom;
+
+    if (rowBounds.top < visibleTop) {
+        viewport.scrollTop -= visibleTop - rowBounds.top;
+    } else if (rowBounds.bottom > visibleBottom) {
+        viewport.scrollTop += rowBounds.bottom - visibleBottom;
+    }
+}

@@ -61,18 +61,16 @@
     {
         <div class="event-journal-timeline-layout @(_equipmentPrefixes.Count > 1 ? "" : "event-journal-timeline-layout-full")">
             <div class="event-journal-timeline-scroll" aria-label="Latest operation actions">
-                <RadzenTimeline Orientation="Orientation.Horizontal" LinePosition="LinePosition.Center"
-                                AlignItems="AlignItems.Center" class="event-journal-timeline">
+                <RadzenTimeline Orientation="Orientation.Horizontal" LinePosition="LinePosition.Center" AlignItems="AlignItems.Center" class="event-journal-timeline">
                     <Items>
                         @for (var index = 0; index < _timelineItems.Count; index++)
                         {
                             var action = _timelineItems[index];
 
-                            <RadzenTimelineItem @key="action" PointStyle="@(index == 0 ? PointStyle.Primary : PointStyle.Base)"
-                                                PointSize="PointSize.Small">
+                            @* Клик по пользователю, точке или оборудованию открывает соответствующую строку таблицы. *@
+                            <RadzenTimelineItem @key="action" PointStyle="@(index == 0 ? PointStyle.Primary : PointStyle.Base)" PointSize="PointSize.Small" class="event-journal-timeline-item" @onclick="() => OnTimelineItemClickAsync(action)">
                                 <LabelContent>
-                                    <span class="event-journal-timeline-user"
-                                          title="@(action.Date?.ToString("dd.MM.yyyy HH:mm:ss"))">@action.User</span>
+                                    <span class="event-journal-timeline-user" title="@(action.Date?.ToString("dd.MM.yyyy HH:mm:ss"))">@action.User</span>
                                 </LabelContent>
                                 <ChildContent>
                                     <span class="event-journal-timeline-equipment" title="@action.Equipment">@action.Equipment</span>
@@ -151,6 +149,7 @@
             {
                 <RadzenDataGrid @key="_gridRevision" @ref="_operationGrid" Data="@_operationItems" TItem="OperationActionRow"
                                 AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="40"
+                                SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="true" @bind-Value="_selectedOperationRows"
                                 Density="Density.Compact" class="event-journal-grid event-journal-operation-grid">
 
                     <Columns>
@@ -328,6 +327,13 @@
     private readonly List<OperationActionRow> _allOperationItems = [];
     private readonly List<OperationActionRow> _operationItems = [];
 
+    // Выбранная строка таблицы и состояние перехода из Timeline.
+    private IList<OperationActionRow> _selectedOperationRows = [];
+    private bool _timelineNavigationInProgress;
+
+    // Прокрутка выполняется после отрисовки выделенной строки.
+    private bool _scrollToSelectedOperationRow;
+
     private List<EventJournalDto> _allItems = [];
     private IReadOnlyList<EventJournalDto> _eventItems = [];
     private List<StationCount> _stationCards = [new("All", 0, true)];
@@ -437,24 +443,38 @@
     }
 
     /// <summary>
-    /// После появления таблицы подписывается на изменение ширины её контейнера.
-    /// Наблюдатель создаётся один раз и не зависит от Refresh или категории событий.
+    /// Подключает наблюдение за шириной таблицы при первом отображении.
+    /// После перехода из Timeline прокручивает таблицу к выделенной строке.
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _stop.IsCancellationRequested)
+        if (_stop.IsCancellationRequested)
             return;
 
         try
         {
-            _timelineModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./techmesEventJournalTimeline.js");
-            _timelineSelfReference = DotNetObjectReference.Create(this);
+            if (firstRender)
+            {
+                _timelineModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./techmesEventJournalTimeline.js");
+                _timelineSelfReference = DotNetObjectReference.Create(this);
 
-            await _timelineModule.InvokeVoidAsync("observe", _tableHost, _timelineSelfReference, TimelineItemWidth, TimelineMaxItems);
+                await _timelineModule.InvokeVoidAsync("observe", _tableHost, _timelineSelfReference, TimelineItemWidth, TimelineMaxItems);
+            }
+
+            if (_scrollToSelectedOperationRow && _timelineModule is not null)
+            {
+                _scrollToSelectedOperationRow = false;
+
+                await _timelineModule.InvokeVoidAsync("scrollToSelectedRow", _tableHost);
+            }
         }
         catch (JSDisconnectedException)
         {
-            // Страница закрылась во время подключения наблюдателя.
+            // Браузерное соединение закрылось во время выполнения JS.
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+            // Страница закрылась во время подключения наблюдателя или прокрутки.
         }
     }
 
@@ -740,6 +760,64 @@
             return null;
 
         return equipment[..secondDot].Trim();
+    }
+
+    /// <summary>
+    /// Открывает запись из Timeline в таблице на уже загруженных данных.
+    /// Сбрасывает станцию, оборудование и фильтры колонок, сохраняя сортировку.
+    /// Переходит на страницу записи, выделяет её и планирует прокрутку после отрисовки.
+    /// </summary>
+    private async Task OnTimelineItemClickAsync(OperationActionRow action)
+    {
+        if (_operationGrid is null || _timelineNavigationInProgress || _stop.IsCancellationRequested)
+            return;
+
+        _timelineNavigationInProgress = true;
+
+        try
+        {
+            var grid = _operationGrid;
+
+            _selectedStation = null;
+            _selectedEquipmentPrefix = "All";
+
+            ApplyStationSelection();
+            BuildEquipmentPrefixes();
+
+            _selectedOperationRows = [];
+            grid.Reset(resetColumnState: false, resetRowState: true);
+
+            // Очищаем фильтры без отдельной перезагрузки таблицы для каждой колонки.
+            foreach (var column in grid.ColumnsCollection.ToList())
+                await grid.ClearFilter(column, closePopup: false, shouldReload: false);
+
+            await grid.Reload();
+
+            if (_stop.IsCancellationRequested || !ReferenceEquals(grid, _operationGrid))
+                return;
+
+            // View содержит всю выборку в текущем порядке сортировки, до разделения на страницы.
+            var orderedRows = grid.View.ToList();
+            var rowIndex = orderedRows.IndexOf(action);
+
+            // Во время ожидания мог прийти новый снимок или измениться период.
+            if (rowIndex < 0)
+                return;
+
+            await grid.GoToPage(rowIndex / grid.PageSize, true);
+
+            if (_stop.IsCancellationRequested || !ReferenceEquals(grid, _operationGrid))
+                return;
+
+            await grid.SelectRow(action);
+
+            _scrollToSelectedOperationRow = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _timelineNavigationInProgress = false;
+        }
     }
 
     /// <summary>
