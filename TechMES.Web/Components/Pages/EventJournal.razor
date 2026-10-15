@@ -178,8 +178,37 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Old" Title="Old" Width="120px" />
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="New" Title="New" Width="120px" />
+                        @* Для on/off показываем иконки. Исходные свойства сохраняют фильтрацию и сортировку. *@
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Old" Title="Old" Width="120px">
+                            <Template Context="entry">
+                                @if (TryGetOnOffState(entry.Old, out var isOn))
+                                {
+                                    <span role="img" title="@(isOn ? "On" : "Off")" aria-label="@(isOn ? "On" : "Off")">
+                                        <RadzenIcon Icon="@(isOn ? "toggle_on" : "toggle_off")" class="@(isOn ? "event-journal-value-icon is-on" : "event-journal-value-icon is-off")" />
+                                    </span>
+                                }
+                                else
+                                {
+                                    @entry.Old
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="New" Title="New" Width="120px">
+                            <Template Context="entry">
+                                @if (TryGetOnOffState(entry.New, out var isOn))
+                                {
+                                    <span role="img" title="@(isOn ? "On" : "Off")" aria-label="@(isOn ? "On" : "Off")">
+                                        <RadzenIcon Icon="@(isOn ? "toggle_on" : "toggle_off")" class="@(isOn ? "event-journal-value-icon is-on" : "event-journal-value-icon is-off")" />
+                                    </span>
+                                }
+                                else
+                                {
+                                    @entry.New
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Client" Title="Client" Width="190px" Visible="@_showClientColumns" />
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Address" Title="Address" Width="180px" Visible="@_showClientColumns" />
                     </Columns>
@@ -320,6 +349,19 @@
     private bool _showClientColumns;
 
     private int VisibleCount => _selectedCategory == InterfaceEventCategory ? _operationItems.Count : _eventItems.Count;
+
+    /// <summary>
+    /// Распознаёт текстовые состояния on/off без учёта регистра и крайних пробелов.
+    /// Возвращает false для остальных значений, чтобы отображать их исходным текстом.
+    /// </summary>
+    private static bool TryGetOnOffState(string? value, out bool isOn)
+    {
+        var normalizedValue = value?.Trim();
+
+        isOn = string.Equals(normalizedValue, "on", StringComparison.OrdinalIgnoreCase);
+
+        return isOn || string.Equals(normalizedValue, "off", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Проверяет, соответствует ли карточка выбранной станции.

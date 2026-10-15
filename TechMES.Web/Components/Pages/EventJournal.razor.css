@@ -379,6 +379,23 @@
     }
 }
 
+/* Иконки значений Old/New имеют одинаковый размер и выравнивание в строке таблицы. */
+.event-journal-table ::deep .event-journal-value-icon {
+    font-size: 26px;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+    /* Включённое состояние выделяем зелёным цветом текущей темы. */
+    .event-journal-table ::deep .event-journal-value-icon.is-on {
+        color: var(--rz-success);
+    }
+
+    /* Выключённое состояние использует нейтральный цвет текущей темы. */
+    .event-journal-table ::deep .event-journal-value-icon.is-off {
+        color: var(--rz-text-secondary-color);
+    }
+
 @media (max-width: 480px) {
     .event-journal-toolbar {
         grid-template-columns: minmax(0, 1fr);
