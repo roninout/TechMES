@@ -381,34 +381,94 @@
 
 
 
-/* Все иконки Old/New имеют одинаковый размер и выравнивание в строке таблицы. */
-.event-journal-table ::deep .event-journal-value-icon {
-    font-size: 26px;
-    line-height: 1;
-    vertical-align: middle;
+/* Размер иконок и одинаковая высота строк Operation actions. */
+.event-journal-table {
+    --event-journal-value-icon-size: 26px;
+    --event-journal-operation-row-height: 36px;
 }
 
-/* Включённое и разрешённое состояния. */
-.event-journal-table ::deep .event-journal-value-icon.is-on,
-.event-journal-table ::deep .event-journal-value-icon.is-enabled {
-    color: var(--rz-success);
-}
+    /* Высота строки включает иконку, вертикальные отступы и границы ячейки. */
+    .event-journal-table ::deep .event-journal-operation-grid .rz-grid-table > tbody > tr:not(.rz-datatable-emptymessage-row) > td {
+        height: var(--event-journal-operation-row-height);
+        padding-top: 4px;
+        padding-bottom: 4px;
+        vertical-align: middle;
+        box-sizing: border-box;
+    }
 
-/* Выключённое и запрещённое состояния. */
-.event-journal-table ::deep .event-journal-value-icon.is-off,
-.event-journal-table ::deep .event-journal-value-icon.is-disabled {
-    color: var(--rz-text-secondary-color);
-}
+    /* Однострочное содержимое обеспечивает одинаковую высоту всех строк. */
+    .event-journal-table ::deep .event-journal-operation-grid .rz-grid-table > tbody > tr > td > .rz-cell-data {
+        display: block;
+        height: var(--event-journal-value-icon-size);
+        line-height: var(--event-journal-value-icon-size);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 
-/* Ручной режим управления. */
-.event-journal-table ::deep .event-journal-value-icon.is-manual {
-    color: var(--rz-warning);
-}
+    /* Текст, иконки состояния и стрелки выровнены по центру ячейки. */
+    .event-journal-table ::deep .event-journal-value-cell {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: var(--event-journal-value-icon-size);
+        max-width: 100%;
+        vertical-align: top;
+        white-space: nowrap;
+    }
 
-/* Автоматический режим управления. */
-.event-journal-table ::deep .event-journal-value-icon.is-auto {
-    color: var(--rz-primary);
-}
+    .event-journal-table ::deep .event-journal-value-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Все иконки состояния занимают одинаковое место. */
+    .event-journal-table ::deep .event-journal-value-icon {
+        width: var(--event-journal-value-icon-size);
+        height: var(--event-journal-value-icon-size);
+        font-size: var(--event-journal-value-icon-size);
+        line-height: 1;
+        vertical-align: middle;
+    }
+
+        /* Включённое и разрешённое состояния. */
+        .event-journal-table ::deep .event-journal-value-icon.is-on,
+        .event-journal-table ::deep .event-journal-value-icon.is-enabled {
+            color: var(--rz-success);
+        }
+
+        /* Выключённое и запрещённое состояния. */
+        .event-journal-table ::deep .event-journal-value-icon.is-off,
+        .event-journal-table ::deep .event-journal-value-icon.is-disabled {
+            color: var(--rz-text-secondary-color);
+        }
+
+        /* Ручной режим: рука с поднятым пальцем. */
+        .event-journal-table ::deep .event-journal-value-icon.is-manual {
+            color: var(--rz-warning);
+        }
+
+        /* Автоматический режим управления. */
+        .event-journal-table ::deep .event-journal-value-icon.is-auto {
+            color: var(--rz-primary);
+        }
+
+    /* Направление изменения числа не обозначает хорошее или плохое состояние. */
+    .event-journal-table ::deep .event-journal-number-direction {
+        display: inline-flex;
+        align-items: center;
+        flex: none;
+        color: var(--rz-primary);
+    }
+
+    .event-journal-table ::deep .event-journal-direction-icon {
+        width: 18px;
+        height: 18px;
+        font-size: 18px;
+        line-height: 1;
+        color: inherit;
+    }
 
 
 

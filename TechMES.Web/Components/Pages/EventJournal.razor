@@ -151,7 +151,7 @@
             {
                 <RadzenDataGrid @key="_gridRevision" @ref="_operationGrid" Data="@_operationItems" TItem="OperationActionRow"
                                 AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="40"
-                                Density="Density.Compact" class="event-journal-grid">
+                                Density="Density.Compact" class="event-journal-grid event-journal-operation-grid">
 
                     <Columns>
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Date" Title="Date" Width="180px"
@@ -178,34 +178,47 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        @* Известные текстовые состояния отображаем иконками. Фильтрация и сортировка используют исходные значения. *@
+                        @* Известные состояния показываем иконками. Для числового New добавляем направление изменения относительно Old. *@
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Old" Title="Old" Width="120px">
                             <Template Context="entry">
-                                @if (TryGetActionValueIcon(entry.Old, out var icon, out var label, out var cssClass))
-                                {
-                                    <span role="img" title="@label" aria-label="@label">
-                                        <RadzenIcon Icon="@icon" class="@($"event-journal-value-icon {cssClass}")" />
-                                    </span>
-                                }
-                                else
-                                {
-                                    @entry.Old
-                                }
+                                <span class="event-journal-value-cell">
+                                    @if (TryGetActionValueIcon(entry.Old, out var icon, out var label, out var cssClass))
+                                    {
+                                        <span role="img" title="@label" aria-label="@label">
+                                            <RadzenIcon Icon="@icon" class="@($"event-journal-value-icon {cssClass}")" />
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="event-journal-value-text" title="@entry.Old">@entry.Old</span>
+                                    }
+                                </span>
                             </Template>
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="New" Title="New" Width="120px">
                             <Template Context="entry">
-                                @if (TryGetActionValueIcon(entry.New, out var icon, out var label, out var cssClass))
-                                {
-                                    <span role="img" title="@label" aria-label="@label">
-                                        <RadzenIcon Icon="@icon" class="@($"event-journal-value-icon {cssClass}")" />
-                                    </span>
-                                }
-                                else
-                                {
-                                    @entry.New
-                                }
+                                <span class="event-journal-value-cell">
+                                    @if (TryGetActionValueIcon(entry.New, out var icon, out var label, out var cssClass))
+                                    {
+                                        <span role="img" title="@label" aria-label="@label">
+                                            <RadzenIcon Icon="@icon" class="@($"event-journal-value-icon {cssClass}")" />
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        var direction = GetNumericChangeDirection(entry.Old, entry.New);
+
+                                        <span class="event-journal-value-text" title="@entry.New">@entry.New</span>
+
+                                        @if (direction != 0)
+                                        {
+                                            <span class="event-journal-number-direction" role="img" title="@(direction > 0 ? "Increased" : "Decreased")" aria-label="@(direction > 0 ? "Increased" : "Decreased")">
+                                                <RadzenIcon Icon="@(direction > 0 ? "arrow_upward" : "arrow_downward")" class="event-journal-direction-icon" />
+                                            </span>
+                                        }
+                                    }
+                                </span>
                             </Template>
                         </RadzenDataGridColumn>
 
@@ -360,7 +373,7 @@
         {
             "on" => ("toggle_on", "On", "is-on"),
             "off" => ("toggle_off", "Off", "is-off"),
-            "man" => ("touch_app", "Manual", "is-manual"),
+            "man" => ("pan_tool_alt", "Manual", "is-manual"),
             "auto" => ("autorenew", "Auto", "is-auto"),
             "enable" => ("check_circle", "Enable", "is-enabled"),
             "disable" => ("block", "Disable", "is-disabled"),
@@ -368,6 +381,31 @@
         };
 
         return icon.Length > 0;
+    }
+
+    /// <summary>
+    /// Сравнивает новое числовое значение со старым.
+    /// Возвращает положительное число при увеличении, отрицательное при уменьшении.
+    /// Для равных или нечисловых значений возвращает ноль.
+    /// </summary>
+    private static int GetNumericChangeDirection(string? oldText, string? newText)
+    {
+        if (!TryParseActionNumber(oldText, out var oldValue) || !TryParseActionNumber(newText, out var newValue))
+            return 0;
+
+        return newValue.CompareTo(oldValue);
+    }
+
+    /// <summary>
+    /// Читает число независимо от культуры WEB-сервера.
+    /// Принимает точку или запятую как десятичный разделитель, без разделителей тысяч.
+    /// Исходный текст значения в таблице не изменяет.
+    /// </summary>
+    private static bool TryParseActionNumber(string? text, out decimal value)
+    {
+        var normalizedText = text?.Trim().Replace(',', '.');
+
+        return decimal.TryParse(normalizedText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value);
     }
 
     /// <summary>
