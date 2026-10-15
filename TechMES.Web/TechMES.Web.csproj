@@ -7,13 +7,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="10.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="10.0.13" />
 	<!-- SignalR Client нужен WEB-приложению, чтобы получать live-события от Runtime.Service. -->    
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
 	<!-- Radzen — библиотека UI-компонентов для Blazor: кнопки, списки, формы, layout. -->
-	<PackageReference Include="Radzen.Blazor" Version="12.0.5" />
-    <PackageReference Include="QRCoder" Version="1.7.0" />
+	<PackageReference Include="Radzen.Blazor" Version="12.1.2" />
+    <PackageReference Include="QRCoder" Version="1.8.1" />
     <PackageReference Include="ZXing.Net" Version="0.16.11" />
   </ItemGroup>
 

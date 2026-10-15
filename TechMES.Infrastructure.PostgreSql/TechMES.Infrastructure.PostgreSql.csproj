@@ -17,7 +17,7 @@
       Этот проект является PostgreSQL-адаптером, поэтому зависимость на Npgsql
       находится именно здесь, а не в TechMES.Runtime.Service и не в TechMES.Web.
     -->
-    <PackageReference Include="Npgsql" Version="10.0.2" />
+    <PackageReference Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
 
   <ItemGroup>
