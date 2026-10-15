@@ -284,9 +284,20 @@
         line-height: 1;
     }
 
-    /* Жирным остаётся только имя выбранной станции; бейдж одинаков с правым списком. */
+    /* Название выбранной станции выделяем голубым цветом Timeline. */
     .event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-name {
+        color: var(--rz-info);
         font-weight: 700;
+    }
+
+    /* Иконка выбранной станции использует тот же голубой цвет. */
+    .event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-icon {
+        color: var(--rz-info);
+    }
+
+    /* Число в бейдже также выделяет выбранную карточку. */
+    .event-journal-station-scroll ::deep .event-journal-station-card.is-selected .event-journal-station-badge .rz-badge {
+        color: var(--rz-text-secondary-color);
     }
 
 .event-journal-content {
