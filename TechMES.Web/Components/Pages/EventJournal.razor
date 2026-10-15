@@ -178,13 +178,13 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        @* Для on/off показываем иконки. Исходные свойства сохраняют фильтрацию и сортировку. *@
+                        @* Известные текстовые состояния отображаем иконками. Фильтрация и сортировка используют исходные значения. *@
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Old" Title="Old" Width="120px">
                             <Template Context="entry">
-                                @if (TryGetOnOffState(entry.Old, out var isOn))
+                                @if (TryGetActionValueIcon(entry.Old, out var icon, out var label, out var cssClass))
                                 {
-                                    <span role="img" title="@(isOn ? "On" : "Off")" aria-label="@(isOn ? "On" : "Off")">
-                                        <RadzenIcon Icon="@(isOn ? "toggle_on" : "toggle_off")" class="@(isOn ? "event-journal-value-icon is-on" : "event-journal-value-icon is-off")" />
+                                    <span role="img" title="@label" aria-label="@label">
+                                        <RadzenIcon Icon="@icon" class="@($"event-journal-value-icon {cssClass}")" />
                                     </span>
                                 }
                                 else
@@ -196,10 +196,10 @@
 
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="New" Title="New" Width="120px">
                             <Template Context="entry">
-                                @if (TryGetOnOffState(entry.New, out var isOn))
+                                @if (TryGetActionValueIcon(entry.New, out var icon, out var label, out var cssClass))
                                 {
-                                    <span role="img" title="@(isOn ? "On" : "Off")" aria-label="@(isOn ? "On" : "Off")">
-                                        <RadzenIcon Icon="@(isOn ? "toggle_on" : "toggle_off")" class="@(isOn ? "event-journal-value-icon is-on" : "event-journal-value-icon is-off")" />
+                                    <span role="img" title="@label" aria-label="@label">
+                                        <RadzenIcon Icon="@icon" class="@($"event-journal-value-icon {cssClass}")" />
                                     </span>
                                 }
                                 else
@@ -351,16 +351,23 @@
     private int VisibleCount => _selectedCategory == InterfaceEventCategory ? _operationItems.Count : _eventItems.Count;
 
     /// <summary>
-    /// Распознаёт текстовые состояния on/off без учёта регистра и крайних пробелов.
-    /// Возвращает false для остальных значений, чтобы отображать их исходным текстом.
+    /// Подбирает иконку, подсказку и оформление для текстового состояния действия.
+    /// Регистр и крайние пробелы не учитываются. Остальные значения отображаются текстом.
     /// </summary>
-    private static bool TryGetOnOffState(string? value, out bool isOn)
+    private static bool TryGetActionValueIcon(string? value, out string icon, out string label, out string cssClass)
     {
-        var normalizedValue = value?.Trim();
+        (icon, label, cssClass) = value?.Trim().ToLowerInvariant() switch
+        {
+            "on" => ("toggle_on", "On", "is-on"),
+            "off" => ("toggle_off", "Off", "is-off"),
+            "man" => ("touch_app", "Manual", "is-manual"),
+            "auto" => ("autorenew", "Auto", "is-auto"),
+            "enable" => ("check_circle", "Enable", "is-enabled"),
+            "disable" => ("block", "Disable", "is-disabled"),
+            _ => ("", "", "")
+        };
 
-        isOn = string.Equals(normalizedValue, "on", StringComparison.OrdinalIgnoreCase);
-
-        return isOn || string.Equals(normalizedValue, "off", StringComparison.OrdinalIgnoreCase);
+        return icon.Length > 0;
     }
 
     /// <summary>
