@@ -100,31 +100,57 @@
     padding: 8px 0 4px;
 }
 
-.event-journal-timeline-scroll ::deep .event-journal-timeline {
-    width: 100%;
-    min-width: 0;
-    max-width: none;
-    margin: 0;
-}
+    /* Контурные круги соединены синей линией, как в примере Radzen. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline {
+        --rz-timeline-line-width: 3px;
+        --rz-timeline-line-color: var(--rz-info);
+        --rz-timeline-axis-size: 72px;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        margin: 0;
+    }
 
-.event-journal-timeline-scroll ::deep .event-journal-timeline-user {
-    display: block;
-    max-width: 140px;
-    color: var(--rz-primary);
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+    /* Каждый элемент занимает одинаковую долю ширины таблицы. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-item {
+        flex: 1 1 0;
+        min-width: 0;
+    }
 
-.event-journal-timeline-scroll ::deep .event-journal-timeline-equipment {
-    display: block;
-    max-width: 140px;
-    color: var(--rz-text-color);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+    /* User и Equipment расположены под кругом в пределах своего элемента. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline .rz-timeline-content-end {
+        width: 100%;
+        min-width: 0;
+        max-height: none;
+    }
+
+    /* Обычные подписи используют цвет текста текущей темы. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-user {
+        display: block;
+        max-width: 100%;
+        color: var(--rz-text-color);
+        font-weight: 600;
+        line-height: 1.4;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-equipment {
+        display: block;
+        max-width: 100%;
+        color: var(--rz-text-color);
+        line-height: 1.4;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Подписи выбранного события выделяются тем же цветом, что и его круг. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-item.is-selected .event-journal-timeline-user,
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-item.is-selected .event-journal-timeline-equipment {
+        color: var(--rz-info);
+    }
 
 
 
