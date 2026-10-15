@@ -213,7 +213,7 @@
 
                                         @if (direction != 0)
                                         {
-                                            <span class="event-journal-number-direction" role="img" title="@(direction > 0 ? "Increased" : "Decreased")" aria-label="@(direction > 0 ? "Increased" : "Decreased")">
+                                            <span class="@(direction > 0 ? "event-journal-number-direction is-increased" : "event-journal-number-direction")" role="img" title="@(direction > 0 ? "Increased" : "Decreased")" aria-label="@(direction > 0 ? "Increased" : "Decreased")">
                                                 <RadzenIcon Icon="@(direction > 0 ? "arrow_upward" : "arrow_downward")" class="event-journal-direction-icon" />
                                             </span>
                                         }

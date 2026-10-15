@@ -432,29 +432,29 @@
         vertical-align: middle;
     }
 
-        /* Включённое и разрешённое состояния. */
-        .event-journal-table ::deep .event-journal-value-icon.is-on,
-        .event-journal-table ::deep .event-journal-value-icon.is-enabled {
-            color: var(--rz-success);
-        }
+    /* Включённое и разрешённое состояния. */
+    .event-journal-table ::deep .event-journal-value-icon.is-on,
+    .event-journal-table ::deep .event-journal-value-icon.is-enabled {
+        color: var(--rz-success);
+    }
 
-        /* Выключённое и запрещённое состояния. */
-        .event-journal-table ::deep .event-journal-value-icon.is-off,
-        .event-journal-table ::deep .event-journal-value-icon.is-disabled {
-            color: var(--rz-text-secondary-color);
-        }
+    /* Выключённое и запрещённое состояния. */
+    .event-journal-table ::deep .event-journal-value-icon.is-off,
+    .event-journal-table ::deep .event-journal-value-icon.is-disabled {
+        color: var(--rz-text-secondary-color);
+    }
 
-        /* Ручной режим: рука с поднятым пальцем. */
-        .event-journal-table ::deep .event-journal-value-icon.is-manual {
-            color: var(--rz-warning);
-        }
+    /* Ручной режим: рука с поднятым пальцем. */
+    .event-journal-table ::deep .event-journal-value-icon.is-manual {
+        color: var(--rz-warning);
+    }
 
-        /* Автоматический режим управления. */
-        .event-journal-table ::deep .event-journal-value-icon.is-auto {
-            color: var(--rz-primary);
-        }
+    /* Автоматический режим управления. */
+    .event-journal-table ::deep .event-journal-value-icon.is-auto {
+        color: var(--rz-primary);
+    }
 
-    /* Направление изменения числа не обозначает хорошее или плохое состояние. */
+    /* По умолчанию стрелка уменьшения значения остаётся синей. */
     .event-journal-table ::deep .event-journal-number-direction {
         display: inline-flex;
         align-items: center;
@@ -462,6 +462,12 @@
         color: var(--rz-primary);
     }
 
+    /* Стрелку увеличения значения отображаем зелёным цветом. */
+    .event-journal-table ::deep .event-journal-number-direction.is-increased {
+        color: var(--rz-success);
+    }
+
+    /* Иконка наследует цвет соответствующего направления. */
     .event-journal-table ::deep .event-journal-direction-icon {
         width: 18px;
         height: 18px;
