@@ -550,6 +550,26 @@
     }
 
 
+    /* Иконка роли центрируется в узкой первой колонке. */
+    .event-journal-table ::deep .event-journal-role {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: var(--event-journal-value-icon-size);
+        vertical-align: top;
+        color: var(--rz-info);
+    }
+
+    /* Размер иконки соответствует обычным иконкам в таблице аварий. */
+    .event-journal-table ::deep .event-journal-role .rzi {
+        width: 24px;
+        height: 24px;
+        font-size: 24px;
+        line-height: 1;
+        color: inherit;
+    }
+
+
 @media (max-width: 480px) {
     .event-journal-toolbar {
         grid-template-columns: minmax(0, 1fr);

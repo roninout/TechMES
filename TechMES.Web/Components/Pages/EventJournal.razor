@@ -154,8 +154,24 @@
                                 Density="Density.Compact" class="event-journal-grid event-journal-operation-grid">
 
                     <Columns>
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Date" Title="Date" Width="180px"
-                                              SortOrder="SortOrder.Descending">
+
+                        @* Колонка роли повторяет ширину колонки иконок в авариях. *@
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Role" Title="" Width="48px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
+                            <Template Context="entry">
+                                @{
+                                    var roleIcon = GetOperationRoleIcon(entry.Role);
+                                }
+
+                                @if (!string.IsNullOrEmpty(roleIcon))
+                                {
+                                    <span class="event-journal-role" role="img" title="@entry.Role" aria-label="@entry.Role">
+                                        <RadzenIcon Icon="@roleIcon" />
+                                    </span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Date" Title="Date" Width="180px" SortOrder="SortOrder.Descending">
                             <Template Context="entry">
                                 @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
                             </Template>
@@ -369,6 +385,23 @@
     private bool _showClientColumns;
 
     private int VisibleCount => _selectedCategory == InterfaceEventCategory ? _operationItems.Count : _eventItems.Count;
+
+    /// <summary>
+    /// Возвращает иконку роли, записанной в сообщении действия оператора.
+    /// Регистр и крайние пробелы не учитываются.
+    /// Для записей без роли и неизвестных ролей оставляет колонку пустой.
+    /// </summary>
+    private static string GetOperationRoleIcon(string? role)
+    {
+        return role?.Trim().ToLowerInvariant() switch
+        {
+            "operator" => "person",
+            "supervisor" => "supervisor_account",
+            "developer" => "code",
+            "engineer" => "engineering",
+            _ => ""
+        };
+    }
 
     /// <summary>
     /// Подбирает иконку, подсказку и оформление для текстового состояния действия.

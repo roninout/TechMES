@@ -10,6 +10,7 @@ public sealed class OperationActionRow
 {
     public DateTime? Date { get; init; }
     public string User { get; init; } = "";
+    public string Role { get; init; } = "";
     public string Equipment { get; init; } = "";
     public string Action { get; init; } = "";
     public string Description { get; init; } = "";
@@ -19,20 +20,21 @@ public sealed class OperationActionRow
     public string Address { get; init; } = "";
 
     /// <summary>
-    /// Разбирает сообщение вида Computer|User|Action [Description]|Old|New|Equipment.
-    /// Очищает только отображаемые User, Action и Description; исходное событие не изменяет.
+    /// Разбирает Message формата Computer|User|Action [Description]|Old|New|Equipment|Role.
+    /// Поддерживает прежние сообщения из шести полей, в которых Role отсутствует.
     /// Неизвестный формат оставляет видимым как исходный текст в Description.
     /// </summary>
     public static OperationActionRow FromEvent(EventJournalDto entry)
     {
         var fields = entry.Description.Split('|');
 
-        if (fields.Length == 6 && TryParseAction(fields[2], out var action, out var description))
+        if ((fields.Length == 6 || fields.Length == 7) && TryParseAction(fields[2], out var action, out var description))
         {
             return new OperationActionRow
             {
                 Date = entry.Date,
                 User = EventJournalDisplayText.Clean(fields[1]),
+                Role = fields.Length == 7 ? EventJournalDisplayText.Clean(fields[6]) : "",
                 Equipment = fields[5].Trim(),
                 Action = action,
                 Description = description,
@@ -81,11 +83,11 @@ public sealed class OperationActionRow
 /// </summary>
 internal static class EventJournalDisplayText
 {
-    private static readonly Regex WrappedText = new(
-        @"@\(([^()]*)\)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant,
-        TimeSpan.FromMilliseconds(100));
+    private static readonly Regex WrappedText = new(@"@\(([^()]*)\)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
+    /// <summary>
+    /// Очищает служебное оформление Plant SCADA и крайние пробелы.
+    /// </summary>
     public static string Clean(string? value)
     {
         var text = value?.Trim() ?? "";
