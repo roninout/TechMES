@@ -112,6 +112,9 @@ builder.Services.AddScoped<EventJournalApiClient>();
 // Клиент каталога расчётов и ручного WEB-тестирования.
 builder.Services.AddScoped<CalcApiClient>();
 
+// Каталог и снимки рецептов из Runtime.Service.
+builder.Services.AddScoped<RecipeApiClient>();
+
 // Клиент для отображения состояния Runtime.Service в верхней панели WEB.
 builder.Services.AddScoped<RuntimeStatusApiClient>();
 

@@ -130,6 +130,9 @@ builder.Services.AddPostgreSqlInfoInfrastructure(builder.Configuration);
 // Operation actions и Alarm history читают существующую EventPicker/PostgreSQL БД.
 builder.Services.AddPostgreSqlEventLogInfrastructure(builder.Configuration);
 
+// Рецепты читаются из существующей БД Recipe по отдельной строке подключения.
+builder.Services.AddRecipeInfrastructure();
+
 // Каталог оборудования тоже подключаем через adapter-подход.
 // Runtime.Service работает с IEquipmentCatalogProvider,
 // а конкретный provider выбирается из appsettings.json.

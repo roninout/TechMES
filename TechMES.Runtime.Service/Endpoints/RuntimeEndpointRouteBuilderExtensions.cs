@@ -2,9 +2,6 @@ namespace TechMES.Runtime.Service.Endpoints;
 
 /// <summary>
 /// Единая точка подключения всех HTTP endpoints Runtime.Service.
-///
-/// Program.cs вызывает только этот метод,
-/// а каждый функциональный модуль регистрируется отдельно.
 /// </summary>
 public static class RuntimeEndpointRouteBuilderExtensions
 {
@@ -25,6 +22,7 @@ public static class RuntimeEndpointRouteBuilderExtensions
         app.MapEventJournalEndpoints();
         app.MapScadaEndpoints();
         app.MapCalcEndpoints();
+        app.MapRecipeEndpoints();
 
         return app;
     }

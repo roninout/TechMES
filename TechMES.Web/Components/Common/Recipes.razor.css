@@ -1,0 +1,120 @@
+.recipes-page {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.recipes-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(100px, 1fr);
+    align-items: end;
+    gap: 16px;
+}
+
+.recipes-selectors {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 12px;
+    min-width: 0;
+}
+
+.recipes-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.recipes-field-wide {
+    flex: 1 1 280px;
+    max-width: 480px;
+}
+
+.recipes-title {
+    margin: 0 0 4px;
+    text-align: center;
+    font-size: 26px;
+    color: var(--rz-text-color);
+}
+
+.recipes-toolbar-right {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.recipes-page ::deep .recipes-card {
+    padding: 16px;
+    min-width: 0;
+}
+
+.recipes-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.recipes-name {
+    font-weight: 600;
+    color: var(--rz-text-color);
+}
+
+.recipes-page ::deep .recipes-grid {
+    height: calc(100dvh - 270px);
+    min-height: 320px;
+    /* Подложка загрузки соответствует текущей теме таблицы. */
+    --rz-grid-loading-indicator-background-color: var(--rz-grid-background-color, var(--rz-base-background-color));
+    --rz-grid-loading-indicator-background-opacity: 1;
+}
+
+.recipes-column-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    padding: 6px 0;
+}
+
+    .recipes-column-heading small {
+        white-space: pre-line;
+        font-weight: 400;
+        color: var(--rz-text-secondary-color);
+    }
+
+.recipes-check {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    color: var(--rz-text-secondary-color);
+}
+
+    .recipes-check.is-on {
+        color: var(--rz-success);
+    }
+
+.recipes-empty-cell {
+    color: var(--rz-text-secondary-color);
+}
+
+@media (max-width: 1100px) {
+    .recipes-toolbar {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .recipes-title {
+        grid-column: 1 / -1;
+        grid-row: 1;
+    }
+
+    .recipes-selectors {
+        grid-column: 1;
+    }
+
+    .recipes-toolbar-right {
+        grid-column: 2;
+    }
+}
