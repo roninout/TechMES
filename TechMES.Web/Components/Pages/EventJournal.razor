@@ -164,7 +164,12 @@
                                 AllowFiltering="true" FilterMode="FilterMode.CheckBoxList" AutoApplyCheckBoxListFilter="true"
                                 AllowSorting="true" AllowPaging="true" PageSize="40" ShowCellDataAsTooltip="true"
                                 SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="true" @bind-Value="_selectedOperationRows"
+                                IsLoading="@IsInitialLoading" ShowEmptyMessage="@(!IsInitialLoading)"
                                 Density="Density.Compact" class="event-journal-grid event-journal-operation-grid techmes-journal-grid">
+
+                    <LoadingTemplate>
+                        <JournalGridLoading />
+                    </LoadingTemplate>
 
                     <Columns>
 
@@ -268,7 +273,13 @@
                 <RadzenDataGrid @key="_gridRevision" Data="@_eventItems" TItem="EventJournalDto"
                                 AllowFiltering="true" FilterMode="FilterMode.CheckBoxList" AutoApplyCheckBoxListFilter="true"
                                 AllowSorting="true" AllowPaging="true" PageSize="40" ShowCellDataAsTooltip="true"
+                                IsLoading="@IsInitialLoading" ShowEmptyMessage="@(!IsInitialLoading)"
                                 Density="Density.Compact" class="event-journal-grid techmes-journal-grid">
+
+                    <LoadingTemplate>
+                        <JournalGridLoading />
+                    </LoadingTemplate>
+
                     <Columns>
                         <RadzenDataGridColumn TItem="EventJournalDto" Property="Date" Title="Date" Width="180px" SortOrder="SortOrder.Descending" FormatString="{0:dd.MM.yyyy HH:mm:ss}">
                             <Template Context="entry">
@@ -555,6 +566,13 @@
             StateHasChanged();
         });
     }
+
+    /// <summary>
+    /// Показывает ожидание до получения первого снимка данных.
+    /// Учитывает HTTP-запрос и фоновое чтение в Runtime.
+    /// При смене периода LoadedAt сбрасывается, поэтому индикатор появляется повторно.
+    /// </summary>
+    private bool IsInitialLoading => _loadedAt is null && (_httpLoading || _isRefreshing);
 
     /// <summary>
     /// Запрашивает вчерашние и сегодняшние события и наблюдает за окончанием фонового ODBC-чтения.

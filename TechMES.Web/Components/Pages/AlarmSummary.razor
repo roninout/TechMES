@@ -174,7 +174,12 @@
                             AllowFiltering="true" FilterMode="FilterMode.CheckBoxList" AutoApplyCheckBoxListFilter="true"
                             AllowSorting="true" AllowPaging="true" PageSize="30" ShowCellDataAsTooltip="true"
                             SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="true" @bind-Value="_selectedRows"
+                            IsLoading="@IsInitialLoading" ShowEmptyMessage="@(!IsInitialLoading)"
                             Density="Density.Compact" class="active-alarms-grid techmes-journal-grid">
+
+                <LoadingTemplate>
+                    <JournalGridLoading />
+                </LoadingTemplate>
 
                 <Columns>
                     <RadzenDataGridColumn TItem="AlarmSummaryDto" Width="48px" Title=""
@@ -283,6 +288,13 @@
             ? "var(--rz-success-darker)"
             : "var(--rz-primary-darker)";
     }
+
+    /// <summary>
+    /// Показывает ожидание до получения первого снимка данных.
+    /// Учитывает HTTP-запрос и фоновое чтение в Runtime.
+    /// При смене периода LoadedAt сбрасывается, поэтому индикатор появляется повторно.
+    /// </summary>
+    private bool IsInitialLoading => _loadedAt is null && (_httpLoading || _isRefreshing);
 
     /// <summary>
     /// По умолчанию выбирает вчера и сегодня, запрашивает снимок и начинает
