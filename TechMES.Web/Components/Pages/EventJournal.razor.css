@@ -486,23 +486,23 @@
         color: var(--rz-warning);
     }
 
-    /* Автоматический режим управления. */
+    /* Автоматический режим использует тот же голубой цвет, что и Timeline. */
     .event-journal-table ::deep .event-journal-value-icon.is-auto {
-        color: var(--rz-primary);
+        color: var(--rz-info);
     }
 
-    /* По умолчанию стрелка уменьшения значения остаётся синей. */
+    /* Стрелка уменьшения значения также отображается голубым цветом. */
     .event-journal-table ::deep .event-journal-number-direction {
         display: inline-flex;
         align-items: center;
         flex: none;
-        color: var(--rz-primary);
+        color: var(--rz-info);
     }
 
-    /* Стрелку увеличения значения отображаем зелёным цветом. */
-    .event-journal-table ::deep .event-journal-number-direction.is-increased {
-        color: var(--rz-success);
-    }
+        /* Стрелка увеличения значения остаётся зелёной. */
+        .event-journal-table ::deep .event-journal-number-direction.is-increased {
+            color: var(--rz-success);
+        }
 
     /* Иконка наследует цвет соответствующего направления. */
     .event-journal-table ::deep .event-journal-direction-icon {
@@ -580,6 +580,46 @@
 .event-journal-table ::deep .event-journal-role-svg {
     fill: currentColor;
 }
+
+
+
+
+
+
+/* Иконка роли центрируется внутри круга и наследует его размер и цвет. */
+.event-journal-timeline-scroll ::deep .event-journal-timeline-role {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--rz-timeline-point-font-size, 1rem);
+    line-height: 1;
+    color: inherit;
+}
+
+    /* Размер обычной иконки следует за размером выбранного или обычного круга. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-role .rzi {
+        width: 1em;
+        height: 1em;
+        font-size: inherit;
+        line-height: 1;
+        color: inherit;
+    }
+
+    /* Силуэт руководителя масштабируется так же, как остальные иконки. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-role .event-journal-role-svg {
+        display: block;
+        width: 1em;
+        height: 1em;
+        fill: currentColor;
+    }
+
+    /* Неизвестная роль отображается серым цветом текущей темы. */
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-role.is-unknown {
+        color: var(--rz-text-secondary-color);
+    }
+
+
+
 
 
 @media (max-width: 480px) {
