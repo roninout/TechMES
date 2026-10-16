@@ -113,8 +113,11 @@
         </div>
     }
 
-    <RadzenDataGrid @ref="_grid" Data="@_items" TItem="ActiveAlarmDto" AllowFiltering="true" AllowSorting="true"
-                    AllowPaging="true" PageSize="30" Density="Density.Compact" class="active-alarms-grid">
+    <RadzenDataGrid @ref="_grid" Data="@_items" TItem="ActiveAlarmDto"
+                    AllowFiltering="true" FilterMode="FilterMode.CheckBoxList" AutoApplyCheckBoxListFilter="true"
+                    AllowSorting="true" AllowPaging="true" PageSize="30" ShowCellDataAsTooltip="true"
+                    Density="Density.Compact" class="active-alarms-grid techmes-journal-grid">
+
         <Columns>
             <RadzenDataGridColumn TItem="ActiveAlarmDto" Width="48px" Title="" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
                 <Template Context="alarm">

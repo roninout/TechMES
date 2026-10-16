@@ -170,10 +170,12 @@
 
     <div class="alarm-history-content @(_tagPrefixes.Count > 1 ? "" : "alarm-history-content-full")">
         <div class="alarm-history-table">
-            <RadzenDataGrid @ref="_grid" Data="@_items" TItem="AlarmSummaryDto" AllowFiltering="true"
-                            AllowSorting="true" AllowPaging="true" PageSize="30" Density="Density.Compact"
-                            SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="true"
-                            @bind-Value="_selectedRows" class="active-alarms-grid">
+            <RadzenDataGrid @ref="_grid" Data="@_items" TItem="AlarmSummaryDto"
+                            AllowFiltering="true" FilterMode="FilterMode.CheckBoxList" AutoApplyCheckBoxListFilter="true"
+                            AllowSorting="true" AllowPaging="true" PageSize="30" ShowCellDataAsTooltip="true"
+                            SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="true" @bind-Value="_selectedRows"
+                            Density="Density.Compact" class="active-alarms-grid techmes-journal-grid">
+
                 <Columns>
                     <RadzenDataGridColumn TItem="AlarmSummaryDto" Width="48px" Title=""
                                           Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
@@ -666,16 +668,30 @@
     }
 
     /// <summary>
-    /// Применяет выбор ListBox как фильтр Contains непосредственно к колонке Tag.
-    /// Фильтры остальных колонок и сортировку таблицы не сбрасывает.
+    /// Преобразует выбранный префикс оборудования в список полных значений Tag.
+    /// Передаёт список в CheckBoxList-фильтр, сохраняя фильтры остальных колонок и сортировку.
+    /// All снимает фильтр Tag.
     /// </summary>
     private async Task ApplyTagPrefixFilterAsync()
     {
         if (_grid is null || _tagColumn is null)
             return;
 
+        string[]? tagValues = null;
+
+        if (_selectedTagPrefix != "All")
+        {
+            tagValues = _items
+                .Where(alarm => alarm.Tag.Contains(_selectedTagPrefix, StringComparison.OrdinalIgnoreCase))
+                .Select(alarm => alarm.Tag)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
         _tagColumn.SetFilterOperator(FilterOperator.Contains);
-        _tagColumn.SetFilterValue(_selectedTagPrefix == "All" ? null! : _selectedTagPrefix, true);
+        _tagColumn.SetFilterValue(tagValues, true);
+        _tagColumn.SetFilterValue(null, false);
+
         await _grid.ApplyFilter(_tagColumn, true);
         await _grid.FirstPage(true);
     }

@@ -161,9 +161,10 @@
             @if (_selectedCategory == InterfaceEventCategory)
             {
                 <RadzenDataGrid @key="_gridRevision" @ref="_operationGrid" Data="@_operationItems" TItem="OperationActionRow"
-                                AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="40"
+                                AllowFiltering="true" FilterMode="FilterMode.CheckBoxList" AutoApplyCheckBoxListFilter="true"
+                                AllowSorting="true" AllowPaging="true" PageSize="40" ShowCellDataAsTooltip="true"
                                 SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="true" @bind-Value="_selectedOperationRows"
-                                Density="Density.Compact" class="event-journal-grid event-journal-operation-grid">
+                                Density="Density.Compact" class="event-journal-grid event-journal-operation-grid techmes-journal-grid">
 
                     <Columns>
 
@@ -265,11 +266,11 @@
             else
             {
                 <RadzenDataGrid @key="_gridRevision" Data="@_eventItems" TItem="EventJournalDto"
-                                AllowFiltering="true" AllowSorting="true" AllowPaging="true" PageSize="40"
-                                Density="Density.Compact" class="event-journal-grid">
+                                AllowFiltering="true" FilterMode="FilterMode.CheckBoxList" AutoApplyCheckBoxListFilter="true"
+                                AllowSorting="true" AllowPaging="true" PageSize="40" ShowCellDataAsTooltip="true"
+                                Density="Density.Compact" class="event-journal-grid techmes-journal-grid">
                     <Columns>
-                        <RadzenDataGridColumn TItem="EventJournalDto" Property="Date" Title="Date" Width="180px"
-                                              SortOrder="SortOrder.Descending">
+                        <RadzenDataGridColumn TItem="EventJournalDto" Property="Date" Title="Date" Width="180px" SortOrder="SortOrder.Descending" FormatString="{0:dd.MM.yyyy HH:mm:ss}">
                             <Template Context="entry">
                                 @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
                             </Template>
@@ -281,9 +282,10 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="EventJournalDto" Property="Source" Title="Source" Width="320px" />
-                        <RadzenDataGridColumn TItem="EventJournalDto" Property="ClientAddressDesc" Title="Client address" Width="180px" />
-                        <RadzenDataGridColumn TItem="EventJournalDto" Property="User" Title="User" Width="160px" />
+                        @* Source отображается в Archiving, Client address и User — в System. *@
+                        <RadzenDataGridColumn TItem="EventJournalDto" Property="Source" Title="Source" Width="320px" Visible="@(_selectedCategory == ArchivingCategory)" />
+                        <RadzenDataGridColumn TItem="EventJournalDto" Property="ClientAddressDesc" Title="Client address" Width="180px" Visible="@(_selectedCategory == SystemCategory)" />
+                        <RadzenDataGridColumn TItem="EventJournalDto" Property="User" Title="User" Width="160px" Visible="@(_selectedCategory == SystemCategory)" />
                     </Columns>
                 </RadzenDataGrid>
             }
@@ -909,16 +911,30 @@
     }
 
     /// <summary>
-    /// Применяет выбор ListBox через Contains к колонке Equipment.
-    /// Фильтры других колонок остаются на месте.
+    /// Преобразует выбранный префикс оборудования в список полных значений Equipment.
+    /// Передаёт список в CheckBoxList-фильтр, сохраняя фильтры остальных колонок и сортировку.
+    /// All снимает фильтр Equipment.
     /// </summary>
     private async Task ApplyEquipmentPrefixFilterAsync()
     {
         if (_operationGrid is null || _equipmentColumn is null)
             return;
 
+        string[]? equipmentValues = null;
+
+        if (_selectedEquipmentPrefix != "All")
+        {
+            equipmentValues = _operationItems
+                .Where(action => action.Equipment.Contains(_selectedEquipmentPrefix, StringComparison.OrdinalIgnoreCase))
+                .Select(action => action.Equipment)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
         _equipmentColumn.SetFilterOperator(FilterOperator.Contains);
-        _equipmentColumn.SetFilterValue(_selectedEquipmentPrefix == "All" ? null! : _selectedEquipmentPrefix, true);
+        _equipmentColumn.SetFilterValue(equipmentValues, true);
+        _equipmentColumn.SetFilterValue(null, false);
+
         await _operationGrid.ApplyFilter(_equipmentColumn, true);
         await _operationGrid.FirstPage(true);
     }

@@ -30,3 +30,50 @@ html, body {
     color: #888;
     font-size: 11px;
 }
+
+/* Общие размеры строк и заголовков таблиц аварий и журнала событий. */
+.techmes-journal-grid {
+    --techmes-journal-row-height: 36px;
+    --techmes-journal-content-height: 26px;
+}
+
+/* Все строки данных имеют одинаковую высоту. */
+.techmes-journal-grid .rz-grid-table > tbody > tr:not(.rz-datatable-emptymessage-row) > td {
+    height: var(--techmes-journal-row-height);
+    padding-top: 4px;
+    padding-bottom: 4px;
+    vertical-align: middle;
+    box-sizing: border-box;
+}
+
+/* Длинный текст остаётся в одной строке и не увеличивает высоту строки. */
+.techmes-journal-grid .rz-grid-table > tbody > tr > td > .rz-cell-data {
+    display: block;
+    height: var(--techmes-journal-content-height);
+    line-height: var(--techmes-journal-content-height);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Заголовки имеют ту же высоту, что и строки данных. */
+.techmes-journal-grid .rz-grid-table > thead > tr > th {
+    height: var(--techmes-journal-row-height);
+    padding-top: 0;
+    padding-bottom: 0;
+    vertical-align: middle;
+    box-sizing: border-box;
+}
+
+    /* Убираем стандартные вертикальные отступы внутреннего контейнера заголовка. */
+    .techmes-journal-grid .rz-grid-table > thead > tr > th > div {
+        height: calc(var(--techmes-journal-row-height) - 1px);
+        min-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        box-sizing: border-box;
+    }
+
+.techmes-journal-grid .rz-grid-table > thead .rz-column-title {
+    line-height: var(--techmes-journal-content-height);
+}
