@@ -31,10 +31,13 @@ html, body {
     font-size: 11px;
 }
 
-/* Общие размеры строк и заголовков таблиц аварий и журнала событий. */
+/* Общие размеры таблиц и фон индикатора загрузки с учётом текущей темы. */
 .techmes-journal-grid {
     --techmes-journal-row-height: 36px;
     --techmes-journal-content-height: 26px;
+    /* Подложка загрузки использует обычный фон таблицы текущей темы. */
+    --rz-grid-loading-indicator-background-color: var(--rz-grid-background-color, var(--rz-base-background-color));
+    --rz-grid-loading-indicator-background-opacity: 1;
 }
 
 /* Все строки данных имеют одинаковую высоту. */
