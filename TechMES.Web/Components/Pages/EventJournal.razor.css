@@ -550,24 +550,36 @@
     }
 
 
-    /* Иконка роли центрируется в узкой первой колонке. */
-    .event-journal-table ::deep .event-journal-role {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        height: var(--event-journal-value-icon-size);
-        vertical-align: top;
-        color: var(--rz-info);
+/* Иконки известных ролей используют голубой цвет текущей темы. */
+.event-journal-table ::deep .event-journal-role {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--event-journal-value-icon-size);
+    vertical-align: top;
+    color: var(--rz-info);
+}
+
+    /* Для пустой или неизвестной роли используем нейтральный цвет текущей темы. */
+    .event-journal-table ::deep .event-journal-role.is-unknown {
+        color: var(--rz-text-secondary-color);
     }
 
-    /* Размер иконки соответствует обычным иконкам в таблице аварий. */
-    .event-journal-table ::deep .event-journal-role .rzi {
+    /* Обычные и SVG-иконки имеют одинаковый размер. */
+    .event-journal-table ::deep .event-journal-role .rzi,
+    .event-journal-table ::deep .event-journal-role .event-journal-role-svg {
+        flex: none;
         width: 24px;
         height: 24px;
         font-size: 24px;
         line-height: 1;
         color: inherit;
     }
+
+/* Силуэт руководителя наследует цвет роли. */
+.event-journal-table ::deep .event-journal-role-svg {
+    fill: currentColor;
+}
 
 
 @media (max-width: 480px) {
