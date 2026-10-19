@@ -6,10 +6,10 @@ using TechMES.Contracts.Recipes;
 namespace TechMES.Infrastructure.PostgreSql.Recipes;
 
 /// <summary>
-/// Читает существующие таблицы TecxRecipeAX.
+/// Работает с существующими таблицами рецептов TecxRecipeAX.
 /// Не создаёт и не изменяет схему БД.
 /// </summary>
-public sealed class PostgreSqlRecipeStore : IRecipeStore
+public sealed partial class PostgreSqlRecipeStore : IRecipeStore
 {
     private readonly IConfiguration _configuration;
 

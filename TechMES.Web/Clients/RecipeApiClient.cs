@@ -91,6 +91,31 @@ public sealed class RecipeApiClient
     }
 
     /// <summary>
+    /// Читает доступные шаблоны перед открытием диалога добавления стадии.
+    /// </summary>
+    public Task<RecipeStageTemplateCatalogDto> GetStageTemplatesAsync(int recipeId, CancellationToken ct = default) => ReadAsync<RecipeStageTemplateCatalogDto>($"api/recipes/{recipeId}/stage/templates", ct);
+
+    /// <summary>
+    /// Добавляет стадию, передавая существующую Windows identity.
+    /// </summary>
+    public async Task<RecipeStageChangeResult> AddStageAsync(int recipeId, RecipeStageAddRequest request, CancellationToken ct = default)
+    {
+        var actor = new ParamWriteRequest();
+
+        await _paramApi.FillWriteActorAsync(actor);
+        ct.ThrowIfCancellationRequested();
+
+        request.Actor = actor.Actor;
+        request.ActorGroups = actor.ActorGroups;
+
+        var client = _clients.CreateClient("RuntimeService");
+
+        using var response = await client.PostAsJsonAsync($"api/recipes/{recipeId}/stage/add", request, ct);
+
+        return await ReadResponseAsync<RecipeStageChangeResult>(response, ct);
+    }
+
+    /// <summary>
     /// Выполняет GET и освобождает HTTP-ответ.
     /// </summary>
     private async Task<T> ReadAsync<T>(string url, CancellationToken ct) where T : class

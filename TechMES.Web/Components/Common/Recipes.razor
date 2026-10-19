@@ -52,10 +52,10 @@
 
         <span class="recipes-management-divider" aria-hidden="true"></span>
 
+        <RadzenButton Text="Add stage" Icon="playlist_add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanAddStage)" Click="@AddStageAsync" />
         <RadzenButton Text="Up" Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageUp)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveUp))" />
         <RadzenButton Text="Down" Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageDown)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveDown))" />
         <RadzenButton Text="Delete stage" Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Disabled="@(!CanChangeStage)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.Delete))" />
-        <RadzenButton Text="@(SelectedStage?.Auto == true ? "Auto: On" : "Auto: Off")" Icon="autorenew" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanChangeStage)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.SetAuto))" />
     </div>
 
     <RadzenCard class="recipes-card">
@@ -81,14 +81,8 @@
             <Columns>
                 <RadzenDataGridColumn TItem="RecipeStageDto" Property="Number" Title="№" Width="60px" Frozen="true" TextAlign="TextAlign.Center" />
                 <RadzenDataGridColumn TItem="RecipeStageDto" Property="Name" Title="Stage" Width="280px" Frozen="true" />
-                <RadzenDataGridColumn TItem="RecipeStageDto" Title="Auto" Width="70px" Frozen="true" TextAlign="TextAlign.Center">
-                    <Template Context="stage">
-                        <span class="@(stage.Auto ? "recipes-check is-on" : "recipes-check")" title="@(stage.Auto ? "Automatic transition enabled" : "Automatic transition disabled")">
-                            <RadzenIcon Icon="@(stage.Auto ? "check_box" : "check_box_outline_blank")" />
-                        </span>
-                    </Template>
-                </RadzenDataGridColumn>
 
+                @* Auto отображается только как параметр шаблона вместе с остальными параметрами. *@
                 @foreach (var column in Columns)
                 {
                     <RadzenDataGridColumn @key="column.Id" TItem="RecipeStageDto" Title="@column.Name" Width="@(column.Kind == RecipeParameterKind.CheckBox ? "80px" : "120px")" TextAlign="TextAlign.Center">
@@ -125,7 +119,6 @@
                     </RadzenDataGridColumn>
                 }
             </Columns>
-
         </RadzenDataGrid>
 
     </RadzenCard>

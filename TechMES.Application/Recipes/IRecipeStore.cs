@@ -32,4 +32,14 @@ public interface IRecipeStore
     /// Перемещает или удаляет стадию либо изменяет признак автоматического перехода.
     /// </summary>
     Task<RecipeStageChangeResult> ChangeStageAsync(int recipeId, RecipeStageChangeRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Получает шаблоны семейства выбранного рецепта или null, если рецепт отсутствует.
+    /// </summary>
+    Task<RecipeStageTemplateCatalogDto?> GetStageTemplatesAsync(int recipeId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Добавляет стадию и параметры её шаблона в одной транзакции.
+    /// </summary>
+    Task<RecipeStageChangeResult> AddStageAsync(int recipeId, RecipeStageAddRequest request, CancellationToken ct = default);
 }

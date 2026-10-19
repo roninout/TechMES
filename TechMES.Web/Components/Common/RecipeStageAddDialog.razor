@@ -1,0 +1,66 @@
+﻿@using TechMES.Contracts.Recipes
+@inject DialogService DialogService
+
+<RadzenStack Gap="12px">
+    <RadzenLabel Text="Stage template" Component="add-stage-template" />
+    <RadzenDropDown TValue="int?" Name="add-stage-template" Data="@Templates" TextProperty="DisplayName" ValueProperty="Id" @bind-Value="_baseStageId" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Select a stage template" Style="width: 100%;" />
+
+    @if (SelectedTemplate is { } template)
+    {
+        <RadzenText Text="@($"Template code: {template.Code}. Parameters: {template.ParameterCount}.")" TextStyle="TextStyle.Body2" />
+    }
+
+    <RadzenLabel Text="PLC tag prefix" Component="add-stage-prefix" />
+    <RadzenTextBox Name="add-stage-prefix" @bind-Value="_tagPrefix" Style="width: 100%;" />
+    <RadzenText Text="Check the prefix for the target unit. New parameter values will be 0." TextStyle="TextStyle.Body2" />
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">@_error</RadzenAlert>
+    }
+
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="8px">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close())" />
+        <RadzenButton Text="Add" Icon="playlist_add" Click="@Submit" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Parameter] public List<RecipeStageTemplateDto> Templates { get; set; } = [];
+    [Parameter] public string InitialTagPrefix { get; set; } = "";
+
+    private int? _baseStageId;
+    private string _tagPrefix = "";
+    private string? _error;
+
+    private RecipeStageTemplateDto? SelectedTemplate => Templates.FirstOrDefault(template => template.Id == _baseStageId);
+
+    /// <summary>
+    /// Подставляет найденный префикс, оставляя выбор шаблона пользователю.
+    /// </summary>
+    protected override void OnInitialized() => _tagPrefix = InitialTagPrefix;
+
+    /// <summary>
+    /// Возвращает выбранный шаблон и префикс; запись выполняет родительский компонент.
+    /// Auto редактируется как обычный параметр после добавления стадии.
+    /// </summary>
+    private void Submit()
+    {
+        var prefix = (_tagPrefix ?? "").Trim();
+        var template = SelectedTemplate;
+
+        if (template is null)
+        {
+            _error = "Select a stage template.";
+            return;
+        }
+
+        if (prefix.Length == 0 || prefix.Any(char.IsWhiteSpace) || prefix.Any(char.IsControl))
+        {
+            _error = "Enter a PLC tag prefix without spaces or control characters.";
+            return;
+        }
+
+        DialogService.Close(new RecipeStageAddRequest { BaseStageId = template.Id, TagPrefix = prefix });
+    }
+}

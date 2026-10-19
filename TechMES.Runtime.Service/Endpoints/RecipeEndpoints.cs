@@ -11,7 +11,7 @@ namespace TechMES.Runtime.Service.Endpoints;
 public static class RecipeEndpoints
 {
     /// <summary>
-    /// Регистрирует просмотр, изменение значений, управление рецептами и стадиями.
+    /// Регистрирует просмотр и изменение рецептов, стадий и параметров.
     /// </summary>
     public static IEndpointRouteBuilder MapRecipeEndpoints(this IEndpointRouteBuilder app)
     {
@@ -20,6 +20,8 @@ public static class RecipeEndpoints
         app.MapPost("/api/recipes/{recipeId:int}/parameter", SaveParameterAsync);
         app.MapPost("/api/recipes/change", ChangeRecipeAsync);
         app.MapPost("/api/recipes/{recipeId:int}/stage/change", ChangeStageAsync);
+        app.MapGet("/api/recipes/{recipeId:int}/stage/templates", GetStageTemplatesAsync);
+        app.MapPost("/api/recipes/{recipeId:int}/stage/add", AddStageAsync);
 
         return app;
     }
@@ -178,6 +180,71 @@ public static class RecipeEndpoints
             }
 
             loggerFactory.CreateLogger("RecipeEndpoints").LogInformation("Recipe stage changed. Recipe={RecipeId}, Stage={StageId}, Operation={Operation}, Auto={Auto}, Actor={Actor}", recipeId, request.StageId, request.Operation, request.Auto, request.Actor);
+
+            return Results.Ok(result);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return LoadFailure(loggerFactory, ex);
+        }
+    }
+
+    /// <summary>
+    /// Возвращает шаблоны только семейства выбранного рецепта.
+    /// </summary>
+    private static async Task<IResult> GetStageTemplatesAsync(int recipeId, IRecipeStore store, ILoggerFactory loggerFactory, CancellationToken ct)
+    {
+        if (recipeId <= 0)
+            return Results.Problem("Invalid recipe ID.", statusCode: 400);
+
+        try
+        {
+            var result = await store.GetStageTemplatesAsync(recipeId, ct);
+
+            return result is null ? Results.Problem("The recipe no longer exists. Press Refresh.", statusCode: 404) : Results.Ok(result);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return LoadFailure(loggerFactory, ex);
+        }
+    }
+
+    /// <summary>
+    /// Добавляет стадию с параметрами и записывает операцию в Runtime-лог.
+    /// </summary>
+    private static async Task<IResult> AddStageAsync(int recipeId, RecipeStageAddRequest request, IRecipeStore store, IOptions<ParamWriteOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
+    {
+        var authorizationError = AuthorizeRecipeWrite(request.Actor, request.ActorGroups, options.Value.Authorization);
+
+        if (authorizationError is not null)
+            return Results.Problem(authorizationError, statusCode: 403);
+
+        try
+        {
+            var result = await store.AddStageAsync(recipeId, request, ct);
+
+            if (result.Status != RecipeChangeStatus.Saved)
+            {
+                var statusCode = result.Status switch
+                {
+                    RecipeChangeStatus.NotFound => 404,
+                    RecipeChangeStatus.Conflict => 409,
+                    RecipeChangeStatus.Invalid => 400,
+                    _ => 500
+                };
+
+                return Results.Problem(result.Error ?? "The stage could not be added.", statusCode: statusCode);
+            }
+
+            loggerFactory.CreateLogger("RecipeEndpoints").LogInformation("Recipe stage added. Recipe={RecipeId}, Stage={StageId}, Template={TemplateId}, Prefix={Prefix}, Auto={Auto}, Actor={Actor}", recipeId, result.SelectedStageId, request.BaseStageId, request.TagPrefix, request.Auto, request.Actor);
 
             return Results.Ok(result);
         }
