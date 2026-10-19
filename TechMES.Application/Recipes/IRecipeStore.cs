@@ -27,4 +27,9 @@ public interface IRecipeStore
     /// Создаёт пустой рецепт, копирует рецепт или изменяет его имя.
     /// </summary>
     Task<RecipeChangeResult> ChangeAsync(RecipeChangeRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Перемещает или удаляет стадию либо изменяет признак автоматического перехода.
+    /// </summary>
+    Task<RecipeStageChangeResult> ChangeStageAsync(int recipeId, RecipeStageChangeRequest request, CancellationToken ct = default);
 }

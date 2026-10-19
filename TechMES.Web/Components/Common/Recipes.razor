@@ -49,6 +49,13 @@
         <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!_canEdit || IsBusy || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
         <RadzenButton Text="Copy" Icon="content_copy" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Copy))" />
         <RadzenButton Text="Rename" Icon="drive_file_rename_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Rename))" />
+
+        <span class="recipes-management-divider" aria-hidden="true"></span>
+
+        <RadzenButton Text="Up" Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageUp)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveUp))" />
+        <RadzenButton Text="Down" Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageDown)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveDown))" />
+        <RadzenButton Text="Delete stage" Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Disabled="@(!CanChangeStage)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.Delete))" />
+        <RadzenButton Text="@(SelectedStage?.Auto == true ? "Auto: On" : "Auto: Off")" Icon="autorenew" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanChangeStage)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.SetAuto))" />
     </div>
 
     <RadzenCard class="recipes-card">
@@ -66,7 +73,7 @@
             }
         </div>
 
-        <RadzenDataGrid @key="_snapshot" Data="@Stages" TItem="RecipeStageDto" AllowSorting="false" AllowFiltering="false" AllowPaging="false" AllowColumnResize="true" IsLoading="@_loading" ShowEmptyMessage="@(!_loading)" EmptyText="No recipe stages to display." Density="Density.Compact" class="recipes-grid">
+        <RadzenDataGrid @key="_snapshot" Data="@Stages" TItem="RecipeStageDto" @bind-Value="_selectedStages" SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="@(!IsBusy)" AllowSorting="false" AllowFiltering="false" AllowPaging="false" AllowColumnResize="true" IsLoading="@_loading" ShowEmptyMessage="@(!_loading)" EmptyText="No recipe stages to display." Density="Density.Compact" class="recipes-grid">
             <LoadingTemplate>
                 <JournalGridLoading />
             </LoadingTemplate>
@@ -74,6 +81,13 @@
             <Columns>
                 <RadzenDataGridColumn TItem="RecipeStageDto" Property="Number" Title="№" Width="60px" Frozen="true" TextAlign="TextAlign.Center" />
                 <RadzenDataGridColumn TItem="RecipeStageDto" Property="Name" Title="Stage" Width="280px" Frozen="true" />
+                <RadzenDataGridColumn TItem="RecipeStageDto" Title="Auto" Width="70px" Frozen="true" TextAlign="TextAlign.Center">
+                    <Template Context="stage">
+                        <span class="@(stage.Auto ? "recipes-check is-on" : "recipes-check")" title="@(stage.Auto ? "Automatic transition enabled" : "Automatic transition disabled")">
+                            <RadzenIcon Icon="@(stage.Auto ? "check_box" : "check_box_outline_blank")" />
+                        </span>
+                    </Template>
+                </RadzenDataGridColumn>
 
                 @foreach (var column in Columns)
                 {
@@ -111,7 +125,9 @@
                     </RadzenDataGridColumn>
                 }
             </Columns>
+
         </RadzenDataGrid>
+
     </RadzenCard>
 </div>
 
@@ -131,7 +147,7 @@
     private bool _disposed;
     private string? _error;
 
-    private bool IsBusy => _loading || _editingValue || _managingRecipe;
+    private bool IsBusy => _loading || _editingValue || _managingRecipe || _changingStage;
     private RecipePageDto? SelectedPage => _catalog.Pages.FirstOrDefault(page => page.Id == _selectedPageId);
     private IReadOnlyList<RecipeStageDto> Stages => _snapshot?.Stages ?? [];
     private IReadOnlyList<RecipeColumnDto> Columns => _snapshot?.Columns ?? [];
@@ -206,17 +222,24 @@
     }
 
     /// <summary>
+    /// Читает рецепт и восстанавливает выбранную стадию только в пределах этого рецепта.
     /// Отменённый ответ не заменяет данные после ухода со страницы.
     /// </summary>
     private async Task LoadSelectedRecipeAsync(CancellationToken ct)
     {
         if (_selectedRecipeId is not int recipeId)
+        {
+            RestoreStageSelection(null);
             return;
+        }
+
+        var selectedStageId = _stageSelectionRecipeId == recipeId ? _selectedStages.FirstOrDefault()?.Id : null;
 
         var snapshot = await RecipeApi.GetAsync(recipeId, ct);
         ct.ThrowIfCancellationRequested();
 
         _snapshot = snapshot;
+        RestoreStageSelection(selectedStageId);
     }
 
     /// <summary>

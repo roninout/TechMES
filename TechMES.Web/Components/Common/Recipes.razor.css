@@ -146,6 +146,14 @@
         gap: 8px;
     }
 
+/* Разделяет действия с рецептом и действия с выбранной стадией. */
+.recipes-management-divider {
+    align-self: stretch;
+    width: 1px;
+    margin: 0 4px;
+    background: var(--rz-base-500);
+}
+
 @media (max-width: 1100px) {
     .recipes-toolbar {
         grid-template-columns: minmax(0, 1fr) auto;

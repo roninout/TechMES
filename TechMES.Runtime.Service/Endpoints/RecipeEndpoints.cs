@@ -11,7 +11,7 @@ namespace TechMES.Runtime.Service.Endpoints;
 public static class RecipeEndpoints
 {
     /// <summary>
-    /// Регистрирует просмотр, изменение значений и управление рецептами.
+    /// Регистрирует просмотр, изменение значений, управление рецептами и стадиями.
     /// </summary>
     public static IEndpointRouteBuilder MapRecipeEndpoints(this IEndpointRouteBuilder app)
     {
@@ -19,6 +19,7 @@ public static class RecipeEndpoints
         app.MapGet("/api/recipes/{recipeId:int}", GetRecipeAsync);
         app.MapPost("/api/recipes/{recipeId:int}/parameter", SaveParameterAsync);
         app.MapPost("/api/recipes/change", ChangeRecipeAsync);
+        app.MapPost("/api/recipes/{recipeId:int}/stage/change", ChangeStageAsync);
 
         return app;
     }
@@ -136,6 +137,47 @@ public static class RecipeEndpoints
             }
 
             loggerFactory.CreateLogger("RecipeEndpoints").LogInformation("Recipe operation completed. Operation={Operation}, Source={Source}, Recipe={RecipeId}, Name={Name}, Actor={Actor}", request.Operation, request.SourceRecipeId, result.RecipeId, request.Name, request.Actor);
+
+            return Results.Ok(result);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return LoadFailure(loggerFactory, ex);
+        }
+    }
+
+    /// <summary>
+    /// Проверяет доступ и изменяет сохранённую стадию без обращения к PLC.
+    /// </summary>
+    private static async Task<IResult> ChangeStageAsync(int recipeId, RecipeStageChangeRequest request, IRecipeStore store, IOptions<ParamWriteOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
+    {
+        var authorizationError = AuthorizeRecipeWrite(request.Actor, request.ActorGroups, options.Value.Authorization);
+
+        if (authorizationError is not null)
+            return Results.Problem(authorizationError, statusCode: 403);
+
+        try
+        {
+            var result = await store.ChangeStageAsync(recipeId, request, ct);
+
+            if (result.Status != RecipeChangeStatus.Saved)
+            {
+                var statusCode = result.Status switch
+                {
+                    RecipeChangeStatus.NotFound => 404,
+                    RecipeChangeStatus.Conflict => 409,
+                    RecipeChangeStatus.Invalid => 400,
+                    _ => 500
+                };
+
+                return Results.Problem(result.Error ?? "Recipe stage operation failed.", statusCode: statusCode);
+            }
+
+            loggerFactory.CreateLogger("RecipeEndpoints").LogInformation("Recipe stage changed. Recipe={RecipeId}, Stage={StageId}, Operation={Operation}, Auto={Auto}, Actor={Actor}", recipeId, request.StageId, request.Operation, request.Auto, request.Actor);
 
             return Results.Ok(result);
         }

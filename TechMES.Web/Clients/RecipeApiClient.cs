@@ -71,6 +71,26 @@ public sealed class RecipeApiClient
     }
 
     /// <summary>
+    /// Изменяет стадию с тем же профилем доступа, что и остальные операции рецептов.
+    /// </summary>
+    public async Task<RecipeStageChangeResult> ChangeStageAsync(int recipeId, RecipeStageChangeRequest request, CancellationToken ct = default)
+    {
+        var actor = new ParamWriteRequest();
+
+        await _paramApi.FillWriteActorAsync(actor);
+        ct.ThrowIfCancellationRequested();
+
+        request.Actor = actor.Actor;
+        request.ActorGroups = actor.ActorGroups;
+
+        var client = _clients.CreateClient("RuntimeService");
+
+        using var response = await client.PostAsJsonAsync($"api/recipes/{recipeId}/stage/change", request, ct);
+
+        return await ReadResponseAsync<RecipeStageChangeResult>(response, ct);
+    }
+
+    /// <summary>
     /// Выполняет GET и освобождает HTTP-ответ.
     /// </summary>
     private async Task<T> ReadAsync<T>(string url, CancellationToken ct) where T : class

@@ -375,6 +375,148 @@ public sealed class PostgreSqlRecipeStore : IRecipeStore
     }
 
     /// <summary>
+    /// Изменяет существующую стадию в одной транзакции.
+    /// Порядок и Auto сравниваются с состоянием, которое видел пользователь.
+    /// </summary>
+    public async Task<RecipeStageChangeResult> ChangeStageAsync(int recipeId, RecipeStageChangeRequest request, CancellationToken ct = default)
+    {
+        if (recipeId <= 0 || request.StageId <= 0 || !Enum.IsDefined(request.Operation) || request.ExpectedStages is null || request.ExpectedStages.Any(stage => stage is null))
+            return new() { Status = RecipeChangeStatus.Invalid, Error = "Invalid recipe stage request." };
+
+        if (request.Operation == RecipeStageChangeOperation.SetAuto && request.Auto is null)
+            return new() { Status = RecipeChangeStatus.Invalid, Error = "An Auto value is required." };
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        await using var transaction = await connection.BeginTransactionAsync(ct);
+
+        // Та же блокировка, что у New/Copy/Rename: операции управления не пересекаются.
+        await using (var gate = new NpgsqlCommand("SELECT pg_advisory_xact_lock(1380270928, 1);", connection, transaction) { CommandTimeout = GetCommandTimeout() })
+            await gate.ExecuteNonQueryAsync(ct);
+
+        await using (var recipe = new NpgsqlCommand("SELECT \"id\" FROM public.\"Recipe\" WHERE \"id\" = @id FOR UPDATE;", connection, transaction) { CommandTimeout = GetCommandTimeout() })
+        {
+            recipe.Parameters.AddWithValue("id", recipeId);
+
+            if (await recipe.ExecuteScalarAsync(ct) is null)
+                return new() { Status = RecipeChangeStatus.NotFound, Error = "The recipe no longer exists. Refresh the list." };
+        }
+
+        // При удалении сначала блокируем параметры, затем стадии.
+        // Это согласуется с сохранением ячейки, которое блокирует параметр и его стадию.
+        if (request.Operation == RecipeStageChangeOperation.Delete)
+        {
+            const string lockSql = """
+            SELECT p."id" FROM public."RecipeParameter" p
+            JOIN public."RecipeStage" s ON s."id" = p."recipeStageId"
+            WHERE s."recipeId" = @recipe_id AND s."id" = @stage_id
+            ORDER BY p."id" FOR UPDATE OF p;
+            """;
+
+            await using var parameters = new NpgsqlCommand(lockSql, connection, transaction) { CommandTimeout = GetCommandTimeout() };
+            parameters.Parameters.AddWithValue("recipe_id", recipeId);
+            parameters.Parameters.AddWithValue("stage_id", request.StageId);
+
+            await parameters.ExecuteNonQueryAsync(ct);
+        }
+
+        var stages = new List<RecipeStagePositionDto>();
+
+        await using (var select = new NpgsqlCommand("SELECT \"id\", \"stageNumb\", \"auto\" FROM public.\"RecipeStage\" WHERE \"recipeId\" = @id ORDER BY \"stageNumb\", \"id\" FOR UPDATE;", connection, transaction) { CommandTimeout = GetCommandTimeout() })
+        {
+            select.Parameters.AddWithValue("id", recipeId);
+
+            await using var reader = await select.ExecuteReaderAsync(ct);
+
+            while (await reader.ReadAsync(ct))
+                stages.Add(new() { Id = reader.GetInt32(0), Number = reader.GetInt32(1), Auto = reader.GetBoolean(2) });
+        }
+
+        if (stages.Count != request.ExpectedStages.Count || stages.Where((stage, position) => stage.Id != request.ExpectedStages[position].Id || stage.Number != request.ExpectedStages[position].Number || stage.Auto != request.ExpectedStages[position].Auto).Any())
+            return new() { Status = RecipeChangeStatus.Conflict, Error = "Recipe stages were changed by another client. Press Refresh before editing." };
+
+        var index = stages.FindIndex(stage => stage.Id == request.StageId);
+
+        if (index < 0)
+            return new() { Status = RecipeChangeStatus.NotFound, Error = "The stage no longer exists in this recipe. Press Refresh." };
+
+        int? selectedStageId = request.StageId;
+
+        if (request.Operation == RecipeStageChangeOperation.SetAuto)
+        {
+            await using var update = new NpgsqlCommand("UPDATE public.\"RecipeStage\" SET \"auto\" = @auto WHERE \"id\" = @id AND \"recipeId\" = @recipe_id;", connection, transaction) { CommandTimeout = GetCommandTimeout() };
+            update.Parameters.AddWithValue("auto", request.Auto!.Value);
+            update.Parameters.AddWithValue("id", request.StageId);
+            update.Parameters.AddWithValue("recipe_id", recipeId);
+
+            await update.ExecuteNonQueryAsync(ct);
+        }
+        else
+        {
+            if (stages.Any(stage => stage.Number <= 0) || stages.Select(stage => stage.Number).Distinct().Count() != stages.Count)
+                return new() { Status = RecipeChangeStatus.Invalid, Error = "Stage numbers must be positive and unique before changing their order." };
+
+            var maxNumber = stages.Max(stage => stage.Number);
+
+            if ((long)maxNumber + stages.Count > int.MaxValue)
+                return new() { Status = RecipeChangeStatus.Invalid, Error = "Stage numbers are too large to renumber safely." };
+
+            if (request.Operation == RecipeStageChangeOperation.Delete)
+            {
+                const string deleteSql = """
+                DELETE FROM public."RecipeParameter" WHERE "recipeStageId" = @stage_id;
+                DELETE FROM public."RecipeStage" WHERE "id" = @stage_id AND "recipeId" = @recipe_id;
+                """;
+
+                await using var delete = new NpgsqlCommand(deleteSql, connection, transaction) { CommandTimeout = GetCommandTimeout() };
+                delete.Parameters.AddWithValue("stage_id", request.StageId);
+                delete.Parameters.AddWithValue("recipe_id", recipeId);
+
+                await delete.ExecuteNonQueryAsync(ct);
+
+                stages.RemoveAt(index);
+                selectedStageId = stages.Count == 0 ? null : stages[Math.Min(index, stages.Count - 1)].Id;
+            }
+            else
+            {
+                var target = index + (request.Operation == RecipeStageChangeOperation.MoveUp ? -1 : 1);
+
+                if (target < 0 || target >= stages.Count)
+                    return new() { Status = RecipeChangeStatus.Invalid, Error = "The stage cannot be moved in this direction." };
+
+                (stages[index], stages[target]) = (stages[target], stages[index]);
+            }
+
+            if (stages.Count > 0)
+            {
+                // Сначала освобождаем старые номера, затем записываем 1..N.
+                // Временные номера положительные и не пересекаются с существующими.
+                const string renumberSql = """
+                UPDATE public."RecipeStage" s SET "stageNumb" = n.number
+                FROM unnest(@ids::integer[], @numbers::integer[]) AS n(id, number)
+                WHERE s."id" = n.id AND s."recipeId" = @recipe_id;
+                """;
+
+                await using var renumber = new NpgsqlCommand(renumberSql, connection, transaction) { CommandTimeout = GetCommandTimeout() };
+                renumber.Parameters.AddWithValue("recipe_id", recipeId);
+                renumber.Parameters.AddWithValue("ids", stages.Select(stage => stage.Id).ToArray());
+                renumber.Parameters.AddWithValue("numbers", Enumerable.Range(maxNumber + 1, stages.Count).ToArray());
+
+                await renumber.ExecuteNonQueryAsync(ct);
+
+                renumber.Parameters["numbers"].Value = Enumerable.Range(1, stages.Count).ToArray();
+
+                await renumber.ExecuteNonQueryAsync(ct);
+            }
+        }
+
+        await transaction.CommitAsync(ct);
+
+        return new() { Status = RecipeChangeStatus.Saved, SelectedStageId = selectedStageId };
+    }
+
+    /// <summary>
     /// Создаёт соединение с отдельной БД рецептов.
     /// Строка подключения основной БД TechMES не подменяется.
     /// </summary>
