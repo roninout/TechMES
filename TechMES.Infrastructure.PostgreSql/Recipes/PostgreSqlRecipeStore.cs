@@ -156,6 +156,89 @@ public sealed class PostgreSqlRecipeStore : IRecipeStore
     }
 
     /// <summary>
+    /// Сохраняет одну ячейку в короткой транзакции.
+    /// Блокировки берутся только на время сохранения, а не на время открытого диалога.
+    /// </summary>
+    public async Task<RecipeParameterSaveResult> SaveParameterAsync(int recipeId, RecipeParameterSaveRequest request, CancellationToken ct = default)
+    {
+        if (recipeId <= 0 || request.ParameterId <= 0 || request.StageId <= 0 || request.BaseParameterId <= 0)
+            return new() { Status = RecipeParameterSaveStatus.InvalidValue, Error = "Invalid recipe parameter identity." };
+
+        if (request.Value is not double value || !double.IsFinite(value) || request.ExpectedValue is not double expected || !double.IsFinite(expected))
+            return new() { Status = RecipeParameterSaveStatus.InvalidValue, Error = "A finite numeric value is required." };
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        await using var transaction = await connection.BeginTransactionAsync(ct);
+
+        const string selectSql = """
+        SELECT p."value", b."kind"
+        FROM public."RecipeParameter" p
+        JOIN public."RecipeStage" s ON s."id" = p."recipeStageId"
+        JOIN public."BaseParameter" b ON b."id" = p."baseParameterId"
+        WHERE p."id" = @parameter_id AND s."id" = @stage_id
+          AND s."recipeId" = @recipe_id AND b."id" = @base_parameter_id
+        FOR UPDATE OF p, s, b;
+        """;
+
+        double current;
+        int kind;
+
+        await using (var select = new NpgsqlCommand(selectSql, connection, transaction) { CommandTimeout = GetCommandTimeout() })
+        {
+            select.Parameters.AddWithValue("parameter_id", request.ParameterId);
+            select.Parameters.AddWithValue("stage_id", request.StageId);
+            select.Parameters.AddWithValue("recipe_id", recipeId);
+            select.Parameters.AddWithValue("base_parameter_id", request.BaseParameterId);
+
+            await using var reader = await select.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+                return new() { Status = RecipeParameterSaveStatus.NotFound, Error = "The parameter or recipe structure no longer exists. Refresh the recipe." };
+
+            current = reader.GetDouble(0);
+            kind = reader.GetInt32(1);
+        }
+
+        if (kind != (int)RecipeParameterKind.InputField && kind != (int)RecipeParameterKind.CheckBox)
+            return new() { Status = RecipeParameterSaveStatus.InvalidValue, Error = "This parameter type cannot be edited." };
+
+        if (kind == (int)RecipeParameterKind.CheckBox && value != 0 && value != 1)
+            return new() { Status = RecipeParameterSaveStatus.InvalidValue, Error = "A checkbox value must be 0 or 1." };
+
+        // Значения double передаются JSON без округления.
+        // Допуск здесь использовать нельзя: небольшое чужое изменение тоже должно вызвать конфликт.
+        if (current != expected)
+            return new() { Status = RecipeParameterSaveStatus.Conflict, Error = "The value was changed by another client. Refresh the recipe and try again." };
+
+        const string updateSql = """
+        UPDATE public."RecipeParameter"
+        SET "value" = @value
+        WHERE "id" = @parameter_id AND "recipeStageId" = @stage_id
+          AND "baseParameterId" = @base_parameter_id AND "value" = @expected
+        RETURNING "value";
+        """;
+
+        await using var update = new NpgsqlCommand(updateSql, connection, transaction) { CommandTimeout = GetCommandTimeout() };
+
+        update.Parameters.AddWithValue("value", value);
+        update.Parameters.AddWithValue("parameter_id", request.ParameterId);
+        update.Parameters.AddWithValue("stage_id", request.StageId);
+        update.Parameters.AddWithValue("base_parameter_id", request.BaseParameterId);
+        update.Parameters.AddWithValue("expected", expected);
+
+        var saved = await update.ExecuteScalarAsync(ct);
+
+        if (saved is not double savedValue)
+            return new() { Status = RecipeParameterSaveStatus.Conflict, Error = "The parameter changed during saving. Refresh the recipe." };
+
+        await transaction.CommitAsync(ct);
+
+        return new() { Status = RecipeParameterSaveStatus.Saved, Value = savedValue };
+    }
+
+    /// <summary>
     /// Создаёт соединение с отдельной БД рецептов.
     /// Строка подключения основной БД TechMES не подменяется.
     /// </summary>

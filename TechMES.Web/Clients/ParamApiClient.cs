@@ -261,9 +261,7 @@ public sealed class ParamApiClient
     /// <summary>
     /// Читает DryRun reference page.
     /// </summary>
-    public async Task<ParamDryRunResponse> GetDryRunAsync(
-        string equipmentName,
-        CancellationToken ct = default)
+    public async Task<ParamDryRunResponse> GetDryRunAsync(string equipmentName, CancellationToken ct = default)
     {
         var client = CreateClient();
         var encodedName = Uri.EscapeDataString(equipmentName);
@@ -283,9 +281,7 @@ public sealed class ParamApiClient
     /// <summary>
     /// Читает ATV reference page.
     /// </summary>
-    public async Task<ParamAtvRefResponse> GetAtvRefAsync(
-        string equipmentName,
-        CancellationToken ct = default)
+    public async Task<ParamAtvRefResponse> GetAtvRefAsync(string equipmentName, CancellationToken ct = default)
     {
         var client = CreateClient();
         var encodedName = Uri.EscapeDataString(equipmentName);
@@ -307,10 +303,7 @@ public sealed class ParamApiClient
     /// Даже BadRequest пытаемся разобрать как ParamWriteResponse, потому что backend
     /// кладет туда человекочитаемую причину отказа.
     /// </summary>
-    public async Task<ParamWriteResponse> WriteAsync(
-        string equipmentName,
-        ParamWriteRequest request,
-        CancellationToken ct = default)
+    public async Task<ParamWriteResponse> WriteAsync(string equipmentName, ParamWriteRequest request, CancellationToken ct = default)
     {
         var client = CreateClient();
         var encodedName = Uri.EscapeDataString(equipmentName);
@@ -376,6 +369,22 @@ public sealed class ParamApiClient
             .Select(group => group!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>
+    /// Переиспользует сбор Windows identity для других write-модулей.
+    /// Read-only не обходится через HttpContext fallback.
+    /// HTTP-запросов и записи в SCADA этот метод не делает.
+    /// </summary>
+    public async Task FillWriteActorAsync(ParamWriteRequest request)
+    {
+        var state = await _authenticationStateProvider.GetAuthenticationStateAsync();
+
+        if (state.User.Identity?.IsAuthenticated != true)
+            throw new InvalidOperationException("Sign in to edit recipe values.");
+
+        request.Actor = ReadActorName(state.User)?.Trim();
+        request.ActorGroups = ReadActorGroups(state.User).Where(group => !string.IsNullOrWhiteSpace(group)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>

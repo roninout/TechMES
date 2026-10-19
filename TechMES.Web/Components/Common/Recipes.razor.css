@@ -42,6 +42,9 @@
 .recipes-toolbar-right {
     display: flex;
     justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
 }
 
 .recipes-page ::deep .recipes-card {
@@ -99,6 +102,43 @@
 .recipes-empty-cell {
     color: var(--rz-text-secondary-color);
 }
+
+
+/* Переключатель редактирования сохранённых значений. */
+.recipes-edit-mode {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+/* Прозрачная кнопка сохраняет обычный вид значения в таблице. */
+.recipes-value {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: var(--rz-border-radius);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+    .recipes-value:disabled {
+        opacity: 1;
+        cursor: default;
+    }
+
+    /* Доступная для редактирования ячейка выделяется при наведении или фокусе. */
+    .recipes-value:not(:disabled):hover,
+    .recipes-value:not(:disabled):focus-visible {
+        border-color: var(--rz-primary);
+        outline: none;
+    }
+
 
 @media (max-width: 1100px) {
     .recipes-toolbar {

@@ -1,19 +1,23 @@
-﻿using TechMES.Application.Recipes;
+﻿using Microsoft.Extensions.Options;
+using TechMES.Application.Param;
+using TechMES.Application.Recipes;
+using TechMES.Contracts.Recipes;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
 /// <summary>
-/// API просмотра рецептов.
+/// API чтения рецептов и сохранения отдельных значений в БД.
 /// </summary>
 public static class RecipeEndpoints
 {
     /// <summary>
-    /// Регистрирует каталог и чтение одного рецепта.
+    /// Регистрирует каталог, чтение рецепта и сохранение одной ячейки.
     /// </summary>
     public static IEndpointRouteBuilder MapRecipeEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/recipes/catalog", GetCatalogAsync);
         app.MapGet("/api/recipes/{recipeId:int}", GetRecipeAsync);
+        app.MapPost("/api/recipes/{recipeId:int}/parameter", SaveParameterAsync);
 
         return app;
     }
@@ -62,13 +66,91 @@ public static class RecipeEndpoints
     }
 
     /// <summary>
+    /// Проверяет права и сохраняет одну ячейку.
+    /// Вызовов CtApi здесь нет.
+    /// </summary>
+    private static async Task<IResult> SaveParameterAsync(int recipeId, RecipeParameterSaveRequest request, IRecipeStore store, IOptions<ParamWriteOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
+    {
+        var authorizationError = AuthorizeSave(request, options.Value.Authorization);
+
+        if (authorizationError is not null)
+            return Results.Problem(authorizationError, statusCode: 403);
+
+        try
+        {
+            var result = await store.SaveParameterAsync(recipeId, request, ct);
+
+            if (result.Status != RecipeParameterSaveStatus.Saved)
+            {
+                var statusCode = result.Status switch
+                {
+                    RecipeParameterSaveStatus.NotFound => 404,
+                    RecipeParameterSaveStatus.Conflict => 409,
+                    RecipeParameterSaveStatus.InvalidValue => 400,
+                    _ => 500
+                };
+
+                return Results.Problem(result.Error ?? "Recipe value could not be saved.", statusCode: statusCode);
+            }
+
+            loggerFactory.CreateLogger("RecipeEndpoints").LogInformation("Recipe parameter saved. Recipe={RecipeId}, Stage={StageId}, Parameter={ParameterId}, Actor={Actor}, Old={Old}, New={New}", recipeId, request.StageId, request.ParameterId, request.Actor, request.ExpectedValue, result.Value);
+
+            return Results.Ok(result);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return LoadFailure(loggerFactory, ex);
+        }
+    }
+
+    /// <summary>
+    /// Использует существующий профиль Windows-доступа из ParamWrites:Authorization.
+    /// </summary>
+    private static string? AuthorizeSave(RecipeParameterSaveRequest request, ParamWriteAuthorizationOptions authorization)
+    {
+        if (!authorization.Enabled)
+            return null;
+
+        if (authorization.RequireWindowsUser && string.IsNullOrWhiteSpace(request.Actor))
+            return "Recipe editing is denied: Windows user was not provided.";
+
+        var users = authorization.AllowedUsers.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var groups = authorization.AllowedGroups.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (users.Any(user => PrincipalMatches(request.Actor, user)))
+            return null;
+
+        if ((request.ActorGroups ?? []).Any(actual => groups.Any(group => PrincipalMatches(actual, group))))
+            return null;
+
+        return "Recipe editing is denied for this Windows user.";
+    }
+
+    /// <summary>
+    /// Сравнивает полное DOMAIN\Name или короткое имя, как существующий Param write-flow.
+    /// </summary>
+    private static bool PrincipalMatches(string? actual, string expected)
+    {
+        if (string.IsNullOrWhiteSpace(actual))
+            return false;
+
+        actual = actual.Trim();
+
+        return actual.Equals(expected, StringComparison.OrdinalIgnoreCase) || actual.Split('\\').Last().Equals(expected.Split('\\').Last(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Подробности ошибки остаются в Runtime-логе.
-    /// WEB получает понятное сообщение без строки подключения.
+    /// WEB получает сообщение без строки подключения.
     /// </summary>
     private static IResult LoadFailure(ILoggerFactory loggerFactory, Exception exception)
     {
-        loggerFactory.CreateLogger("RecipeEndpoints").LogError(exception, "Failed to read the recipe database.");
+        loggerFactory.CreateLogger("RecipeEndpoints").LogError(exception, "Recipe database request failed.");
 
-        return Results.Problem("Recipes could not be loaded. Check Recipes:ConnectionString and the Runtime log.", statusCode: 503);
+        return Results.Problem("Recipe database request failed. Check Recipes:ConnectionString and the Runtime log.", statusCode: 503);
     }
 }
