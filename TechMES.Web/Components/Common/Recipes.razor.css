@@ -139,6 +139,12 @@
         outline: none;
     }
 
+    /* Действия с сохранёнными рецептами. */
+    .recipes-management {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
 
 @media (max-width: 1100px) {
     .recipes-toolbar {

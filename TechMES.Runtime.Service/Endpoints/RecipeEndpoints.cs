@@ -11,13 +11,14 @@ namespace TechMES.Runtime.Service.Endpoints;
 public static class RecipeEndpoints
 {
     /// <summary>
-    /// Регистрирует каталог, чтение рецепта и сохранение одной ячейки.
+    /// Регистрирует просмотр, изменение значений и управление рецептами.
     /// </summary>
     public static IEndpointRouteBuilder MapRecipeEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/recipes/catalog", GetCatalogAsync);
         app.MapGet("/api/recipes/{recipeId:int}", GetRecipeAsync);
         app.MapPost("/api/recipes/{recipeId:int}/parameter", SaveParameterAsync);
+        app.MapPost("/api/recipes/change", ChangeRecipeAsync);
 
         return app;
     }
@@ -108,23 +109,72 @@ public static class RecipeEndpoints
     }
 
     /// <summary>
-    /// Использует существующий профиль Windows-доступа из ParamWrites:Authorization.
+    /// Управляет сохранённым рецептом, не назначая его текущим и не обращаясь к PLC.
+    /// </summary>
+    private static async Task<IResult> ChangeRecipeAsync(RecipeChangeRequest request, IRecipeStore store, IOptions<ParamWriteOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
+    {
+        var authorizationError = AuthorizeRecipeWrite(request.Actor, request.ActorGroups, options.Value.Authorization);
+
+        if (authorizationError is not null)
+            return Results.Problem(authorizationError, statusCode: 403);
+
+        try
+        {
+            var result = await store.ChangeAsync(request, ct);
+
+            if (result.Status != RecipeChangeStatus.Saved)
+            {
+                var statusCode = result.Status switch
+                {
+                    RecipeChangeStatus.NotFound => 404,
+                    RecipeChangeStatus.Conflict => 409,
+                    RecipeChangeStatus.Invalid => 400,
+                    _ => 500
+                };
+
+                return Results.Problem(result.Error ?? "Recipe operation failed.", statusCode: statusCode);
+            }
+
+            loggerFactory.CreateLogger("RecipeEndpoints").LogInformation("Recipe operation completed. Operation={Operation}, Source={Source}, Recipe={RecipeId}, Name={Name}, Actor={Actor}", request.Operation, request.SourceRecipeId, result.RecipeId, request.Name, request.Actor);
+
+            return Results.Ok(result);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return LoadFailure(loggerFactory, ex);
+        }
+    }
+
+    /// <summary>
+    /// Сохраняет прежнюю точку проверки доступа при редактировании ячейки.
     /// </summary>
     private static string? AuthorizeSave(RecipeParameterSaveRequest request, ParamWriteAuthorizationOptions authorization)
+    {
+        return AuthorizeRecipeWrite(request.Actor, request.ActorGroups, authorization);
+    }
+
+    /// <summary>
+    /// Один профиль доступа для значений, создания, копирования и переименования.
+    /// </summary>
+    private static string? AuthorizeRecipeWrite(string? actor, IReadOnlyCollection<string>? actorGroups, ParamWriteAuthorizationOptions authorization)
     {
         if (!authorization.Enabled)
             return null;
 
-        if (authorization.RequireWindowsUser && string.IsNullOrWhiteSpace(request.Actor))
+        if (authorization.RequireWindowsUser && string.IsNullOrWhiteSpace(actor))
             return "Recipe editing is denied: Windows user was not provided.";
 
         var users = authorization.AllowedUsers.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var groups = authorization.AllowedGroups.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        if (users.Any(user => PrincipalMatches(request.Actor, user)))
+        if (users.Any(user => PrincipalMatches(actor, user)))
             return null;
 
-        if ((request.ActorGroups ?? []).Any(actual => groups.Any(group => PrincipalMatches(actual, group))))
+        if ((actorGroups ?? []).Any(actual => groups.Any(group => PrincipalMatches(actual, group))))
             return null;
 
         return "Recipe editing is denied for this Windows user.";

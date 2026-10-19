@@ -1,0 +1,53 @@
+﻿@inject DialogService DialogService
+
+<RadzenStack Gap="12px">
+    <RadzenText Text="@Description" TextStyle="TextStyle.Body2" />
+
+    <RadzenTextBox @bind-Value="_name" Placeholder="Recipe name" Style="width: 100%;" />
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">@_error</RadzenAlert>
+    }
+
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="8px">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close())" />
+        <RadzenButton Text="Save" Icon="save" Click="@Submit" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Parameter] public string InitialName { get; set; } = "";
+    [Parameter] public string Description { get; set; } = "";
+    [Parameter] public string? RequiredNamePart { get; set; }
+
+    private string _name = "";
+    private string? _error;
+
+    /// <summary>
+    /// Подставляет текущее или предложенное имя.
+    /// </summary>
+    protected override void OnInitialized() => _name = InitialName;
+
+    /// <summary>
+    /// Сохраняет правило старого списка: имя рецепта должно содержать выбранный Unit.
+    /// </summary>
+    private void Submit()
+    {
+        var name = (_name ?? "").Trim();
+
+        if (name.Length == 0)
+        {
+            _error = "Enter a recipe name.";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(RequiredNamePart) && !name.Contains(RequiredNamePart, StringComparison.OrdinalIgnoreCase))
+        {
+            _error = $"Keep '{RequiredNamePart}' in the name so the recipe remains in this unit's list.";
+            return;
+        }
+
+        DialogService.Close(name);
+    }
+}

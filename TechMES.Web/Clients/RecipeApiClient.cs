@@ -51,6 +51,26 @@ public sealed class RecipeApiClient
     }
 
     /// <summary>
+    /// Создаёт, копирует или переименовывает рецепт с существующей Windows identity.
+    /// </summary>
+    public async Task<RecipeChangeResult> ChangeAsync(RecipeChangeRequest request, CancellationToken ct = default)
+    {
+        var actor = new ParamWriteRequest();
+
+        await _paramApi.FillWriteActorAsync(actor);
+        ct.ThrowIfCancellationRequested();
+
+        request.Actor = actor.Actor;
+        request.ActorGroups = actor.ActorGroups;
+
+        var client = _clients.CreateClient("RuntimeService");
+
+        using var response = await client.PostAsJsonAsync("api/recipes/change", request, ct);
+
+        return await ReadResponseAsync<RecipeChangeResult>(response, ct);
+    }
+
+    /// <summary>
     /// Выполняет GET и освобождает HTTP-ответ.
     /// </summary>
     private async Task<T> ReadAsync<T>(string url, CancellationToken ct) where T : class

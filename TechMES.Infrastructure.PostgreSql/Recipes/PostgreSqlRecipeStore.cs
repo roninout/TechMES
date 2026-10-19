@@ -239,6 +239,142 @@ public sealed class PostgreSqlRecipeStore : IRecipeStore
     }
 
     /// <summary>
+    /// Управляет рецептом в одной транзакции.
+    /// Привязка текущего рецепта в RecipePage не изменяется.
+    /// </summary>
+    public async Task<RecipeChangeResult> ChangeAsync(RecipeChangeRequest request, CancellationToken ct = default)
+    {
+        var name = request.Name?.Trim() ?? "";
+
+        if (name.Length == 0 || request.SourceRecipeId <= 0 || !Enum.IsDefined(request.Operation))
+            return new() { Status = RecipeChangeStatus.Invalid, Error = "Select a recipe and enter a valid name." };
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct);
+
+        // Согласует New/Copy/Rename между экземплярами TechMES.
+        // Транзакционная блокировка снимается автоматически при commit или rollback.
+        await using (var gate = new NpgsqlCommand("SELECT pg_advisory_xact_lock(1380270928, 1);", connection, transaction) { CommandTimeout = GetCommandTimeout() })
+            await gate.ExecuteNonQueryAsync(ct);
+
+        const string sourceSql = """
+        SELECT r."numb", r."name",
+               CASE WHEN EXISTS (SELECT 1 FROM public."RecipePage" p WHERE p."baseRecipeId" = r."id")
+                    THEN r."id" ELSE COALESCE(r."baseRecipeId", r."id") END
+        FROM public."Recipe" r
+        WHERE r."id" = @source_id
+        FOR UPDATE OF r;
+        """;
+
+        int number;
+        int baseRecipeId;
+        string sourceName;
+
+        await using (var source = new NpgsqlCommand(sourceSql, connection, transaction) { CommandTimeout = GetCommandTimeout() })
+        {
+            source.Parameters.AddWithValue("source_id", request.SourceRecipeId);
+
+            await using var reader = await source.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+                return new() { Status = RecipeChangeStatus.NotFound, Error = "The source recipe no longer exists. Refresh the list." };
+
+            number = reader.GetInt32(0);
+            sourceName = ReadText(reader, 1);
+            baseRecipeId = reader.GetInt32(2);
+        }
+
+        if (request.Operation == RecipeChangeOperation.Rename && !string.Equals(sourceName, request.ExpectedName, StringComparison.Ordinal))
+            return new() { Status = RecipeChangeStatus.Conflict, Error = "The recipe was renamed by another client. Refresh the list." };
+
+        const string existsSql = """
+        SELECT EXISTS (
+            SELECT 1 FROM public."Recipe"
+            WHERE lower(btrim("name")) = lower(@name) AND "id" <> @excluded_id
+        );
+        """;
+
+        await using (var exists = new NpgsqlCommand(existsSql, connection, transaction) { CommandTimeout = GetCommandTimeout() })
+        {
+            exists.Parameters.AddWithValue("name", name);
+            exists.Parameters.AddWithValue("excluded_id", request.Operation == RecipeChangeOperation.Rename ? request.SourceRecipeId : 0);
+
+            if (await exists.ExecuteScalarAsync(ct) is true)
+                return new() { Status = RecipeChangeStatus.Conflict, Error = "A recipe with this name already exists." };
+        }
+
+        int recipeId;
+
+        if (request.Operation == RecipeChangeOperation.Rename)
+        {
+            await using var rename = new NpgsqlCommand("UPDATE public.\"Recipe\" SET \"name\" = @name WHERE \"id\" = @id RETURNING \"id\";", connection, transaction) { CommandTimeout = GetCommandTimeout() };
+
+            rename.Parameters.AddWithValue("name", name);
+            rename.Parameters.AddWithValue("id", request.SourceRecipeId);
+
+            recipeId = (int)(await rename.ExecuteScalarAsync(ct) ?? throw new InvalidOperationException("Recipe rename returned no ID."));
+        }
+        else
+        {
+            const string insertSql = """
+            INSERT INTO public."Recipe" ("numb", "name", "baseRecipeId")
+            VALUES (@number, @name, @base_recipe_id)
+            RETURNING "id";
+            """;
+
+            await using var insert = new NpgsqlCommand(insertSql, connection, transaction) { CommandTimeout = GetCommandTimeout() };
+
+            insert.Parameters.AddWithValue("number", request.Operation == RecipeChangeOperation.Copy ? number : 0);
+            insert.Parameters.AddWithValue("name", name);
+            insert.Parameters.AddWithValue("base_recipe_id", baseRecipeId);
+
+            recipeId = (int)(await insert.ExecuteScalarAsync(ct) ?? throw new InvalidOperationException("Recipe creation returned no ID."));
+        }
+
+        if (request.Operation == RecipeChangeOperation.Copy)
+        {
+            const string copySql = """
+            WITH source_stages AS (
+                SELECT * FROM public."RecipeStage" WHERE "recipeId" = @source_id
+            ), copied_stages AS (
+                INSERT INTO public."RecipeStage" ("stageNumb", "name", "auto", "description", "recipeId", "baseRecipeStageId")
+                SELECT s."stageNumb", s."name", s."auto", s."description", @recipe_id, s."baseRecipeStageId"
+                FROM source_stages s
+                WHERE NOT EXISTS (SELECT 1 FROM source_stages GROUP BY "stageNumb" HAVING count(*) > 1)
+                ORDER BY s."stageNumb", s."id"
+                RETURNING "id", "stageNumb"
+            ), copied_parameters AS (
+                INSERT INTO public."RecipeParameter" ("name", "value", "description", "active", "recipeStageId", "baseParameterId")
+                SELECT p."name", p."value", p."description", p."active", n."id", p."baseParameterId"
+                FROM source_stages s
+                JOIN copied_stages n ON n."stageNumb" = s."stageNumb"
+                JOIN public."RecipeParameter" p ON p."recipeStageId" = s."id"
+                RETURNING "id"
+            )
+            SELECT (SELECT count(*) FROM source_stages), (SELECT count(*) FROM copied_stages), (SELECT count(*) FROM copied_parameters);
+            """;
+
+            await using var copy = new NpgsqlCommand(copySql, connection, transaction) { CommandTimeout = GetCommandTimeout() };
+
+            copy.Parameters.AddWithValue("source_id", request.SourceRecipeId);
+            copy.Parameters.AddWithValue("recipe_id", recipeId);
+
+            await using var reader = await copy.ExecuteReaderAsync(ct);
+
+            // Номера стадий используются для сопоставления исходных и новых ID.
+            // Дубли номеров нельзя копировать через такое сопоставление.
+            if (!await reader.ReadAsync(ct) || reader.GetInt64(0) != reader.GetInt64(1))
+                return new() { Status = RecipeChangeStatus.Invalid, Error = "The source recipe contains duplicate stage numbers. Correct them before copying." };
+        }
+
+        await transaction.CommitAsync(ct);
+
+        return new() { Status = RecipeChangeStatus.Saved, RecipeId = recipeId };
+    }
+
+    /// <summary>
     /// Создаёт соединение с отдельной БД рецептов.
     /// Строка подключения основной БД TechMES не подменяется.
     /// </summary>

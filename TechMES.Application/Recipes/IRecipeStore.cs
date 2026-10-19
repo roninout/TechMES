@@ -14,7 +14,7 @@ public interface IRecipeStore
     Task<RecipeCatalogDto> GetCatalogAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Возвращает рецепт со стадиями и параметрами или null, если рецепт отсутствует.
+    /// Возвращает рецепт со стадиями и параметрами или null.
     /// </summary>
     Task<RecipeSnapshotDto?> GetAsync(int recipeId, CancellationToken ct = default);
 
@@ -22,4 +22,9 @@ public interface IRecipeStore
     /// Сохраняет одно значение после проверки принадлежности и предыдущего значения.
     /// </summary>
     Task<RecipeParameterSaveResult> SaveParameterAsync(int recipeId, RecipeParameterSaveRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Создаёт пустой рецепт, копирует рецепт или изменяет его имя.
+    /// </summary>
+    Task<RecipeChangeResult> ChangeAsync(RecipeChangeRequest request, CancellationToken ct = default);
 }

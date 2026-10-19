@@ -45,6 +45,12 @@
         <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@_error</RadzenAlert>
     }
 
+    <div class="recipes-management">
+        <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!_canEdit || IsBusy || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
+        <RadzenButton Text="Copy" Icon="content_copy" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Copy))" />
+        <RadzenButton Text="Rename" Icon="drive_file_rename_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Rename))" />
+    </div>
+
     <RadzenCard class="recipes-card">
         <div class="recipes-heading">
             <span class="recipes-name">@(_snapshot?.Recipe.DisplayName ?? "Select a recipe")</span>
@@ -125,7 +131,7 @@
     private bool _disposed;
     private string? _error;
 
-    private bool IsBusy => _loading || _editingValue;
+    private bool IsBusy => _loading || _editingValue || _managingRecipe;
     private RecipePageDto? SelectedPage => _catalog.Pages.FirstOrDefault(page => page.Id == _selectedPageId);
     private IReadOnlyList<RecipeStageDto> Stages => _snapshot?.Stages ?? [];
     private IReadOnlyList<RecipeColumnDto> Columns => _snapshot?.Columns ?? [];
@@ -149,21 +155,7 @@
     /// </summary>
     private Task RefreshAsync()
     {
-        return RunAsync(async ct =>
-        {
-            var catalog = await RecipeApi.GetCatalogAsync(ct);
-            ct.ThrowIfCancellationRequested();
-
-            _catalog = catalog;
-
-            if (!_catalogLoaded || (_selectedPageId.HasValue && !_catalog.Pages.Any(page => page.Id == _selectedPageId)))
-                _selectedPageId = _catalog.Pages.FirstOrDefault()?.Id;
-
-            _catalogLoaded = true;
-
-            SelectAvailableRecipes(_selectedRecipeId);
-            await LoadSelectedRecipeAsync(ct);
-        });
+        return RunAsync(ct => ReloadCatalogAndRecipeAsync(_selectedRecipeId, ct));
     }
 
     /// <summary>
