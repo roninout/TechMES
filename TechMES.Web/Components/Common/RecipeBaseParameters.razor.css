@@ -1,0 +1,18 @@
+.recipe-parameters-grid-host {
+    width: 100%;
+    min-width: 0;
+}
+
+    /* Name получает остаток ширины после колонок с заданным Width. */
+    .recipe-parameters-grid-host ::deep .recipe-parameters-grid .rz-grid-table {
+        width: 100%;
+        table-layout: fixed;
+    }
+
+        /* Общий класс Events ограничивает содержимое ячейки высотой 26px.
+   Для редакторов оставляем естественную высоту, чтобы поля не обрезались. */
+        .recipe-parameters-grid-host ::deep .recipe-parameters-grid .rz-grid-table > tbody > tr > td > .rz-cell-data {
+            height: auto;
+            min-height: var(--techmes-journal-content-height);
+            overflow: visible;
+        }

@@ -42,70 +42,91 @@
     }
     else
     {
-        <RadzenDataGrid Data="@VisibleRows" TItem="RecipeBaseParameterDto" AllowPaging="false" AllowSorting="true" AllowColumnResize="true" Density="Density.Compact" IsLoading="@_busy" Style="height: calc(100dvh - 230px); min-height: 320px;">
-            <LoadingTemplate>
-                <JournalGridLoading />
-            </LoadingTemplate>
+        <div class="recipe-parameters-grid-host">
 
-            <Columns>
-                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="44px" Sortable="false" TextAlign="TextAlign.Center">
-                    <Template Context="row">
-                        <span title="@(_catalog.UsedParameterIds.Contains(row.Id) ? "Used by stages or recipes" : "Not used")">
-                            <RadzenIcon Icon="@(_catalog.UsedParameterIds.Contains(row.Id) ? "link" : "link_off")" Style="@($"color: var({(_catalog.UsedParameterIds.Contains(row.Id) ? "--rz-success" : "--rz-text-disabled-color")});")" />
-                        </span>
-                    </Template>
-                </RadzenDataGridColumn>
+            <RadzenDataGrid Data="@VisibleRows" TItem="RecipeBaseParameterDto" AllowPaging="false" AllowSorting="true" AllowColumnResize="true" Density="Density.Compact" IsLoading="@_busy" class="recipe-parameters-grid techmes-journal-grid" Style="height: calc(100dvh - 230px); min-height: 320px; width: 100%;">
+                <LoadingTemplate>
+                    <JournalGridLoading />
+                </LoadingTemplate>
 
-                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Order" Title="Order" Width="85px">
-                    <Template Context="row">
-                        <RadzenNumeric @key="(row.Id, _orderVersion)" TValue="int" Value="@row.Order" Change="@((int value) => ChangeOrder(row, value))" Min="0" Disabled="@(!CanEdit)" Style="width: 100%;" />
-                    </Template>
-                </RadzenDataGridColumn>
+                <Columns>
+                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="40px" MaxWidth="40px" Sortable="false" TextAlign="TextAlign.Center">
+                        <Template Context="row">
+                            <span title="@(_catalog.UsedParameterIds.Contains(row.Id) ? "Used by stages or recipes" : "Not used")">
+                                <RadzenIcon Icon="@(_catalog.UsedParameterIds.Contains(row.Id) ? "link" : "link_off")" Style="@($"color: var({(_catalog.UsedParameterIds.Contains(row.Id) ? "--rz-success" : "--rz-text-disabled-color")});")" />
+                            </span>
+                        </Template>
+                    </RadzenDataGridColumn>
 
-                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Name" Title="Name" Width="270px">
-                    <Template Context="row">
-                        <RadzenTextBox @bind-Value="row.Name" Disabled="@(!CanEdit)" Style="width: 100%;" />
-                    </Template>
-                </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Order" Title="Order" Width="90px" MaxWidth="90px">
+                        <Template Context="row">
+                            <RadzenNumeric @key="(row.Id, _orderVersion)" TValue="int" Value="@row.Order" Change="@((int value) => ChangeOrder(row, value))" Min="0" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" />
+                        </Template>
+                    </RadzenDataGridColumn>
 
-                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Units" Width="140px">
-                    <Template Context="row">
-                        <RadzenTextBox Value="@GetUnits(row.Description)" Change="@((string value) => ChangeUnits(row, value))" Disabled="@(!CanEdit)" Style="width: 100%;" />
-                    </Template>
-                </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Name" Title="Name" MinWidth="280px">
+                        <Template Context="row">
+                            <RadzenTextBox @bind-Value="row.Name" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" />
+                        </Template>
+                    </RadzenDataGridColumn>
 
-                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Tag" Title="Tag suffix" Width="200px">
-                    <Template Context="row">
-                        <RadzenTextBox @bind-Value="row.Tag" Disabled="@(!CanEdit)" Style="width: 100%;" />
-                    </Template>
-                </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Units" Width="100px" MaxWidth="100px">
+                        <Template Context="row">
+                            @if (row.Kind != RecipeParameterKind.CheckBox)
+                            {
+                                <RadzenTextBox Value="@GetUnits(row.Description)" Change="@((string value) => ChangeUnits(row, value))" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" />
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
 
-                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Type" Width="140px">
-                    <Template Context="row">
-                        <span title="Numeric input / CheckBox">
-                            <RadzenSelectBar TValue="RecipeParameterKind" @bind-Value="row.Kind" Disabled="@(!CanEdit)">
-                                <Items>
-                                    <RadzenSelectBarItem Value="@(RecipeParameterKind.InputField)" Icon="pin" />
-                                    <RadzenSelectBarItem Value="@(RecipeParameterKind.CheckBox)" Icon="check_box" />
-                                </Items>
-                            </RadzenSelectBar>
-                        </span>
-                    </Template>
-                </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Tag" Title="Tag suffix" Width="200px">
+                        <Template Context="row">
+                            <RadzenTextBox @bind-Value="row.Tag" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" />
+                        </Template>
+                    </RadzenDataGridColumn>
 
-                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Format" Width="115px">
-                    <Template Context="row">
-                        <RadzenDropDown TValue="RecipeParameterFormat" Data="@Formats" TextProperty="Text" ValueProperty="Value" @bind-Value="row.Format" Disabled="@(!CanEdit)" Style="width: 100%;" />
-                    </Template>
-                </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Type" Width="84px" MaxWidth="84px">
+                        <Template Context="row">
+                            <RadzenDropDown TValue="RecipeParameterKind" Data="@Kinds" TextProperty="Text" ValueProperty="Value" @bind-Value="row.Kind" AllowClear="false" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" AriaLabel="Parameter type">
+                                <Template Context="item">
+                                    @if (item is KindOption option)
+                                    {
+                                        <span title="@option.Text" style="display: inline-flex; align-items: center;">
+                                            <RadzenIcon Icon="@option.Icon" Style="color: var(--rz-text-secondary-color);" />
+                                        </span>
+                                    }
+                                </Template>
 
-                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="55px" Sortable="false">
-                    <Template Context="row">
-                        <RadzenButton Icon="@(row.Id < 0 ? "close" : "delete_outline")" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit)" Click="@(() => DeleteAsync(row))" />
-                    </Template>
-                </RadzenDataGridColumn>
-            </Columns>
-        </RadzenDataGrid>
+                                <ValueTemplate Context="item">
+                                    @if (item is KindOption option)
+                                    {
+                                        <span title="@option.Text" style="display: inline-flex; align-items: center;">
+                                            <RadzenIcon Icon="@option.Icon" Style="color: var(--rz-text-secondary-color);" />
+                                        </span>
+                                    }
+                                </ValueTemplate>
+                            </RadzenDropDown>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Format" Width="110px" MaxWidth="110px">
+                        <Template Context="row">
+                            @if (row.Kind != RecipeParameterKind.CheckBox)
+                            {
+                                <RadzenDropDown TValue="RecipeParameterFormat" Data="@Formats" TextProperty="Text" ValueProperty="Value" @bind-Value="row.Format" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" />
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="48px" MaxWidth="48px" Sortable="false" TextAlign="TextAlign.Center">
+                        <Template Context="row">
+                            <RadzenButton Icon="@(row.Id < 0 ? "close" : "delete_outline")" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit)" Click="@(() => DeleteAsync(row))" />
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+
+        </div>
     }
 </RadzenStack>
 
@@ -120,7 +141,15 @@
     private bool _busy, _loaded, _canEdit, _dialogOpen, _uncertainSave, _disposed;
     private string? _error;
 
+    private sealed record KindOption(RecipeParameterKind Value, string Text, string Icon);
     private sealed record FormatOption(RecipeParameterFormat Value, string Text);
+
+    // Иконки отображаются в списке типов и в выбранном значении комбобокса.
+    private static readonly KindOption[] Kinds =
+    [
+        new(RecipeParameterKind.InputField, "Numeric input", "pin"),
+        new(RecipeParameterKind.CheckBox, "CheckBox", "check_box")
+    ];
 
     private static readonly FormatOption[] Formats =
     [
