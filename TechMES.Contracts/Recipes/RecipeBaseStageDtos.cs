@@ -1,13 +1,17 @@
 ﻿namespace TechMES.Contracts.Recipes;
 
-/// <summary>Состав и раскладка шаблона: 4 столбца, 8 строк; null означает пустую ячейку.</summary>
+/// <summary>Состав и раскладка шаблона: 5 столбцов, 8 строк; null означает пустую ячейку.</summary>
 public sealed class RecipeBaseStageDto
 {
+    public const int Columns = 5;
+    public const int Rows = 8;
+    public const int SlotCount = Columns * Rows;
+
     public int Id { get; set; }
     public int FamilyId { get; set; }
     public string Name { get; set; } = "";
     public string Code { get; set; } = "";
-    public List<int?> Slots { get; set; } = Enumerable.Repeat<int?>(null, 32).ToList();
+    public List<int?> Slots { get; set; } = Enumerable.Repeat<int?>(null, SlotCount).ToList();
     public List<int> Overflow { get; set; } = [];
     public int ParameterCount => Slots.Count(id => id.HasValue) + Overflow.Count;
 }

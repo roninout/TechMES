@@ -65,7 +65,7 @@
 
                             <div class="stage-canvas">
                                 <div class="stage-slot-grid">
-                                    @for (var i = 0; i < 32; i++)
+                                    @for (var i = 0; i < RecipeBaseStageDto.SlotCount; i++)
                                     {
                                         var slot = i;
 
@@ -82,7 +82,7 @@
 
                                 @if (_draft.Overflow.Count > 0)
                                 {
-                                    <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">The old stage contains more than 32 parameters. Place or remove the extra cards before saving.</RadzenAlert>
+                                    <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">Place or remove the extra cards before saving. The stage has @RecipeBaseStageDto.SlotCount slots.</RadzenAlert>
                                     <RadzenDropZone TItem="DragCard" Value="@(-2)" class="stage-overflow" />
                                 }
                             </div>
@@ -119,7 +119,7 @@
 
             <Template Context="card">
                 <div class="stage-card">
-                    <RecipeStageParameterCard Parameter="@card.Parameter" Removable="@(card.Zone != -1)" />
+                    <RecipeStageParameterCard Parameter="@card.Parameter" Removable="@(card.Zone != -1)" Compact="@(card.Zone != -1)" Used="@(card.Zone == -1 && IsUsed(card.Parameter.Id))" />
 
                     @if (card.Zone != -1)
                     {
@@ -129,6 +129,7 @@
                     }
                 </div>
             </Template>
+
         </RadzenDropZoneContainer>
     }
 </div>
@@ -154,6 +155,9 @@
     /// <summary>Копирует определение вместе с коллекциями, не изменяя загруженный каталог.</summary>
     private static RecipeBaseStageDto Clone(RecipeBaseStageDto value) => JsonSerializer.Deserialize<RecipeBaseStageDto>(JsonSerializer.Serialize(value))!;
 
+        /// <summary>Отмечает параметр в каталоге, пока он находится в ячейке или среди лишних карточек.</summary>
+    private bool IsUsed(int parameterId) => _draft is not null && (_draft.Slots.Contains(parameterId) || _draft.Overflow.Contains(parameterId));
+
     /// <summary>Источник слева и занятые ячейки — разные drag items одного параметра.</summary>
     private List<DragCard> DragItems
     {
@@ -165,7 +169,7 @@
 
             if (_draft is null) return result;
 
-            for (var i = 0; i < 32; i++)
+            for (var i = 0; i < RecipeBaseStageDto.SlotCount; i++)
                 if (_draft.Slots[i] is int id) result.Add(new(Find(id), i));
 
             result.AddRange(_draft.Overflow.Select(id => new DragCard(Find(id), -2)));
@@ -182,13 +186,13 @@
     {
         if (!CanEdit || args.Item is not { } item || args.ToZone?.Value is not int target) return false;
 
-        var validSource = item.Zone == -1 ? !_draft!.Slots.Contains(item.Parameter.Id) && !_draft.Overflow.Contains(item.Parameter.Id)
+        var validSource = item.Zone == -1 ? !IsUsed(item.Parameter.Id)
             : item.Zone == -2 ? _draft!.Overflow.Contains(item.Parameter.Id)
-            : item.Zone >= 0 && item.Zone < 32 && _draft!.Slots[item.Zone] == item.Parameter.Id;
+            : item.Zone >= 0 && item.Zone < RecipeBaseStageDto.SlotCount && _draft!.Slots[item.Zone] == item.Parameter.Id;
 
         if (!validSource) return false;
         if (target == -1) return item.Zone != -1;
-        if (target < 0 || target >= 32 || target == item.Zone || item.Parameter.BaseRecipeId != _familyId) return false;
+        if (target < 0 || target >= RecipeBaseStageDto.SlotCount || target == item.Zone || item.Parameter.BaseRecipeId != _familyId) return false;
 
         return item.Zone >= 0 || _draft!.Slots[target] is null;
     }
@@ -216,11 +220,16 @@
         if (!CanEdit) return;
 
         if (item.Zone == -2) _draft!.Overflow.Remove(item.Parameter.Id);
-        else if (item.Zone >= 0 && item.Zone < 32 && _draft!.Slots[item.Zone] == item.Parameter.Id) _draft.Slots[item.Zone] = null;
+        else if (item.Zone >= 0 && item.Zone < RecipeBaseStageDto.SlotCount && _draft!.Slots[item.Zone] == item.Parameter.Id) _draft.Slots[item.Zone] = null;
     }
 
-    /// <summary>В режиме чтения карточки недоступны для перетаскивания.</summary>
-    private void RenderItem(RadzenDropZoneItemRenderEventArgs<DragCard> args) => args.Attributes["draggable"] = CanEdit ? "true" : "false";
+    /// <summary>Блокирует перетаскивание использованных карточек каталога и весь Drag & Drop в режиме чтения.</summary>
+    private void RenderItem(RadzenDropZoneItemRenderEventArgs<DragCard> args)
+    {
+        var usedSource = args.Item is { Zone: -1 } item && IsUsed(item.Parameter.Id);
+
+        args.Attributes["draggable"] = CanEdit && !usedSource ? "true" : "false";
+    }
 
     /// <summary>Использует текущую Windows identity и семейство из общего переключателя.</summary>
     protected override async Task OnInitializedAsync()

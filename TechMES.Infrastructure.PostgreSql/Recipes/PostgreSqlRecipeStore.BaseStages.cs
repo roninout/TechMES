@@ -47,7 +47,7 @@ public sealed partial class PostgreSqlRecipeStore
     {
         var preview = new RecipeBaseStagePreviewDto();
 
-        if (request.FamilyId <= 0 || request.Value is null || request.Value.Id < 0 || request.Value.FamilyId != request.FamilyId || request.Value.Slots is null || request.Value.Slots.Count != 32 || request.Value.Overflow is null)
+        if (request.FamilyId <= 0 || request.Value is null || request.Value.Id < 0 || request.Value.FamilyId != request.FamilyId || request.Value.Slots is null || request.Value.Slots.Count != RecipeBaseStageDto.SlotCount || request.Value.Overflow is null)
         {
             preview.Errors.Add("Invalid stage or family.");
             return (preview, RecipeChangeStatus.Invalid, 0);
@@ -60,8 +60,9 @@ public sealed partial class PostgreSqlRecipeStore
 
         preview.Name = name;
 
+        // Один параметр может присутствовать в стадии только один раз.
         if (name.Length == 0 || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Length || value.Overflow.Count > 0)
-            preview.Errors.Add("Enter a stage name and place each parameter once within the 32 slots. Remove or place overflow items first.");
+            preview.Errors.Add($"Enter a stage name and place each parameter once within the {RecipeBaseStageDto.SlotCount} slots. Remove or place overflow items first.");
 
         await using var connection = CreateConnection();
         await connection.OpenAsync(ct);
@@ -210,7 +211,7 @@ public sealed partial class PostgreSqlRecipeStore
         return (preview, RecipeChangeStatus.Saved, stageId);
     }
 
-    /// <summary>Сохраняет все старые связи: лишние карточки попадают в Overflow, не теряются.</summary>
+    /// <summary>Читает раскладку, сохраняет старые связи и исключает повторное размещение параметров.</summary>
     private async Task<List<RecipeBaseStageDto>> ReadStageDefinitionsAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, int familyId, (string Table, string StageColumn, string ParameterColumn) link, CancellationToken ct)
     {
         var sql = $"""
@@ -230,7 +231,7 @@ public sealed partial class PostgreSqlRecipeStore
         var stages = new List<RecipeBaseStageDto>();
 
         while (await reader.ReadAsync(ct))
-            stages.Add(new() { Id = reader.GetInt32(0), FamilyId = familyId, Name = ReadText(reader, 1), Code = ReadText(reader, 2), Slots = reader.IsDBNull(3) ? Enumerable.Repeat<int?>(null, 32).ToList() : JsonSerializer.Deserialize<List<int?>>(reader.GetString(3)) ?? throw new InvalidOperationException("Invalid stage layout.") });
+            stages.Add(new() { Id = reader.GetInt32(0), FamilyId = familyId, Name = ReadText(reader, 1), Code = ReadText(reader, 2), Slots = reader.IsDBNull(3) ? Enumerable.Repeat<int?>(null, RecipeBaseStageDto.SlotCount).ToList() : JsonSerializer.Deserialize<List<int?>>(reader.GetString(3)) ?? throw new InvalidOperationException("Invalid stage layout.") });
 
         await reader.NextResultAsync(ct);
 
@@ -244,12 +245,12 @@ public sealed partial class PostgreSqlRecipeStore
 
         foreach (var stage in stages)
         {
-            if (stage.Slots.Count != 32) throw new InvalidOperationException("Stage layout must contain 32 slots.");
+            stage.Slots = ExpandStageSlots(stage.Slots);
 
             var ids = members.GetValueOrDefault(stage.Id) ?? [];
             var used = new HashSet<int>();
 
-            for (var i = 0; i < 32; i++)
+            for (var i = 0; i < RecipeBaseStageDto.SlotCount; i++)
                 if (stage.Slots[i] is not int id || !ids.Contains(id) || !used.Add(id)) stage.Slots[i] = null;
 
             foreach (var id in ids.Where(id => !used.Contains(id)).Distinct())
@@ -262,6 +263,21 @@ public sealed partial class PostgreSqlRecipeStore
         }
 
         return stages;
+    }
+
+    /// <summary>Добавляет пятую ячейку в каждую старую строку, сохраняя позиции четырёх колонок.</summary>
+    private static List<int?> ExpandStageSlots(List<int?> slots)
+    {
+        if (slots.Count == RecipeBaseStageDto.SlotCount) return slots;
+        if (slots.Count != 32) throw new InvalidOperationException("Stage layout must contain 32 or 40 slots.");
+
+        var expanded = Enumerable.Repeat<int?>(null, RecipeBaseStageDto.SlotCount).ToList();
+
+        for (var row = 0; row < RecipeBaseStageDto.Rows; row++)
+            for (var column = 0; column < 4; column++)
+                expanded[row * RecipeBaseStageDto.Columns + column] = slots[row * 4 + column];
+
+        return expanded;
     }
 
     /// <summary>Снимок включает реальные значения всех экземпляров, а не только состав шаблона.</summary>

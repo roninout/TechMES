@@ -1,27 +1,39 @@
 ﻿@using TechMES.Contracts.Recipes
 
-<RadzenCard Style="@($"padding: 9px {(Removable ? 28 : 9)}px 9px 9px; height: 100%; min-width: 0; box-sizing: border-box;")">
-    <div style="display: flex; gap: 6px; align-items: flex-start;">
-        <RadzenIcon Icon="@(Parameter.Kind == RecipeParameterKind.CheckBox ? "check_box" : "pin")" Style="color: var(--rz-text-secondary-color); flex-shrink: 0;" />
-        <strong style="overflow-wrap: anywhere;">@Parameter.Name</strong>
-    </div>
+<div class="parameter-view @(Compact ? "parameter-compact" : "") @(Used ? "parameter-used" : "")" title="@(Used ? "Already used in this stage" : Parameter.Name)">
+    <RadzenCard class="parameter-surface" Style="@(Removable ? "padding-right: 27px;" : null)">
+        <div class="parameter-content">
+            <RadzenIcon Icon="@(Parameter.Kind == RecipeParameterKind.CheckBox ? "toggle_on" : "calculate")" class="parameter-icon" />
 
-    <div style="font-size: 12px; overflow-wrap: anywhere; margin-top: 4px;">@Parameter.Tag</div>
+            <div class="parameter-text">
+                <div class="parameter-heading">
+                    <strong>@Parameter.Tag</strong>
 
-    <div style="font-size: 11px; color: var(--rz-text-secondary-color); margin-top: 4px;">
-        ID: @Parameter.Id · Order: @Parameter.Order · Family: @Parameter.BaseRecipeId
-    </div>
+                    @if (Units.Length > 0 && Parameter.Kind != RecipeParameterKind.CheckBox)
+                    {
+                        <span class="parameter-units">(@Units)</span>
+                    }
+                </div>
 
-    @if (Parameter.Kind != RecipeParameterKind.CheckBox)
-    {
-        <div style="font-size: 11px; color: var(--rz-text-secondary-color);">@Units · @Format</div>
-    }
-</RadzenCard>
+                <div class="parameter-description" title="@Parameter.Name">@Parameter.Name</div>
+            </div>
+
+            @if (Used)
+            {
+                <span class="parameter-used-mark" title="Already used in this stage" aria-label="Already used in this stage">
+                    <RadzenIcon Icon="check_circle" />
+                </span>
+            }
+        </div>
+    </RadzenCard>
+</div>
 
 @code {
     [Parameter, EditorRequired] public RecipeBaseParameterDto Parameter { get; set; } = new();
     [Parameter] public bool Removable { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public bool Used { get; set; }
 
+    // Скрываем разделители старой программы только при отображении; данные БД не меняем.
     private string Units => Parameter.Description.Replace("\\n", "").Replace("\r", "").Replace("\n", "").Trim();
-    private string Format => Parameter.Format == RecipeParameterFormat.Default ? "—" : "#." + new string('#', Math.Clamp((int)Parameter.Format, 1, 4));
 }
