@@ -1,5 +1,7 @@
 ﻿@page "/recipes/parameters"
 @using System.Net
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
 @using System.Text.RegularExpressions
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
@@ -11,22 +13,23 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<RecipeBaseParameters> Logger
+@inject IJSRuntime JSRuntime
 
 <PageTitle>Recipe parameters</PageTitle>
 <NavigationLock ConfirmExternalNavigation="@HasChanges" OnBeforeInternalNavigation="@ConfirmNavigationAsync" />
 
-<RadzenStack Gap="12px">
-
-    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap" Gap="12px">
-        <RecipeEditorNavigation View="parameters" FamilyId="@_familyId" Disabled="@(_busy || _dialogOpen)" />
-        <RadzenDropDown @key="_familyVersion" TValue="int?" Name="base-parameter-family" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" AriaLabel="Base recipe" />
-
-        <RadzenText Text="Base recipe parameters" TextStyle="TextStyle.H5" Style="margin: 0; flex: 1;" />
-
-        <RadzenButton Text="Add" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit || _familyId is null)" Click="@AddParameter" />
-        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@RefreshAsync" />
-        <RadzenButton Text="@($"Save ({Changes.Count})")" Icon="save" Disabled="@(!CanEdit || !HasChanges)" Click="@SaveAsync" />
-    </RadzenStack>
+<div class="recipe-parameters-page">
+    <RecipeEditorHeader Title="Base recipe parameters">
+        <Left>
+            <RecipeEditorNavigation View="parameters" FamilyId="@_familyId" Disabled="@(_busy || _dialogOpen)" />
+            <RadzenDropDown @key="_familyVersion" TValue="int?" Name="base-parameter-family" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" AriaLabel="Base recipe" />
+        </Left>
+        <Right>
+            <RadzenButton Text="Add" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit || _familyId is null)" Click="@AddParameter" />
+            <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@RefreshAsync" />
+            <RadzenButton Text="@($"Save ({PendingChangeCount})")" Icon="save" Disabled="@(!CanEdit || !HasChanges)" Click="@SaveAsync" />
+        </Right>
+    </RecipeEditorHeader>
 
     @if (!string.IsNullOrWhiteSpace(_error))
     {
@@ -39,109 +42,133 @@
     }
     else
     {
-        <div class="recipe-parameters-grid-host">
+        <section class="recipe-parameters-panel" aria-busy="@_busy">
+            @if (_cellError is not null)
+            {
+                <div class="parameter-cell-error">@_cellError</div>
+            }
 
-            <RadzenDataGrid Data="@VisibleRows" TItem="RecipeBaseParameterDto" AllowPaging="false" AllowSorting="true" AllowColumnResize="true" Density="Density.Compact" IsLoading="@_busy" class="recipe-parameters-grid techmes-journal-grid" Style="height: calc(100dvh - 230px); min-height: 320px; width: 100%;">
-                <LoadingTemplate>
-                    <JournalGridLoading />
-                </LoadingTemplate>
+            <div class="recipe-parameters-grid-host">
+                <RadzenDataGrid @ref="_grid" id="recipe-base-parameters" Data="@VisibleRows" TItem="RecipeBaseParameterDto" KeyProperty="Id" EditMode="DataGridEditMode.Single" CellClick="@OnCellClickAsync" CellRender="@RenderCell" Sort="@(_ => OnGridSort())" @onfocusout="@OnGridFocusOutAsync" AllowPaging="false" AllowSorting="true" AllowColumnResize="true" AllowRowSelectOnRowClick="false" Density="Density.Compact" IsLoading="@_busy" class="recipe-parameters-grid techmes-journal-grid" Style="height: 100%; width: 100%;">
+                    <LoadingTemplate>
+                        <JournalGridLoading />
+                    </LoadingTemplate>
 
-                <Columns>
-                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="40px" MaxWidth="40px" Sortable="false" TextAlign="TextAlign.Center">
-                        <Template Context="row">
-                            <span title="@(_catalog.UsedParameterIds.Contains(row.Id) ? "Used by stages or recipes" : "Not used")">
-                                <RadzenIcon Icon="@(_catalog.UsedParameterIds.Contains(row.Id) ? "link" : "link_off")" Style="@($"color: var({(_catalog.UsedParameterIds.Contains(row.Id) ? "--rz-success" : "--rz-text-disabled-color")});")" />
-                            </span>
-                        </Template>
-                    </RadzenDataGridColumn>
+                    <Columns>
+                        <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="40px" MaxWidth="40px" Sortable="false" TextAlign="TextAlign.Center">
+                            <Template Context="row">
+                                <span title="@(_catalog.UsedParameterIds.Contains(row.Id) ? "Used by stages or recipes" : "Not used")">
+                                    <RadzenIcon Icon="@(_catalog.UsedParameterIds.Contains(row.Id) ? "link" : "link_off")" Style="@($"color: var({(_catalog.UsedParameterIds.Contains(row.Id) ? "--rz-success" : "--rz-text-disabled-color")});")" />
+                                </span>
+                            </Template>
+                        </RadzenDataGridColumn>
 
-                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Order" Title="Order" Width="90px" MaxWidth="90px">
-                        <Template Context="row">
-                            <RadzenNumeric @key="(row.Id, _orderVersion)" TValue="int" Value="@row.Order" Change="@((int value) => ChangeOrder(row, value))" Min="0" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" />
-                        </Template>
-                    </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Order" Title="Order" Width="90px" MaxWidth="90px" IsInEditMode="@IsEditing">
+                            <Template Context="row">@row.Order</Template>
+                            <EditTemplate Context="row">
+                                <div class="parameter-cell-editor" @onkeyup="@OnEditorKeyUp" @onkeydown:stopPropagation="true">
+                                    <RadzenNumeric @ref="_editor" TValue="int" @bind-Value="_cellDraft!.Order" Immediate="true" Min="0" Style="width: 100%;" InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Parameter order" })" />
+                                </div>
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
 
-                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Name" Title="Name" MinWidth="280px">
-                        <Template Context="row">
-                            <RadzenTextBox @bind-Value="row.Name" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" />
-                        </Template>
-                    </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Name" Title="Name" MinWidth="280px" IsInEditMode="@IsEditing">
+                            <Template Context="row"><span title="@row.Name">@row.Name</span></Template>
+                            <EditTemplate Context="row">
+                                <div class="parameter-cell-editor" @onkeyup="@OnEditorKeyUp" @onkeydown:stopPropagation="true">
+                                    <RadzenTextBox @ref="_editor" @bind-Value="_cellDraft!.Name" Immediate="true" Style="width: 100%;" aria-label="Parameter name" />
+                                </div>
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
 
-                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Units" Width="100px" MaxWidth="100px">
-                        <Template Context="row">
-                            @if (row.Kind != RecipeParameterKind.CheckBox)
-                            {
-                                <RadzenTextBox Value="@GetUnits(row.Description)" Change="@((string value) => ChangeUnits(row, value))" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" />
-                            }
-                        </Template>
-                    </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Description" Title="Units" Width="100px" MaxWidth="100px" Sortable="false" IsInEditMode="@IsEditing">
+                            <Template Context="row">
+                                @if (row.Kind != RecipeParameterKind.CheckBox)
+                                {
+                                    <span>@GetUnits(row.Description)</span>
+                                }
+                            </Template>
+                            <EditTemplate Context="row">
+                                <div class="parameter-cell-editor" @onkeyup="@OnEditorKeyUp" @onkeydown:stopPropagation="true">
+                                    <RadzenTextBox @ref="_editor" @bind-Value="_cellUnits" Immediate="true" Style="width: 100%;" aria-label="Parameter units" />
+                                </div>
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
 
-                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Tag" Title="Tag suffix" Width="200px">
-                        <Template Context="row">
-                            <RadzenTextBox @bind-Value="row.Tag" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" />
-                        </Template>
-                    </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Tag" Title="Tag suffix" Width="200px" IsInEditMode="@IsEditing">
+                            <Template Context="row"><span title="@row.Tag">@row.Tag</span></Template>
+                            <EditTemplate Context="row">
+                                <div class="parameter-cell-editor" @onkeyup="@OnEditorKeyUp" @onkeydown:stopPropagation="true">
+                                    <RadzenTextBox @ref="_editor" @bind-Value="_cellDraft!.Tag" Immediate="true" Style="width: 100%;" aria-label="Tag suffix" />
+                                </div>
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
 
-                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Type" Width="84px" MaxWidth="84px">
-                        <Template Context="row">
-                            <RadzenDropDown TValue="RecipeParameterKind" Data="@Kinds" TextProperty="Text" ValueProperty="Value" @bind-Value="row.Kind" AllowClear="false" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" AriaLabel="Parameter type">
-                                <Template Context="item">
-                                    @if (item is KindOption option)
-                                    {
-                                        <span title="@option.Text" style="display: inline-flex; align-items: center;">
-                                            <RadzenIcon Icon="@option.Icon" Style="color: var(--rz-text-secondary-color);" />
-                                        </span>
-                                    }
-                                </Template>
+                        <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Kind" Title="Type" Width="84px" MaxWidth="84px" IsInEditMode="@IsEditing">
+                            <Template Context="row">
+                                <span title="@KindText(row.Kind)"><RadzenIcon Icon="@KindIcon(row.Kind)" Style="color: var(--rz-text-secondary-color);" /></span>
+                            </Template>
+                            <EditTemplate Context="row">
+                                <div class="parameter-cell-editor" @onkeyup="@OnEditorKeyUp" @onkeydown:stopPropagation="true">
+                                    <RadzenDropDown @ref="_editor" TValue="RecipeParameterKind" Data="@Kinds" TextProperty="Text" ValueProperty="Value" @bind-Value="_cellDraft!.Kind" Change="@(_ => { CommitCell(); })" AllowClear="false" Style="width: 100%;" InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Parameter type" })">
+                                        <Template Context="item">
+                                            @if (item is KindOption option)
+                                            {
+                                                <span title="@option.Text"><RadzenIcon Icon="@option.Icon" Style="color: var(--rz-text-secondary-color);" /></span>
+                                            }
+                                        </Template>
+                                        <ValueTemplate Context="item">
+                                            @if (item is KindOption option)
+                                            {
+                                                <span title="@option.Text"><RadzenIcon Icon="@option.Icon" Style="color: var(--rz-text-secondary-color);" /></span>
+                                            }
+                                        </ValueTemplate>
+                                    </RadzenDropDown>
+                                </div>
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
 
-                                <ValueTemplate Context="item">
-                                    @if (item is KindOption option)
-                                    {
-                                        <span title="@option.Text" style="display: inline-flex; align-items: center;">
-                                            <RadzenIcon Icon="@option.Icon" Style="color: var(--rz-text-secondary-color);" />
-                                        </span>
-                                    }
-                                </ValueTemplate>
-                            </RadzenDropDown>
-                        </Template>
-                    </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Format" Title="Format" Width="110px" MaxWidth="110px" IsInEditMode="@IsEditing">
+                            <Template Context="row">
+                                @if (row.Kind != RecipeParameterKind.CheckBox)
+                                {
+                                    <span>@FormatText(row.Format)</span>
+                                }
+                            </Template>
+                            <EditTemplate Context="row">
+                                <div class="parameter-cell-editor" @onkeyup="@OnEditorKeyUp" @onkeydown:stopPropagation="true">
+                                    <RadzenDropDown @ref="_editor" TValue="RecipeParameterFormat" Data="@Formats" TextProperty="Text" ValueProperty="Value" @bind-Value="_cellDraft!.Format" Change="@(_ => { CommitCell(); })" AllowClear="false" Style="width: 100%;" InputAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Parameter format" })" />
+                                </div>
+                            </EditTemplate>
+                        </RadzenDataGridColumn>
 
-                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Format" Width="110px" MaxWidth="110px">
-                        <Template Context="row">
-                            @if (row.Kind != RecipeParameterKind.CheckBox)
-                            {
-                                <RadzenDropDown TValue="RecipeParameterFormat" Data="@Formats" TextProperty="Text" ValueProperty="Value" @bind-Value="row.Format" Disabled="@(!CanEdit)" Style="width: 100%; min-width: 0;" />
-                            }
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="48px" MaxWidth="48px" Sortable="false" TextAlign="TextAlign.Center">
-                        <Template Context="row">
-                            <RadzenButton Icon="@(row.Id < 0 ? "close" : "delete_outline")" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit)" Click="@(() => DeleteAsync(row))" />
-                        </Template>
-                    </RadzenDataGridColumn>
-                </Columns>
-            </RadzenDataGrid>
-
-        </div>
+                        <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="48px" MaxWidth="48px" Sortable="false" TextAlign="TextAlign.Center">
+                            <Template Context="row">
+                                <RadzenButton Icon="@(row.Id < 0 ? "close" : "delete_outline")" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit)" Click="@(() => DeleteAsync(row))" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            </div>
+        </section>
     }
-</RadzenStack>
+</div>
 
 @code {
     private readonly CancellationTokenSource _stop = new();
     private RecipeBaseParameterCatalogDto _catalog = new();
     private List<RecipeBaseParameterDto> _rows = [];
+    private List<RecipeBaseParameterDto> _visibleRows = [];
     private Dictionary<int, RecipeBaseParameterDto> _originals = [];
     private int? _familyId;
     private int _nextId;
-    private int _familyVersion, _orderVersion;
+    private int _familyVersion;
     private bool _busy, _loaded, _canEdit, _dialogOpen, _uncertainSave, _disposed;
     private string? _error;
 
     private sealed record KindOption(RecipeParameterKind Value, string Text, string Icon);
     private sealed record FormatOption(RecipeParameterFormat Value, string Text);
 
-    // Иконки отображаются в списке типов и в выбранном значении комбобокса.
     private static readonly KindOption[] Kinds =
     [
         new(RecipeParameterKind.InputField, "Numeric input", "pin"),
@@ -158,9 +185,192 @@
     ];
 
     private bool CanEdit => _canEdit && !_busy && !_dialogOpen && !_disposed && !_uncertainSave && _familyId.HasValue;
-    private bool HasChanges => Changes.Count > 0;
-    private List<RecipeBaseParameterDto> VisibleRows => _rows.Where(row => _familyId.HasValue && row.BaseRecipeId == _familyId).OrderBy(row => row.Order).ThenBy(row => row.Id).ToList();
+    private bool HasChanges => Changes.Count > 0 || CellHasChanges;
+    private List<RecipeBaseParameterDto> VisibleRows => _visibleRows;
     private List<RecipeBaseParameterChangeDto> Changes => VisibleRows.Where(row => !_originals.TryGetValue(row.Id, out var original) || row != original).Select(row => new RecipeBaseParameterChangeDto { Original = _originals.TryGetValue(row.Id, out var original) ? original with { } : null, Value = row with { } }).ToList();
+
+    private RadzenDataGrid<RecipeBaseParameterDto>? _grid;
+    private IRadzenFormComponent? _editor;
+    private RecipeBaseParameterDto? _cellRow, _cellDraft;
+    private string? _cellProperty, _cellError;
+    private string _cellUnits = "";
+    private int _cellVersion, _blurVersion = -1;
+    private bool _focusEditor;
+
+    private bool CellHasChanges => _cellRow is not null && _cellDraft is not null && (_cellProperty == nameof(RecipeBaseParameterDto.Description) ? GetUnits(_cellUnits) != GetUnits(_cellRow.Description) : _cellDraft != _cellRow);
+    private int PendingChangeCount => Changes.Select(change => change.Value.Id).Concat(CellHasChanges ? new[] { _cellRow!.Id } : Array.Empty<int>()).Distinct().Count();
+
+    private static string KindIcon(RecipeParameterKind kind) => Kinds.FirstOrDefault(option => option.Value == kind)?.Icon ?? "help_outline";
+    private static string KindText(RecipeParameterKind kind) => Kinds.FirstOrDefault(option => option.Value == kind)?.Text ?? "Unknown type";
+    private static string FormatText(RecipeParameterFormat format) => Formats.FirstOrDefault(option => option.Value == format)?.Text ?? "—";
+
+    /// <summary>Меняет источник таблицы только после завершения ввода или изменения состава строк.</summary>
+    private void RebuildVisibleRows() => _visibleRows = _rows.Where(row => _familyId.HasValue && row.BaseRecipeId == _familyId).OrderBy(row => row.Order).ThenBy(row => row.Id).ToList();
+
+    /// <summary>Разрешает редактирование метаданных; для CheckBox единицы и формат недоступны.</summary>
+    private bool CanEditProperty(RecipeBaseParameterDto row, string? property)
+    {
+        if (!CanEdit || row.BaseRecipeId != _familyId) return false;
+
+        return property switch
+        {
+            nameof(RecipeBaseParameterDto.Order) or nameof(RecipeBaseParameterDto.Name) or nameof(RecipeBaseParameterDto.Tag) or nameof(RecipeBaseParameterDto.Kind) => true,
+            nameof(RecipeBaseParameterDto.Description) or nameof(RecipeBaseParameterDto.Format) => row.Kind != RecipeParameterKind.CheckBox,
+            _ => false
+        };
+    }
+
+    /// <summary>Показывает EditTemplate только у выбранной ячейки.</summary>
+    private bool IsEditing(string property, RecipeBaseParameterDto row) => CanEdit && ReferenceEquals(row, _cellRow) && property == _cellProperty;
+
+    /// <summary>Завершает предыдущую ячейку и открывает отдельную копию для нового ввода.</summary>
+    private async Task OnCellClickAsync(DataGridCellMouseEventArgs<RecipeBaseParameterDto> args)
+    {
+        if (!CanEdit || _grid is null || args.Data is not { } row || args.Column is not { } column) return;
+
+        if (IsEditing(column.Property, row))
+        {
+            _focusEditor = true;
+            return;
+        }
+
+        if (!CommitCell() || !CanEditProperty(row, column.Property)) return;
+
+        _cellRow = row;
+        _cellDraft = row with { };
+        _cellUnits = GetUnits(row.Description);
+        _cellProperty = column.Property;
+        _cellError = null;
+        _editor = null;
+        _focusEditor = true;
+        _cellVersion++;
+
+        await _grid.EditRow(row);
+    }
+
+    /// <summary>Переносит ввод в локальный черновик страницы; запросов к БД здесь нет.</summary>
+    private bool CommitCell()
+    {
+        if (_cellRow is null || _cellDraft is null) return true;
+        if (!CanEdit) return false;
+
+        var row = _cellRow;
+        var draft = _cellDraft;
+        var property = _cellProperty;
+        var units = _cellUnits;
+
+        if (property == nameof(RecipeBaseParameterDto.Order) && (draft.Order < 0 || _rows.Any(other => other.Id != row.Id && other.BaseRecipeId == _familyId && other.Order == draft.Order)))
+        {
+            _cellError = $"Order {draft.Order} is invalid or already used in this family.";
+            return false;
+        }
+
+        // DTO — изменяемый record. Сначала выводим строку из EditRow, затем меняем поля.
+        // Это сохраняет корректность внутренних коллекций редактирования Radzen.
+        CancelCell();
+
+        switch (property)
+        {
+            case nameof(RecipeBaseParameterDto.Order): row.Order = draft.Order; break;
+            case nameof(RecipeBaseParameterDto.Name): row.Name = draft.Name; break;
+            case nameof(RecipeBaseParameterDto.Tag): row.Tag = draft.Tag; break;
+            case nameof(RecipeBaseParameterDto.Kind): row.Kind = draft.Kind; break;
+            case nameof(RecipeBaseParameterDto.Format): row.Format = draft.Format; break;
+            case nameof(RecipeBaseParameterDto.Description): ChangeUnits(row, units); break;
+        }
+
+        RebuildVisibleRows();
+
+        return true;
+    }
+
+    /// <summary>Отменяет только текущий ввод; изменения других ячеек остаются в черновике.</summary>
+    private void CancelCell()
+    {
+        if (_cellRow is not null) _grid?.CancelEditRow(_cellRow);
+
+        _cellRow = null;
+        _cellDraft = null;
+        _cellProperty = null;
+        _cellError = null;
+        _editor = null;
+        _focusEditor = false;
+        _cellVersion++;
+    }
+
+    /// <summary>Enter применяет ввод локально, Escape отменяет текущую ячейку.</summary>
+    private void OnEditorKeyUp(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter") CommitCell();
+        else if (args.Key == "Escape") CancelCell();
+    }
+
+    /// <summary>Завершает ввод перед сортировкой; невалидное значение отклоняет.</summary>
+    private void OnGridSort()
+    {
+        if (CommitCell()) return;
+
+        var error = _cellError;
+        CancelCell();
+        _cellError = error;
+    }
+
+    /// <summary>Закрывает редактор при уходе фокуса, учитывая popup комбобоксов за пределами таблицы.</summary>
+    private async Task OnGridFocusOutAsync()
+    {
+        var version = _cellVersion;
+        var ct = _stop.Token;
+
+        if (_cellRow is null || _blurVersion == version) return;
+
+        _blurVersion = version;
+
+        try
+        {
+            await Task.Delay(150, ct);
+
+            while (!_disposed && _cellRow is not null && version == _cellVersion && await JSRuntime.InvokeAsync<bool>("document.body.matches", ct, ":has(.rz-popup:focus-within), :has(.rz-popup.rz-open):not(:focus-within)"))
+                await Task.Delay(150, ct);
+
+            if (_disposed || _cellRow is null || version != _cellVersion) return;
+
+            var insideEditor = await JSRuntime.InvokeAsync<bool>("document.body.matches", ct, ":has(#recipe-base-parameters .parameter-cell-editor:focus-within)");
+
+            if (!insideEditor && !_disposed && version == _cellVersion)
+            {
+                CommitCell();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (JSDisconnectedException) { }
+        catch (JSException ex) { Logger.LogDebug(ex, "Could not inspect parameter editor focus."); }
+        finally
+        {
+            if (_blurVersion == version) _blurVersion = -1;
+        }
+    }
+
+    /// <summary>После открытия ячейки переводит фокус в её редактор.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusEditor || _editor is null || _disposed) return;
+
+        _focusEditor = false;
+
+        try
+        {
+            await _editor.FocusAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException ex) { Logger.LogDebug(ex, "Could not focus parameter editor."); }
+    }
+
+    /// <summary>Подсказывает курсором, какие ячейки доступны для ввода.</summary>
+    private void RenderCell(DataGridCellRenderEventArgs<RecipeBaseParameterDto> args)
+    {
+        if (args.Data is { } row && args.Column is { } column && CanEditProperty(row, column.Property)) args.Attributes["style"] = "cursor: text;";
+    }
 
     /// <summary>Определяет режим пользователя и получает исходный снимок.</summary>
     protected override async Task OnInitializedAsync()
@@ -180,12 +390,16 @@
         var catalog = await RecipeApi.GetBaseParametersAsync(ct);
         ct.ThrowIfCancellationRequested();
 
+        CancelCell();
+
         _catalog = catalog;
         _originals = catalog.Parameters.ToDictionary(row => row.Id, row => row with { });
         _rows = catalog.Parameters.Select(row => row with { }).ToList();
 
         if (!_familyId.HasValue || !catalog.Families.Any(family => family.Id == _familyId))
             _familyId = (catalog.Families.FirstOrDefault(family => family.Id == RecipeEditorNavigation.ReadFamily(Navigation.Uri)) ?? catalog.Families.FirstOrDefault())?.Id;
+
+        RebuildVisibleRows();
 
         _loaded = true;
         _nextId = 0;
@@ -195,7 +409,7 @@
     /// <summary>Создаёт локальный черновик только в выбранном семействе.</summary>
     private void AddParameter()
     {
-        if (!CanEdit || _familyId is null) return;
+        if (!CanEdit || _familyId is null || !CommitCell()) return;
 
         var order = VisibleRows.Select(row => row.Order).DefaultIfEmpty(0).Max();
 
@@ -206,6 +420,7 @@
         }
 
         _rows.Add(new() { Id = --_nextId, BaseRecipeId = _familyId, Order = order + 1, Name = "New parameter" });
+        RebuildVisibleRows();
     }
 
     /// <summary>Меняет семейство после подтверждения отказа от черновиков.</summary>
@@ -228,32 +443,20 @@
             }
         }
 
+        CancelCell();
+
         _rows = _catalog.Parameters.Select(row => row with { }).ToList();
         _nextId = 0;
         _familyId = family;
+        RebuildVisibleRows();
 
         Navigation.NavigateTo($"/recipes/parameters?family={family}", replace: true);
-    }
-
-    /// <summary>Занятый номер отклоняем и возвращаем числовому полю исходное значение.</summary>
-    private void ChangeOrder(RecipeBaseParameterDto row, int value)
-    {
-        if (!CanEdit) return;
-
-        if (value < 0 || VisibleRows.Any(other => other.Id != row.Id && other.Order == value))
-        {
-            _orderVersion++;
-            NotificationService.Notify(NotificationSeverity.Warning, "Order", $"Order {value} is invalid or already used in this family.", 3500);
-            return;
-        }
-
-        row.Order = value;
     }
 
     /// <summary>Убирает старые маркеры переноса только из отображения.</summary>
     private static string GetUnits(string? value) => (value ?? "").Replace("\\n", "").Replace("\r", "").Replace("\n", "").Trim();
 
-    /// <summary>При явном изменении единиц сохраняет прежние маркеры по краям строки.</summary>
+    /// <summary>При изменении единиц сохраняет прежние маркеры по краям строки.</summary>
     private void ChangeUnits(RecipeBaseParameterDto row, string value)
     {
         if (!CanEdit) return;
@@ -272,11 +475,12 @@
     /// <summary>Удаление существующей записи проходит через общий отчёт и подтверждение.</summary>
     private async Task DeleteAsync(RecipeBaseParameterDto row)
     {
-        if (!CanEdit || row.BaseRecipeId != _familyId) return;
+        if (!CanEdit || row.BaseRecipeId != _familyId || !CommitCell()) return;
 
         if (row.Id < 0)
         {
             _rows.Remove(row);
+            RebuildVisibleRows();
             return;
         }
 
@@ -304,6 +508,7 @@
             if (_disposed || discard != true) return;
         }
 
+        CancelCell();
         _busy = true;
         _error = null;
 
@@ -326,10 +531,10 @@
         }
     }
 
-    /// <summary>Передаёт черновики выбранного семейства на предварительный просмотр.</summary>
+    /// <summary>Применяет текущую ячейку и передаёт черновики семейства на анализ.</summary>
     private async Task SaveAsync()
     {
-        if (!CanEdit || !HasChanges || _disposed) return;
+        if (!CanEdit || _disposed || !CommitCell() || !HasChanges) return;
 
         await SubmitAsync(new() { FamilyId = _familyId!.Value, Changes = Changes }, "Review parameter changes");
     }

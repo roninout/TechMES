@@ -1,18 +1,61 @@
+.recipe-parameters-page {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.recipe-parameters-panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: calc(100dvh - 230px);
+    min-height: 320px;
+    padding: 12px;
+    background: var(--rz-base-background-color);
+    border: 1px solid var(--rz-border-color);
+    border-radius: 12px;
+    box-shadow: var(--rz-shadow-1);
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
 .recipe-parameters-grid-host {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.parameter-cell-error {
+    flex-shrink: 0;
+    padding: 0 0 8px;
+    color: var(--rz-danger);
+}
+
+/* Name получает остаток ширины после колонок с заданным Width. */
+.recipe-parameters-grid-host ::deep .recipe-parameters-grid .rz-grid-table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+    /* Высота заголовков и строк остаётся общей с Events. */
+    .recipe-parameters-grid-host ::deep .recipe-parameters-grid .rz-grid-table > tbody > tr > td > .rz-cell-data {
+        height: auto;
+        min-height: var(--techmes-journal-content-height);
+        overflow: hidden;
+    }
+
+.parameter-cell-editor {
+    display: flex;
+    align-items: center;
     width: 100%;
     min-width: 0;
 }
 
-    /* Name получает остаток ширины после колонок с заданным Width. */
-    .recipe-parameters-grid-host ::deep .recipe-parameters-grid .rz-grid-table {
+    .parameter-cell-editor ::deep .rz-textbox,
+    .parameter-cell-editor ::deep .rz-numeric,
+    .parameter-cell-editor ::deep .rz-dropdown {
         width: 100%;
-        table-layout: fixed;
+        min-width: 0;
     }
-
-        /* Общий класс Events ограничивает содержимое ячейки высотой 26px.
-   Для редакторов оставляем естественную высоту, чтобы поля не обрезались. */
-        .recipe-parameters-grid-host ::deep .recipe-parameters-grid .rz-grid-table > tbody > tr > td > .rz-cell-data {
-            height: auto;
-            min-height: var(--techmes-journal-content-height);
-            overflow: visible;
-        }

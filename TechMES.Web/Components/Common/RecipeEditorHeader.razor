@@ -1,0 +1,11 @@
+﻿<div class="recipe-editor-toolbar">
+    <div class="recipe-editor-toolbar-left">@Left</div>
+    <h2 class="recipe-editor-toolbar-title">@Title</h2>
+    <div class="recipe-editor-toolbar-right">@Right</div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? Left { get; set; }
+    [Parameter] public RenderFragment? Right { get; set; }
+}

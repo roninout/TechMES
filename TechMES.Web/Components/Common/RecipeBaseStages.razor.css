@@ -278,6 +278,21 @@
     background: transparent;
 }
 
+/* Индикатор ограничен центральной панелью и не меняет её размеры. */
+.stage-main {
+    position: relative;
+}
+
+.stage-loading-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, var(--rz-base-background-color) 85%, transparent);
+    cursor: wait;
+}
+
 @media (max-width: 1350px) {
     .stage-editor-columns {
         grid-template-columns: 230px minmax(0, 1fr);

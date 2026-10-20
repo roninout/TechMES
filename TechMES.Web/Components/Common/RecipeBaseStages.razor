@@ -17,35 +17,33 @@
 <NavigationLock ConfirmExternalNavigation="@HasChanges" OnBeforeInternalNavigation="@BeforeNavigationAsync" />
 
 <div class="stage-editor @StageThemeClass">
-    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap" Gap="12px">
-        <RecipeEditorNavigation View="stages" FamilyId="@_familyId" Disabled="@(_busy || _dialogOpen)" />
-        <RadzenDropDown @key="_revision" TValue="int?" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" AriaLabel="Base recipe" />
 
-        <RadzenText Text="Base recipe stages" TextStyle="TextStyle.H5" Style="margin: 0; flex: 1;" />
-
-        <RadzenButton Text="New stage" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManage)" Click="@NewStageAsync" />
-        <RadzenButton Text="Delete" Icon="delete_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanDeleteStage)" Click="@DeleteAsync" />
-        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@RefreshAsync" />
-        <RadzenButton Text="Save" Icon="save" Disabled="@(!CanSave)" Click="@SaveAsync" />
-    </RadzenStack>
+    <RecipeEditorHeader Title="Base recipe stages">
+        <Left>
+            <RecipeEditorNavigation View="stages" FamilyId="@_familyId" Disabled="@(_busy || _dialogOpen)" />
+            <RadzenDropDown @key="_revision" TValue="int?" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" AriaLabel="Base recipe" />
+        </Left>
+        <Right>
+            <RadzenButton Text="New stage" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManage)" Click="@NewStageAsync" />
+            <RadzenButton Text="Delete" Icon="delete_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanDeleteStage)" Click="@DeleteAsync" />
+            <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@RefreshAsync" />
+            <RadzenButton Text="Save" Icon="save" Disabled="@(!CanSave)" Click="@SaveAsync" />
+        </Right>
+    </RecipeEditorHeader>
 
     @if (_error is not null)
     {
         <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@_error</RadzenAlert>
     }
 
-    @if (_busy)
-    {
-        <JournalGridLoading />
-    }
-
-    @if (_loaded && _catalog.Families.Count == 0)
+    @if (_loaded && _catalog.Families.Count == 0 && !_busy)
     {
         <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">No base recipes are configured. Create a base recipe first.</RadzenAlert>
     }
-    else if (_familyId.HasValue)
+    else if (_familyId.HasValue || _busy)
     {
         <RadzenDropZoneContainer TItem="DragCard" Data="@DragItems" ItemSelector="@SelectItem" CanDrop="@CanDrop" Drop="@Drop" ItemRender="@RenderItem">
+
             <ChildContent>
                 <div class="stage-editor-columns">
                     <aside class="stage-parameter-list">
@@ -56,7 +54,14 @@
                         <RadzenDropZone TItem="DragCard" Value="@(-1)" class="stage-source" />
                     </aside>
 
-                    <section class="stage-main">
+                    <section class="stage-main" aria-busy="@_busy">
+                        @if (_busy)
+                        {
+                            <div class="stage-loading-overlay">
+                                <JournalGridLoading />
+                            </div>
+                        }
+
                         @if (_draft is not null)
                         {
                             <div class="stage-main-header">
@@ -96,7 +101,7 @@
                                 }
                             </div>
                         }
-                        else
+                        else if (!_busy)
                         {
                             <div class="stage-no-selection">Select a stage on the right or create a new stage.</div>
                         }
