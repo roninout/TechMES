@@ -1,5 +1,6 @@
 ﻿@page "/recipes/parameters"
 @using System.Net
+@using System.Text.RegularExpressions
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
 @using TechMES.Contracts.Recipes
@@ -20,7 +21,7 @@
 
         <RadzenStack Gap="4px">
             <RadzenLabel Text="Family" Component="base-parameter-family" />
-            <RadzenDropDown TValue="int?" Name="base-parameter-family" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" @bind-Value="_familyId" AllowClear="true" Placeholder="All families" Disabled="@_busy" Style="width: 240px;" />
+            <RadzenDropDown @key="_familyVersion" TValue="int?" Name="base-parameter-family" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" />
         </RadzenStack>
 
         <RadzenText Text="Base recipe parameters" TextStyle="TextStyle.H5" Style="margin: 0; flex: 1;" />
@@ -47,9 +48,17 @@
             </LoadingTemplate>
 
             <Columns>
+                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="44px" Sortable="false" TextAlign="TextAlign.Center">
+                    <Template Context="row">
+                        <span title="@(_catalog.UsedParameterIds.Contains(row.Id) ? "Used by stages or recipes" : "Not used")">
+                            <RadzenIcon Icon="@(_catalog.UsedParameterIds.Contains(row.Id) ? "link" : "link_off")" Style="@($"color: var({(_catalog.UsedParameterIds.Contains(row.Id) ? "--rz-success" : "--rz-text-disabled-color")});")" />
+                        </span>
+                    </Template>
+                </RadzenDataGridColumn>
+
                 <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Order" Title="Order" Width="85px">
                     <Template Context="row">
-                        <RadzenNumeric TValue="int" @bind-Value="row.Order" Min="0" Disabled="@(!CanEdit)" Style="width: 100%;" />
+                        <RadzenNumeric @key="(row.Id, _orderVersion)" TValue="int" Value="@row.Order" Change="@((int value) => ChangeOrder(row, value))" Min="0" Disabled="@(!CanEdit)" Style="width: 100%;" />
                     </Template>
                 </RadzenDataGridColumn>
 
@@ -59,9 +68,9 @@
                     </Template>
                 </RadzenDataGridColumn>
 
-                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Description" Title="Units / description" Width="170px">
+                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Units" Width="140px">
                     <Template Context="row">
-                        <RadzenTextBox @bind-Value="row.Description" Disabled="@(!CanEdit)" Style="width: 100%;" />
+                        <RadzenTextBox Value="@GetUnits(row.Description)" Change="@((string value) => ChangeUnits(row, value))" Disabled="@(!CanEdit)" Style="width: 100%;" />
                     </Template>
                 </RadzenDataGridColumn>
 
@@ -71,30 +80,28 @@
                     </Template>
                 </RadzenDataGridColumn>
 
-                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Family" Width="230px">
-                    <Template Context="row">
-                        <RadzenDropDown TValue="int?" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" @bind-Value="row.BaseRecipeId" Disabled="@(!CanEdit)" Placeholder="Select a family" Style="width: 100%;" />
-                    </Template>
-                </RadzenDataGridColumn>
-
                 <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Type" Width="140px">
                     <Template Context="row">
-                        <RadzenDropDown TValue="RecipeParameterKind" Data="@(Enum.GetValues<RecipeParameterKind>())" @bind-Value="row.Kind" Disabled="@(!CanEdit)" Style="width: 100%;" />
+                        <span title="Numeric input / CheckBox">
+                            <RadzenSelectBar TValue="RecipeParameterKind" @bind-Value="row.Kind" Disabled="@(!CanEdit)">
+                                <Items>
+                                    <RadzenSelectBarItem Value="@(RecipeParameterKind.InputField)" Icon="pin" />
+                                    <RadzenSelectBarItem Value="@(RecipeParameterKind.CheckBox)" Icon="check_box" />
+                                </Items>
+                            </RadzenSelectBar>
+                        </span>
                     </Template>
                 </RadzenDataGridColumn>
 
                 <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Format" Width="115px">
                     <Template Context="row">
-                        <RadzenDropDown TValue="RecipeParameterFormat" Data="@(Enum.GetValues<RecipeParameterFormat>())" @bind-Value="row.Format" Disabled="@(!CanEdit)" Style="width: 100%;" />
+                        <RadzenDropDown TValue="RecipeParameterFormat" Data="@Formats" TextProperty="Text" ValueProperty="Value" @bind-Value="row.Format" Disabled="@(!CanEdit)" Style="width: 100%;" />
                     </Template>
                 </RadzenDataGridColumn>
 
                 <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="55px" Sortable="false">
                     <Template Context="row">
-                        @if (row.Id < 0)
-                        {
-                            <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit)" Click="@(() => RemoveNew(row))" />
-                        }
+                        <RadzenButton Icon="@(row.Id < 0 ? "close" : "delete_outline")" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit)" Click="@(() => DeleteAsync(row))" />
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
@@ -109,13 +116,25 @@
     private Dictionary<int, RecipeBaseParameterDto> _originals = [];
     private int? _familyId;
     private int _nextId;
+    private int _familyVersion, _orderVersion;
     private bool _busy, _loaded, _canEdit, _dialogOpen, _uncertainSave, _disposed;
     private string? _error;
 
-    private bool CanEdit => _canEdit && !_busy && !_uncertainSave && _catalog.Families.Count > 0;
+    private sealed record FormatOption(RecipeParameterFormat Value, string Text);
+
+    private static readonly FormatOption[] Formats =
+    [
+        new(RecipeParameterFormat.Default, "—"),
+        new(RecipeParameterFormat.N1, "#.#"),
+        new(RecipeParameterFormat.N2, "#.##"),
+        new(RecipeParameterFormat.N3, "#.###"),
+        new(RecipeParameterFormat.N4, "#.####")
+    ];
+
+    private bool CanEdit => _canEdit && !_busy && !_dialogOpen && !_disposed && !_uncertainSave && _familyId.HasValue;
     private bool HasChanges => Changes.Count > 0;
-    private List<RecipeBaseParameterDto> VisibleRows => _rows.Where(row => _familyId is null || row.BaseRecipeId == _familyId).OrderBy(row => row.Order).ThenBy(row => row.Id).ToList();
-    private List<RecipeBaseParameterChangeDto> Changes => _rows.Where(row => !_originals.TryGetValue(row.Id, out var original) || row != original).Select(row => new RecipeBaseParameterChangeDto { Original = _originals.TryGetValue(row.Id, out var original) ? original with { } : null, Value = row with { } }).ToList();
+    private List<RecipeBaseParameterDto> VisibleRows => _rows.Where(row => _familyId.HasValue && row.BaseRecipeId == _familyId).OrderBy(row => row.Order).ThenBy(row => row.Id).ToList();
+    private List<RecipeBaseParameterChangeDto> Changes => VisibleRows.Where(row => !_originals.TryGetValue(row.Id, out var original) || row != original).Select(row => new RecipeBaseParameterChangeDto { Original = _originals.TryGetValue(row.Id, out var original) ? original with { } : null, Value = row with { } }).ToList();
 
     /// <summary>Определяет режим пользователя и получает исходный снимок.</summary>
     protected override async Task OnInitializedAsync()
@@ -139,7 +158,7 @@
         _originals = catalog.Parameters.ToDictionary(row => row.Id, row => row with { });
         _rows = catalog.Parameters.Select(row => row with { }).ToList();
 
-        if (!_loaded || (_familyId.HasValue && !catalog.Families.Any(family => family.Id == _familyId)))
+        if (!_familyId.HasValue || !catalog.Families.Any(family => family.Id == _familyId))
             _familyId = catalog.Families.FirstOrDefault()?.Id;
 
         _loaded = true;
@@ -147,23 +166,101 @@
         _uncertainSave = false;
     }
 
-    /// <summary>Создаёт только локальный черновик в явно выбранном семействе.</summary>
+    /// <summary>Создаёт локальный черновик только в выбранном семействе.</summary>
     private void AddParameter()
     {
         if (!CanEdit || _familyId is null) return;
 
-        var order = _rows.Where(row => row.BaseRecipeId == _familyId).Select(row => row.Order).DefaultIfEmpty(0).Max();
+        var order = VisibleRows.Select(row => row.Order).DefaultIfEmpty(0).Max();
 
-        _rows.Add(new() { Id = --_nextId, BaseRecipeId = _familyId, Order = order < int.MaxValue ? order + 1 : 0, Name = "New parameter" });
+        if (order == int.MaxValue)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Order", "The next order number exceeds the supported range.", 3500);
+            return;
+        }
+
+        _rows.Add(new() { Id = --_nextId, BaseRecipeId = _familyId, Order = order + 1, Name = "New parameter" });
     }
 
-    /// <summary>Удаляет только новый несохранённый черновик.</summary>
-    private void RemoveNew(RecipeBaseParameterDto row)
+    /// <summary>Не допускает скрытых черновиков из другого семейства.</summary>
+    private async Task ChangeFamilyAsync(object value)
     {
-        if (CanEdit && row.Id < 0) _rows.Remove(row);
+        if (_busy || _disposed || _dialogOpen || value is not int family || family == _familyId || !_catalog.Families.Any(item => item.Id == family)) return;
+
+        if (HasChanges)
+        {
+            _dialogOpen = true;
+            var discard = await DialogService.Confirm("Discard edits before switching to another family?", "Unsaved changes");
+            _dialogOpen = false;
+
+            if (_disposed) return;
+
+            if (discard != true)
+            {
+                _familyVersion++;
+                return;
+            }
+        }
+
+        _rows = _catalog.Parameters.Select(row => row with { }).ToList();
+        _nextId = 0;
+        _familyId = family;
     }
 
-    /// <summary>Refresh явно подтверждает отказ от текущих черновиков.</summary>
+    /// <summary>Занятый номер отклоняем и возвращаем числовому полю исходное значение.</summary>
+    private void ChangeOrder(RecipeBaseParameterDto row, int value)
+    {
+        if (!CanEdit) return;
+
+        if (value < 0 || VisibleRows.Any(other => other.Id != row.Id && other.Order == value))
+        {
+            _orderVersion++;
+            NotificationService.Notify(NotificationSeverity.Warning, "Order", $"Order {value} is invalid or already used in this family.", 3500);
+            return;
+        }
+
+        row.Order = value;
+    }
+
+    /// <summary>Убирает старые маркеры переноса только из отображения.</summary>
+    private static string GetUnits(string? value) => (value ?? "").Replace("\\n", "").Replace("\r", "").Replace("\n", "").Trim();
+
+    /// <summary>При явном изменении единиц сохраняет прежние маркеры по краям строки.</summary>
+    private void ChangeUnits(RecipeBaseParameterDto row, string value)
+    {
+        if (!CanEdit) return;
+
+        var units = GetUnits(value);
+        var raw = row.Description ?? "";
+
+        if (units == GetUnits(raw)) return;
+
+        var prefix = Regex.Match(raw, @"^(?:\\n|\s)*").Value;
+        var suffix = Regex.Match(raw, @"(?:\\n|\s)*$").Value;
+
+        row.Description = prefix + units + (prefix.Length + suffix.Length <= raw.Length ? suffix : "");
+    }
+
+    /// <summary>Удаление существующей записи проходит через общий отчёт и подтверждение.</summary>
+    private async Task DeleteAsync(RecipeBaseParameterDto row)
+    {
+        if (!CanEdit || row.BaseRecipeId != _familyId) return;
+
+        if (row.Id < 0)
+        {
+            _rows.Remove(row);
+            return;
+        }
+
+        if (!_originals.TryGetValue(row.Id, out var original)) return;
+
+        var changes = Changes.Where(change => change.Value.Id != row.Id).ToList();
+        changes.Add(new() { Original = original with { }, Value = original with { }, Delete = true });
+
+        await SubmitAsync(new() { FamilyId = _familyId!.Value, Changes = changes }, "Review parameter deletion");
+    }
+
+    /// <summary>Refresh подтверждает отказ от текущих черновиков.</summary>
     private async Task RefreshAsync()
     {
         if (_busy || _disposed || _dialogOpen) return;
@@ -201,13 +298,20 @@
         }
     }
 
-    /// <summary>Сначала отчёт, затем отдельный подтверждённый запрос записи.</summary>
+    /// <summary>Передаёт черновики выбранного семейства на предварительный просмотр.</summary>
     private async Task SaveAsync()
     {
         if (!CanEdit || !HasChanges || _disposed) return;
 
+        await SubmitAsync(new() { FamilyId = _familyId!.Value, Changes = Changes }, "Review parameter changes");
+    }
+
+    /// <summary>Сохраняет весь показанный в отчёте пакет текущего семейства.</summary>
+    private async Task SubmitAsync(RecipeBaseParameterBatchRequest request, string title)
+    {
+        if (_busy || _disposed || _dialogOpen) return;
+
         var ct = _stop.Token;
-        var request = new RecipeBaseParameterBatchRequest { Changes = Changes };
         var commitStarted = false;
         var saved = false;
 
@@ -220,7 +324,7 @@
             ct.ThrowIfCancellationRequested();
 
             _dialogOpen = true;
-            var confirmed = await DialogService.OpenAsync<RecipeBaseParameterPreviewDialog>("Review parameter changes", new Dictionary<string, object?> { [nameof(RecipeBaseParameterPreviewDialog.Preview)] = preview }, new DialogOptions { Width = "min(1200px, 96vw)", CloseDialogOnOverlayClick = false, CloseDialogOnEsc = true });
+            var confirmed = await DialogService.OpenAsync<RecipeBaseParameterPreviewDialog>(title, new Dictionary<string, object?> { [nameof(RecipeBaseParameterPreviewDialog.Preview)] = preview }, new DialogOptions { Width = "min(1200px, 96vw)", CloseDialogOnOverlayClick = false, CloseDialogOnEsc = true });
             _dialogOpen = false;
 
             ct.ThrowIfCancellationRequested();

@@ -2,7 +2,7 @@
 @inject DialogService DialogService
 
 <RadzenStack Gap="12px">
-    <RadzenText Text="Review all changes. Existing recipe values and stage sequences will be preserved." />
+    <RadzenText Text="Confirmation applies every action listed below, including pending edits. Existing recipe values and stage sequences will be preserved." />
 
     @foreach (var error in Preview.Errors)
     {
@@ -13,7 +13,6 @@
         <Columns>
             <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Property="Name" Title="Parameter" Width="180px" />
             <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Property="Action" Title="Action" Width="85px" />
-            <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Property="Family" Title="Family" Width="160px" />
 
             <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Title="Changes" Width="260px">
                 <Template Context="item">
@@ -24,7 +23,7 @@
                 </Template>
             </RadzenDataGridColumn>
 
-            <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Title="Base stages" Width="240px">
+            <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Title="Stages" Width="240px">
                 <Template Context="item">
                     @foreach (var stage in item.Stages)
                     {

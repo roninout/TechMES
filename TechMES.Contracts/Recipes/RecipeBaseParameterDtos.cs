@@ -19,6 +19,7 @@ public sealed class RecipeBaseParameterCatalogDto
 {
     public List<RecipeFamilyDto> Families { get; set; } = [];
     public List<RecipeBaseParameterDto> Parameters { get; set; } = [];
+    public List<int> UsedParameterIds { get; set; } = [];
 }
 
 /// <summary>Отрицательный Value.Id — временный ID нового параметра на странице.</summary>
@@ -26,10 +27,12 @@ public sealed record RecipeBaseParameterChangeDto
 {
     public RecipeBaseParameterDto? Original { get; set; }
     public RecipeBaseParameterDto Value { get; set; } = new();
+    public bool Delete { get; set; }
 }
 
 public sealed class RecipeBaseParameterBatchRequest
 {
+    public int FamilyId { get; set; }
     public List<RecipeBaseParameterChangeDto> Changes { get; set; } = [];
     public string? PreviewToken { get; set; }
     public string? Actor { get; set; }
