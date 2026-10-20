@@ -1,0 +1,57 @@
+﻿@using TechMES.Contracts.Recipes
+@inject DialogService DialogService
+
+<RadzenStack Gap="12px">
+    <RadzenText Text="Review all changes. Existing recipe values and stage sequences will be preserved." />
+
+    @foreach (var error in Preview.Errors)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@error</RadzenAlert>
+    }
+
+    <RadzenDataGrid Data="@Preview.Changes" TItem="RecipeBaseParameterImpactDto" AllowPaging="false" Density="Density.Compact" Style="max-height: 55vh;">
+        <Columns>
+            <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Property="Name" Title="Parameter" Width="180px" />
+            <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Property="Action" Title="Action" Width="85px" />
+            <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Property="Family" Title="Family" Width="160px" />
+
+            <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Title="Changes" Width="260px">
+                <Template Context="item">
+                    @foreach (var field in item.Fields)
+                    {
+                        <div style="white-space: normal; overflow-wrap: anywhere;">@field</div>
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Title="Base stages" Width="240px">
+                <Template Context="item">
+                    @foreach (var stage in item.Stages)
+                    {
+                        <div style="white-space: normal;">@stage</div>
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Title="Recipes" Width="240px">
+                <Template Context="item">
+                    @foreach (var recipe in item.Recipes)
+                    {
+                        <div style="white-space: normal;">@recipe</div>
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="RecipeBaseParameterImpactDto" Property="ValuesCount" Title="Values preserved" Width="100px" />
+        </Columns>
+    </RadzenDataGrid>
+
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="8px">
+        <RadzenButton Text="Back" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="Save changes" Icon="save" Disabled="@(!Preview.CanSave)" Click="@(() => DialogService.Close(true))" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Parameter] public RecipeBaseParameterPreviewDto Preview { get; set; } = new();
+}

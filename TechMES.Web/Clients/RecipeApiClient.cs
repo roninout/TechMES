@@ -115,6 +115,33 @@ public sealed class RecipeApiClient
         return await ReadResponseAsync<RecipeStageChangeResult>(response, ct);
     }
 
+    /// <summary>Читает отдельный справочник параметров и семейств.</summary>
+    public Task<RecipeBaseParameterCatalogDto> GetBaseParametersAsync(CancellationToken ct = default) => ReadAsync<RecipeBaseParameterCatalogDto>("api/recipes/base-parameters", ct);
+
+    /// <summary>Получает отчёт о влиянии черновиков до сохранения.</summary>
+    public Task<RecipeBaseParameterPreviewDto> PreviewBaseParametersAsync(RecipeBaseParameterBatchRequest request, CancellationToken ct = default) => PostBaseParameterBatchAsync<RecipeBaseParameterPreviewDto>("preview", request, ct);
+
+    /// <summary>Передаёт подтверждённый пакет и токен предварительного просмотра.</summary>
+    public Task<RecipeBaseParameterSaveResult> SaveBaseParametersAsync(RecipeBaseParameterBatchRequest request, CancellationToken ct = default) => PostBaseParameterBatchAsync<RecipeBaseParameterSaveResult>("save", request, ct);
+
+    /// <summary>Использует существующую Windows identity и общий разбор HTTP-ошибок.</summary>
+    private async Task<T> PostBaseParameterBatchAsync<T>(string action, RecipeBaseParameterBatchRequest request, CancellationToken ct) where T : class
+    {
+        var actor = new ParamWriteRequest();
+
+        await _paramApi.FillWriteActorAsync(actor);
+        ct.ThrowIfCancellationRequested();
+
+        request.Actor = actor.Actor;
+        request.ActorGroups = actor.ActorGroups;
+
+        var client = _clients.CreateClient("RuntimeService");
+
+        using var response = await client.PostAsJsonAsync($"api/recipes/base-parameters/{action}", request, ct);
+
+        return await ReadResponseAsync<T>(response, ct);
+    }
+
     /// <summary>
     /// Выполняет GET и освобождает HTTP-ответ.
     /// </summary>

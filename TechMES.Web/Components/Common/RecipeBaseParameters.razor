@@ -1,0 +1,294 @@
+﻿@page "/recipes/parameters"
+@using System.Net
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using TechMES.Contracts.Recipes
+@implements IDisposable
+@inject RecipeApiClient RecipeApi
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject ILogger<RecipeBaseParameters> Logger
+
+<PageTitle>Recipe parameters</PageTitle>
+<NavigationLock ConfirmExternalNavigation="@HasChanges" OnBeforeInternalNavigation="@ConfirmNavigationAsync" />
+
+<RadzenStack Gap="12px">
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.End" Wrap="FlexWrap.Wrap" Gap="12px">
+        <RadzenButton Text="Recipes" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@(() => Navigation.NavigateTo("/recipes"))" />
+
+        <RadzenStack Gap="4px">
+            <RadzenLabel Text="Family" Component="base-parameter-family" />
+            <RadzenDropDown TValue="int?" Name="base-parameter-family" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" @bind-Value="_familyId" AllowClear="true" Placeholder="All families" Disabled="@_busy" Style="width: 240px;" />
+        </RadzenStack>
+
+        <RadzenText Text="Base recipe parameters" TextStyle="TextStyle.H5" Style="margin: 0; flex: 1;" />
+
+        <RadzenButton Text="Add" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit || _familyId is null)" Click="@AddParameter" />
+        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@RefreshAsync" />
+        <RadzenButton Text="@($"Save ({Changes.Count})")" Icon="save" Disabled="@(!CanEdit || !HasChanges)" Click="@SaveAsync" />
+    </RadzenStack>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@_error</RadzenAlert>
+    }
+
+    @if (_loaded && _catalog.Families.Count == 0)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">No base recipes are configured. Create a base recipe first.</RadzenAlert>
+    }
+    else
+    {
+        <RadzenDataGrid Data="@VisibleRows" TItem="RecipeBaseParameterDto" AllowPaging="false" AllowSorting="true" AllowColumnResize="true" Density="Density.Compact" IsLoading="@_busy" Style="height: calc(100dvh - 230px); min-height: 320px;">
+            <LoadingTemplate>
+                <JournalGridLoading />
+            </LoadingTemplate>
+
+            <Columns>
+                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Order" Title="Order" Width="85px">
+                    <Template Context="row">
+                        <RadzenNumeric TValue="int" @bind-Value="row.Order" Min="0" Disabled="@(!CanEdit)" Style="width: 100%;" />
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Name" Title="Name" Width="270px">
+                    <Template Context="row">
+                        <RadzenTextBox @bind-Value="row.Name" Disabled="@(!CanEdit)" Style="width: 100%;" />
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Description" Title="Units / description" Width="170px">
+                    <Template Context="row">
+                        <RadzenTextBox @bind-Value="row.Description" Disabled="@(!CanEdit)" Style="width: 100%;" />
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Property="Tag" Title="Tag suffix" Width="200px">
+                    <Template Context="row">
+                        <RadzenTextBox @bind-Value="row.Tag" Disabled="@(!CanEdit)" Style="width: 100%;" />
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Family" Width="230px">
+                    <Template Context="row">
+                        <RadzenDropDown TValue="int?" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" @bind-Value="row.BaseRecipeId" Disabled="@(!CanEdit)" Placeholder="Select a family" Style="width: 100%;" />
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Type" Width="140px">
+                    <Template Context="row">
+                        <RadzenDropDown TValue="RecipeParameterKind" Data="@(Enum.GetValues<RecipeParameterKind>())" @bind-Value="row.Kind" Disabled="@(!CanEdit)" Style="width: 100%;" />
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Title="Format" Width="115px">
+                    <Template Context="row">
+                        <RadzenDropDown TValue="RecipeParameterFormat" Data="@(Enum.GetValues<RecipeParameterFormat>())" @bind-Value="row.Format" Disabled="@(!CanEdit)" Style="width: 100%;" />
+                    </Template>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="55px" Sortable="false">
+                    <Template Context="row">
+                        @if (row.Id < 0)
+                        {
+                            <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit)" Click="@(() => RemoveNew(row))" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    }
+</RadzenStack>
+
+@code {
+    private readonly CancellationTokenSource _stop = new();
+    private RecipeBaseParameterCatalogDto _catalog = new();
+    private List<RecipeBaseParameterDto> _rows = [];
+    private Dictionary<int, RecipeBaseParameterDto> _originals = [];
+    private int? _familyId;
+    private int _nextId;
+    private bool _busy, _loaded, _canEdit, _dialogOpen, _uncertainSave, _disposed;
+    private string? _error;
+
+    private bool CanEdit => _canEdit && !_busy && !_uncertainSave && _catalog.Families.Count > 0;
+    private bool HasChanges => Changes.Count > 0;
+    private List<RecipeBaseParameterDto> VisibleRows => _rows.Where(row => _familyId is null || row.BaseRecipeId == _familyId).OrderBy(row => row.Order).ThenBy(row => row.Id).ToList();
+    private List<RecipeBaseParameterChangeDto> Changes => _rows.Where(row => !_originals.TryGetValue(row.Id, out var original) || row != original).Select(row => new RecipeBaseParameterChangeDto { Original = _originals.TryGetValue(row.Id, out var original) ? original with { } : null, Value = row with { } }).ToList();
+
+    /// <summary>Определяет режим пользователя и получает исходный снимок.</summary>
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+
+        if (_disposed) return;
+
+        _canEdit = state.User.Identity?.IsAuthenticated == true;
+
+        await RefreshAsync();
+    }
+
+    /// <summary>Заменяет черновики только после успешной загрузки.</summary>
+    private async Task LoadAsync(CancellationToken ct)
+    {
+        var catalog = await RecipeApi.GetBaseParametersAsync(ct);
+        ct.ThrowIfCancellationRequested();
+
+        _catalog = catalog;
+        _originals = catalog.Parameters.ToDictionary(row => row.Id, row => row with { });
+        _rows = catalog.Parameters.Select(row => row with { }).ToList();
+
+        if (!_loaded || (_familyId.HasValue && !catalog.Families.Any(family => family.Id == _familyId)))
+            _familyId = catalog.Families.FirstOrDefault()?.Id;
+
+        _loaded = true;
+        _nextId = 0;
+        _uncertainSave = false;
+    }
+
+    /// <summary>Создаёт только локальный черновик в явно выбранном семействе.</summary>
+    private void AddParameter()
+    {
+        if (!CanEdit || _familyId is null) return;
+
+        var order = _rows.Where(row => row.BaseRecipeId == _familyId).Select(row => row.Order).DefaultIfEmpty(0).Max();
+
+        _rows.Add(new() { Id = --_nextId, BaseRecipeId = _familyId, Order = order < int.MaxValue ? order + 1 : 0, Name = "New parameter" });
+    }
+
+    /// <summary>Удаляет только новый несохранённый черновик.</summary>
+    private void RemoveNew(RecipeBaseParameterDto row)
+    {
+        if (CanEdit && row.Id < 0) _rows.Remove(row);
+    }
+
+    /// <summary>Refresh явно подтверждает отказ от текущих черновиков.</summary>
+    private async Task RefreshAsync()
+    {
+        if (_busy || _disposed || _dialogOpen) return;
+
+        var ct = _stop.Token;
+
+        if (HasChanges)
+        {
+            _dialogOpen = true;
+            var discard = await DialogService.Confirm("Reload parameter data and discard the current edits?", "Reload parameters");
+            _dialogOpen = false;
+
+            if (_disposed || discard != true) return;
+        }
+
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            await LoadAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            if (!_disposed)
+            {
+                Logger.LogError(ex, "Failed to load base recipe parameters.");
+                _error = ex.Message;
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>Сначала отчёт, затем отдельный подтверждённый запрос записи.</summary>
+    private async Task SaveAsync()
+    {
+        if (!CanEdit || !HasChanges || _disposed) return;
+
+        var ct = _stop.Token;
+        var request = new RecipeBaseParameterBatchRequest { Changes = Changes };
+        var commitStarted = false;
+        var saved = false;
+
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            var preview = await RecipeApi.PreviewBaseParametersAsync(request, ct);
+            ct.ThrowIfCancellationRequested();
+
+            _dialogOpen = true;
+            var confirmed = await DialogService.OpenAsync<RecipeBaseParameterPreviewDialog>("Review parameter changes", new Dictionary<string, object?> { [nameof(RecipeBaseParameterPreviewDialog.Preview)] = preview }, new DialogOptions { Width = "min(1200px, 96vw)", CloseDialogOnOverlayClick = false, CloseDialogOnEsc = true });
+            _dialogOpen = false;
+
+            ct.ThrowIfCancellationRequested();
+
+            if (confirmed is not bool accepted || !accepted || !preview.CanSave) return;
+
+            request.PreviewToken = preview.Token;
+            commitStarted = true;
+
+            var result = await RecipeApi.SaveBaseParametersAsync(request, ct);
+            ct.ThrowIfCancellationRequested();
+
+            if (result.Status != RecipeChangeStatus.Saved)
+                throw new InvalidOperationException("Unexpected save result. Reload the page.");
+
+            saved = true;
+            _uncertainSave = true;
+
+            await LoadAsync(ct);
+
+            NotificationService.Notify(NotificationSeverity.Success, "Recipe parameters", $"Saved: {result.ChangedParameters}. Synchronized parameter copies: {result.SynchronizedValues}.", 3500);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            if (!_disposed)
+            {
+                Logger.LogError(ex, "Failed to save base recipe parameters.");
+
+                var rejected = ex is HttpRequestException { StatusCode: HttpStatusCode.BadRequest or HttpStatusCode.Forbidden or HttpStatusCode.Conflict };
+                _uncertainSave = commitStarted && !rejected;
+
+                _error = saved ? "Changes were saved, but the page could not be reloaded. Press Refresh. " + ex.Message : _uncertainSave ? "Save result could not be confirmed. Press Refresh before editing again. " + ex.Message : ex.Message;
+            }
+        }
+        finally
+        {
+            _busy = false;
+            _dialogOpen = false;
+        }
+    }
+
+    /// <summary>Не позволяет незаметно потерять черновики при переходе на другую страницу.</summary>
+    private async Task ConfirmNavigationAsync(LocationChangingContext context)
+    {
+        if (_busy || _dialogOpen)
+        {
+            context.PreventNavigation();
+            return;
+        }
+
+        if (!HasChanges) return;
+
+        _dialogOpen = true;
+        var discard = await DialogService.Confirm("Discard parameter edits and leave this page?", "Unsaved changes");
+        _dialogOpen = false;
+
+        if (discard != true) context.PreventNavigation();
+    }
+
+    /// <summary>Отменяет незавершённые запросы и закрывает открытый диалог страницы.</summary>
+    public void Dispose()
+    {
+        _disposed = true;
+        _stop.Cancel();
+
+        if (_dialogOpen) DialogService.Close();
+
+        _stop.Dispose();
+    }
+}

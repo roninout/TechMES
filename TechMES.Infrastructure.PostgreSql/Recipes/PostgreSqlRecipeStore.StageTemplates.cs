@@ -126,9 +126,9 @@ public sealed partial class PostgreSqlRecipeStore
         var link = await FindTemplateParameterLinkAsync(connection, transaction, ct);
         var parameterIds = new HashSet<int>();
 
-        // Стабилизируем связи и метаданные параметров до завершения вставки.
+        // Проверяем семейство каждого параметра и стабилизируем связи до завершения вставки.
         var parametersSql = $"""
-        SELECT p."id", p."kind"
+        SELECT p."id", p."kind", p."baseRecipeId"
         FROM {link.Table} l JOIN public."BaseParameter" p ON p."id" = l.{link.ParameterColumn}
         WHERE l.{link.StageColumn} = @template_id
         ORDER BY p."id" FOR SHARE OF l, p;
@@ -142,6 +142,9 @@ public sealed partial class PostgreSqlRecipeStore
 
             while (await reader.ReadAsync(ct))
             {
+                if (reader.IsDBNull(2) || reader.GetInt32(2) != familyId)
+                    return new() { Status = RecipeChangeStatus.Invalid, Error = "The template contains a parameter outside this recipe family. Correct the parameter family before adding this stage." };
+
                 if (!parameterIds.Add(reader.GetInt32(0)))
                     return new() { Status = RecipeChangeStatus.Invalid, Error = "The template contains duplicate parameter links." };
 

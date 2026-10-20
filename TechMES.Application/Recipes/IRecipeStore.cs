@@ -42,4 +42,13 @@ public interface IRecipeStore
     /// Добавляет стадию и параметры её шаблона в одной транзакции.
     /// </summary>
     Task<RecipeStageChangeResult> AddStageAsync(int recipeId, RecipeStageAddRequest request, CancellationToken ct = default);
+
+    /// <summary>Читает семейства и базовые параметры.</summary>
+    Task<RecipeBaseParameterCatalogDto> GetBaseParametersAsync(CancellationToken ct = default);
+
+    /// <summary>Строит отчёт о влиянии без записи данных.</summary>
+    Task<RecipeBaseParameterPreviewDto> PreviewBaseParametersAsync(RecipeBaseParameterBatchRequest request, CancellationToken ct = default);
+
+    /// <summary>Проверяет подтверждённый отчёт и сохраняет весь пакет в одной транзакции.</summary>
+    Task<RecipeBaseParameterSaveResult> SaveBaseParametersAsync(RecipeBaseParameterBatchRequest request, CancellationToken ct = default);
 }

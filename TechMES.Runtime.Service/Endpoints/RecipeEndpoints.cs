@@ -6,9 +6,9 @@ using TechMES.Contracts.Recipes;
 namespace TechMES.Runtime.Service.Endpoints;
 
 /// <summary>
-/// API чтения рецептов и сохранения отдельных значений в БД.
+/// API чтения рецептов и сохранения значений, стадий и базовых параметров.
 /// </summary>
-public static class RecipeEndpoints
+public static partial class RecipeEndpoints
 {
     /// <summary>
     /// Регистрирует просмотр и изменение рецептов, стадий и параметров.
@@ -22,6 +22,7 @@ public static class RecipeEndpoints
         app.MapPost("/api/recipes/{recipeId:int}/stage/change", ChangeStageAsync);
         app.MapGet("/api/recipes/{recipeId:int}/stage/templates", GetStageTemplatesAsync);
         app.MapPost("/api/recipes/{recipeId:int}/stage/add", AddStageAsync);
+        MapBaseParameterEndpoints(app);
 
         return app;
     }
