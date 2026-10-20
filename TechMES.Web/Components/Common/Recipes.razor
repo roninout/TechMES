@@ -16,6 +16,8 @@
 <PageTitle>Recipes</PageTitle>
 
 <div class="recipes-page">
+    <RecipeEditorNavigation View="recipes" FamilyId="@EditorFamilyId" Disabled="@IsBusy" />
+
     <div class="recipes-toolbar">
         <div class="recipes-selectors">
             <div class="recipes-field">
@@ -47,7 +49,6 @@
     }
 
     <div class="recipes-management">
-        <RadzenButton Text="Parameters" Icon="tune" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@(() => Navigation.NavigateTo("/recipes/parameters"))" />
         <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!_canEdit || IsBusy || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
         <RadzenButton Text="Copy" Icon="content_copy" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Copy))" />
         <RadzenButton Text="Rename" Icon="drive_file_rename_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Rename))" />

@@ -1,0 +1,164 @@
+.stage-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.stage-editor-columns {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr) 240px;
+    gap: 12px;
+    min-width: 0;
+}
+
+.stage-parameter-list, .stage-definition-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    height: calc(100dvh - 240px);
+    min-height: 360px;
+}
+
+    .stage-parameter-list h4, .stage-definition-list h4 {
+        margin: 0;
+    }
+
+    .stage-parameter-list ::deep .stage-source {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow: auto;
+        flex: 1;
+        min-height: 0;
+        padding: 2px;
+    }
+
+.stage-main {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    height: calc(100dvh - 240px);
+    min-height: 360px;
+}
+
+.stage-hint {
+    color: var(--rz-text-secondary-color);
+}
+
+.stage-canvas {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 2px;
+}
+
+.stage-slot-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    gap: 8px;
+    min-width: 660px;
+}
+
+    .stage-slot-grid ::deep .stage-slot {
+        position: relative;
+        min-height: 130px;
+        border: 1px dashed var(--rz-base-400);
+        border-radius: 4px;
+        padding: 20px 4px 4px;
+        box-sizing: border-box;
+    }
+
+.stage-slot-number {
+    position: absolute;
+    top: 2px;
+    left: 6px;
+    color: var(--rz-text-secondary-color);
+}
+
+.stage-empty {
+    display: block;
+    margin-top: 30px;
+    text-align: center;
+    color: var(--rz-text-disabled-color);
+    font-size: 12px;
+}
+
+.stage-card {
+    position: relative;
+    min-width: 0;
+    cursor: grab;
+}
+
+.stage-card-clear {
+    position: absolute;
+    right: 3px;
+    top: 3px;
+    border: 0;
+    border-radius: 3px;
+    padding: 1px;
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-secondary-color);
+    cursor: pointer;
+}
+
+    .stage-card-clear:disabled {
+        cursor: default;
+        opacity: .5;
+    }
+
+    .stage-card-clear ::deep .rzi {
+        font-size: 18px;
+    }
+
+.stage-list-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+    .stage-list-item div {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .stage-list-item strong, .stage-list-item small {
+        display: block;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .stage-list-item small {
+        color: var(--rz-text-secondary-color);
+    }
+
+.stage-canvas ::deep .stage-overflow {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    gap: 8px;
+    min-width: 660px;
+}
+
+.stage-editor ::deep .rz-can-drop {
+    outline: 2px solid var(--rz-success);
+}
+
+.stage-editor ::deep .rz-no-drop {
+    outline: 2px solid var(--rz-danger);
+}
+
+@media (max-width: 1150px) {
+    .stage-editor-columns {
+        grid-template-columns: 230px minmax(0, 1fr);
+    }
+
+    .stage-definition-list {
+        grid-column: 1 / -1;
+        height: 220px;
+        min-height: 0;
+    }
+}

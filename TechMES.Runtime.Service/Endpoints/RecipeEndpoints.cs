@@ -10,9 +10,7 @@ namespace TechMES.Runtime.Service.Endpoints;
 /// </summary>
 public static partial class RecipeEndpoints
 {
-    /// <summary>
-    /// Регистрирует просмотр и изменение рецептов, стадий и параметров.
-    /// </summary>
+    /// <summary>Регистрирует просмотр и изменение рецептов, стадий и параметров.</summary>
     public static IEndpointRouteBuilder MapRecipeEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/recipes/catalog", GetCatalogAsync);
@@ -23,6 +21,7 @@ public static partial class RecipeEndpoints
         app.MapGet("/api/recipes/{recipeId:int}/stage/templates", GetStageTemplatesAsync);
         app.MapPost("/api/recipes/{recipeId:int}/stage/add", AddStageAsync);
         MapBaseParameterEndpoints(app);
+        MapBaseStageEndpoints(app);
 
         return app;
     }

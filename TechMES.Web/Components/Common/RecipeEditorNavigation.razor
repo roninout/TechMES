@@ -1,0 +1,37 @@
+﻿@using Microsoft.AspNetCore.WebUtilities
+@inject NavigationManager Navigation
+
+<RadzenSelectBar @key="_revision" TValue="string" Value="@View" ValueChanged="@ChangeView" Disabled="@Disabled" AriaLabel="Recipe editor view">
+    <Items>
+        <RadzenSelectBarItem Text=" Parameters" Value="@("parameters")" Icon="tune" />
+        <RadzenSelectBarItem Text=" Stages" Value="@("stages")" Icon="view_module" />
+        <RadzenSelectBarItem Text=" Recipes" Value="@("recipes")" Icon="menu_book" />
+    </Items>
+</RadzenSelectBar>
+
+@code {
+    [Parameter] public string View { get; set; } = "recipes";
+    [Parameter] public int? FamilyId { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private int _revision;
+
+    /// <summary>Открывает режим в том же окне; NavigationLock страницы защищает черновики.</summary>
+    private void ChangeView(string value)
+    {
+        if (Disabled || value == View) return;
+
+        var path = value switch { "parameters" => "/recipes/parameters", "stages" => "/recipes/stages", _ => "/recipes" };
+
+        Navigation.NavigateTo(FamilyId is > 0 ? $"{path}?family={FamilyId}" : path);
+        _revision++;
+    }
+
+    /// <summary>Передаёт выбранное семейство между режимами.</summary>
+    public static int? ReadFamily(string uri)
+    {
+        var query = QueryHelpers.ParseQuery(new Uri(uri).Query);
+
+        return query.TryGetValue("family", out var text) && int.TryParse(text.ToString(), out var id) && id > 0 ? id : null;
+    }
+}

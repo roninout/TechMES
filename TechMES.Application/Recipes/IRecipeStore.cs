@@ -51,4 +51,13 @@ public interface IRecipeStore
 
     /// <summary>Проверяет подтверждённый отчёт и сохраняет весь пакет в одной транзакции.</summary>
     Task<RecipeBaseParameterSaveResult> SaveBaseParametersAsync(RecipeBaseParameterBatchRequest request, CancellationToken ct = default);
+
+    /// <summary>Читает определения и раскладки стадий одного семейства.</summary>
+    Task<List<RecipeBaseStageDto>> GetBaseStagesAsync(int familyId, CancellationToken ct = default);
+
+    /// <summary>Показывает влияние изменения шаблона на все его экземпляры.</summary>
+    Task<RecipeBaseStagePreviewDto> PreviewBaseStageAsync(RecipeBaseStageRequest request, CancellationToken ct = default);
+
+    /// <summary>Сохраняет шаблон и синхронизирует экземпляры одной транзакцией.</summary>
+    Task<RecipeBaseStageSaveResult> SaveBaseStageAsync(RecipeBaseStageRequest request, CancellationToken ct = default);
 }

@@ -1,0 +1,43 @@
+﻿@using TechMES.Contracts.Recipes
+@inject DialogService DialogService
+
+<RadzenStack Gap="12px">
+    <RadzenText Text="@Preview.Name" TextStyle="TextStyle.H6" />
+
+    @foreach (var error in Preview.Errors)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@error</RadzenAlert>
+    }
+
+    @foreach (var change in Preview.Changes)
+    {
+        <div>@change</div>
+    }
+
+    <RadzenText Text="Existing values and active flags are preserved. Missing parameters start at 0. Stage numbers, Auto and PLC prefixes are preserved." />
+
+    @if (Preview.Recipes.Any(recipe => recipe.Removed > 0))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">Confirmation will delete the removed parameter values from every affected recipe stage listed below.</RadzenAlert>
+    }
+
+    <RadzenDataGrid Data="@Preview.Recipes" TItem="RecipeStageSyncImpactDto" AllowPaging="false" Density="Density.Compact" Style="max-height: 40vh;">
+        <Columns>
+            <RadzenDataGridColumn TItem="RecipeStageSyncImpactDto" Property="RecipeId" Title="ID" Width="65px" />
+            <RadzenDataGridColumn TItem="RecipeStageSyncImpactDto" Property="RecipeName" Title="Recipe" />
+            <RadzenDataGridColumn TItem="RecipeStageSyncImpactDto" Property="Stages" Title="Stages" Width="80px" />
+            <RadzenDataGridColumn TItem="RecipeStageSyncImpactDto" Property="Added" Title="Add" Width="80px" />
+            <RadzenDataGridColumn TItem="RecipeStageSyncImpactDto" Property="Removed" Title="Remove" Width="90px" />
+            <RadzenDataGridColumn TItem="RecipeStageSyncImpactDto" Property="Preserved" Title="Preserve" Width="90px" />
+        </Columns>
+    </RadzenDataGrid>
+
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="8px">
+        <RadzenButton Text="Back" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="Save and synchronize" Icon="save" Disabled="@(!Preview.CanSave)" Click="@(() => DialogService.Close(true))" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Parameter] public RecipeBaseStagePreviewDto Preview { get; set; } = new();
+}

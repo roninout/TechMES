@@ -12,12 +12,11 @@ public partial class Recipes
 {
     private bool _managingRecipe;
 
+    private int? EditorFamilyId => SelectedPage?.BaseRecipeId ?? (_snapshot is null ? RecipeEditorNavigation.ReadFamily(Navigation.Uri) : _catalog.Pages.Any(page => page.BaseRecipeId == _snapshot.Recipe.Id) ? _snapshot.Recipe.Id : _snapshot.Recipe.BaseRecipeId);
     private bool CanManageRecipe => _canEdit && !IsBusy && _snapshot is not null;
     private int? NewRecipeSourceId => _snapshot?.Recipe.Id ?? SelectedPage?.BaseRecipeId;
 
-    /// <summary>
-    /// Общий путь перечитывания после Refresh, New, Copy и Rename.
-    /// </summary>
+    /// <summary>При первом открытии принимает семейство из общего переключателя режимов.</summary>
     private async Task ReloadCatalogAndRecipeAsync(int? preferredRecipeId, CancellationToken ct)
     {
         var catalog = await RecipeApi.GetCatalogAsync(ct);
@@ -26,7 +25,7 @@ public partial class Recipes
         _catalog = catalog;
 
         if (!_catalogLoaded || (_selectedPageId.HasValue && !_catalog.Pages.Any(page => page.Id == _selectedPageId)))
-            _selectedPageId = _catalog.Pages.FirstOrDefault()?.Id;
+            _selectedPageId = (_catalog.Pages.FirstOrDefault(page => page.BaseRecipeId == RecipeEditorNavigation.ReadFamily(Navigation.Uri)) ?? _catalog.Pages.FirstOrDefault())?.Id;
 
         _catalogLoaded = true;
 

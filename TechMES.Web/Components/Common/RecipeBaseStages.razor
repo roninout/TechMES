@@ -1,0 +1,434 @@
+﻿@page "/recipes/stages"
+@using System.Net
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using TechMES.Contracts.Recipes
+@implements IDisposable
+@inject RecipeApiClient RecipeApi
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject ILogger<RecipeBaseStages> Logger
+
+<PageTitle>Recipe stages</PageTitle>
+<NavigationLock ConfirmExternalNavigation="@HasChanges" OnBeforeInternalNavigation="@BeforeNavigationAsync" />
+
+<div class="stage-editor">
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap" Gap="12px">
+        <RecipeEditorNavigation View="stages" FamilyId="@_familyId" Disabled="@(_busy || _dialogOpen)" />
+        <RadzenDropDown @key="_revision" TValue="int?" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" AriaLabel="Base recipe" />
+
+        <RadzenText Text="Base recipe stages" TextStyle="TextStyle.H5" Style="margin: 0; flex: 1;" />
+
+        <RadzenButton Text="New stage" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManage)" Click="@NewStageAsync" />
+        <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@RefreshAsync" />
+        <RadzenButton Text="Save" Icon="save" Disabled="@(!CanEdit || !HasChanges)" Click="@SaveAsync" />
+    </RadzenStack>
+
+    @if (_error is not null)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@_error</RadzenAlert>
+    }
+
+    @if (_busy)
+    {
+        <JournalGridLoading />
+    }
+
+    @if (_loaded && _catalog.Families.Count == 0)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">No base recipes are configured. Create a base recipe first.</RadzenAlert>
+    }
+    else if (_familyId.HasValue)
+    {
+        <RadzenDropZoneContainer TItem="DragCard" Data="@DragItems" ItemSelector="@SelectItem" CanDrop="@CanDrop" Drop="@Drop" ItemRender="@RenderItem">
+            <ChildContent>
+                <div class="stage-editor-columns">
+                    <aside class="stage-parameter-list">
+                        <h4>Parameters</h4>
+
+                        <RadzenTextBox @bind-Value="_search" Placeholder="Search parameters..." Style="width: 100%;" />
+                        <RadzenDropZone TItem="DragCard" Value="@(-1)" class="stage-source" />
+                    </aside>
+
+                    <section class="stage-main">
+                        @if (_draft is not null)
+                        {
+                            <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="8px">
+                                <RadzenTextBox @bind-Value="_draft.Name" Placeholder="Stage name" Disabled="@(!CanEdit)" Style="flex: 1; min-width: 200px;" AriaLabel="Stage name" />
+                                <RadzenTextBox @bind-Value="_draft.Code" Placeholder="Template code" Disabled="@(!CanEdit)" Style="width: 180px;" AriaLabel="Template code" />
+                            </RadzenStack>
+
+                            <small class="stage-hint">Drag to add or move. Drop between occupied slots to swap. Clear with × or drag back to Parameters.</small>
+
+                            <div class="stage-canvas">
+                                <div class="stage-slot-grid">
+                                    @for (var i = 0; i < 32; i++)
+                                    {
+                                        var slot = i;
+
+                                        <RadzenDropZone @key="slot" TItem="DragCard" Value="@slot" class="stage-slot">
+                                            <small class="stage-slot-number">@(slot + 1)</small>
+
+                                            @if (_draft.Slots[slot] is null)
+                                            {
+                                                <span class="stage-empty">Drop parameter</span>
+                                            }
+                                        </RadzenDropZone>
+                                    }
+                                </div>
+
+                                @if (_draft.Overflow.Count > 0)
+                                {
+                                    <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">The old stage contains more than 32 parameters. Place or remove the extra cards before saving.</RadzenAlert>
+                                    <RadzenDropZone TItem="DragCard" Value="@(-2)" class="stage-overflow" />
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <RadzenText Text="Select a stage on the right or create a new stage." />
+                        }
+                    </section>
+
+                    <aside class="stage-definition-list">
+                        <h4>Stages</h4>
+
+                        <RadzenListBox @key="_revision" TValue="int?" Data="@_stages" TextProperty="Name" ValueProperty="Id" Value="@SelectedStageId" Change="@SelectStageAsync" Disabled="@_busy" Style="width: 100%; height: 100%;" AriaLabel="Stage templates">
+                            <Template Context="item">
+                                @if (item is RecipeBaseStageDto stage)
+                                {
+                                    <div class="stage-list-item">
+                                        <RadzenIcon Icon="view_module" />
+
+                                        <div>
+                                            <strong>@stage.Name</strong>
+                                            <small>[@stage.Id] @stage.Code</small>
+                                        </div>
+
+                                        <RadzenBadge Text="@stage.ParameterCount.ToString()" BadgeStyle="BadgeStyle.Light" />
+                                    </div>
+                                }
+                            </Template>
+                        </RadzenListBox>
+                    </aside>
+                </div>
+            </ChildContent>
+
+            <Template Context="card">
+                <div class="stage-card">
+                    <RecipeStageParameterCard Parameter="@card.Parameter" Removable="@(card.Zone != -1)" />
+
+                    @if (card.Zone != -1)
+                    {
+                        <button type="button" class="stage-card-clear" disabled="@(!CanEdit)" title="Remove from stage" @onclick="@(() => Clear(card))" @onclick:stopPropagation="true">
+                            <RadzenIcon Icon="close" />
+                        </button>
+                    }
+                </div>
+            </Template>
+        </RadzenDropZoneContainer>
+    }
+</div>
+
+@code {
+    private sealed record DragCard(RecipeBaseParameterDto Parameter, int Zone);
+
+    private readonly CancellationTokenSource _stop = new();
+    private RecipeBaseParameterCatalogDto _catalog = new();
+    private List<RecipeBaseStageDto> _stages = [];
+    private RecipeBaseStageDto? _draft, _original;
+    private int? _familyId;
+    private int _revision;
+    private string _search = "";
+    private string? _error;
+    private bool _busy, _dialogOpen, _loaded, _canEdit, _uncertain, _disposed;
+
+    private bool CanManage => _canEdit && !_busy && !_dialogOpen && !_uncertain && !_disposed && _familyId.HasValue;
+    private bool CanEdit => CanManage && _draft is not null;
+    private bool HasChanges => _draft is not null && (_original is null || JsonSerializer.Serialize(_draft) != JsonSerializer.Serialize(_original));
+    private int? SelectedStageId => _draft is { Id: > 0 } ? _draft.Id : null;
+
+    /// <summary>Копирует определение вместе с коллекциями, не изменяя загруженный каталог.</summary>
+    private static RecipeBaseStageDto Clone(RecipeBaseStageDto value) => JsonSerializer.Deserialize<RecipeBaseStageDto>(JsonSerializer.Serialize(value))!;
+
+    /// <summary>Источник слева и занятые ячейки — разные drag items одного параметра.</summary>
+    private List<DragCard> DragItems
+    {
+        get
+        {
+            var result = _catalog.Parameters.Where(parameter => parameter.BaseRecipeId == _familyId && (parameter.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) || parameter.Tag.Contains(_search, StringComparison.OrdinalIgnoreCase))).OrderBy(parameter => parameter.Order).Select(parameter => new DragCard(parameter, -1)).ToList();
+
+            RecipeBaseParameterDto Find(int id) => _catalog.Parameters.FirstOrDefault(parameter => parameter.Id == id) ?? new() { Id = id, Name = $"Parameter [{id}] — refresh metadata" };
+
+            if (_draft is null) return result;
+
+            for (var i = 0; i < 32; i++)
+                if (_draft.Slots[i] is int id) result.Add(new(Find(id), i));
+
+            result.AddRange(_draft.Overflow.Select(id => new DragCard(Find(id), -2)));
+
+            return result;
+        }
+    }
+
+    /// <summary>Назначает карточку только её зоне.</summary>
+    private bool SelectItem(DragCard item, Radzen.Blazor.RadzenDropZone<DragCard> zone) => zone.Value is int value && item.Zone == value;
+
+    /// <summary>Запрещает чужие семейства, дубликаты и незаметную замену занятого слота.</summary>
+    private bool CanDrop(RadzenDropZoneItemEventArgs<DragCard> args)
+    {
+        if (!CanEdit || args.Item is not { } item || args.ToZone?.Value is not int target) return false;
+
+        var validSource = item.Zone == -1 ? !_draft!.Slots.Contains(item.Parameter.Id) && !_draft.Overflow.Contains(item.Parameter.Id)
+            : item.Zone == -2 ? _draft!.Overflow.Contains(item.Parameter.Id)
+            : item.Zone >= 0 && item.Zone < 32 && _draft!.Slots[item.Zone] == item.Parameter.Id;
+
+        if (!validSource) return false;
+        if (target == -1) return item.Zone != -1;
+        if (target < 0 || target >= 32 || target == item.Zone || item.Parameter.BaseRecipeId != _familyId) return false;
+
+        return item.Zone >= 0 || _draft!.Slots[target] is null;
+    }
+
+    /// <summary>Слева копируем; между слотами переносим или меняем карточки местами.</summary>
+    private void Drop(RadzenDropZoneItemEventArgs<DragCard> args)
+    {
+        if (!CanDrop(args) || args.Item is not { } item || args.ToZone?.Value is not int target) return;
+
+        if (target == -1)
+        {
+            Clear(item);
+            return;
+        }
+
+        if (item.Zone >= 0) _draft!.Slots[item.Zone] = _draft.Slots[target];
+        else if (item.Zone == -2) _draft!.Overflow.Remove(item.Parameter.Id);
+
+        _draft!.Slots[target] = item.Parameter.Id;
+    }
+
+    /// <summary>Очистка меняет только черновик; удаление значений подтверждается при Save.</summary>
+    private void Clear(DragCard item)
+    {
+        if (!CanEdit) return;
+
+        if (item.Zone == -2) _draft!.Overflow.Remove(item.Parameter.Id);
+        else if (item.Zone >= 0 && item.Zone < 32 && _draft!.Slots[item.Zone] == item.Parameter.Id) _draft.Slots[item.Zone] = null;
+    }
+
+    /// <summary>В режиме чтения карточки недоступны для перетаскивания.</summary>
+    private void RenderItem(RadzenDropZoneItemRenderEventArgs<DragCard> args) => args.Attributes["draggable"] = CanEdit ? "true" : "false";
+
+    /// <summary>Использует текущую Windows identity и семейство из общего переключателя.</summary>
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+
+        if (_disposed) return;
+
+        _canEdit = state.User.Identity?.IsAuthenticated == true;
+
+        await ReloadAsync(RecipeEditorNavigation.ReadFamily(Navigation.Uri), null);
+    }
+
+    /// <summary>Применяет новый снимок только после успешного завершения обоих запросов.</summary>
+    private async Task LoadCoreAsync(int? familyId, int? selectedId, CancellationToken ct)
+    {
+        var catalog = await RecipeApi.GetBaseParametersAsync(ct);
+        var family = catalog.Families.FirstOrDefault(item => item.Id == familyId) ?? catalog.Families.FirstOrDefault();
+        var stages = family is null ? [] : await RecipeApi.GetBaseStagesAsync(family.Id, ct);
+
+        ct.ThrowIfCancellationRequested();
+
+        _catalog = catalog;
+        _familyId = family?.Id;
+        _stages = stages;
+
+        var selected = stages.FirstOrDefault(stage => stage.Id == selectedId) ?? stages.FirstOrDefault();
+
+        _original = selected is null ? null : Clone(selected);
+        _draft = selected is null ? null : Clone(selected);
+        _loaded = true;
+        _uncertain = false;
+        _revision++;
+    }
+
+    /// <summary>Управляет загрузкой и сохраняет старый черновик при ошибке запроса.</summary>
+    private async Task ReloadAsync(int? familyId, int? selectedId)
+    {
+        if (_busy || _disposed) return;
+
+        _busy = true;
+        _error = null;
+
+        var ct = _stop.Token;
+
+        try
+        {
+            await LoadCoreAsync(familyId, selectedId, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load stage templates.");
+
+            if (!_disposed) _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            _revision++;
+        }
+    }
+
+    /// <summary>Подтверждает отказ от черновика перед сменой контекста.</summary>
+    private async Task<bool> DiscardAsync()
+    {
+        if (!HasChanges) return true;
+
+        _dialogOpen = true;
+
+        try
+        {
+            return await DialogService.Confirm("Discard unsaved stage changes?", "Unsaved changes") == true && !_disposed;
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
+    /// <summary>Меняет семейство целиком: параметры, список стадий и выбранный шаблон.</summary>
+    private async Task ChangeFamilyAsync(object value)
+    {
+        if (_busy || _dialogOpen || _disposed || value is not int id || id == _familyId) return;
+
+        if (!await DiscardAsync())
+        {
+            _revision++;
+            return;
+        }
+
+        await ReloadAsync(id, null);
+
+        if (!_disposed && _familyId == id && !HasChanges)
+            Navigation.NavigateTo($"/recipes/stages?family={id}", replace: true);
+    }
+
+    /// <summary>Переключает шаблон без скрытого сохранения предыдущего.</summary>
+    private async Task SelectStageAsync(object value)
+    {
+        if (_busy || _dialogOpen || _disposed || value is not int id || id == SelectedStageId) return;
+
+        if (!await DiscardAsync())
+        {
+            _revision++;
+            return;
+        }
+
+        var stage = _stages.FirstOrDefault(item => item.Id == id);
+
+        _original = stage is null ? null : Clone(stage);
+        _draft = stage is null ? null : Clone(stage);
+        _revision++;
+    }
+
+    /// <summary>Создаёт локальное определение, которое получит ID только после Save.</summary>
+    private async Task NewStageAsync()
+    {
+        if (!CanManage || !await DiscardAsync()) return;
+
+        _original = null;
+        _draft = new() { FamilyId = _familyId!.Value, Name = "New stage" };
+        _revision++;
+    }
+
+    /// <summary>Перечитывает каталог после подтверждения отказа от черновика.</summary>
+    private async Task RefreshAsync()
+    {
+        if (_busy || _dialogOpen || _disposed || !await DiscardAsync()) return;
+
+        await ReloadAsync(_familyId, SelectedStageId);
+    }
+
+    /// <summary>Отчёт и подтверждение разделены; неоднозначный результат записи не повторяем.</summary>
+    private async Task SaveAsync()
+    {
+        if (!CanEdit || !HasChanges) return;
+
+        var request = new RecipeBaseStageRequest { FamilyId = _familyId!.Value, Original = _original is null ? null : Clone(_original), Value = Clone(_draft!) };
+        var ct = _stop.Token;
+        var started = false;
+        var saved = false;
+
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            var preview = await RecipeApi.PreviewBaseStageAsync(request, ct);
+            ct.ThrowIfCancellationRequested();
+
+            _dialogOpen = true;
+            var confirmed = await DialogService.OpenAsync<RecipeBaseStagePreviewDialog>("Review stage synchronization", new Dictionary<string, object?> { [nameof(RecipeBaseStagePreviewDialog.Preview)] = preview }, new DialogOptions { Width = "min(1100px, 96vw)", CloseDialogOnOverlayClick = false });
+            _dialogOpen = false;
+
+            ct.ThrowIfCancellationRequested();
+
+            if (confirmed is not bool accepted || !accepted || !preview.CanSave) return;
+
+            request.PreviewToken = preview.Token;
+            started = true;
+
+            var result = await RecipeApi.SaveBaseStageAsync(request, ct);
+
+            if (result.Status != RecipeChangeStatus.Saved || result.StageId <= 0)
+                throw new InvalidOperationException("Unexpected stage save result. Press Refresh.");
+
+            saved = true;
+            _uncertain = true;
+
+            await LoadCoreAsync(_familyId, result.StageId, ct);
+
+            Notifications.Notify(NotificationSeverity.Success, "Recipe stages", "Stage saved and all recipe instances synchronized.", 3500);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save stage template.");
+
+            if (!_disposed)
+            {
+                var rejected = ex is HttpRequestException { StatusCode: HttpStatusCode.BadRequest or HttpStatusCode.Forbidden or HttpStatusCode.Conflict };
+                _uncertain = started && !rejected;
+
+                _error = saved ? "Saved, but reload failed. Press Refresh. " + ex.Message : _uncertain ? "Save result is uncertain. Press Refresh before editing again. " + ex.Message : ex.Message;
+            }
+        }
+        finally
+        {
+            _busy = false;
+            _dialogOpen = false;
+        }
+    }
+
+    /// <summary>Защищает черновик и незавершённую запись при переходе между режимами.</summary>
+    private async Task BeforeNavigationAsync(LocationChangingContext context)
+    {
+        if (_busy || _dialogOpen || !await DiscardAsync()) context.PreventNavigation();
+    }
+
+    /// <summary>Останавливает запросы и закрывает принадлежащий странице диалог.</summary>
+    public void Dispose()
+    {
+        _disposed = true;
+        _stop.Cancel();
+
+        if (_dialogOpen) DialogService.Close();
+
+        _stop.Dispose();
+    }
+}

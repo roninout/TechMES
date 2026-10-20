@@ -16,13 +16,10 @@
 <NavigationLock ConfirmExternalNavigation="@HasChanges" OnBeforeInternalNavigation="@ConfirmNavigationAsync" />
 
 <RadzenStack Gap="12px">
-    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.End" Wrap="FlexWrap.Wrap" Gap="12px">
-        <RadzenButton Text="Recipes" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@(() => Navigation.NavigateTo("/recipes"))" />
 
-        <RadzenStack Gap="4px">
-            <RadzenLabel Text="Family" Component="base-parameter-family" />
-            <RadzenDropDown @key="_familyVersion" TValue="int?" Name="base-parameter-family" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" />
-        </RadzenStack>
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap" Gap="12px">
+        <RecipeEditorNavigation View="parameters" FamilyId="@_familyId" Disabled="@(_busy || _dialogOpen)" />
+        <RadzenDropDown @key="_familyVersion" TValue="int?" Name="base-parameter-family" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" AriaLabel="Base recipe" />
 
         <RadzenText Text="Base recipe parameters" TextStyle="TextStyle.H5" Style="margin: 0; flex: 1;" />
 
@@ -177,7 +174,7 @@
         await RefreshAsync();
     }
 
-    /// <summary>Заменяет черновики только после успешной загрузки.</summary>
+    /// <summary>Загружает параметры и принимает семейство из общего переключателя.</summary>
     private async Task LoadAsync(CancellationToken ct)
     {
         var catalog = await RecipeApi.GetBaseParametersAsync(ct);
@@ -188,7 +185,7 @@
         _rows = catalog.Parameters.Select(row => row with { }).ToList();
 
         if (!_familyId.HasValue || !catalog.Families.Any(family => family.Id == _familyId))
-            _familyId = catalog.Families.FirstOrDefault()?.Id;
+            _familyId = (catalog.Families.FirstOrDefault(family => family.Id == RecipeEditorNavigation.ReadFamily(Navigation.Uri)) ?? catalog.Families.FirstOrDefault())?.Id;
 
         _loaded = true;
         _nextId = 0;
@@ -211,7 +208,7 @@
         _rows.Add(new() { Id = --_nextId, BaseRecipeId = _familyId, Order = order + 1, Name = "New parameter" });
     }
 
-    /// <summary>Не допускает скрытых черновиков из другого семейства.</summary>
+    /// <summary>Меняет семейство после подтверждения отказа от черновиков.</summary>
     private async Task ChangeFamilyAsync(object value)
     {
         if (_busy || _disposed || _dialogOpen || value is not int family || family == _familyId || !_catalog.Families.Any(item => item.Id == family)) return;
@@ -234,6 +231,8 @@
         _rows = _catalog.Parameters.Select(row => row with { }).ToList();
         _nextId = 0;
         _familyId = family;
+
+        Navigation.NavigateTo($"/recipes/parameters?family={family}", replace: true);
     }
 
     /// <summary>Занятый номер отклоняем и возвращаем числовому полю исходное значение.</summary>
