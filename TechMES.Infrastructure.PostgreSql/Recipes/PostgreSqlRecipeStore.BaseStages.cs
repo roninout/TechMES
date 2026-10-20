@@ -55,14 +55,18 @@ public sealed partial class PostgreSqlRecipeStore
 
         var value = request.Value;
         var name = (value.Name ?? "").Trim();
-        var code = value.Code ?? "";
+        var code = (value.Code ?? "").Trim();
         var ids = value.Slots.Where(id => id.HasValue).Select(id => id!.Value).ToArray();
 
         preview.Name = name;
 
+        if (code.Length == 0) preview.Errors.Add("Template code is required.");
+
         // Один параметр может присутствовать в стадии только один раз.
         if (name.Length == 0 || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Length || value.Overflow.Count > 0)
             preview.Errors.Add($"Enter a stage name and place each parameter once within the {RecipeBaseStageDto.SlotCount} slots. Remove or place overflow items first.");
+
+        if (preview.Errors.Count > 0) return (preview, RecipeChangeStatus.Invalid, 0);
 
         await using var connection = CreateConnection();
         await connection.OpenAsync(ct);
@@ -244,40 +248,39 @@ public sealed partial class PostgreSqlRecipeStore
         }
 
         foreach (var stage in stages)
-        {
-            stage.Slots = ExpandStageSlots(stage.Slots);
-
-            var ids = members.GetValueOrDefault(stage.Id) ?? [];
-            var used = new HashSet<int>();
-
-            for (var i = 0; i < RecipeBaseStageDto.SlotCount; i++)
-                if (stage.Slots[i] is not int id || !ids.Contains(id) || !used.Add(id)) stage.Slots[i] = null;
-
-            foreach (var id in ids.Where(id => !used.Contains(id)).Distinct())
-            {
-                var slot = stage.Slots.FindIndex(item => item is null);
-
-                if (slot >= 0) stage.Slots[slot] = id;
-                else stage.Overflow.Add(id);
-            }
-        }
+            NormalizeStageSlots(stage, members.GetValueOrDefault(stage.Id) ?? []);
 
         return stages;
     }
 
-    /// <summary>Добавляет пятую ячейку в каждую старую строку, сохраняя позиции четырёх колонок.</summary>
-    private static List<int?> ExpandStageSlots(List<int?> slots)
+    /// <summary>Возвращает 32 места, сохраняя связи и вынося лишние параметры в Overflow без удаления из БД.</summary>
+    private static void NormalizeStageSlots(RecipeBaseStageDto stage, List<int> members)
     {
-        if (slots.Count == RecipeBaseStageDto.SlotCount) return slots;
-        if (slots.Count != 32) throw new InvalidOperationException("Stage layout must contain 32 or 40 slots.");
+        var stored = stage.Slots;
 
-        var expanded = Enumerable.Repeat<int?>(null, RecipeBaseStageDto.SlotCount).ToList();
+        if (stored.Count != RecipeBaseStageDto.SlotCount && stored.Count != 40)
+            throw new InvalidOperationException("Stage layout must contain 32 or 40 slots.");
 
-        for (var row = 0; row < RecipeBaseStageDto.Rows; row++)
-            for (var column = 0; column < 4; column++)
-                expanded[row * RecipeBaseStageDto.Columns + column] = slots[row * 4 + column];
+        var allowed = members.ToHashSet();
+        var used = new HashSet<int>();
 
-        return expanded;
+        stage.Slots = Enumerable.Repeat<int?>(null, RecipeBaseStageDto.SlotCount).ToList();
+        stage.Overflow = [];
+
+        for (var i = 0; i < RecipeBaseStageDto.SlotCount; i++)
+            if (stored[i] is int id && allowed.Contains(id) && used.Add(id)) stage.Slots[i] = id;
+
+        var remaining = stored.Skip(RecipeBaseStageDto.SlotCount).OfType<int>().Concat(members);
+
+        foreach (var id in remaining)
+        {
+            if (!allowed.Contains(id) || !used.Add(id)) continue;
+
+            var slot = stage.Slots.FindIndex(item => item is null);
+
+            if (slot >= 0) stage.Slots[slot] = id;
+            else stage.Overflow.Add(id);
+        }
     }
 
     /// <summary>Снимок включает реальные значения всех экземпляров, а не только состав шаблона.</summary>

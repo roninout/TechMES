@@ -1,11 +1,11 @@
 ﻿namespace TechMES.Contracts.Recipes;
 
-/// <summary>Состав и раскладка шаблона: 5 столбцов, 8 строк; null означает пустую ячейку.</summary>
+/// <summary>Не более 32 параметров; пять колонок определяют только внешний вид редактора.</summary>
 public sealed class RecipeBaseStageDto
 {
     public const int Columns = 5;
-    public const int Rows = 8;
-    public const int SlotCount = Columns * Rows;
+    public const int SlotCount = 32;
+    public const int Rows = (SlotCount + Columns - 1) / Columns;
 
     public int Id { get; set; }
     public int FamilyId { get; set; }

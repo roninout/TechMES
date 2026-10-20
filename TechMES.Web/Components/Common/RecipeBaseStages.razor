@@ -16,6 +16,7 @@
 <NavigationLock ConfirmExternalNavigation="@HasChanges" OnBeforeInternalNavigation="@BeforeNavigationAsync" />
 
 <div class="stage-editor">
+
     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap" Gap="12px">
         <RecipeEditorNavigation View="stages" FamilyId="@_familyId" Disabled="@(_busy || _dialogOpen)" />
         <RadzenDropDown @key="_revision" TValue="int?" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" AriaLabel="Base recipe" />
@@ -24,7 +25,7 @@
 
         <RadzenButton Text="New stage" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManage)" Click="@NewStageAsync" />
         <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@RefreshAsync" />
-        <RadzenButton Text="Save" Icon="save" Disabled="@(!CanEdit || !HasChanges)" Click="@SaveAsync" />
+        <RadzenButton Text="Save" Icon="save" Disabled="@(!CanSave)" Click="@SaveAsync" />
     </RadzenStack>
 
     @if (_error is not null)
@@ -44,7 +45,8 @@
     else if (_familyId.HasValue)
     {
         <RadzenDropZoneContainer TItem="DragCard" Data="@DragItems" ItemSelector="@SelectItem" CanDrop="@CanDrop" Drop="@Drop" ItemRender="@RenderItem">
-            <ChildContent>
+
+                        <ChildContent>
                 <div class="stage-editor-columns">
                     <aside class="stage-parameter-list">
                         <h4>Parameters</h4>
@@ -56,10 +58,18 @@
                     <section class="stage-main">
                         @if (_draft is not null)
                         {
-                            <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="8px">
-                                <RadzenTextBox @bind-Value="_draft.Name" Placeholder="Stage name" Disabled="@(!CanEdit)" Style="flex: 1; min-width: 200px;" AriaLabel="Stage name" />
-                                <RadzenTextBox @bind-Value="_draft.Code" Placeholder="Template code" Disabled="@(!CanEdit)" Style="width: 180px;" AriaLabel="Template code" />
-                            </RadzenStack>
+                            <div class="stage-main-header">
+                                <RadzenTextBox @bind-Value="_draft.Name" Immediate="true" Placeholder="Stage name" Disabled="@(!CanEdit)" Style="width: 100%;" AriaLabel="Stage name" />
+
+                                <div class="stage-code-field">
+                                    <RadzenTextBox @bind-Value="_draft.Code" Immediate="true" Placeholder="Code" Disabled="@(!CanEdit)" Style="width: 100%;" AriaLabel="Template code" />
+
+                                    @if (string.IsNullOrWhiteSpace(_draft.Code))
+                                    {
+                                        <small class="stage-validation">Code is required.</small>
+                                    }
+                                </div>
+                            </div>
 
                             <small class="stage-hint">Drag to add or move. Drop between occupied slots to swap. Clear with × or drag back to Parameters.</small>
 
@@ -89,30 +99,39 @@
                         }
                         else
                         {
-                            <RadzenText Text="Select a stage on the right or create a new stage." />
+                            <div class="stage-no-selection">Select a stage on the right or create a new stage.</div>
                         }
                     </section>
 
                     <aside class="stage-definition-list">
                         <h4>Stages</h4>
 
-                        <RadzenListBox @key="_revision" TValue="int?" Data="@_stages" TextProperty="Name" ValueProperty="Id" Value="@SelectedStageId" Change="@SelectStageAsync" Disabled="@_busy" Style="width: 100%; height: 100%;" AriaLabel="Stage templates">
-                            <Template Context="item">
-                                @if (item is RecipeBaseStageDto stage)
-                                {
-                                    <div class="stage-list-item">
-                                        <RadzenIcon Icon="view_module" />
+                        <div class="stage-definition-cards" role="group" aria-label="Stage templates">
+                            @foreach (var stage in _stages)
+                            {
+                                var selected = stage.Id == SelectedStageId;
 
-                                        <div>
-                                            <strong>@stage.Name</strong>
-                                            <small>[@stage.Id] @stage.Code</small>
+                                <button @key="stage.Id" type="button" class="stage-definition-button @(selected ? "stage-definition-selected" : "")" aria-pressed="@(selected ? "true" : "false")" disabled="@(_busy || _dialogOpen)" @onclick="@(() => SelectStageAsync(stage.Id))">
+                                    <RadzenCard class="stage-definition-card">
+                                        <div class="stage-definition-content">
+                                            <RadzenIcon Icon="account_tree" class="stage-definition-icon" />
+
+                                            <div class="stage-definition-text">
+                                                <div class="stage-definition-code">@stage.Code</div>
+                                                <div class="stage-definition-name">@stage.Name</div>
+                                            </div>
+
+                                            <RadzenBadge Text="@stage.ParameterCount.ToString()" BadgeStyle="BadgeStyle.Light" />
                                         </div>
+                                    </RadzenCard>
+                                </button>
+                            }
 
-                                        <RadzenBadge Text="@stage.ParameterCount.ToString()" BadgeStyle="BadgeStyle.Light" />
-                                    </div>
-                                }
-                            </Template>
-                        </RadzenListBox>
+                            @if (_stages.Count == 0)
+                            {
+                                <small class="stage-hint">No stages in this base recipe.</small>
+                            }
+                        </div>
                     </aside>
                 </div>
             </ChildContent>
@@ -150,6 +169,7 @@
     private bool CanManage => _canEdit && !_busy && !_dialogOpen && !_uncertain && !_disposed && _familyId.HasValue;
     private bool CanEdit => CanManage && _draft is not null;
     private bool HasChanges => _draft is not null && (_original is null || JsonSerializer.Serialize(_draft) != JsonSerializer.Serialize(_original));
+    private bool CanSave => CanEdit && HasChanges && !string.IsNullOrWhiteSpace(_draft!.Name) && !string.IsNullOrWhiteSpace(_draft.Code) && _draft.Slots.Count == RecipeBaseStageDto.SlotCount && _draft.Overflow.Count == 0;
     private int? SelectedStageId => _draft is { Id: > 0 } ? _draft.Id : null;
 
     /// <summary>Копирует определение вместе с коллекциями, не изменяя загруженный каталог.</summary>
@@ -363,10 +383,10 @@
         await ReloadAsync(_familyId, SelectedStageId);
     }
 
-    /// <summary>Отчёт и подтверждение разделены; неоднозначный результат записи не повторяем.</summary>
+    /// <summary>Проверяет обязательные поля, показывает влияние и сохраняет только подтверждённые изменения.</summary>
     private async Task SaveAsync()
     {
-        if (!CanEdit || !HasChanges) return;
+        if (!CanSave) return;
 
         var request = new RecipeBaseStageRequest { FamilyId = _familyId!.Value, Original = _original is null ? null : Clone(_original), Value = Clone(_draft!) };
         var ct = _stop.Token;
