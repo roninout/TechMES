@@ -42,10 +42,10 @@ public sealed partial class PostgreSqlRecipeStore
         };
     }
 
-    /// <summary>Состав, метаданные и значения проверяются до записи и повторно после подтверждения.</summary>
+    /// <summary>Анализирует изменение или удаление и повторяет проверки перед записью под блокировками.</summary>
     private async Task<(RecipeBaseStagePreviewDto Preview, RecipeChangeStatus Status, int Id)> ProcessBaseStageAsync(RecipeBaseStageRequest request, bool save, CancellationToken ct)
     {
-        var preview = new RecipeBaseStagePreviewDto();
+        var preview = new RecipeBaseStagePreviewDto { Delete = request.Delete };
 
         if (request.FamilyId <= 0 || request.Value is null || request.Value.Id < 0 || request.Value.FamilyId != request.FamilyId || request.Value.Slots is null || request.Value.Slots.Count != RecipeBaseStageDto.SlotCount || request.Value.Overflow is null)
         {
@@ -58,12 +58,13 @@ public sealed partial class PostgreSqlRecipeStore
         var code = (value.Code ?? "").Trim();
         var ids = value.Slots.Where(id => id.HasValue).Select(id => id!.Value).ToArray();
 
-        preview.Name = name;
+        preview.Name = request.Delete && name.Length == 0 ? $"Stage [{value.Id}]" : name;
 
-        if (code.Length == 0) preview.Errors.Add("Template code is required.");
+        if (request.Delete && value.Id <= 0) preview.Errors.Add("Select a saved stage to delete.");
+        if (!request.Delete && code.Length == 0) preview.Errors.Add("Template code is required.");
 
-        // Один параметр может присутствовать в стадии только один раз.
-        if (name.Length == 0 || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Length || value.Overflow.Count > 0)
+        // Проверки состава относятся к сохранению; свободный старый шаблон можно удалить и с Overflow.
+        if (!request.Delete && (name.Length == 0 || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Length || value.Overflow.Count > 0))
             preview.Errors.Add($"Enter a stage name and place each parameter once within the {RecipeBaseStageDto.SlotCount} slots. Remove or place overflow items first.");
 
         if (preview.Errors.Count > 0) return (preview, RecipeChangeStatus.Invalid, 0);
@@ -76,7 +77,7 @@ public sealed partial class PostgreSqlRecipeStore
 
         if (save)
         {
-            // Совместимо с текущим сохранением ячейки: сначала p, затем s и определения.
+            // Совместимо с текущим сохранением ячейки и добавлением стадии в рецепт.
             var lockSql = $"""
             SELECT pg_advisory_xact_lock(1380270928, 1);
             LOCK TABLE public."RecipePage" IN SHARE MODE;
@@ -104,10 +105,10 @@ public sealed partial class PostgreSqlRecipeStore
         if (conflict) preview.Errors.Add("The stage changed or no longer exists. Press Refresh before editing again.");
         if (!state.FamilyExists) preview.Errors.Add("No base recipe is configured for this family. Create a base recipe first.");
 
-        if (ids.Any(id => !state.Parameters.Any(parameter => parameter.Id == id && parameter.BaseRecipeId == request.FamilyId)))
+        if (!request.Delete && ids.Any(id => !state.Parameters.Any(parameter => parameter.Id == id && parameter.BaseRecipeId == request.FamilyId)))
             preview.Errors.Add("Every parameter must belong to the selected family.");
 
-        if (ids.Any(id => state.Parameters.Any(parameter => parameter.Id == id && !Enum.IsDefined(parameter.Kind))))
+        if (!request.Delete && ids.Any(id => state.Parameters.Any(parameter => parameter.Id == id && !Enum.IsDefined(parameter.Kind))))
             preview.Errors.Add("A selected parameter has an unsupported type.");
 
         if (state.Instances.Any(stage => stage.FamilyId != request.FamilyId))
@@ -120,15 +121,25 @@ public sealed partial class PostgreSqlRecipeStore
 
         string Label(int id) => $"[{id}] {state.Parameters.FirstOrDefault(parameter => parameter.Id == id)?.Name ?? "Unknown parameter"}";
 
-        if (old is null) preview.Changes.Add("Create a new stage in this family.");
-        if (old is not null && old.Name != name) preview.Changes.Add($"Name: {old.Name} → {name}. Update all recipe instances.");
-        if (old is not null && old.Code != code) preview.Changes.Add($"Template code: {old.Code} → {code}. PLC prefixes stay unchanged.");
+        if (request.Delete)
+        {
+            preview.Changes.Add($"Delete stage [{value.Id}] and its parameter links and layout. The parameter catalog is preserved.");
 
-        foreach (var id in ids.Except(previous)) preview.Changes.Add($"Add parameter {Label(id)}.");
-        foreach (var id in previous.Except(ids)) preview.Changes.Add($"Remove parameter {Label(id)}.");
-        foreach (var id in state.Values.Select(item => item.ParameterId).Except(ids).Except(previous)) preview.Changes.Add($"Remove stale recipe parameter {Label(id)}.");
+            if (state.Instances.Count > 0)
+                preview.Errors.Add("Cannot delete this stage: it is used by the recipes listed below.");
+        }
+        else
+        {
+            if (old is null) preview.Changes.Add("Create a new stage in this family.");
+            if (old is not null && old.Name != name) preview.Changes.Add($"Name: {old.Name} → {name}. Update all recipe instances.");
+            if (old is not null && old.Code != code) preview.Changes.Add($"Template code: {old.Code} → {code}. PLC prefixes stay unchanged.");
 
-        if (old is not null && !old.Slots.SequenceEqual(value.Slots)) preview.Changes.Add("Save the new card positions.");
+            foreach (var id in ids.Except(previous)) preview.Changes.Add($"Add parameter {Label(id)}.");
+            foreach (var id in previous.Except(ids)) preview.Changes.Add($"Remove parameter {Label(id)}.");
+            foreach (var id in state.Values.Select(item => item.ParameterId).Except(ids).Except(previous)) preview.Changes.Add($"Remove stale recipe parameter {Label(id)}.");
+
+            if (old is not null && !old.Slots.SequenceEqual(value.Slots)) preview.Changes.Add("Save the new card positions.");
+        }
 
         foreach (var group in state.Instances.GroupBy(stage => stage.RecipeId).OrderBy(group => group.Key))
         {
@@ -141,13 +152,14 @@ public sealed partial class PostgreSqlRecipeStore
                 RecipeId = group.Key,
                 RecipeName = stages[0].RecipeName,
                 Stages = stages.Count,
-                Added = stages.Sum(stage => ids.Count(id => !rows.Any(item => item.StageId == stage.Id && item.ParameterId == id))),
-                Removed = rows.Count(item => !ids.Contains(item.ParameterId)),
-                Preserved = rows.Count(item => ids.Contains(item.ParameterId))
+                Added = request.Delete ? 0 : stages.Sum(stage => ids.Count(id => !rows.Any(item => item.StageId == stage.Id && item.ParameterId == id))),
+                Removed = request.Delete ? 0 : rows.Count(item => !ids.Contains(item.ParameterId)),
+                Preserved = request.Delete ? rows.Count : rows.Count(item => ids.Contains(item.ParameterId))
             });
         }
 
-        var json = JsonSerializer.Serialize(new { request.FamilyId, Value = value, Name = name, State = state }, new JsonSerializerOptions { NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals });
+        // Подтверждение связано и со снимком данных, и с выбранной операцией.
+        var json = JsonSerializer.Serialize(new { request.FamilyId, request.Delete, Value = value, Name = name, State = state }, new JsonSerializerOptions { NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals });
         preview.Token = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
 
         if (preview.Errors.Count > 0) return (preview, conflict ? RecipeChangeStatus.Conflict : RecipeChangeStatus.Invalid, 0);
@@ -160,6 +172,14 @@ public sealed partial class PostgreSqlRecipeStore
         }
 
         var stageId = value.Id;
+
+        if (request.Delete)
+        {
+            await DeleteUnusedStageAsync(connection, transaction, request.FamilyId, stageId, link, ct);
+            await transaction.CommitAsync(ct);
+
+            return (preview, RecipeChangeStatus.Saved, stageId);
+        }
 
         var stageSql = stageId == 0 ? """
         INSERT INTO public."BaseRecipeStage" ("name", "description", "baseRecipeId") VALUES (@name, @code, @family) RETURNING "id";
@@ -177,7 +197,7 @@ public sealed partial class PostgreSqlRecipeStore
             stageId = (int)(await command.ExecuteScalarAsync(ct) ?? throw new InvalidOperationException("Stage save returned no ID."));
         }
 
-        // Состав синхронизируем по ID. Значения оставшихся параметров не пересоздаём.
+        // Значения оставшихся параметров не пересоздаём.
         // Имя экземпляров меняем только при переименовании самого шаблона.
         var syncSql = $"""
         DELETE FROM {link.Table} WHERE {link.StageColumn} = @id AND NOT ({link.ParameterColumn} = ANY(@ids));
@@ -215,11 +235,32 @@ public sealed partial class PostgreSqlRecipeStore
         return (preview, RecipeChangeStatus.Saved, stageId);
     }
 
-    /// <summary>Читает раскладку, сохраняет старые связи и исключает повторное размещение параметров.</summary>
+    /// <summary>Удаляет только свободный шаблон; вызывается после повторного анализа под блокировками.</summary>
+    private async Task DeleteUnusedStageAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, int familyId, int stageId, (string Table, string StageColumn, string ParameterColumn) link, CancellationToken ct)
+    {
+        var sql = $"""
+        DELETE FROM {link.Table} WHERE {link.StageColumn} = @id;
+        DELETE FROM public."RecipeStageLayout" WHERE "baseRecipeStageId" = @id;
+        DELETE FROM public."BaseRecipeStage" b WHERE b."id" = @id AND b."baseRecipeId" = @family
+        AND NOT EXISTS (SELECT 1 FROM public."RecipeStage" s WHERE s."baseRecipeStageId" = b."id") RETURNING b."id";
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction) { CommandTimeout = GetCommandTimeout() };
+        command.Parameters.AddWithValue("id", stageId);
+        command.Parameters.AddWithValue("family", familyId);
+
+        var deleted = await command.ExecuteScalarAsync(ct);
+
+        if (deleted is not int id || id != stageId)
+            throw new InvalidOperationException("Stage was not deleted. Refresh and review its usage again.");
+    }
+
+    /// <summary>Читает раскладку и признак использования стадии по реальным связям RecipeStage.</summary>
     private async Task<List<RecipeBaseStageDto>> ReadStageDefinitionsAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, int familyId, (string Table, string StageColumn, string ParameterColumn) link, CancellationToken ct)
     {
         var sql = $"""
-        SELECT b."id", b."name", b."description", l."slots"::text
+        SELECT b."id", b."name", b."description", l."slots"::text,
+               EXISTS (SELECT 1 FROM public."RecipeStage" s WHERE s."baseRecipeStageId" = b."id")
         FROM public."BaseRecipeStage" b LEFT JOIN public."RecipeStageLayout" l ON l."baseRecipeStageId" = b."id"
         WHERE b."baseRecipeId" = @family ORDER BY b."name", b."id";
         SELECT l.{link.StageColumn}, p."id" FROM {link.Table} l
@@ -235,7 +276,7 @@ public sealed partial class PostgreSqlRecipeStore
         var stages = new List<RecipeBaseStageDto>();
 
         while (await reader.ReadAsync(ct))
-            stages.Add(new() { Id = reader.GetInt32(0), FamilyId = familyId, Name = ReadText(reader, 1), Code = ReadText(reader, 2), Slots = reader.IsDBNull(3) ? Enumerable.Repeat<int?>(null, RecipeBaseStageDto.SlotCount).ToList() : JsonSerializer.Deserialize<List<int?>>(reader.GetString(3)) ?? throw new InvalidOperationException("Invalid stage layout.") });
+            stages.Add(new() { Id = reader.GetInt32(0), FamilyId = familyId, Name = ReadText(reader, 1), Code = ReadText(reader, 2), UsedInRecipes = reader.GetBoolean(4), Slots = reader.IsDBNull(3) ? Enumerable.Repeat<int?>(null, RecipeBaseStageDto.SlotCount).ToList() : JsonSerializer.Deserialize<List<int?>>(reader.GetString(3)) ?? throw new InvalidOperationException("Invalid stage layout.") });
 
         await reader.NextResultAsync(ct);
 

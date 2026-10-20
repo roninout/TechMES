@@ -11,12 +11,12 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<RecipeBaseStages> Logger
+@inject ThemeService ThemeService
 
 <PageTitle>Recipe stages</PageTitle>
 <NavigationLock ConfirmExternalNavigation="@HasChanges" OnBeforeInternalNavigation="@BeforeNavigationAsync" />
 
-<div class="stage-editor">
-
+<div class="stage-editor @StageThemeClass">
     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap" Gap="12px">
         <RecipeEditorNavigation View="stages" FamilyId="@_familyId" Disabled="@(_busy || _dialogOpen)" />
         <RadzenDropDown @key="_revision" TValue="int?" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" AriaLabel="Base recipe" />
@@ -24,6 +24,7 @@
         <RadzenText Text="Base recipe stages" TextStyle="TextStyle.H5" Style="margin: 0; flex: 1;" />
 
         <RadzenButton Text="New stage" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManage)" Click="@NewStageAsync" />
+        <RadzenButton Text="Delete" Icon="delete_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanDeleteStage)" Click="@DeleteAsync" />
         <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@RefreshAsync" />
         <RadzenButton Text="Save" Icon="save" Disabled="@(!CanSave)" Click="@SaveAsync" />
     </RadzenStack>
@@ -45,13 +46,13 @@
     else if (_familyId.HasValue)
     {
         <RadzenDropZoneContainer TItem="DragCard" Data="@DragItems" ItemSelector="@SelectItem" CanDrop="@CanDrop" Drop="@Drop" ItemRender="@RenderItem">
-
-                        <ChildContent>
+            <ChildContent>
                 <div class="stage-editor-columns">
                     <aside class="stage-parameter-list">
-                        <h4>Parameters</h4>
+                        <div class="stage-side-header">
+                            <RadzenTextBox @bind-Value="_search" Immediate="true" Placeholder="Search parameters..." Style="width: 100%;" AriaLabel="Search parameters" />
+                        </div>
 
-                        <RadzenTextBox @bind-Value="_search" Placeholder="Search parameters..." Style="width: 100%;" />
                         <RadzenDropZone TItem="DragCard" Value="@(-1)" class="stage-source" />
                     </aside>
 
@@ -70,8 +71,6 @@
                                     }
                                 </div>
                             </div>
-
-                            <small class="stage-hint">Drag to add or move. Drop between occupied slots to swap. Clear with × or drag back to Parameters.</small>
 
                             <div class="stage-canvas">
                                 <div class="stage-slot-grid">
@@ -104,32 +103,43 @@
                     </section>
 
                     <aside class="stage-definition-list">
-                        <h4>Stages</h4>
+                        <div class="stage-side-header">
+                            <RadzenTextBox @bind-Value="_stageSearch" Immediate="true" Placeholder="Search stages..." Style="width: 100%;" AriaLabel="Search stages" />
+                        </div>
 
                         <div class="stage-definition-cards" role="group" aria-label="Stage templates">
-                            @foreach (var stage in _stages)
+                            @foreach (var stage in FilteredStages)
                             {
                                 var selected = stage.Id == SelectedStageId;
 
                                 <button @key="stage.Id" type="button" class="stage-definition-button @(selected ? "stage-definition-selected" : "")" aria-pressed="@(selected ? "true" : "false")" disabled="@(_busy || _dialogOpen)" @onclick="@(() => SelectStageAsync(stage.Id))">
                                     <RadzenCard class="stage-definition-card">
                                         <div class="stage-definition-content">
-                                            <RadzenIcon Icon="account_tree" class="stage-definition-icon" />
+                                            <RadzenIcon Icon="view_agenda" class="stage-definition-icon" />
 
                                             <div class="stage-definition-text">
                                                 <div class="stage-definition-code">@stage.Code</div>
                                                 <div class="stage-definition-name">@stage.Name</div>
                                             </div>
 
-                                            <RadzenBadge Text="@stage.ParameterCount.ToString()" BadgeStyle="BadgeStyle.Light" />
+                                            <div class="stage-definition-status">
+                                                <RadzenBadge Text="@stage.ParameterCount.ToString()" BadgeStyle="BadgeStyle.Light" class="stage-definition-count" />
+
+                                                @if (stage.UsedInRecipes)
+                                                {
+                                                    <span class="stage-definition-used" title="Used in recipes" aria-label="Used in recipes">
+                                                        <RadzenIcon Icon="check_circle" />
+                                                    </span>
+                                                }
+                                            </div>
                                         </div>
                                     </RadzenCard>
                                 </button>
                             }
 
-                            @if (_stages.Count == 0)
+                            @if (!FilteredStages.Any())
                             {
-                                <small class="stage-hint">No stages in this base recipe.</small>
+                                <small class="stage-hint">@(_stages.Count == 0 ? "No stages in this base recipe." : "No stages match the search.")</small>
                             }
                         </div>
                     </aside>
@@ -148,13 +158,12 @@
                     }
                 </div>
             </Template>
-
         </RadzenDropZoneContainer>
     }
 </div>
 
 @code {
-    private sealed record DragCard(RecipeBaseParameterDto Parameter, int Zone);
+        private sealed record DragCard(RecipeBaseParameterDto Parameter, int Zone);
 
     private readonly CancellationTokenSource _stop = new();
     private RecipeBaseParameterCatalogDto _catalog = new();
@@ -163,14 +172,24 @@
     private int? _familyId;
     private int _revision;
     private string _search = "";
+    private string _stageSearch = "";
     private string? _error;
     private bool _busy, _dialogOpen, _loaded, _canEdit, _uncertain, _disposed;
 
     private bool CanManage => _canEdit && !_busy && !_dialogOpen && !_uncertain && !_disposed && _familyId.HasValue;
+    private bool CanDeleteStage => CanManage && _original is { Id: > 0 };
     private bool CanEdit => CanManage && _draft is not null;
     private bool HasChanges => _draft is not null && (_original is null || JsonSerializer.Serialize(_draft) != JsonSerializer.Serialize(_original));
     private bool CanSave => CanEdit && HasChanges && !string.IsNullOrWhiteSpace(_draft!.Name) && !string.IsNullOrWhiteSpace(_draft.Code) && _draft.Slots.Count == RecipeBaseStageDto.SlotCount && _draft.Overflow.Count == 0;
     private int? SelectedStageId => _draft is { Id: > 0 } ? _draft.Id : null;
+
+    private string StageThemeClass => ThemeService.Theme?.Contains("dark", StringComparison.OrdinalIgnoreCase) == true ? "stage-editor-dark" : "stage-editor-light";
+
+    /// <summary>Поиск стадий работает внутри текущего семейства и не меняет выбранный черновик.</summary>
+    private IEnumerable<RecipeBaseStageDto> FilteredStages => _stages.Where(stage => stage.Name.Contains(_stageSearch.Trim(), StringComparison.OrdinalIgnoreCase) || stage.Code.Contains(_stageSearch.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Обновляет цвет центральных карточек при переключении темы.</summary>
+    private void OnThemeChanged() => _ = InvokeAsync(() => { if (!_disposed) StateHasChanged(); });
 
     /// <summary>Копирует определение вместе с коллекциями, не изменяя загруженный каталог.</summary>
     private static RecipeBaseStageDto Clone(RecipeBaseStageDto value) => JsonSerializer.Deserialize<RecipeBaseStageDto>(JsonSerializer.Serialize(value))!;
@@ -251,9 +270,11 @@
         args.Attributes["draggable"] = CanEdit && !usedSource ? "true" : "false";
     }
 
-    /// <summary>Использует текущую Windows identity и семейство из общего переключателя.</summary>
+    /// <summary>Подключает смену темы и загружает семейство с учётом текущего пользователя.</summary>
     protected override async Task OnInitializedAsync()
     {
+        ThemeService.ThemeChanged += OnThemeChanged;
+
         var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
 
         if (_disposed) return;
@@ -383,15 +404,27 @@
         await ReloadAsync(_familyId, SelectedStageId);
     }
 
-    /// <summary>Проверяет обязательные поля, показывает влияние и сохраняет только подтверждённые изменения.</summary>
-    private async Task SaveAsync()
-    {
-        if (!CanSave) return;
+    /// <summary>Сохраняет черновик через общий анализ и подтверждение.</summary>
+    private Task SaveAsync() => CanSave ? ExecuteStageChangeAsync(false) : Task.CompletedTask;
 
-        var request = new RecipeBaseStageRequest { FamilyId = _familyId!.Value, Original = _original is null ? null : Clone(_original), Value = Clone(_draft!) };
+    /// <summary>Анализирует удаление сохранённой стадии; использование в рецептах проверяет сервер.</summary>
+    private async Task DeleteAsync()
+    {
+        if (!CanDeleteStage || !await DiscardAsync()) return;
+
+        await ExecuteStageChangeAsync(true);
+    }
+
+    /// <summary>Выполняет подтверждённое сохранение или удаление без автоматического повтора запроса.</summary>
+    private async Task ExecuteStageChangeAsync(bool delete)
+    {
+        if (delete ? !CanDeleteStage : !CanSave) return;
+
+        var value = delete ? _original! : _draft!;
+        var request = new RecipeBaseStageRequest { FamilyId = _familyId!.Value, Original = _original is null ? null : Clone(_original), Value = Clone(value), Delete = delete };
         var ct = _stop.Token;
         var started = false;
-        var saved = false;
+        var completed = false;
 
         _busy = true;
         _error = null;
@@ -402,7 +435,7 @@
             ct.ThrowIfCancellationRequested();
 
             _dialogOpen = true;
-            var confirmed = await DialogService.OpenAsync<RecipeBaseStagePreviewDialog>("Review stage synchronization", new Dictionary<string, object?> { [nameof(RecipeBaseStagePreviewDialog.Preview)] = preview }, new DialogOptions { Width = "min(1100px, 96vw)", CloseDialogOnOverlayClick = false });
+            var confirmed = await DialogService.OpenAsync<RecipeBaseStagePreviewDialog>(delete ? "Review stage deletion" : "Review stage synchronization", new Dictionary<string, object?> { [nameof(RecipeBaseStagePreviewDialog.Preview)] = preview }, new DialogOptions { Width = "min(1100px, 96vw)", CloseDialogOnOverlayClick = false });
             _dialogOpen = false;
 
             ct.ThrowIfCancellationRequested();
@@ -415,26 +448,26 @@
             var result = await RecipeApi.SaveBaseStageAsync(request, ct);
 
             if (result.Status != RecipeChangeStatus.Saved || result.StageId <= 0)
-                throw new InvalidOperationException("Unexpected stage save result. Press Refresh.");
+                throw new InvalidOperationException("Unexpected stage operation result. Press Refresh.");
 
-            saved = true;
+            completed = true;
             _uncertain = true;
 
-            await LoadCoreAsync(_familyId, result.StageId, ct);
+            await LoadCoreAsync(_familyId, delete ? null : result.StageId, ct);
 
-            Notifications.Notify(NotificationSeverity.Success, "Recipe stages", "Stage saved and all recipe instances synchronized.", 3500);
+            Notifications.Notify(NotificationSeverity.Success, "Recipe stages", delete ? "Stage deleted." : "Stage saved and all recipe instances synchronized.", 3500);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to save stage template.");
+            Logger.LogError(ex, "Stage operation failed. Delete={Delete}", delete);
 
             if (!_disposed)
             {
                 var rejected = ex is HttpRequestException { StatusCode: HttpStatusCode.BadRequest or HttpStatusCode.Forbidden or HttpStatusCode.Conflict };
                 _uncertain = started && !rejected;
 
-                _error = saved ? "Saved, but reload failed. Press Refresh. " + ex.Message : _uncertain ? "Save result is uncertain. Press Refresh before editing again. " + ex.Message : ex.Message;
+                _error = completed ? "Operation completed, but reload failed. Press Refresh. " + ex.Message : _uncertain ? "Operation result is uncertain. Press Refresh before editing again. " + ex.Message : ex.Message;
             }
         }
         finally
@@ -450,10 +483,11 @@
         if (_busy || _dialogOpen || !await DiscardAsync()) context.PreventNavigation();
     }
 
-    /// <summary>Останавливает запросы и закрывает принадлежащий странице диалог.</summary>
+    /// <summary>Отключает события темы, останавливает запросы и закрывает принадлежащий странице диалог.</summary>
     public void Dispose()
     {
         _disposed = true;
+        ThemeService.ThemeChanged -= OnThemeChanged;
         _stop.Cancel();
 
         if (_dialogOpen) DialogService.Close();

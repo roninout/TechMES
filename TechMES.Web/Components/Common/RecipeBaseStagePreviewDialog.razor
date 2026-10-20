@@ -14,9 +14,12 @@
         <div>@change</div>
     }
 
-    <RadzenText Text="Existing values and active flags are preserved. Missing parameters start at 0. Stage numbers, Auto and PLC prefixes are preserved." />
+    @if (!Preview.Delete)
+    {
+        <RadzenText Text="Existing values and active flags are preserved. Missing parameters start at 0. Stage numbers, Auto and PLC prefixes are preserved." />
+    }
 
-    @if (Preview.Recipes.Any(recipe => recipe.Removed > 0))
+    @if (!Preview.Delete && Preview.Recipes.Any(recipe => recipe.Removed > 0))
     {
         <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">Confirmation will delete the removed parameter values from every affected recipe stage listed below.</RadzenAlert>
     }
@@ -34,7 +37,7 @@
 
     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="8px">
         <RadzenButton Text="Back" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-        <RadzenButton Text="Save and synchronize" Icon="save" Disabled="@(!Preview.CanSave)" Click="@(() => DialogService.Close(true))" />
+        <RadzenButton Text="@(Preview.Delete ? "Delete stage" : "Save and synchronize")" Icon="@(Preview.Delete ? "delete_outline" : "save")" Disabled="@(!Preview.CanSave)" Click="@(() => DialogService.Close(true))" />
     </RadzenStack>
 </RadzenStack>
 

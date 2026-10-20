@@ -31,7 +31,7 @@ public static partial class RecipeEndpoints
         }
     }
 
-    /// <summary>Использует существующий профиль доступа к изменению рецептов.</summary>
+    /// <summary>Использует существующий профиль доступа для анализа, сохранения и удаления стадий.</summary>
     private static async Task<IResult> ProcessBaseStageAsync(bool save, RecipeBaseStageRequest request, IRecipeStore store, IOptions<ParamWriteOptions> options, ILoggerFactory logger, CancellationToken ct)
     {
         var error = AuthorizeRecipeWrite(request.Actor, request.ActorGroups, options.Value.Authorization);
@@ -45,9 +45,9 @@ public static partial class RecipeEndpoints
             var result = await store.SaveBaseStageAsync(request, ct);
 
             if (result.Status != RecipeChangeStatus.Saved)
-                return Results.Problem(result.Error ?? "Stage save failed.", statusCode: result.Status == RecipeChangeStatus.Conflict ? 409 : 400);
+                return Results.Problem(result.Error ?? "Stage operation failed.", statusCode: result.Status == RecipeChangeStatus.Conflict ? 409 : 400);
 
-            logger.CreateLogger("RecipeEndpoints").LogInformation("Base stage saved and synchronized. Stage={Stage}, Actor={Actor}", result.StageId, request.Actor);
+            logger.CreateLogger("RecipeEndpoints").LogInformation("Base stage operation completed. Stage={Stage}, Delete={Delete}, Actor={Actor}", result.StageId, request.Delete, request.Actor);
 
             return Results.Ok(result);
         }

@@ -11,16 +11,19 @@ public sealed class RecipeBaseStageDto
     public int FamilyId { get; set; }
     public string Name { get; set; } = "";
     public string Code { get; set; } = "";
+    public bool UsedInRecipes { get; set; }
     public List<int?> Slots { get; set; } = Enumerable.Repeat<int?>(null, SlotCount).ToList();
     public List<int> Overflow { get; set; } = [];
     public int ParameterCount => Slots.Count(id => id.HasValue) + Overflow.Count;
 }
 
+/// <summary>Запрос анализа, сохранения или удаления определения стадии.</summary>
 public sealed class RecipeBaseStageRequest
 {
     public int FamilyId { get; set; }
     public RecipeBaseStageDto? Original { get; set; }
     public RecipeBaseStageDto Value { get; set; } = new();
+    public bool Delete { get; set; }
     public string? PreviewToken { get; set; }
     public string? Actor { get; set; }
     public List<string> ActorGroups { get; set; } = [];
@@ -38,6 +41,7 @@ public sealed class RecipeStageSyncImpactDto
 
 public sealed class RecipeBaseStagePreviewDto
 {
+    public bool Delete { get; set; }
     public string Token { get; set; } = "";
     public string Name { get; set; } = "";
     public List<string> Changes { get; set; } = [];
