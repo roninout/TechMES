@@ -1,10 +1,10 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
 using Radzen;
 using TechMES.Contracts.Param;
 using TechMES.Web.Clients;
 using TechMES.Web.Settings;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.ParamWrite;
 
 /// <summary>
 /// Общая WEB-точка входа в существующий Param write-flow.

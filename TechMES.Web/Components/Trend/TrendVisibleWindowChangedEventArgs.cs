@@ -1,4 +1,4 @@
-﻿namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Trend;
 
 /// <summary>
 /// Диапазон времени, который сейчас реально виден в ECharts.

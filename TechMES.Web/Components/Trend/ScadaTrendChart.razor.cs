@@ -6,7 +6,7 @@ using TechMES.Contracts.Param;
 using TechMES.Web.Clients;
 using TechMES.Web.Settings;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Trend;
 
 public partial class ScadaTrendChart : IAsyncDisposable
 {

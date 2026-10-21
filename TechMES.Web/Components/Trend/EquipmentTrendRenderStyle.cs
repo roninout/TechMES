@@ -1,4 +1,4 @@
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Trend;
 
 /// <summary>
 /// Определяет способ отображения серий в универсальном ECharts-компоненте трендов.

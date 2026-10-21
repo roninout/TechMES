@@ -1,4 +1,4 @@
-﻿namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Trend;
 
 public enum ScadaTrendStyle { Line, Area }
 

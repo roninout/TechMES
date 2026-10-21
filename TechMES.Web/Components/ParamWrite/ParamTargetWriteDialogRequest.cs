@@ -1,6 +1,6 @@
 using TechMES.Contracts.Param;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.ParamWrite;
 
 /// <summary>
 /// Запрос на открытие write-dialog для Param item-а, который принадлежит не текущему

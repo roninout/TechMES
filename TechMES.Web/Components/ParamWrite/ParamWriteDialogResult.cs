@@ -1,4 +1,4 @@
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.ParamWrite;
 
 /// <summary>
 /// Результат диалога записи Param item.

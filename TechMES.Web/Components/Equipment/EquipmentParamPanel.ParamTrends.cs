@@ -1,6 +1,7 @@
-﻿using TechMES.Contracts.Param;
+using TechMES.Web.Components.Trend;
+using TechMES.Contracts.Param;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Equipment;
 
 public partial class EquipmentParamPanel
 {

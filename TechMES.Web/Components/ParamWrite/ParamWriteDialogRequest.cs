@@ -1,6 +1,6 @@
 using TechMES.Contracts.Param;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.ParamWrite;
 
 /// <summary>
 /// Запрос на открытие общего write-dialog для Param item.
