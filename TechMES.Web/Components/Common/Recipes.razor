@@ -13,10 +13,13 @@
 @inject IOptions<ParamUiOptions> ParamOptions
 @inject NavigationManager Navigation
 
-<PageTitle>Recipes</PageTitle>
+<PageTitle>@(EditorMode ? "Recipe editor" : "Recipes")</PageTitle>
 
-<div class="recipes-page">
-    <RecipeEditorNavigation View="recipes" FamilyId="@EditorFamilyId" Disabled="@IsBusy" />
+<div class="recipes-page @(EditorMode ? "recipes-editor" : "recipes-view")">
+    @if (EditorMode)
+    {
+        <RecipeEditorNavigation View="recipes" FamilyId="@EditorFamilyId" Disabled="@IsBusy" />
+    }
 
     <div class="recipes-toolbar">
         <div class="recipes-selectors">
@@ -31,13 +34,18 @@
             </div>
         </div>
 
-        <h2 class="recipes-title">Recipes</h2>
+        <h2 class="recipes-title">@(EditorMode ? "Recipe editor" : "Recipes")</h2>
 
         <div class="recipes-toolbar-right">
-            <div class="recipes-edit-mode" title="@(_canEdit ? "Edit saved recipe values" : "Sign in to edit recipe values")">
-                <RadzenLabel Text="Edit values" Component="recipe-edit-values" />
-                <RadzenSwitch Name="recipe-edit-values" @bind-Value="_editValues" Disabled="@(!_canEdit || IsBusy)" />
-            </div>
+            @if (EditorMode)
+            {
+                <div class="recipes-edit-mode" title="@(_canEdit ? "Edit saved recipe values" : "Sign in to edit recipe values")">
+                    <RadzenLabel Text="Edit values" Component="recipe-edit-values" />
+                    <RadzenSwitch Name="recipe-edit-values" @bind-Value="_editValues" Disabled="@(!_canEdit || IsBusy)" />
+                </div>
+
+                <RadzenButton Text="Back to recipes" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@OpenRecipes" />
+            }
 
             <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@RefreshAsync" />
         </div>
@@ -48,18 +56,21 @@
         <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@_error</RadzenAlert>
     }
 
-    <div class="recipes-management">
-        <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!_canEdit || IsBusy || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
-        <RadzenButton Text="Copy" Icon="content_copy" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Copy))" />
-        <RadzenButton Text="Rename" Icon="drive_file_rename_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Rename))" />
+    @if (EditorMode)
+    {
+        <div class="recipes-management">
+            <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!_canEdit || IsBusy || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
+            <RadzenButton Text="Copy" Icon="content_copy" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Copy))" />
+            <RadzenButton Text="Rename" Icon="drive_file_rename_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Rename))" />
 
-        <span class="recipes-management-divider" aria-hidden="true"></span>
+            <span class="recipes-management-divider" aria-hidden="true"></span>
 
-        <RadzenButton Text="Add stage" Icon="playlist_add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanAddStage)" Click="@AddStageAsync" />
-        <RadzenButton Text="Up" Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageUp)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveUp))" />
-        <RadzenButton Text="Down" Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageDown)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveDown))" />
-        <RadzenButton Text="Delete stage" Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Disabled="@(!CanChangeStage)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.Delete))" />
-    </div>
+            <RadzenButton Text="Add stage" Icon="playlist_add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanAddStage)" Click="@AddStageAsync" />
+            <RadzenButton Text="Up" Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageUp)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveUp))" />
+            <RadzenButton Text="Down" Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageDown)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveDown))" />
+            <RadzenButton Text="Delete stage" Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Disabled="@(!CanChangeStage)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.Delete))" />
+        </div>
+    }
 
     <RadzenCard class="recipes-card">
         <div class="recipes-heading">
@@ -73,6 +84,13 @@
                 {
                     <RadzenBadge Text="Current" BadgeStyle="BadgeStyle.Success" />
                 }
+            }
+
+            @if (!EditorMode)
+            {
+                <div class="recipes-open-editor">
+                    <RadzenButton Text="Edit recipes" Icon="edit_note" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@OpenEditor" />
+                </div>
             }
         </div>
 
@@ -99,7 +117,7 @@
                         <Template Context="stage">
                             @if (stage.Parameters.TryGetValue(column.Id, out var parameter))
                             {
-                                <button type="button" class="recipes-value" disabled="@(!_editValues || !_canEdit || IsBusy)" title="@(_editValues ? "Edit saved value" : "Enable Edit values to change this parameter")" @onclick="@(() => EditParameterAsync(stage, column))">
+                                <button type="button" class="recipes-value" disabled="@(!EditorMode || !_editValues || !_canEdit || IsBusy)" title="@(EditorMode ? _editValues ? "Edit saved value" : "Enable Edit values to change this parameter" : "Saved recipe value")" @onclick="@(() => EditParameterAsync(stage, column))">
                                     @if (column.Kind == RecipeParameterKind.CheckBox)
                                     {
                                         var isChecked = parameter.Value != 0;
@@ -123,9 +141,9 @@
                 }
             </Columns>
         </RadzenDataGrid>
-
     </RadzenCard>
 </div>
+
 
 @code {
     private readonly CancellationTokenSource _stop = new();
@@ -149,7 +167,8 @@
     private IReadOnlyList<RecipeColumnDto> Columns => _snapshot?.Columns ?? [];
 
     /// <summary>
-    /// Определяет режим пользователя и получает первый рецепт.
+    /// Разрешает изменение только на странице редактора и получает первый рецепт.
+    /// Основная страница остаётся в режиме просмотра даже у авторизованного пользователя.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
@@ -158,7 +177,7 @@
         if (_disposed)
             return;
 
-        _canEdit = state.User.Identity?.IsAuthenticated == true;
+        _canEdit = EditorMode && state.User.Identity?.IsAuthenticated == true;
         await RefreshAsync();
     }
 

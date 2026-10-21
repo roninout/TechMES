@@ -16,12 +16,12 @@
 
     private int _revision;
 
-    /// <summary>Открывает режим в том же окне; NavigationLock страницы защищает черновики.</summary>
+    /// <summary>Открывает редактор в том же окне; NavigationLock текущей страницы защищает черновики.</summary>
     private void ChangeView(string value)
     {
         if (Disabled || value == View) return;
 
-        var path = value switch { "parameters" => "/recipes/parameters", "stages" => "/recipes/stages", _ => "/recipes" };
+        var path = value switch { "parameters" => "/recipes/parameters", "stages" => "/recipes/stages", _ => "/recipes/editor" };
 
         Navigation.NavigateTo(FamilyId is > 0 ? $"{path}?family={FamilyId}" : path);
         _revision++;

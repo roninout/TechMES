@@ -46,9 +46,15 @@
     box-sizing: border-box;
 }
 
-/* Одна высота для всех элементов центрального заголовка. */
-.stage-main-header {
+/* Общая высота полей и кнопок; ширина правой группы ограничена. */
+.stage-editor {
     --recipe-stage-control-height: var(--rz-input-height, 36px);
+    --recipe-stage-fields-width: 500px;
+    --recipe-stage-name-width: 320px;
+    --recipe-stage-code-width: 64px;
+}
+
+.stage-main-header {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -63,6 +69,17 @@
     max-width: 100%;
 }
 
+/* Свободное место остаётся между семейством и группой Name/Code. */
+.stage-fields {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 0 1 var(--recipe-stage-fields-width);
+    max-width: 100%;
+    min-width: 0;
+    margin-left: auto;
+}
+
 .stage-name-field, .stage-code-field {
     display: flex;
     align-items: center;
@@ -71,8 +88,7 @@
 }
 
 .stage-name-field {
-    flex: 1 1 180px;
-    min-width: 180px;
+    flex: 1;
 }
 
 .stage-code-field {
@@ -90,28 +106,36 @@
 .stage-name-field ::deep .rz-textbox {
     flex: 1;
     min-width: 0;
+    max-width: var(--recipe-stage-name-width);
 }
 
 .stage-code-field ::deep .rz-textbox {
-    width: 80px;
-    min-width: 80px;
+    width: var(--recipe-stage-code-width);
+    min-width: var(--recipe-stage-code-width);
 }
 
-.stage-main-actions {
+/* Кнопки всегда под прокручиваемым списком стадий. */
+.stage-definition-actions {
     display: flex;
     align-items: center;
     flex-shrink: 0;
     gap: 8px;
-    margin-left: auto;
+    padding-top: 8px;
 }
 
-.stage-main-header ::deep .rz-dropdown,
-.stage-main-header ::deep .rz-textbox,
-.stage-main-header ::deep .rz-button {
-    height: var(--recipe-stage-control-height);
-    min-height: var(--recipe-stage-control-height);
-    box-sizing: border-box;
-}
+    .stage-definition-actions ::deep .rz-button {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+    }
+
+    .stage-main-header ::deep .rz-dropdown,
+    .stage-main-header ::deep .rz-textbox,
+    .stage-definition-actions ::deep .rz-button {
+        height: var(--recipe-stage-control-height);
+        min-height: var(--recipe-stage-control-height);
+        box-sizing: border-box;
+    }
 
 .stage-main-header > .stage-validation {
     flex-basis: 100%;

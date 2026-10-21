@@ -16,20 +16,27 @@ public partial class Recipes
     private bool CanManageRecipe => _canEdit && !IsBusy && _snapshot is not null;
     private int? NewRecipeSourceId => _snapshot?.Recipe.Id ?? SelectedPage?.BaseRecipeId;
 
-    /// <summary>При первом открытии принимает семейство из общего переключателя режимов.</summary>
+    /// <summary>При первом открытии восстанавливает Unit и рецепт из ссылки, затем сохраняет текущий выбор.</summary>
     private async Task ReloadCatalogAndRecipeAsync(int? preferredRecipeId, CancellationToken ct)
     {
         var catalog = await RecipeApi.GetCatalogAsync(ct);
         ct.ThrowIfCancellationRequested();
 
+        var firstLoad = !_catalogLoaded;
         _catalog = catalog;
 
-        if (!_catalogLoaded || (_selectedPageId.HasValue && !_catalog.Pages.Any(page => page.Id == _selectedPageId)))
-            _selectedPageId = (_catalog.Pages.FirstOrDefault(page => page.BaseRecipeId == RecipeEditorNavigation.ReadFamily(Navigation.Uri)) ?? _catalog.Pages.FirstOrDefault())?.Id;
+        if (firstLoad)
+        {
+            RestoreInitialUnit();
+        }
+        else if (_selectedPageId.HasValue && !_catalog.Pages.Any(page => page.Id == _selectedPageId))
+        {
+            _selectedPageId = _catalog.Pages.FirstOrDefault()?.Id;
+        }
 
         _catalogLoaded = true;
 
-        SelectAvailableRecipes(preferredRecipeId);
+        SelectAvailableRecipes(preferredRecipeId ?? (firstLoad ? ReadQueryId("recipe") : null));
         await LoadSelectedRecipeAsync(ct);
     }
 

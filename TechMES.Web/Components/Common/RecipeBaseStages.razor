@@ -66,21 +66,18 @@
 
                             @if (_draft is not null)
                             {
-                                <div class="stage-name-field">
-                                    <label for="recipe-stage-name">Name</label>
-                                    <RadzenTextBox id="recipe-stage-name" @bind-Value="_draft.Name" Immediate="true" Disabled="@(!CanEdit)" Style="width: 100%;" aria-label="Stage name" />
-                                </div>
+                                <div class="stage-fields">
+                                    <div class="stage-name-field">
+                                        <label for="recipe-stage-name">Name</label>
+                                        <RadzenTextBox id="recipe-stage-name" @bind-Value="_draft.Name" Immediate="true" Disabled="@(!CanEdit)" Style="width: 100%;" aria-label="Stage name" />
+                                    </div>
 
-                                <div class="stage-code-field">
-                                    <label for="recipe-stage-code">Code</label>
-                                    <RadzenTextBox id="recipe-stage-code" @bind-Value="_draft.Code" Immediate="true" Disabled="@(!CanEdit)" Style="width: 80px;" aria-label="Template code" />
+                                    <div class="stage-code-field">
+                                        <label for="recipe-stage-code">Code</label>
+                                        <RadzenTextBox id="recipe-stage-code" @bind-Value="_draft.Code" Immediate="true" Disabled="@(!CanEdit)" aria-label="Template code" />
+                                    </div>
                                 </div>
                             }
-
-                            <div class="stage-main-actions">
-                                <RadzenButton Text="New stage" Icon="add_circle_outline" ButtonStyle="ButtonStyle.Success" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!CanManage)" Click="@NewStageAsync" />
-                                <RadzenButton Text="Delete" Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!CanDeleteStage)" Click="@DeleteAsync" />
-                            </div>
 
                             @if (_draft is not null && string.IsNullOrWhiteSpace(_draft.Code))
                             {
@@ -160,7 +157,13 @@
                                 <small class="stage-hint">@(_stages.Count == 0 ? "No stages in this base recipe." : "No stages match the search.")</small>
                             }
                         </div>
+
+                        <div class="stage-definition-actions">
+                            <RadzenButton Text="New stage" Icon="add_circle_outline" ButtonStyle="ButtonStyle.Success" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!CanManage)" Click="@NewStageAsync" />
+                            <RadzenButton Text="Delete" Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!CanDeleteStage)" Click="@DeleteAsync" />
+                        </div>
                     </aside>
+
                 </div>
             </ChildContent>
 
