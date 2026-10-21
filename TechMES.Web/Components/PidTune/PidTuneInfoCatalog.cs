@@ -1,7 +1,7 @@
 using System.Globalization;
 using TechMES.Contracts.Param.Tuning;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.PidTune;
 
 /// <summary>
 /// Формирует русскоязычную справку PID Tune.
