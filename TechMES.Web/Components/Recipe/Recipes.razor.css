@@ -374,6 +374,32 @@
         min-width: 0;
     }
 
+    /* Онлайн-значения используют тот же тематический фон, что и таблица. */
+    .recipes-view .recipes-open-editor {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .recipes-plc-controls,
+    .recipes-plc-status {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .recipes-plc-status {
+        min-height: 28px;
+        margin-bottom: 0.5rem;
+        color: var(--rz-text-secondary-color);
+        font-size: 0.85rem;
+    }
+
+    .recipes-plc-unavailable {
+        color: var(--rz-warning);
+    }
+
 @media (max-width: 760px) {
     .recipes-editor .recipes-template-list {
         padding-top: 0;

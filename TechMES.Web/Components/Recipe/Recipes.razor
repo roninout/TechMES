@@ -153,12 +153,31 @@
                     }
 
                     <div class="recipes-open-editor">
+                        <div class="recipes-plc-controls" title="Select a Unit and its current recipe to read PLC values.">
+                            <RadzenLabel Text="PLC values" Component="recipe-plc-values" />
+                            <RadzenSwitch Name="recipe-plc-values" Value="@_plcEnabled" Change="@ChangePlcMode" Disabled="@(IsBusy || (!CanReadPlc && !_plcEnabled))" />
+                        </div>
+
                         <RadzenButton Text="Edit recipes" Icon="edit_note" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@OpenEditor" />
                     </div>
+
+                </div>
+            }
+
+            @if (_plcEnabled)
+            {
+                <div class="recipes-plc-status" role="status">
+                    @if (_plcLoading)
+                    {
+                        <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" ShowValue="false" Style="width: 18px; height: 18px;" AriaLabel="Reading PLC values" />
+                    }
+
+                    <span>@PlcStatus</span>
                 </div>
             }
 
             <div class="recipes-grid-host" @ondragover:preventDefault="@(EditorMode && CanAddStage)" @ondrop="@DropStageAtEndAsync">
+
                 <RadzenDataGrid RowRender="@RenderStageRow" @key="_snapshot" Data="@Stages" TItem="RecipeStageDto" @bind-Value="_selectedStages" SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="@(!IsBusy)" AllowSorting="false" AllowFiltering="false" AllowPaging="false" AllowColumnResize="true" IsLoading="@_loading" ShowEmptyMessage="@(!_loading)" EmptyText="No recipe stages to display." Density="Density.Compact" class="recipes-grid">
                     <LoadingTemplate>
                         <JournalGridLoading />
@@ -196,10 +215,17 @@
                                 <Template Context="stage">
                                     @if (stage.Parameters.TryGetValue(column.Id, out var parameter))
                                     {
-                                        <button type="button" class="recipes-value" disabled="@(!CanAddStage)" title="@(EditorMode ? "Edit recipe value" : "Saved recipe value")" @onclick="@(() => EditParameterAsync(stage, column))">
-                                            @if (column.Kind == RecipeParameterKind.CheckBox)
+                                        var plcValue = FindPlcValue(stage, column);
+                                        double? displayedValue = _plcEnabled ? plcValue?.Value : parameter.Value;
+
+                                        <button type="button" class="recipes-value" disabled="@(!CanAddStage)" title="@RecipeValueTitle(plcValue)" @onclick="@(() => EditParameterAsync(stage, column))">
+                                            @if (!displayedValue.HasValue)
                                             {
-                                                var isChecked = parameter.Value != 0;
+                                                <span class="recipes-plc-unavailable">—</span>
+                                            }
+                                            else if (column.Kind == RecipeParameterKind.CheckBox)
+                                            {
+                                                var isChecked = displayedValue.Value != 0;
 
                                                 <span role="img" aria-label="@(isChecked ? "On" : "Off")" title="@(isChecked ? "On" : "Off")" class="@(isChecked ? "recipes-check is-on" : "recipes-check")">
                                                     <RadzenIcon Icon="@(isChecked ? "check_box" : "check_box_outline_blank")" />
@@ -207,7 +233,7 @@
                                             }
                                             else
                                             {
-                                                <span>@FormatValue(parameter.Value, column.Format)</span>
+                                                <span>@FormatValue(displayedValue.Value, column.Format)</span>
                                             }
                                         </button>
                                     }
@@ -253,6 +279,7 @@
                 }
 
             </div>
+
         </RadzenCard>
     </div>
 </div>
@@ -363,6 +390,7 @@
 
         var ct = _stop.Token;
 
+        StopPlcReading();
         _loading = true;
         _error = null;
         _snapshot = null;
@@ -384,7 +412,11 @@
         }
         finally
         {
-            if (!_disposed) _loading = false;
+            if (!_disposed)
+            {
+                _loading = false;
+                StartPlcReading();
+            }
         }
     }
 
@@ -447,6 +479,7 @@
     public void Dispose()
     {
         _disposed = true;
+        StopPlcReading();
         _stop.Cancel();
 
         if (_dialogOpen) DialogService.Close();

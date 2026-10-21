@@ -26,6 +26,9 @@ public sealed class RecipeApiClient
     /// <summary> Получает снимок выбранного рецепта. </summary>
     public Task<RecipeSnapshotDto> GetAsync(int recipeId, CancellationToken ct = default) => ReadAsync<RecipeSnapshotDto>($"api/recipes/{recipeId}", ct);
 
+    /// <summary>Читает PLC отдельно от сохранённого снимка рецепта.</summary>
+    public Task<RecipePlcSnapshotDto> ReadPlcAsync(int recipeId, int pageId, string layoutStamp, CancellationToken ct = default) => ReadAsync<RecipePlcSnapshotDto>($"api/recipes/{recipeId}/plc?pageId={pageId}&layoutStamp={Uri.EscapeDataString(layoutStamp)}", ct);
+
     /// <summary> Добавляет существующую Windows identity и сохраняет одну ячейку в БД. </summary>
     public async Task<RecipeParameterSaveResult> SaveParameterAsync(int recipeId, RecipeParameterSaveRequest request, CancellationToken ct = default)
     {
