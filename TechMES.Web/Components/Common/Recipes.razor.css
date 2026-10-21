@@ -323,6 +323,64 @@
     color: var(--rz-success);
 }
 
+/* Размеры элементов редактора. Recipe: 480 × 1.3 = 624px; Unit: 190 / 2 = 95px. */
+.recipes-editor {
+    --recipe-unit-width: 95px;
+    --recipe-selection-width: 624px;
+    --recipe-control-height: 36px;
+}
+
+    /* Поиск начинается на одной высоте с элементами внутри RadzenCard. */
+    .recipes-editor .recipes-template-list {
+        padding-top: 16px;
+        box-sizing: border-box;
+    }
+
+    .recipes-editor .recipes-card-toolbar {
+        align-items: center;
+    }
+
+    .recipes-editor .recipes-selectors {
+        align-items: center;
+        flex: 1 1 600px;
+    }
+
+    .recipes-editor .recipes-field {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .recipes-editor .recipes-unit-field {
+        flex: 0 0 auto;
+    }
+
+    .recipes-editor .recipes-field-wide {
+        flex: 1 1 320px;
+        max-width: calc(var(--recipe-selection-width) + 52px);
+    }
+
+    /* Одинаковая высота поиска, комбобоксов и кнопок в строке выбора. */
+    .recipes-editor .recipes-template-list ::deep > .rz-textbox,
+    .recipes-editor .recipes-card-toolbar ::deep .rz-dropdown,
+    .recipes-editor .recipes-card-toolbar ::deep .rz-button {
+        height: var(--recipe-control-height);
+    }
+
+@media (max-width: 760px) {
+    .recipes-editor .recipes-template-list {
+        padding-top: 0;
+    }
+
+    .recipes-editor .recipes-selectors {
+        flex-basis: 100%;
+    }
+
+    .recipes-editor .recipes-field-wide {
+        flex-basis: 240px;
+    }
+}
+
 @media (max-width: 1050px) {
     .recipes-workspace-editor {
         grid-template-columns: 220px minmax(0, 1fr);

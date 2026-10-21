@@ -1,0 +1,15 @@
+﻿@using TechMES.Contracts.Recipes
+
+<span style="display: inline-flex; align-items: center; gap: 8px; max-width: 100%;">
+    <strong style="overflow: hidden; text-overflow: ellipsis;">@Recipe.DisplayName</strong>
+
+    @if (Current)
+    {
+        <RadzenBadge Text="Current" BadgeStyle="BadgeStyle.Success" Style="flex-shrink: 0;" />
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public RecipeListItemDto Recipe { get; set; } = new();
+    [Parameter] public bool Current { get; set; }
+}

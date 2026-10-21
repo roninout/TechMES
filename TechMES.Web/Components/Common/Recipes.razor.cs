@@ -24,7 +24,7 @@ public partial class Recipes
 
         if (firstLoad)
         {
-            RestoreInitialUnit();
+            RestoreRecipeScope();
         }
         else if (_selectedPageId.HasValue && !_catalog.Pages.Any(page => page.Id == _selectedPageId))
         {
@@ -43,8 +43,11 @@ public partial class Recipes
         if (operation == RecipeChangeOperation.Rename)
             return _snapshot?.Recipe.Name ?? "";
 
-        var basis = operation == RecipeChangeOperation.Copy ? $"{_snapshot?.Recipe.Name} - copy"
-            : string.IsNullOrWhiteSpace(SelectedPage?.Page) ? "New recipe" : $"{SelectedPage.Page} - New recipe";
+        var basis = operation == RecipeChangeOperation.Copy ? $"{_snapshot?.Recipe.Name} - copy" : "New recipe";
+        var pageName = CreationPage?.Page;
+
+        if (!string.IsNullOrWhiteSpace(pageName) && !basis.Contains(pageName, StringComparison.OrdinalIgnoreCase))
+            basis = $"{pageName} - {basis}";
 
         var suffix = 1;
 
@@ -83,8 +86,8 @@ public partial class Recipes
 
             var description = operation switch
             {
-                RecipeChangeOperation.Create => "Creates an empty recipe in the same recipe family.",
-                RecipeChangeOperation.Copy => "Copies the saved recipe, including all stages and parameter values.",
+                RecipeChangeOperation.Create => "Creates an empty working recipe in the same recipe family.",
+                RecipeChangeOperation.Copy => "Creates a working copy in the same family, including all stages and parameter values.",
                 _ => "Changes the draft name. Apply it with the main Save button."
             };
 
@@ -94,7 +97,7 @@ public partial class Recipes
             {
                 [nameof(RecipeNameDialog.InitialName)] = SuggestRecipeName(operation),
                 [nameof(RecipeNameDialog.Description)] = description,
-                [nameof(RecipeNameDialog.RequiredNamePart)] = SelectedPage?.Page
+                [nameof(RecipeNameDialog.RequiredNamePart)] = operation == RecipeChangeOperation.Rename ? SelectedPage?.Page : CreationPage?.Page
             }, new DialogOptions { Width = "560px", CloseDialogOnOverlayClick = false, CloseDialogOnEsc = true });
 
             _dialogOpen = false;
@@ -122,6 +125,14 @@ public partial class Recipes
 
             if (result.Status != RecipeChangeStatus.Saved || result.RecipeId is not int recipeId)
                 throw new InvalidOperationException("Unexpected recipe operation response. Refresh the list.");
+
+            // New/Copy, как и раньше, создают рабочий рецепт, а не новое семейство.
+            if (IsBaseRecipeMode)
+            {
+                _selectedPageId = CreationPage?.Id;
+                _recipeScope = "recipes";
+                _selectorRevision++;
+            }
 
             savedRecipeId = recipeId;
             _selectedRecipeId = recipeId;

@@ -48,6 +48,7 @@ public partial class Recipes
 
         var query = new Dictionary<string, string?>
         {
+            ["scope"] = EditorMode ? _recipeScope : null,
             ["family"] = EditorFamilyId?.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["recipe"] = _selectedRecipeId?.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["unit"] = _selectedPageId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "all"

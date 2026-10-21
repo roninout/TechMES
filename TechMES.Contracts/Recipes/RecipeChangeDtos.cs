@@ -1,13 +1,12 @@
 ﻿namespace TechMES.Contracts.Recipes;
 
-/// <summary>
-/// Операции управления сохранёнными рецептами.
-/// </summary>
+/// <summary>Операции управления сохранёнными рецептами.</summary>
 public enum RecipeChangeOperation
 {
     Create = 1,
     Copy = 2,
-    Rename = 3
+    Rename = 3,
+    Delete = 4
 }
 
 /// <summary>
@@ -20,13 +19,15 @@ public sealed class RecipeChangeRequest
     public int SourceRecipeId { get; set; }
     public string Name { get; set; } = "";
     public string? ExpectedName { get; set; }
+
+    /// <summary>Исходный снимок защищает удаление от изменений другим пользователем.</summary>
+    public RecipeSnapshotDto? ExpectedSnapshot { get; set; }
+
     public string? Actor { get; set; }
     public List<string> ActorGroups { get; set; } = [];
 }
 
-/// <summary>
-/// Результат операции без привязки к HTTP.
-/// </summary>
+/// <summary>Результат операции без привязки к HTTP.</summary>
 public enum RecipeChangeStatus
 {
     Saved = 1,
@@ -36,7 +37,7 @@ public enum RecipeChangeStatus
 }
 
 /// <summary>
-/// RecipeId — ID созданного, скопированного или переименованного рецепта.
+/// RecipeId — ID созданного, скопированного, переименованного или удалённого рецепта.
 /// </summary>
 public sealed class RecipeChangeResult
 {

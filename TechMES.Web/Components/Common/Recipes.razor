@@ -94,48 +94,60 @@
         }
 
         <RadzenCard class="recipes-card">
+
             @if (EditorMode)
             {
                 <div class="recipes-card-toolbar">
                     <div class="recipes-selectors">
-                        <div class="recipes-field">
-                            <RadzenLabel Text="Unit" Component="recipe-unit" />
-                            <RadzenDropDown @key="_selectorRevision" TValue="int?" Name="recipe-unit" Data="@_catalog.Pages" TextProperty="Page" ValueProperty="Id" Value="@_selectedPageId" Change="@OnPageChangedAsync" AllowClear="true" Placeholder="All units" Disabled="@(IsBusy || _dialogOpen)" Style="width: 190px;" />
-                        </div>
+                        @if (!IsBaseRecipeMode)
+                        {
+                            <div class="recipes-field recipes-unit-field">
+                                <RadzenLabel Text="Unit" Component="recipe-unit" />
+                                <RadzenDropDown @key="_selectorRevision" TValue="int?" Name="recipe-unit" Data="@_catalog.Pages" TextProperty="Page" ValueProperty="Id" Value="@_selectedPageId" Change="@OnPageChangedAsync" AllowClear="false" Disabled="@(IsBusy || _dialogOpen)" Style="width: var(--recipe-unit-width);" />
+                            </div>
+                        }
+
                         <div class="recipes-field recipes-field-wide">
                             <RadzenLabel Text="Recipe" Component="recipe-selection" />
-                            <RadzenDropDown @key="_selectorRevision" TValue="int?" Name="recipe-selection" Data="@_availableRecipes" TextProperty="DisplayName" ValueProperty="Id" Value="@_selectedRecipeId" Change="@OnRecipeChangedAsync" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@(IsBusy || _dialogOpen)" Style="width: 100%;" />
+                            <RadzenDropDown @key="_selectorRevision" TValue="int?" Name="recipe-selection" Data="@_availableRecipes" TextProperty="DisplayName" ValueProperty="Id" Value="@_selectedRecipeId" Change="@OnRecipeChangedAsync" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@(IsBusy || _dialogOpen)" Style="width: 100%;">
+                                <Template Context="item">
+                                    <RecipeChoiceLabel Recipe="@((RecipeListItemDto)item)" Current="@IsCurrentRecipe(((RecipeListItemDto)item).Id)" />
+                                </Template>
+                                <ValueTemplate Context="item">
+                                    <RecipeChoiceLabel Recipe="@((RecipeListItemDto)item)" Current="@IsCurrentRecipe(((RecipeListItemDto)item).Id)" />
+                                </ValueTemplate>
+                            </RadzenDropDown>
                         </div>
                     </div>
 
                     <div class="recipes-management">
-                        <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!_canEdit || IsBusy || _dialogOpen || _uncertainDraft || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
+                        <RadzenButton Text="New" Icon="add_circle_outline" ButtonStyle="ButtonStyle.Success" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!_canEdit || IsBusy || _dialogOpen || _uncertainDraft || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
                         <RadzenButton Text="Copy" Icon="content_copy" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Copy))" />
                         <RadzenButton Text="Rename" Icon="drive_file_rename_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Rename))" />
+                        <RadzenButton Text="Delete" Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!CanDeleteRecipe)" Click="@DeleteRecipeAsync" title="@(IsCurrentRecipe(_selectedRecipeId) ? "A Current recipe cannot be deleted." : "Delete the selected recipe")" />
                     </div>
                 </div>
             }
+            else
+            {
+                <div class="recipes-heading">
+                    <span class="recipes-name">@(_snapshot?.Recipe.DisplayName ?? "Select a recipe")</span>
 
-            <div class="recipes-heading">
-                <span class="recipes-name">@(_snapshot?.Recipe.DisplayName ?? "Select a recipe")</span>
-
-                @if (_snapshot is not null)
-                {
-                    <RadzenBadge Text="@($"Stages: {Stages.Count}")" BadgeStyle="BadgeStyle.Light" />
-
-                    @if (SelectedPage?.RecipeId == _snapshot.Recipe.Id)
+                    @if (_snapshot is not null)
                     {
-                        <RadzenBadge Text="Current" BadgeStyle="BadgeStyle.Success" />
-                    }
-                }
+                        <RadzenBadge Text="@($"Stages: {Stages.Count}")" BadgeStyle="BadgeStyle.Light" />
 
-                @if (!EditorMode)
-                {
+                        @if (IsCurrentRecipe(_snapshot.Recipe.Id))
+                        {
+                            <RadzenBadge Text="Current" BadgeStyle="BadgeStyle.Success" />
+                        }
+                    }
+
                     <div class="recipes-open-editor">
                         <RadzenButton Text="Edit recipes" Icon="edit_note" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@OpenEditor" />
                     </div>
-                }
-            </div>
+                </div>
+            }
 
             <div class="recipes-grid-host" @ondragover:preventDefault="@(EditorMode && CanAddStage)" @ondrop="@DropStageAtEndAsync">
                 <RadzenDataGrid RowRender="@RenderStageRow" @key="_snapshot" Data="@Stages" TItem="RecipeStageDto" @bind-Value="_selectedStages" SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="@(!IsBusy)" AllowSorting="false" AllowFiltering="false" AllowPaging="false" AllowColumnResize="true" IsLoading="@_loading" ShowEmptyMessage="@(!_loading)" EmptyText="No recipe stages to display." Density="Density.Compact" class="recipes-grid">
@@ -214,7 +226,12 @@
                 @if (EditorMode)
                 {
                     <div class="recipes-drop-end @(_dropAtEnd ? "recipes-drop-end-active" : "")" @ondragenter="@MarkStageDropEnd">
-                        <span>Drop a stage here to append</span>
+                        <RadzenSelectBar @key="_selectorRevision" TValue="string" Value="@_recipeScope" ValueChanged="@ChangeRecipeScopeAsync" Disabled="@(IsBusy || _dialogOpen)" AriaLabel="Recipe type">
+                            <Items>
+                                <RadzenSelectBarItem Text=" Base recipes" Value="@("base")" Icon="account_tree" />
+                                <RadzenSelectBarItem Text=" Recipes" Value="@("recipes")" Icon="menu_book" />
+                            </Items>
+                        </RadzenSelectBar>
 
                         <div class="recipes-tag-switch">
                             <RadzenLabel Text="PLC tag prefix" Component="recipe-show-stage-tags" />
@@ -222,6 +239,7 @@
                         </div>
                     </div>
                 }
+
             </div>
         </RadzenCard>
     </div>
@@ -287,23 +305,6 @@
         if (!await DiscardRecipeAsync()) { _selectorRevision++; return; }
 
         await RunAsync(async ct => { _selectedRecipeId = id; await LoadSelectedRecipeAsync(ct); });
-    }
-
-    /// <summary>Сохраняет прежний отбор по семейству и имени Unit.</summary>
-    private void SelectAvailableRecipes(int? preferredRecipeId)
-    {
-        var page = SelectedPage;
-
-        _availableRecipes = page is null ? _catalog.Recipes.ToList() : _catalog.Recipes.Where(recipe =>
-            recipe.Id == page.RecipeId || (recipe.Id != page.BaseRecipeId && recipe.BaseRecipeId == page.BaseRecipeId && recipe.Name.Contains(page.Page, StringComparison.OrdinalIgnoreCase))).ToList();
-
-        if (preferredRecipeId.HasValue && _availableRecipes.Any(recipe => recipe.Id == preferredRecipeId))
-        {
-            _selectedRecipeId = preferredRecipeId;
-            return;
-        }
-
-        _selectedRecipeId = page is not null && _availableRecipes.Any(recipe => recipe.Id == page.RecipeId) ? page.RecipeId : _availableRecipes.FirstOrDefault()?.Id;
     }
 
     /// <summary>Загружает снимок, шаблоны и метаданные локального редактора.</summary>

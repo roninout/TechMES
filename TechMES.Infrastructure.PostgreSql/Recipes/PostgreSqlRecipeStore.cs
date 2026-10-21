@@ -245,6 +245,10 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
     {
         var name = request.Name?.Trim() ?? "";
 
+        // Удаление использует отдельную транзакцию с проверкой Current и зависимостей.
+        if (request.Operation == RecipeChangeOperation.Delete)
+            return await DeleteRecipeAsync(request, ct);
+
         if (name.Length == 0 || request.SourceRecipeId <= 0 || !Enum.IsDefined(request.Operation))
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Select a recipe and enter a valid name." };
 
