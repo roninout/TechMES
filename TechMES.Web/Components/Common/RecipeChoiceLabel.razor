@@ -1,15 +1,23 @@
 ﻿@using TechMES.Contracts.Recipes
 
-<span style="display: inline-flex; align-items: center; gap: 8px; max-width: 100%;">
-    <strong style="overflow: hidden; text-overflow: ellipsis;">@Recipe.DisplayName</strong>
+<span class="recipe-choice">
+    <span class="recipe-choice-name" style="font-weight: @(Current ? "700" : "400");">@Recipe.DisplayName</span>
 
-    @if (Current)
-    {
-        <RadzenBadge Text="Current" BadgeStyle="BadgeStyle.Success" Style="flex-shrink: 0;" />
-    }
+    <span class="recipe-choice-badges">
+        @if (Current)
+        {
+            <RadzenBadge Text="Current" BadgeStyle="BadgeStyle.Success" />
+        }
+
+        @if (AssignedBase)
+        {
+            <RadzenBadge Text="Base" BadgeStyle="BadgeStyle.Info" title="Assigned as the base recipe" />
+        }
+    </span>
 </span>
 
 @code {
     [Parameter, EditorRequired] public RecipeListItemDto Recipe { get; set; } = new();
     [Parameter] public bool Current { get; set; }
+    [Parameter] public bool AssignedBase { get; set; }
 }

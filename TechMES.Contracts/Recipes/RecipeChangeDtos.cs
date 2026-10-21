@@ -6,12 +6,13 @@ public enum RecipeChangeOperation
     Create = 1,
     Copy = 2,
     Rename = 3,
-    Delete = 4
+    Delete = 4,
+    SetBase = 5
 }
 
 /// <summary>
-/// SourceRecipeId задаёт исходный рецепт и его семейство.
-/// ExpectedName защищает переименование от чужого изменения имени.
+/// SourceRecipeId задаёт исходный рецепт.
+/// Ожидаемые данные защищают операции от изменений другим пользователем.
 /// </summary>
 public sealed class RecipeChangeRequest
 {
@@ -20,8 +21,12 @@ public sealed class RecipeChangeRequest
     public string Name { get; set; } = "";
     public string? ExpectedName { get; set; }
 
-    /// <summary>Исходный снимок защищает удаление от изменений другим пользователем.</summary>
+    /// <summary>Исходный снимок рецепта перед удалением или назначением базовым.</summary>
     public RecipeSnapshotDto? ExpectedSnapshot { get; set; }
+
+    /// <summary>Семейство и привязки Unit, показанные перед назначением базового рецепта.</summary>
+    public int? ExpectedBaseRecipeId { get; set; }
+    public List<RecipePageDto> ExpectedPages { get; set; } = [];
 
     public string? Actor { get; set; }
     public List<string> ActorGroups { get; set; } = [];
@@ -36,9 +41,7 @@ public enum RecipeChangeStatus
     Invalid = 4
 }
 
-/// <summary>
-/// RecipeId — ID созданного, скопированного, переименованного или удалённого рецепта.
-/// </summary>
+/// <summary>Идентификатор рецепта, с которым выполнена операция.</summary>
 public sealed class RecipeChangeResult
 {
     public RecipeChangeStatus Status { get; set; }

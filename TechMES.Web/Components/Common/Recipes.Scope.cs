@@ -70,7 +70,7 @@ public partial class Recipes
         });
     }
 
-    /// <summary>В редакторе базовые рецепты исключены из списка рабочих; просмотр сохраняет прежний отбор.</summary>
+    /// <summary>Показывает назначенные базовые рецепты и кандидатов; просмотр сохраняет прежний отбор.</summary>
     private void SelectAvailableRecipes(int? preferredRecipeId)
     {
         var baseIds = _catalog.Pages.Select(page => page.BaseRecipeId).ToHashSet();
@@ -78,7 +78,8 @@ public partial class Recipes
 
         if (IsBaseRecipeMode)
         {
-            _availableRecipes = _catalog.Recipes.Where(recipe => baseIds.Contains(recipe.Id)).ToList();
+            // Показываем назначенные базовые рецепты и кандидатов из существующих семейств.
+            _availableRecipes = _catalog.Recipes.Where(recipe => baseIds.Contains(recipe.Id) || (!IsCurrentRecipe(recipe.Id) && recipe.BaseRecipeId is int familyId && baseIds.Contains(familyId))).ToList();
             preferredRecipeId ??= _lastBaseRecipeId;
         }
         else

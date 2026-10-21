@@ -367,6 +367,13 @@
         height: var(--recipe-control-height);
     }
 
+    /* Шаблон выбранного рецепта занимает всю ширину комбобокса. */
+    .recipes-editor .recipes-field-wide ::deep .rz-dropdown-label {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+    }
+
 @media (max-width: 760px) {
     .recipes-editor .recipes-template-list {
         padding-top: 0;

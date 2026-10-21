@@ -7,7 +7,7 @@ namespace TechMES.Web.Components.Common;
 
 public partial class Recipes
 {
-    private bool CanDeleteRecipe => CanManageRecipe && !IsCurrentRecipe(_snapshot?.Recipe.Id) && _savedSnapshot is not null;
+    private bool CanDeleteRecipe => CanManageRecipe && !IsCurrentRecipe(_snapshot?.Recipe.Id) && !IsAssignedBaseRecipe(_snapshot?.Recipe.Id) && _savedSnapshot is not null;
 
     /// <summary>Подтверждает удаление; Runtime повторно проверяет Current и исходный снимок.</summary>
     private async Task DeleteRecipeAsync()
