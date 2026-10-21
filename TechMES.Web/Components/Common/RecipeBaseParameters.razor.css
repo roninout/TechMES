@@ -39,12 +39,12 @@
     table-layout: fixed;
 }
 
-    /* Высота заголовков и строк остаётся общей с Events. */
-    .recipe-parameters-grid-host ::deep .recipe-parameters-grid .rz-grid-table > tbody > tr > td > .rz-cell-data {
-        height: auto;
-        min-height: var(--techmes-journal-content-height);
-        overflow: hidden;
-    }
+/* Высота заголовков и строк остаётся общей с Events. */
+.recipe-parameters-grid-host ::deep .recipe-parameters-grid .rz-grid-table > tbody > tr > td > .rz-cell-data {
+    height: auto;
+    min-height: var(--techmes-journal-content-height);
+    overflow: hidden;
+}
 
 .parameter-cell-editor {
     display: flex;
@@ -53,9 +53,59 @@
     min-width: 0;
 }
 
-    .parameter-cell-editor ::deep .rz-textbox,
-    .parameter-cell-editor ::deep .rz-numeric,
-    .parameter-cell-editor ::deep .rz-dropdown {
-        width: 100%;
-        min-width: 0;
-    }
+.parameter-cell-editor ::deep .rz-textbox,
+.parameter-cell-editor ::deep .rz-numeric,
+.parameter-cell-editor ::deep .rz-dropdown {
+    width: 100%;
+    min-width: 0;
+}
+
+/* Одинаковая ширина комбобокса и кнопки Add. */
+.recipe-parameters-panel {
+    --recipe-parameter-selector-width: 240px;
+    --recipe-parameter-control-height: var(--rz-input-height, 36px);
+}
+
+.recipe-parameters-panel-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    flex-shrink: 0;
+    margin-bottom: 12px;
+}
+
+.recipe-parameters-family, .recipe-parameters-add {
+    width: var(--recipe-parameter-selector-width);
+    max-width: 100%;
+}
+
+.recipe-parameters-panel-toolbar ::deep .rz-dropdown,
+.recipe-parameters-panel-toolbar ::deep .rz-button {
+    height: var(--recipe-parameter-control-height);
+    min-height: var(--recipe-parameter-control-height);
+    box-sizing: border-box;
+}
+
+.recipe-parameters-add {
+    margin-left: auto;
+}
+
+/* Кнопка свободно помещается внутри колонки удаления. */
+.parameter-delete-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+}
+
+.parameter-delete-action ::deep .parameter-delete-button {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 50%;
+}

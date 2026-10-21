@@ -19,13 +19,12 @@
 <NavigationLock ConfirmExternalNavigation="@HasChanges" OnBeforeInternalNavigation="@ConfirmNavigationAsync" />
 
 <div class="recipe-parameters-page">
+
     <RecipeEditorHeader Title="Base recipe parameters">
         <Left>
             <RecipeEditorNavigation View="parameters" FamilyId="@_familyId" Disabled="@(_busy || _dialogOpen)" />
-            <RadzenDropDown @key="_familyVersion" TValue="int?" Name="base-parameter-family" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" AriaLabel="Base recipe" />
         </Left>
         <Right>
-            <RadzenButton Text="Add" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit || _familyId is null)" Click="@AddParameter" />
             <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@RefreshAsync" />
             <RadzenButton Text="@($"Save ({PendingChangeCount})")" Icon="save" Disabled="@(!CanEdit || !HasChanges)" Click="@SaveAsync" />
         </Right>
@@ -43,6 +42,16 @@
     else
     {
         <section class="recipe-parameters-panel" aria-busy="@_busy">
+            <div class="recipe-parameters-panel-toolbar">
+                <div class="recipe-parameters-family">
+                    <RadzenDropDown @key="_familyVersion" TValue="int?" Name="base-parameter-family" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@(_busy || _dialogOpen)" Style="width: 100%;" AriaLabel="Base recipe" />
+                </div>
+
+                <div class="recipe-parameters-add">
+                    <RadzenButton Text="Add" Icon="add_circle_outline" ButtonStyle="ButtonStyle.Success" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!CanEdit || _familyId is null)" Click="@AddParameter" Style="width: 100%;" />
+                </div>
+            </div>
+
             @if (_cellError is not null)
             {
                 <div class="parameter-cell-error">@_cellError</div>
@@ -142,12 +151,15 @@
                             </EditTemplate>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="48px" MaxWidth="48px" Sortable="false" TextAlign="TextAlign.Center">
+                        <RadzenDataGridColumn TItem="RecipeBaseParameterDto" Width="72px" MaxWidth="72px" Sortable="false" TextAlign="TextAlign.Center">
                             <Template Context="row">
-                                <RadzenButton Icon="@(row.Id < 0 ? "close" : "delete_outline")" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanEdit)" Click="@(() => DeleteAsync(row))" />
+                                <div class="parameter-delete-action">
+                                    <RadzenButton Icon="@(row.Id < 0 ? "close" : "delete_outline")" ButtonStyle="ButtonStyle.Danger" Shade="Shade.Lighter" Variant="Variant.Flat" Size="ButtonSize.Small" Disabled="@(!CanEdit)" Click="@(() => DeleteAsync(row))" class="parameter-delete-button" aria-label="Delete parameter" />
+                                </div>
                             </Template>
                         </RadzenDataGridColumn>
                     </Columns>
+
                 </RadzenDataGrid>
             </div>
         </section>

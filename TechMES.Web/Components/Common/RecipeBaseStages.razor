@@ -21,11 +21,8 @@
     <RecipeEditorHeader Title="Base recipe stages">
         <Left>
             <RecipeEditorNavigation View="stages" FamilyId="@_familyId" Disabled="@(_busy || _dialogOpen)" />
-            <RadzenDropDown @key="_revision" TValue="int?" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@_busy" Style="width: 240px;" AriaLabel="Base recipe" />
         </Left>
         <Right>
-            <RadzenButton Text="New stage" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManage)" Click="@NewStageAsync" />
-            <RadzenButton Text="Delete" Icon="delete_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanDeleteStage)" Click="@DeleteAsync" />
             <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@_busy" Click="@RefreshAsync" />
             <RadzenButton Text="Save" Icon="save" Disabled="@(!CanSave)" Click="@SaveAsync" />
         </Right>
@@ -62,21 +59,37 @@
                             </div>
                         }
 
-                        @if (_draft is not null)
-                        {
-                            <div class="stage-main-header">
-                                <RadzenTextBox @bind-Value="_draft.Name" Immediate="true" Placeholder="Stage name" Disabled="@(!CanEdit)" Style="width: 100%;" AriaLabel="Stage name" />
-
-                                <div class="stage-code-field">
-                                    <RadzenTextBox @bind-Value="_draft.Code" Immediate="true" Placeholder="Code" Disabled="@(!CanEdit)" Style="width: 100%;" AriaLabel="Template code" />
-
-                                    @if (string.IsNullOrWhiteSpace(_draft.Code))
-                                    {
-                                        <small class="stage-validation">Code is required.</small>
-                                    }
-                                </div>
+                        <div class="stage-main-header">
+                            <div class="stage-family-selector">
+                                <RadzenDropDown @key="_revision" TValue="int?" Data="@_catalog.Families" TextProperty="Name" ValueProperty="Id" Value="@_familyId" Change="@ChangeFamilyAsync" AllowClear="false" Disabled="@(_busy || _dialogOpen)" Style="width: 100%;" AriaLabel="Base recipe" />
                             </div>
 
+                            @if (_draft is not null)
+                            {
+                                <div class="stage-name-field">
+                                    <label for="recipe-stage-name">Name</label>
+                                    <RadzenTextBox id="recipe-stage-name" @bind-Value="_draft.Name" Immediate="true" Disabled="@(!CanEdit)" Style="width: 100%;" aria-label="Stage name" />
+                                </div>
+
+                                <div class="stage-code-field">
+                                    <label for="recipe-stage-code">Code</label>
+                                    <RadzenTextBox id="recipe-stage-code" @bind-Value="_draft.Code" Immediate="true" Disabled="@(!CanEdit)" Style="width: 80px;" aria-label="Template code" />
+                                </div>
+                            }
+
+                            <div class="stage-main-actions">
+                                <RadzenButton Text="New stage" Icon="add_circle_outline" ButtonStyle="ButtonStyle.Success" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!CanManage)" Click="@NewStageAsync" />
+                                <RadzenButton Text="Delete" Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!CanDeleteStage)" Click="@DeleteAsync" />
+                            </div>
+
+                            @if (_draft is not null && string.IsNullOrWhiteSpace(_draft.Code))
+                            {
+                                <small class="stage-validation">Code is required.</small>
+                            }
+                        </div>
+
+                        @if (_draft is not null)
+                        {
                             <div class="stage-canvas">
                                 <div class="stage-slot-grid">
                                     @for (var i = 0; i < RecipeBaseStageDto.SlotCount; i++)

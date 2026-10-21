@@ -46,17 +46,76 @@
     box-sizing: border-box;
 }
 
+/* Одна высота для всех элементов центрального заголовка. */
 .stage-main-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 120px;
-    align-items: start;
-    gap: 12px;
+    --recipe-stage-control-height: var(--rz-input-height, 36px);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
     padding: 12px;
     border-bottom: 1px solid var(--rz-border-color);
 }
 
-.stage-code-field {
+.stage-family-selector {
+    flex: 0 1 240px;
+    min-width: 180px;
+    max-width: 100%;
+}
+
+.stage-name-field, .stage-code-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     min-width: 0;
+}
+
+.stage-name-field {
+    flex: 1 1 180px;
+    min-width: 180px;
+}
+
+.stage-code-field {
+    flex: 0 0 auto;
+}
+
+    .stage-name-field label, .stage-code-field label {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        height: var(--recipe-stage-control-height);
+        color: var(--rz-text-secondary-color);
+    }
+
+.stage-name-field ::deep .rz-textbox {
+    flex: 1;
+    min-width: 0;
+}
+
+.stage-code-field ::deep .rz-textbox {
+    width: 80px;
+    min-width: 80px;
+}
+
+.stage-main-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.stage-main-header ::deep .rz-dropdown,
+.stage-main-header ::deep .rz-textbox,
+.stage-main-header ::deep .rz-button {
+    height: var(--recipe-stage-control-height);
+    min-height: var(--recipe-stage-control-height);
+    box-sizing: border-box;
+}
+
+.stage-main-header > .stage-validation {
+    flex-basis: 100%;
+    margin: 0;
 }
 
 .stage-validation {
