@@ -290,6 +290,39 @@
     color: var(--rz-primary);
 }
 
+/* Комбобоксы слева, управление рецептами справа внутри области таблицы. */
+.recipes-card-toolbar {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+    .recipes-card-toolbar .recipes-selectors {
+        flex: 1 1 540px;
+    }
+
+    .recipes-card-toolbar .recipes-management {
+        margin-left: auto;
+        align-items: center;
+    }
+
+/* Переключатель prefix находится справа в нижней области таблицы. */
+.recipes-drop-end {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    text-align: left;
+}
+
+.recipes-template-used {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--rz-success);
+}
+
 @media (max-width: 1050px) {
     .recipes-workspace-editor {
         grid-template-columns: 220px minmax(0, 1fr);

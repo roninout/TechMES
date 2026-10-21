@@ -153,6 +153,24 @@ public sealed class RecipeApiClient
         return await ReadResponseAsync<T>(response, ct);
     }
 
+    /// <summary>Передаёт весь черновик с существующей Windows identity.</summary>
+    public async Task<RecipeEditorSaveResult> SaveEditorAsync(int recipeId, RecipeEditorSaveRequest request, CancellationToken ct = default)
+    {
+        var actor = new ParamWriteRequest();
+
+        await _paramApi.FillWriteActorAsync(actor);
+        ct.ThrowIfCancellationRequested();
+
+        request.Actor = actor.Actor;
+        request.ActorGroups = actor.ActorGroups;
+
+        var client = _clients.CreateClient("RuntimeService");
+
+        using var response = await client.PostAsJsonAsync($"api/recipes/{recipeId}/editor", request, ct);
+
+        return await ReadResponseAsync<RecipeEditorSaveResult>(response, ct);
+    }
+
     /// <summary> Выполняет GET и освобождает HTTP-ответ. </summary>
     private async Task<T> ReadAsync<T>(string url, CancellationToken ct) where T : class
     {

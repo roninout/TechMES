@@ -1,78 +1,58 @@
 ﻿@page "/recipes"
 @using System.Globalization
+@using Microsoft.AspNetCore.Components.Routing
 @using TechMES.Contracts.Recipes
 @using TechMES.Contracts.Param
 @using Microsoft.AspNetCore.Components.Authorization
-@using Microsoft.Extensions.Options
 @implements IDisposable
 @inject RecipeApiClient RecipeApi
 @inject ILogger<Recipes> Logger
 @inject DialogService DialogService
 @inject NotificationService NotificationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject IOptions<ParamUiOptions> ParamOptions
 @inject NavigationManager Navigation
 
 <PageTitle>@(EditorMode ? "Recipe editor" : "Recipes")</PageTitle>
+<NavigationLock ConfirmExternalNavigation="@HasRecipeChanges" OnBeforeInternalNavigation="@BeforeRecipeNavigationAsync" />
 
 <div class="recipes-page @(EditorMode ? "recipes-editor" : "recipes-view")">
     @if (EditorMode)
     {
-        <RecipeEditorNavigation View="recipes" FamilyId="@EditorFamilyId" Disabled="@IsBusy" />
+        <RecipeEditorHeader Title="Recipe editor">
+            <Left>
+                <RecipeEditorNavigation View="recipes" FamilyId="@EditorFamilyId" Disabled="@(IsBusy || _dialogOpen)" Back="@OpenRecipes" />
+            </Left>
+            <Right>
+                <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@(IsBusy || _dialogOpen)" Click="@RefreshAsync" />
+                <RadzenButton Text="Save" Icon="save" IsBusy="@_savingDraft" BusyText="Saving..." Disabled="@(!CanSaveRecipe)" Click="@SaveRecipeAsync" />
+            </Right>
+        </RecipeEditorHeader>
     }
-
-    <div class="recipes-toolbar">
-        <div class="recipes-selectors">
-            <div class="recipes-field">
-                <RadzenLabel Text="Unit" Component="recipe-unit" />
-                <RadzenDropDown TValue="int?" Name="recipe-unit" Data="@_catalog.Pages" TextProperty="Page" ValueProperty="Id" Value="@_selectedPageId" Change="@OnPageChangedAsync" AllowClear="true" Placeholder="All units" Disabled="@IsBusy" Style="width: 190px;" />
-            </div>
-
-            <div class="recipes-field recipes-field-wide">
-                <RadzenLabel Text="Recipe" Component="recipe-selection" />
-                <RadzenDropDown TValue="int?" Name="recipe-selection" Data="@_availableRecipes" TextProperty="DisplayName" ValueProperty="Id" Value="@_selectedRecipeId" Change="@OnRecipeChangedAsync" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@IsBusy" Style="width: 100%;" />
-            </div>
-        </div>
-
-        <h2 class="recipes-title">@(EditorMode ? "Recipe editor" : "Recipes")</h2>
-
-        <div class="recipes-toolbar-right">
-            @if (EditorMode)
-            {
-                <div class="recipes-edit-mode" title="@(_canEdit ? "Edit saved recipe values" : "Sign in to edit recipe values")">
-                    <RadzenLabel Text="Edit values" Component="recipe-edit-values" />
-                    <RadzenSwitch Name="recipe-edit-values" @bind-Value="_editValues" Disabled="@(!_canEdit || IsBusy)" />
+    else
+    {
+        <div class="recipes-toolbar">
+            <div class="recipes-selectors">
+                <div class="recipes-field">
+                    <RadzenLabel Text="Unit" Component="recipe-unit" />
+                    <RadzenDropDown @key="_selectorRevision" TValue="int?" Name="recipe-unit" Data="@_catalog.Pages" TextProperty="Page" ValueProperty="Id" Value="@_selectedPageId" Change="@OnPageChangedAsync" AllowClear="true" Placeholder="All units" Disabled="@(IsBusy || _dialogOpen)" Style="width: 190px;" />
                 </div>
+                <div class="recipes-field recipes-field-wide">
+                    <RadzenLabel Text="Recipe" Component="recipe-selection" />
+                    <RadzenDropDown @key="_selectorRevision" TValue="int?" Name="recipe-selection" Data="@_availableRecipes" TextProperty="DisplayName" ValueProperty="Id" Value="@_selectedRecipeId" Change="@OnRecipeChangedAsync" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@(IsBusy || _dialogOpen)" Style="width: 100%;" />
+                </div>
+            </div>
 
-                <RadzenButton Text="Back to recipes" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@OpenRecipes" />
-            }
+            <h2 class="recipes-title">Recipes</h2>
 
-            <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@RefreshAsync" />
+            <div class="recipes-toolbar-right">
+                <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@RefreshAsync" />
+            </div>
         </div>
-    </div>
+    }
 
     @if (!string.IsNullOrWhiteSpace(_error))
     {
         <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@_error</RadzenAlert>
-    }
-
-        @if (EditorMode)
-    {
-        <div class="recipes-management">
-            <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!_canEdit || IsBusy || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
-            <RadzenButton Text="Copy" Icon="content_copy" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Copy))" />
-            <RadzenButton Text="Rename" Icon="drive_file_rename_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Rename))" />
-
-            <span class="recipes-management-divider" aria-hidden="true"></span>
-
-            <RadzenButton Text="Up" Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageUp)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveUp))" />
-            <RadzenButton Text="Down" Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageDown)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveDown))" />
-
-            <div class="recipes-tag-switch">
-                <RadzenLabel Text="PLC tag prefix" Component="recipe-show-stage-tags" />
-                <RadzenSwitch Name="recipe-show-stage-tags" @bind-Value="_showStageTags" Disabled="@IsBusy" />
-            </div>
-        </div>
     }
 
     <div class="recipes-workspace @(EditorMode ? "recipes-workspace-editor" : "")">
@@ -94,6 +74,13 @@
                                 </div>
 
                                 <RadzenBadge Text="@template.ParameterCount.ToString()" BadgeStyle="BadgeStyle.Light" />
+
+                                @if (IsStageTemplateUsed(template.Id))
+                                {
+                                    <span class="recipes-template-used" title="Used in this recipe" aria-label="Used in this recipe">
+                                        <RadzenIcon Icon="check_circle" />
+                                    </span>
+                                }
                             </RadzenCard>
                         </div>
                     }
@@ -107,6 +94,28 @@
         }
 
         <RadzenCard class="recipes-card">
+            @if (EditorMode)
+            {
+                <div class="recipes-card-toolbar">
+                    <div class="recipes-selectors">
+                        <div class="recipes-field">
+                            <RadzenLabel Text="Unit" Component="recipe-unit" />
+                            <RadzenDropDown @key="_selectorRevision" TValue="int?" Name="recipe-unit" Data="@_catalog.Pages" TextProperty="Page" ValueProperty="Id" Value="@_selectedPageId" Change="@OnPageChangedAsync" AllowClear="true" Placeholder="All units" Disabled="@(IsBusy || _dialogOpen)" Style="width: 190px;" />
+                        </div>
+                        <div class="recipes-field recipes-field-wide">
+                            <RadzenLabel Text="Recipe" Component="recipe-selection" />
+                            <RadzenDropDown @key="_selectorRevision" TValue="int?" Name="recipe-selection" Data="@_availableRecipes" TextProperty="DisplayName" ValueProperty="Id" Value="@_selectedRecipeId" Change="@OnRecipeChangedAsync" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@(IsBusy || _dialogOpen)" Style="width: 100%;" />
+                        </div>
+                    </div>
+
+                    <div class="recipes-management">
+                        <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!_canEdit || IsBusy || _dialogOpen || _uncertainDraft || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
+                        <RadzenButton Text="Copy" Icon="content_copy" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Copy))" />
+                        <RadzenButton Text="Rename" Icon="drive_file_rename_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Rename))" />
+                    </div>
+                </div>
+            }
+
             <div class="recipes-heading">
                 <span class="recipes-name">@(_snapshot?.Recipe.DisplayName ?? "Select a recipe")</span>
 
@@ -166,7 +175,7 @@
                                 <Template Context="stage">
                                     @if (stage.Parameters.TryGetValue(column.Id, out var parameter))
                                     {
-                                        <button type="button" class="recipes-value" disabled="@(!EditorMode || !_editValues || !_canEdit || IsBusy)" title="@(EditorMode ? _editValues ? "Edit saved value" : "Enable Edit values to change this parameter" : "Saved recipe value")" @onclick="@(() => EditParameterAsync(stage, column))">
+                                        <button type="button" class="recipes-value" disabled="@(!CanAddStage)" title="@(EditorMode ? "Edit recipe value" : "Saved recipe value")" @onclick="@(() => EditParameterAsync(stage, column))">
                                             @if (column.Kind == RecipeParameterKind.CheckBox)
                                             {
                                                 var isChecked = parameter.Value != 0;
@@ -205,14 +214,18 @@
                 @if (EditorMode)
                 {
                     <div class="recipes-drop-end @(_dropAtEnd ? "recipes-drop-end-active" : "")" @ondragenter="@MarkStageDropEnd">
-                        Drop a stage here to append
+                        <span>Drop a stage here to append</span>
+
+                        <div class="recipes-tag-switch">
+                            <RadzenLabel Text="PLC tag prefix" Component="recipe-show-stage-tags" />
+                            <RadzenSwitch Name="recipe-show-stage-tags" @bind-Value="_showStageTags" Disabled="@IsBusy" />
+                        </div>
                     </div>
                 }
             </div>
         </RadzenCard>
     </div>
 </div>
-
 
 @code {
     private readonly CancellationTokenSource _stop = new();
@@ -225,70 +238,58 @@
     private bool _loading;
     private bool _editingValue;
     private bool _dialogOpen;
-    private bool _editValues;
     private bool _canEdit;
     private bool _disposed;
     private string? _error;
 
-    private bool IsBusy => _loading || _editingValue || _managingRecipe || _changingStage;
+    private bool IsBusy => _loading || _editingValue || _managingRecipe || _changingStage || _savingDraft;
     private RecipePageDto? SelectedPage => _catalog.Pages.FirstOrDefault(page => page.Id == _selectedPageId);
     private IReadOnlyList<RecipeStageDto> Stages => _snapshot?.Stages ?? [];
     private IReadOnlyList<RecipeColumnDto> Columns => _snapshot?.Columns ?? [];
 
-    /// <summary>
-    /// Разрешает изменение только на странице редактора и получает первый рецепт.
-    /// Основная страница остаётся в режиме просмотра даже у авторизованного пользователя.
-    /// </summary>
+    /// <summary>Определяет пользователя и загружает первый рецепт.</summary>
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
 
-        if (_disposed)
-            return;
+        if (_disposed) return;
 
         _canEdit = EditorMode && state.User.Identity?.IsAuthenticated == true;
+
         await RefreshAsync();
     }
 
-    /// <summary>
-    /// Перечитывает каталог и рецепт, сохраняя существующий выбор пользователя.
-    /// </summary>
-    private Task RefreshAsync()
+    /// <summary>Перечитывает данные после подтверждения отказа от черновика.</summary>
+    private async Task RefreshAsync()
     {
-        return RunAsync(ct => ReloadCatalogAndRecipeAsync(_selectedRecipeId, ct));
+        if (IsBusy || _dialogOpen || !await DiscardRecipeAsync()) return;
+
+        await RunAsync(ct => ReloadCatalogAndRecipeAsync(_selectedRecipeId, ct));
     }
 
-    /// <summary>
-    /// Смена объекта выбирает назначенный ему рецепт.
-    /// Очистка Unit показывает весь каталог.
-    /// </summary>
-    private Task OnPageChangedAsync(object? value)
+    /// <summary>Меняет Unit после проверки несохранённых изменений.</summary>
+    private async Task OnPageChangedAsync(object? value)
     {
-        return RunAsync(async ct =>
-        {
-            _selectedPageId = value is int id ? id : null;
+        var id = value is int number ? number : (int?)null;
 
-            SelectAvailableRecipes(null);
-            await LoadSelectedRecipeAsync(ct);
-        });
+        if (id == _selectedPageId || IsBusy || _dialogOpen) return;
+        if (!await DiscardRecipeAsync()) { _selectorRevision++; return; }
+
+        await RunAsync(async ct => { _selectedPageId = id; SelectAvailableRecipes(null); await LoadSelectedRecipeAsync(ct); });
     }
 
-    /// <summary>
-    /// Читает только выбранный рецепт, не загружая каталог повторно.
-    /// </summary>
-    private Task OnRecipeChangedAsync(object? value)
+    /// <summary>Предупреждает о черновике при выборе другого рецепта.</summary>
+    private async Task OnRecipeChangedAsync(object? value)
     {
-        return RunAsync(async ct =>
-        {
-            _selectedRecipeId = value is int id ? id : null;
-            await LoadSelectedRecipeAsync(ct);
-        });
+        var id = value is int number ? number : (int?)null;
+
+        if (id == _selectedRecipeId || IsBusy || _dialogOpen) return;
+        if (!await DiscardRecipeAsync()) { _selectorRevision++; return; }
+
+        await RunAsync(async ct => { _selectedRecipeId = id; await LoadSelectedRecipeAsync(ct); });
     }
 
-    /// <summary>
-    /// Сохраняет отбор старого UI по базовому рецепту и имени страницы.
-    /// Назначенный объекту текущий рецепт доступен всегда.
-    /// </summary>
+    /// <summary>Сохраняет прежний отбор по семейству и имени Unit.</summary>
     private void SelectAvailableRecipes(int? preferredRecipeId)
     {
         var page = SelectedPage;
@@ -305,14 +306,18 @@
         _selectedRecipeId = page is not null && _availableRecipes.Any(recipe => recipe.Id == page.RecipeId) ? page.RecipeId : _availableRecipes.FirstOrDefault()?.Id;
     }
 
-    /// <summary>Читает рецепт и каталог его семейства, затем восстанавливает выделенную стадию.</summary>
+    /// <summary>Загружает снимок, шаблоны и метаданные локального редактора.</summary>
     private async Task LoadSelectedRecipeAsync(CancellationToken ct)
     {
         ClearStageDrag();
 
         if (_selectedRecipeId is not int recipeId)
         {
+            _snapshot = _savedSnapshot = null;
+            _hasRecipeChanges = false;
             _stageTemplates = new();
+            _stageDefinitions = [];
+
             RestoreStageSelection(null);
             return;
         }
@@ -320,21 +325,28 @@
         var selectedStageId = _stageSelectionRecipeId == recipeId ? _selectedStages.FirstOrDefault()?.Id : null;
         var snapshot = await RecipeApi.GetAsync(recipeId, ct);
         var templates = EditorMode ? await RecipeApi.GetStageTemplatesAsync(recipeId, ct) : new RecipeStageTemplateCatalogDto();
+        var parameters = EditorMode ? await RecipeApi.GetBaseParametersAsync(ct) : new RecipeBaseParameterCatalogDto();
+        var definitions = EditorMode ? await RecipeApi.GetBaseStagesAsync(templates.BaseRecipeId, ct) : new List<RecipeBaseStageDto>();
 
         ct.ThrowIfCancellationRequested();
 
         _snapshot = snapshot;
+        _savedSnapshot = CloneRecipe(snapshot);
+        _savedRecipeStamp = System.Text.Json.JsonSerializer.Serialize(_savedSnapshot);
+        _hasRecipeChanges = false;
         _stageTemplates = templates;
+        _parameterCatalog = parameters;
+        _stageDefinitions = definitions;
+        _nextDraftStageId = -1;
+        _uncertainDraft = false;
+
         RestoreStageSelection(selectedStageId);
     }
 
-    /// <summary>
-    /// Не допускает параллельных загрузок и управляет индикатором ожидания.
-    /// </summary>
+    /// <summary>Не допускает параллельных загрузок и управляет индикатором.</summary>
     private async Task RunAsync(Func<CancellationToken, Task> load)
     {
-        if (IsBusy || _disposed)
-            return;
+        if (IsBusy || _disposed) return;
 
         var ct = _stop.Token;
 
@@ -348,7 +360,6 @@
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Навигация со страницы отменяет незавершённые HTTP-запросы.
         }
         catch (Exception ex)
         {
@@ -360,107 +371,49 @@
         }
         finally
         {
-            if (!_disposed)
-                _loading = false;
+            if (!_disposed) _loading = false;
         }
     }
 
-    /// <summary>
-    /// Использует существующий ParamWriteDialog для числа или checkbox.
-    /// После успешного сохранения обновляет одну ячейку без пересоздания таблицы.
-    /// </summary>
+    /// <summary>Общий ParamWriteDialog изменяет значение только в черновике.</summary>
     private async Task EditParameterAsync(RecipeStageDto stage, RecipeColumnDto column)
     {
-        if (IsBusy || _disposed || !_canEdit || !_editValues || _snapshot is null || !stage.Parameters.TryGetValue(column.Id, out var parameter))
-            return;
+        if (!CanAddStage || _disposed || _snapshot is null || !stage.Parameters.TryGetValue(column.Id, out var parameter)) return;
 
-        var recipeId = _snapshot.Recipe.Id;
-        var expectedValue = parameter.Value;
         var ct = _stop.Token;
 
         _editingValue = true;
-        _error = null;
+        _dialogOpen = true;
 
         try
         {
-            var item = new ParamItemDto
-            {
-                Name = column.Name,
-                Kind = column.Kind == RecipeParameterKind.CheckBox ? ParamValueKind.Boolean : ParamValueKind.Number,
-                ValueText = FormatValue(expectedValue, column.Format),
-                NumericValue = expectedValue,
-                BooleanValue = column.Kind == RecipeParameterKind.CheckBox ? expectedValue != 0 : null,
-                Unit = column.Description,
-                CanWrite = true
-            };
-
+            var item = new ParamItemDto { Name = column.Name, Kind = column.Kind == RecipeParameterKind.CheckBox ? ParamValueKind.Boolean : ParamValueKind.Number, ValueText = FormatValue(parameter.Value, column.Format), NumericValue = parameter.Value, BooleanValue = column.Kind == RecipeParameterKind.CheckBox ? parameter.Value != 0 : null, Unit = column.Description, CanWrite = true };
             var parameters = new Dictionary<string, object?> { [nameof(ParamWriteDialog.Item)] = item };
 
             if (column.Kind == RecipeParameterKind.CheckBox)
-                parameters[nameof(ParamWriteDialog.InitialBooleanValue)] = expectedValue == 0;
+                parameters[nameof(ParamWriteDialog.InitialBooleanValue)] = parameter.Value == 0;
 
-            _dialogOpen = true;
-
-            var dialogResult = await DialogService.OpenAsync<ParamWriteDialog>($"Recipe value: {column.Name}", parameters, new DialogOptions { Width = "420px", CloseDialogOnOverlayClick = false, CloseDialogOnEsc = true });
-
-            _dialogOpen = false;
-            ct.ThrowIfCancellationRequested();
-
-            if (dialogResult is not ParamWriteDialogResult write)
-                return;
-
-            if (!double.TryParse(write.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || !double.IsFinite(value))
-            {
-                NotificationService.Notify(NotificationSeverity.Warning, "Recipe", "Enter a valid number.", 3500);
-                return;
-            }
-
-            if (value == expectedValue)
-                return;
-
-            if (ParamOptions.Value.ConfirmWrites)
-            {
-                _dialogOpen = true;
-
-                var confirmed = await DialogService.Confirm($"Save recipe value to database?\n\nStage: {stage.Number}. {stage.Name}\nParameter: {column.Name}\nCurrent: {FormatValue(expectedValue, column.Format)}\nNew: {FormatValue(value, column.Format)}", "Confirm recipe change", new ConfirmOptions { OkButtonText = "Save", CancelButtonText = "Cancel" });
-
-                _dialogOpen = false;
-                ct.ThrowIfCancellationRequested();
-
-                if (confirmed != true)
-                    return;
-            }
-
-            var result = await RecipeApi.SaveParameterAsync(recipeId, new RecipeParameterSaveRequest
-            {
-                ParameterId = parameter.Id,
-                StageId = stage.Id,
-                BaseParameterId = column.Id,
-                ExpectedValue = expectedValue,
-                Value = value
-            }, ct);
+            var input = await DialogService.OpenAsync<ParamWriteDialog>($"Recipe value: {column.Name}", parameters, new DialogOptions { Width = "420px", CloseDialogOnOverlayClick = false, CloseDialogOnEsc = true });
 
             ct.ThrowIfCancellationRequested();
 
-            if (result.Status != RecipeParameterSaveStatus.Saved || result.Value is not double savedValue)
-                throw new InvalidOperationException("Unexpected recipe save response. Refresh the recipe to verify the value.");
+            if (input is not ParamWriteDialogResult write) return;
 
-            parameter.Value = savedValue;
+            if (!double.TryParse(write.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || !double.IsFinite(value) || (column.Kind == RecipeParameterKind.CheckBox && value != 0 && value != 1))
+            {
+                NotificationService.Notify(NotificationSeverity.Warning, "Recipe", "Enter a valid value.", 3500);
+                return;
+            }
 
-            NotificationService.Notify(NotificationSeverity.Success, "Recipe", "Value saved to database.", 2500);
+            parameter.Value = value;
+            MarkRecipeChanges();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Пользователь покинул страницу.
         }
         catch (Exception ex)
         {
-            if (!_disposed)
-            {
-                Logger.LogError(ex, "Failed to save recipe {RecipeId}, parameter {ParameterId}.", recipeId, parameter.Id);
-
-                _error = ex is HttpRequestException { StatusCode: not null } ? ex.Message : "Save result could not be confirmed. Refresh the recipe. " + ex.Message;
-            }
+            if (!_disposed) _error = ex.Message;
         }
         finally
         {
@@ -469,25 +422,21 @@
         }
     }
 
-    /// <summary>
-    /// Сохраняет точность N1–N4; разделители тысяч не добавляются.
-    /// </summary>
+    /// <summary>Сохраняет точность без разделителей тысяч.</summary>
     private static string FormatValue(double value, RecipeParameterFormat format)
     {
         var digits = (int)format;
+
         return value.ToString(digits is >= 1 and <= 4 ? $"F{digits}" : "G", CultureInfo.CurrentCulture);
     }
 
-    /// <summary>
-    /// При уходе отменяет запросы и закрывает принадлежащий странице диалог.
-    /// </summary>
+    /// <summary>Отменяет запросы и закрывает принадлежащий странице диалог.</summary>
     public void Dispose()
     {
         _disposed = true;
         _stop.Cancel();
 
-        if (_dialogOpen)
-            DialogService.Close();
+        if (_dialogOpen) DialogService.Close();
 
         _stop.Dispose();
     }

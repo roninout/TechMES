@@ -60,4 +60,7 @@ public interface IRecipeStore
 
     /// <summary>Сохраняет шаблон и синхронизирует экземпляры одной транзакцией.</summary>
     Task<RecipeBaseStageSaveResult> SaveBaseStageAsync(RecipeBaseStageRequest request, CancellationToken ct = default);
+
+    /// <summary>Сохраняет весь черновик рецепта в одной транзакции.</summary>
+    Task<RecipeEditorSaveResult> SaveEditorAsync(int recipeId, RecipeEditorSaveRequest request, CancellationToken ct = default);
 }

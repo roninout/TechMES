@@ -20,6 +20,8 @@ public static partial class RecipeEndpoints
         app.MapPost("/api/recipes/{recipeId:int}/stage/change", ChangeStageAsync);
         app.MapGet("/api/recipes/{recipeId:int}/stage/templates", GetStageTemplatesAsync);
         app.MapPost("/api/recipes/{recipeId:int}/stage/add", AddStageAsync);
+        app.MapPost("/api/recipes/{recipeId:int}/editor", SaveRecipeEditorAsync);
+
         MapBaseParameterEndpoints(app);
         MapBaseStageEndpoints(app);
 

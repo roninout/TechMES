@@ -1,75 +1,76 @@
-﻿using Microsoft.Extensions.Logging;
-using Radzen;
-using TechMES.Contracts.Recipes;
+﻿using TechMES.Contracts.Recipes;
 
 namespace TechMES.Web.Components.Common;
 
-/// <summary>Добавляет шаблон перетаскиванием с автоматическим назначением prefix на сервере.</summary>
 public partial class Recipes
 {
-    private bool CanAddStage => EditorMode && CanManageRecipe && _editValues;
+    private bool CanAddStage => EditorMode && CanManageRecipe && !_dialogOpen;
 
-    /// <summary>Вставляет шаблон перед строкой или в конец и перечитывает сохранённый рецепт.</summary>
+    /// <summary>Добавляет локальную стадию; новые параметры инициализируются нулями.</summary>
     private async Task AddStageAsync(int templateId, int? beforeStageId)
     {
-        if (!CanAddStage || _disposed || _snapshot is null || !_stageTemplates.Templates.Any(item => item.Id == templateId)) return;
+        if (!CanAddStage || _disposed || _snapshot is null) return;
 
-        var recipeId = _snapshot.Recipe.Id;
-        var ct = _stop.Token;
-        var request = new RecipeStageAddRequest
-        {
-            BaseStageId = templateId,
-            AutoAssignTagPrefix = true,
-            RecipePageId = SelectedPage?.Id,
-            InsertBeforeStageId = beforeStageId,
-            ExpectedStages = Stages.Select(item => new RecipeStagePositionDto { Id = item.Id, Number = item.Number, Auto = item.Auto }).ToList()
-        };
+        var template = _stageDefinitions.FirstOrDefault(item => item.Id == templateId);
 
-        var requestStarted = false;
-        var saved = false;
+        if (template is null) return;
+
         _changingStage = true;
-        _loading = true;
-        _error = null;
 
         try
         {
-            requestStarted = true;
-            var result = await RecipeApi.AddStageAsync(recipeId, request, ct);
-            ct.ThrowIfCancellationRequested();
+            var ids = template.Slots.Where(id => id.HasValue).Select(id => id!.Value).Concat(template.Overflow).Distinct().ToList();
+            var definitions = _parameterCatalog.Parameters.Where(item => item.BaseRecipeId == template.FamilyId).ToDictionary(item => item.Id);
 
-            if (result.Status != RecipeChangeStatus.Saved || result.SelectedStageId is null)
-                throw new InvalidOperationException("Unexpected add stage response. Press Refresh.");
+            if (ids.Any(id => !definitions.ContainsKey(id)))
+                throw new InvalidOperationException("Template metadata is incomplete. Press Refresh.");
 
-            saved = true;
-            await LoadSelectedRecipeAsync(ct);
-            RestoreStageSelection(result.SelectedStageId);
+            var prefix = await FindDraftPrefixAsync();
 
-            NotificationService.Notify(NotificationSeverity.Success, "Recipe", "Stage and its parameters added to database.", 2500);
+            if (_disposed) return;
+
+            var stage = new RecipeStageDto { Id = _nextDraftStageId--, Name = template.Name, BaseStageId = template.Id, TagPrefix = prefix };
+
+            foreach (var id in ids)
+                stage.Parameters.Add(id, new() { Id = 0, Value = 0, Active = true });
+
+            var index = beforeStageId.HasValue ? _snapshot.Stages.FindIndex(item => item.Id == beforeStageId) : _snapshot.Stages.Count;
+
+            if (index < 0) return;
+
+            _snapshot.Stages.Insert(index, stage);
+
+            RebuildDraft();
+            RestoreStageSelection(stage.Id);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
         {
-            // При уходе со страницы вставку автоматически не повторяем.
         }
         catch (Exception ex)
         {
-            if (!_disposed)
-            {
-                Logger.LogError(ex, "Failed to add template {TemplateId} to recipe {RecipeId}.", templateId, recipeId);
-
-                if (requestStarted)
-                {
-                    _snapshot = null;
-                    RestoreStageSelection(null);
-                }
-
-                _error = saved ? "The stage was added, but the recipe could not be reloaded. Press Refresh. " + ex.Message
-                    : ex is HttpRequestException { StatusCode: not null } ? ex.Message : "Add stage result could not be confirmed. Press Refresh before retrying. " + ex.Message;
-            }
+            if (!_disposed) _error = ex.Message;
         }
         finally
         {
             _changingStage = false;
-            _loading = false;
         }
+    }
+
+    /// <summary>Показывает предварительный prefix; окончательное назначение проверяет сервер при Save.</summary>
+    private async Task<string> FindDraftPrefixAsync()
+    {
+        var prefixes = (_savedSnapshot?.Stages ?? []).Select(item => item.TagPrefix.Trim()).Where(item => item.Length > 0).Distinct(StringComparer.Ordinal).Take(2).ToList();
+
+        if (prefixes.Count > 0)
+            return prefixes.Count == 1 ? prefixes[0] : "";
+
+        if (_snapshot is null || _snapshot.Recipe.Id == _stageTemplates.BaseRecipeId || SelectedPage is not { } page || page.BaseRecipeId != _stageTemplates.BaseRecipeId || page.RecipeId == _snapshot.Recipe.Id)
+            return "";
+
+        var source = await RecipeApi.GetAsync(page.RecipeId, _stop.Token);
+
+        prefixes = source.Stages.Select(item => item.TagPrefix.Trim()).Where(item => item.Length > 0).Distinct(StringComparer.Ordinal).Take(2).ToList();
+
+        return prefixes.Count == 1 ? prefixes[0] : "";
     }
 }

@@ -4,19 +4,16 @@ using TechMES.Contracts.Recipes;
 
 namespace TechMES.Web.Components.Common;
 
-/// <summary>
-/// Управление рецептами.
-/// Поля и существующая логика просмотра остаются в Recipes.razor.
-/// </summary>
+/// <summary>Управление заголовками рецептов и загрузкой выбранного семейства.</summary>
 public partial class Recipes
 {
     private bool _managingRecipe;
 
     private int? EditorFamilyId => SelectedPage?.BaseRecipeId ?? (_snapshot is null ? RecipeEditorNavigation.ReadFamily(Navigation.Uri) : _catalog.Pages.Any(page => page.BaseRecipeId == _snapshot.Recipe.Id) ? _snapshot.Recipe.Id : _snapshot.Recipe.BaseRecipeId);
-    private bool CanManageRecipe => _canEdit && !IsBusy && _snapshot is not null;
+    private bool CanManageRecipe => _canEdit && !IsBusy && !_dialogOpen && !_uncertainDraft && _snapshot is not null;
     private int? NewRecipeSourceId => _snapshot?.Recipe.Id ?? SelectedPage?.BaseRecipeId;
 
-    /// <summary>При первом открытии восстанавливает Unit и рецепт из ссылки, затем сохраняет текущий выбор.</summary>
+    /// <summary>Восстанавливает Unit и рецепт из ссылки при первом открытии.</summary>
     private async Task ReloadCatalogAndRecipeAsync(int? preferredRecipeId, CancellationToken ct)
     {
         var catalog = await RecipeApi.GetCatalogAsync(ct);
@@ -40,10 +37,7 @@ public partial class Recipes
         await LoadSelectedRecipeAsync(ct);
     }
 
-    /// <summary>
-    /// Предлагает свободное по текущему каталогу имя.
-    /// Окончательная проверка выполняется в БД.
-    /// </summary>
+    /// <summary>Предлагает свободное имя; окончательная проверка выполняется сервером.</summary>
     private string SuggestRecipeName(RecipeChangeOperation operation)
     {
         if (operation == RecipeChangeOperation.Rename)
@@ -60,14 +54,15 @@ public partial class Recipes
         return $"{basis} {suffix}";
     }
 
-    /// <summary>
-    /// Открывает ввод имени и выполняет одну операцию с последующим выбором результата.
-    /// </summary>
+    /// <summary>New/Copy создают рецепт через прежний API; Rename изменяет черновик до Save.</summary>
     private async Task ChangeRecipeAsync(RecipeChangeOperation operation)
     {
         var sourceId = operation == RecipeChangeOperation.Create ? NewRecipeSourceId : _snapshot?.Recipe.Id;
 
-        if (IsBusy || _disposed || !_canEdit || sourceId is null)
+        if (IsBusy || _disposed || !_canEdit || _dialogOpen || _uncertainDraft || sourceId is null)
+            return;
+
+        if (operation != RecipeChangeOperation.Rename && !await SaveBeforeManagementAsync())
             return;
 
         var expectedName = _snapshot?.Recipe.Name;
@@ -90,7 +85,7 @@ public partial class Recipes
             {
                 RecipeChangeOperation.Create => "Creates an empty recipe in the same recipe family.",
                 RecipeChangeOperation.Copy => "Copies the saved recipe, including all stages and parameter values.",
-                _ => "Changes only the recipe name."
+                _ => "Changes the draft name. Apply it with the main Save button."
             };
 
             _dialogOpen = true;
@@ -108,6 +103,13 @@ public partial class Recipes
             if (input is not string name)
                 return;
 
+            if (operation == RecipeChangeOperation.Rename)
+            {
+                _snapshot!.Recipe.Name = name;
+                MarkRecipeChanges();
+                return;
+            }
+
             var result = await RecipeApi.ChangeAsync(new RecipeChangeRequest
             {
                 Operation = operation,
@@ -123,7 +125,6 @@ public partial class Recipes
 
             savedRecipeId = recipeId;
             _selectedRecipeId = recipeId;
-
             _loading = true;
             _snapshot = null;
 
@@ -134,7 +135,7 @@ public partial class Recipes
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Страница закрыта; повторно операцию автоматически не отправляем.
+            // После закрытия страницы операцию автоматически не повторяем.
         }
         catch (Exception ex)
         {

@@ -60,16 +60,18 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
         return result;
     }
 
-    /// <summary>
-    /// Один SELECT возвращает согласованный снимок выбранного рецепта.
-    /// LEFT JOIN сохраняет рецепты без стадий и стадии без параметров.
-    /// Параметры сопоставляются по ID, поэтому одинаковые имена не смешивают значения.
-    /// </summary>
+    /// <summary>Читает рецепт со стадиями и параметрами.</summary>
     public async Task<RecipeSnapshotDto?> GetAsync(int recipeId, CancellationToken ct = default)
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(ct);
 
+        return await ReadRecipeSnapshotAsync(connection, null, recipeId, ct);
+    }
+
+    /// <summary>Использует то же чтение внутри транзакции сохранения редактора.</summary>
+    private async Task<RecipeSnapshotDto?> ReadRecipeSnapshotAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, int recipeId, CancellationToken ct)
+    {
         const string sql = """
         SELECT r."id", r."numb", r."name", r."baseRecipeId",
                s."id", s."stageNumb", s."name", s."auto", s."baseRecipeStageId", s."description",
@@ -85,7 +87,7 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
         ORDER BY s."stageNumb", s."id", b."type", b."name", p."id";
         """;
 
-        await using var command = new NpgsqlCommand(sql, connection) { CommandTimeout = GetCommandTimeout() };
+        await using var command = new NpgsqlCommand(sql, connection, transaction) { CommandTimeout = GetCommandTimeout() };
         command.Parameters.AddWithValue("recipe_id", recipeId);
 
         await using var reader = await command.ExecuteReaderAsync(ct);
@@ -98,7 +100,6 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
         {
             result ??= new RecipeSnapshotDto { Recipe = ReadRecipe(reader) };
 
-            // Рецепт существует, но стадий в нём пока нет.
             if (reader.IsDBNull(4))
                 continue;
 
@@ -120,7 +121,6 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
                 result.Stages.Add(stage);
             }
 
-            // Стадия существует, но параметров в ней пока нет.
             if (reader.IsDBNull(10))
                 continue;
 
@@ -144,7 +144,6 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
                 Active = reader.GetBoolean(13)
             };
 
-            // Повтор одного базового параметра в стадии нельзя молча перезаписывать.
             if (!stage.Parameters.TryAdd(baseParameterId, parameter))
                 throw new InvalidOperationException($"Recipe {recipeId}, stage {stageId}: duplicate base parameter {baseParameterId}.");
         }

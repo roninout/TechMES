@@ -1,8 +1,9 @@
 ﻿@using Microsoft.AspNetCore.WebUtilities
 @inject NavigationManager Navigation
 
-<RadzenSelectBar @key="_revision" TValue="string" Value="@View" ValueChanged="@ChangeView" Disabled="@Disabled" AriaLabel="Recipe editor view">
+<RadzenSelectBar @key="_revision" TValue="string" Value="@View" ValueChanged="@ChangeViewAsync" Disabled="@Disabled" AriaLabel="Recipe editor view">
     <Items>
+        <RadzenSelectBarItem Text=" Back" Value="@("back")" Icon="arrow_back" />
         <RadzenSelectBarItem Text=" Parameters" Value="@("parameters")" Icon="tune" />
         <RadzenSelectBarItem Text=" Stages" Value="@("stages")" Icon="view_agenda" />
         <RadzenSelectBarItem Text=" Recipes" Value="@("recipes")" Icon="menu_book" />
@@ -13,21 +14,30 @@
     [Parameter] public string View { get; set; } = "recipes";
     [Parameter] public int? FamilyId { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback Back { get; set; }
 
     private int _revision;
 
-    /// <summary>Открывает редактор в том же окне; NavigationLock текущей страницы защищает черновики.</summary>
-    private void ChangeView(string value)
+    /// <summary>Общая навигация редакторов; черновики защищает NavigationLock страницы.</summary>
+    private async Task ChangeViewAsync(string value)
     {
         if (Disabled || value == View) return;
 
-        var path = value switch { "parameters" => "/recipes/parameters", "stages" => "/recipes/stages", _ => "/recipes/editor" };
+        if (value == "back" && Back.HasDelegate)
+        {
+            await Back.InvokeAsync();
+        }
+        else
+        {
+            var path = value switch { "back" => "/recipes", "parameters" => "/recipes/parameters", "stages" => "/recipes/stages", _ => "/recipes/editor" };
 
-        Navigation.NavigateTo(FamilyId is > 0 ? $"{path}?family={FamilyId}" : path);
+            Navigation.NavigateTo(FamilyId is > 0 ? $"{path}?family={FamilyId}" : path);
+        }
+
         _revision++;
     }
 
-    /// <summary>Передаёт выбранное семейство между режимами.</summary>
+    /// <summary>Передаёт выбранное семейство между редакторами.</summary>
     public static int? ReadFamily(string uri)
     {
         var query = QueryHelpers.ParseQuery(new Uri(uri).Query);
