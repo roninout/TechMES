@@ -1,7 +1,7 @@
-﻿using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.AspNetCore.WebUtilities;
 using TechMES.Contracts.Recipes;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Recipe;
 
 /// <summary>Разделяет базовые и рабочие рецепты только в редакторе.</summary>
 public partial class Recipes
@@ -70,7 +70,7 @@ public partial class Recipes
         });
     }
 
-    /// <summary>Показывает назначенные базовые рецепты и кандидатов; просмотр сохраняет прежний отбор.</summary>
+    /// <summary>В режиме Base recipes показывает только рецепты с соответствующим началом имени.</summary>
     private void SelectAvailableRecipes(int? preferredRecipeId)
     {
         var baseIds = _catalog.Pages.Select(page => page.BaseRecipeId).ToHashSet();
@@ -78,8 +78,8 @@ public partial class Recipes
 
         if (IsBaseRecipeMode)
         {
-            // Показываем назначенные базовые рецепты и кандидатов из существующих семейств.
-            _availableRecipes = _catalog.Recipes.Where(recipe => baseIds.Contains(recipe.Id) || (!IsCurrentRecipe(recipe.Id) && recipe.BaseRecipeId is int familyId && baseIds.Contains(familyId))).ToList();
+            // Проверяем начало имени без учёта регистра: Base, base и BASE подходят.
+            _availableRecipes = _catalog.Recipes.Where(recipe => recipe.Name.StartsWith("Base", StringComparison.OrdinalIgnoreCase)).ToList();
             preferredRecipeId ??= _lastBaseRecipeId;
         }
         else
@@ -92,4 +92,5 @@ public partial class Recipes
         _selectedRecipeId = preferredRecipeId.HasValue && _availableRecipes.Any(recipe => recipe.Id == preferredRecipeId) ? preferredRecipeId
             : page is not null && _availableRecipes.Any(recipe => recipe.Id == page.RecipeId) ? page.RecipeId : _availableRecipes.FirstOrDefault()?.Id;
     }
+
 }

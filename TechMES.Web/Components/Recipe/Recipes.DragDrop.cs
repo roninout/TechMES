@@ -1,9 +1,9 @@
-﻿using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Radzen;
 using TechMES.Contracts.Recipes;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Recipe;
 
 /// <summary>Перетаскивание работает только с актуальным снимком выбранного рецепта.</summary>
 public partial class Recipes

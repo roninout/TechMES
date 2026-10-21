@@ -1,10 +1,10 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components.Routing;
 using Radzen;
 using TechMES.Contracts.Recipes;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Recipe;
 
 /// <summary>Черновик редактора существует в памяти до общей кнопки Save.</summary>
 public partial class Recipes

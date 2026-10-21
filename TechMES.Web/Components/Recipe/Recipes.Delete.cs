@@ -1,9 +1,9 @@
-﻿using System.Net;
+using System.Net;
 using Microsoft.Extensions.Logging;
 using Radzen;
 using TechMES.Contracts.Recipes;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Recipe;
 
 public partial class Recipes
 {

@@ -1,7 +1,7 @@
-﻿using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Recipe;
 
 /// <summary>Разделяет просмотр и редактор, сохраняя выбранные Unit и рецепт при переходе.</summary>
 public partial class Recipes

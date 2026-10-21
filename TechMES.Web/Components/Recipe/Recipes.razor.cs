@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Radzen;
 using TechMES.Contracts.Recipes;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Recipe;
 
 /// <summary>Управление заголовками рецептов и загрузкой выбранного семейства.</summary>
 public partial class Recipes

@@ -1,7 +1,7 @@
-﻿using Radzen;
+using Radzen;
 using TechMES.Contracts.Recipes;
 
-namespace TechMES.Web.Components.Common;
+namespace TechMES.Web.Components.Recipe;
 
 public partial class Recipes
 {
