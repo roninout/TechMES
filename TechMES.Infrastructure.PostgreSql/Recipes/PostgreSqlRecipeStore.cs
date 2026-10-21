@@ -375,8 +375,8 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
     }
 
     /// <summary>
-    /// Изменяет существующую стадию в одной транзакции.
-    /// Порядок и Auto сравниваются с состоянием, которое видел пользователь.
+    /// Изменяет стадию в одной транзакции.
+    /// Ожидаемый порядок защищает от изменений другого клиента.
     /// </summary>
     public async Task<RecipeStageChangeResult> ChangeStageAsync(int recipeId, RecipeStageChangeRequest request, CancellationToken ct = default)
     {
@@ -386,12 +386,15 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
         if (request.Operation == RecipeStageChangeOperation.SetAuto && request.Auto is null)
             return new() { Status = RecipeChangeStatus.Invalid, Error = "An Auto value is required." };
 
+        if (request.Operation == RecipeStageChangeOperation.MoveTo && request.TargetIndex is null)
+            return new() { Status = RecipeChangeStatus.Invalid, Error = "A target position is required." };
+
         await using var connection = CreateConnection();
         await connection.OpenAsync(ct);
 
         await using var transaction = await connection.BeginTransactionAsync(ct);
 
-        // Та же блокировка, что у New/Copy/Rename: операции управления не пересекаются.
+        // Общая блокировка операций управления рецептами.
         await using (var gate = new NpgsqlCommand("SELECT pg_advisory_xact_lock(1380270928, 1);", connection, transaction) { CommandTimeout = GetCommandTimeout() })
             await gate.ExecuteNonQueryAsync(ct);
 
@@ -403,8 +406,7 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
                 return new() { Status = RecipeChangeStatus.NotFound, Error = "The recipe no longer exists. Refresh the list." };
         }
 
-        // При удалении сначала блокируем параметры, затем стадии.
-        // Это согласуется с сохранением ячейки, которое блокирует параметр и его стадию.
+        // При удалении сохраняем порядок блокировок: сначала параметры, затем стадии.
         if (request.Operation == RecipeStageChangeOperation.Delete)
         {
             const string lockSql = """
@@ -480,35 +482,18 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
             }
             else
             {
-                var target = index + (request.Operation == RecipeStageChangeOperation.MoveUp ? -1 : 1);
+                var target = request.Operation == RecipeStageChangeOperation.MoveTo ? request.TargetIndex!.Value : index + (request.Operation == RecipeStageChangeOperation.MoveUp ? -1 : 1);
 
                 if (target < 0 || target >= stages.Count)
-                    return new() { Status = RecipeChangeStatus.Invalid, Error = "The stage cannot be moved in this direction." };
+                    return new() { Status = RecipeChangeStatus.Invalid, Error = "The target stage position is outside this recipe." };
 
-                (stages[index], stages[target]) = (stages[target], stages[index]);
+                // Переносим одну стадию, сохраняя взаимный порядок остальных.
+                var moved = stages[index];
+                stages.RemoveAt(index);
+                stages.Insert(target, moved);
             }
 
-            if (stages.Count > 0)
-            {
-                // Сначала освобождаем старые номера, затем записываем 1..N.
-                // Временные номера положительные и не пересекаются с существующими.
-                const string renumberSql = """
-                UPDATE public."RecipeStage" s SET "stageNumb" = n.number
-                FROM unnest(@ids::integer[], @numbers::integer[]) AS n(id, number)
-                WHERE s."id" = n.id AND s."recipeId" = @recipe_id;
-                """;
-
-                await using var renumber = new NpgsqlCommand(renumberSql, connection, transaction) { CommandTimeout = GetCommandTimeout() };
-                renumber.Parameters.AddWithValue("recipe_id", recipeId);
-                renumber.Parameters.AddWithValue("ids", stages.Select(stage => stage.Id).ToArray());
-                renumber.Parameters.AddWithValue("numbers", Enumerable.Range(maxNumber + 1, stages.Count).ToArray());
-
-                await renumber.ExecuteNonQueryAsync(ct);
-
-                renumber.Parameters["numbers"].Value = Enumerable.Range(1, stages.Count).ToArray();
-
-                await renumber.ExecuteNonQueryAsync(ct);
-            }
+            await RenumberRecipeStagesAsync(connection, transaction, recipeId, stages, maxNumber, ct);
         }
 
         await transaction.CommitAsync(ct);

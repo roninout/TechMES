@@ -217,9 +217,7 @@ public static partial class RecipeEndpoints
         }
     }
 
-    /// <summary>
-    /// Добавляет стадию с параметрами и записывает операцию в Runtime-лог.
-    /// </summary>
+    /// <summary>Добавляет стадию и записывает фактически назначенный prefix в Runtime-лог.</summary>
     private static async Task<IResult> AddStageAsync(int recipeId, RecipeStageAddRequest request, IRecipeStore store, IOptions<ParamWriteOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
     {
         var authorizationError = AuthorizeRecipeWrite(request.Actor, request.ActorGroups, options.Value.Authorization);
@@ -244,7 +242,7 @@ public static partial class RecipeEndpoints
                 return Results.Problem(result.Error ?? "The stage could not be added.", statusCode: statusCode);
             }
 
-            loggerFactory.CreateLogger("RecipeEndpoints").LogInformation("Recipe stage added. Recipe={RecipeId}, Stage={StageId}, Template={TemplateId}, Prefix={Prefix}, Auto={Auto}, Actor={Actor}", recipeId, result.SelectedStageId, request.BaseStageId, request.TagPrefix, request.Auto, request.Actor);
+            loggerFactory.CreateLogger("RecipeEndpoints").LogInformation("Recipe stage added. Recipe={RecipeId}, Stage={StageId}, Template={TemplateId}, Prefix={Prefix}, Auto={Auto}, Actor={Actor}", recipeId, result.SelectedStageId, request.BaseStageId, result.TagPrefix, request.Auto, request.Actor);
 
             return Results.Ok(result);
         }

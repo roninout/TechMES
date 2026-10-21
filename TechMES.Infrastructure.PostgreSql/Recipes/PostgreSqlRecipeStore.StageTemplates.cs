@@ -51,17 +51,17 @@ public sealed partial class PostgreSqlRecipeStore
     }
 
     /// <summary>
-    /// Добавляет стадию в конец и создаёт её параметры из актуального шаблона.
-    /// У существующих стадий номера и значения не изменяются.
+    /// Добавляет стадию из шаблона семейства.
+    /// Вставка в середину сохраняет ID и значения существующих стадий.
     /// </summary>
     public async Task<RecipeStageChangeResult> AddStageAsync(int recipeId, RecipeStageAddRequest request, CancellationToken ct = default)
     {
         var prefix = request.TagPrefix?.Trim() ?? "";
 
-        if (recipeId <= 0 || request.BaseStageId <= 0 || request.ExpectedStages is null || request.ExpectedStages.Any(stage => stage is null))
+        if (recipeId <= 0 || request.BaseStageId <= 0 || request.RecipePageId is <= 0 || request.InsertBeforeStageId is <= 0 || request.ExpectedStages is null || request.ExpectedStages.Any(stage => stage is null))
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Invalid add stage request." };
 
-        if (prefix.Length == 0 || prefix.Any(char.IsWhiteSpace) || prefix.Any(char.IsControl))
+        if (!request.AutoAssignTagPrefix && !IsValidStagePrefix(prefix))
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Enter a PLC tag prefix without spaces or control characters." };
 
         await using var connection = CreateConnection();
@@ -108,25 +108,33 @@ public sealed partial class PostgreSqlRecipeStore
         if (stages.Any(stage => stage.Number <= 0) || stages.Select(stage => stage.Number).Distinct().Count() != stages.Count)
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Existing stage numbers must be positive and unique." };
 
+        var insertIndex = request.InsertBeforeStageId is int beforeId ? stages.FindIndex(stage => stage.Id == beforeId) : stages.Count;
+
+        if (insertIndex < 0)
+            return new() { Status = RecipeChangeStatus.Conflict, Error = "The target row no longer exists in this recipe. Press Refresh." };
+
         var lastNumber = stages.Count == 0 ? 0 : stages.Max(stage => stage.Number);
 
-        if (lastNumber == int.MaxValue)
-            return new() { Status = RecipeChangeStatus.Invalid, Error = "The next stage number exceeds the supported range." };
+        if (lastNumber == int.MaxValue || (insertIndex < stages.Count && (long)lastNumber + stages.Count + 2 > int.MaxValue))
+            return new() { Status = RecipeChangeStatus.Invalid, Error = "Stage numbers are too large to add and renumber safely." };
 
-        // Блокировка шаблона также препятствует добавлению новых связей через его FK.
+        if (request.AutoAssignTagPrefix)
+            prefix = await ResolveAutomaticStagePrefixAsync(connection, transaction, recipeId, familyId, request.RecipePageId, ct);
+
+        // Блокируем шаблон до завершения создания стадии и параметров.
         await using (var template = new NpgsqlCommand("SELECT \"id\" FROM public.\"BaseRecipeStage\" WHERE \"id\" = @id AND \"baseRecipeId\" = @family_id FOR UPDATE;", connection, transaction) { CommandTimeout = GetCommandTimeout() })
         {
             template.Parameters.AddWithValue("id", request.BaseStageId);
             template.Parameters.AddWithValue("family_id", familyId);
 
             if (await template.ExecuteScalarAsync(ct) is null)
-                return new() { Status = RecipeChangeStatus.NotFound, Error = "The stage template no longer exists in this recipe family. Reopen Add stage." };
+                return new() { Status = RecipeChangeStatus.NotFound, Error = "The stage template no longer exists in this recipe family. Press Refresh." };
         }
 
         var link = await FindTemplateParameterLinkAsync(connection, transaction, ct);
         var parameterIds = new HashSet<int>();
 
-        // Проверяем семейство каждого параметра и стабилизируем связи до завершения вставки.
+        // Все параметры шаблона должны принадлежать этому же семейству.
         var parametersSql = $"""
         SELECT p."id", p."kind", p."baseRecipeId"
         FROM {link.Table} l JOIN public."BaseParameter" p ON p."id" = l.{link.ParameterColumn}
@@ -191,9 +199,15 @@ public sealed partial class PostgreSqlRecipeStore
                 throw new InvalidOperationException("The template parameter set changed during stage creation.");
         }
 
+        if (insertIndex < stages.Count)
+        {
+            stages.Insert(insertIndex, new() { Id = stageId, Number = lastNumber + 1, Auto = request.Auto });
+            await RenumberRecipeStagesAsync(connection, transaction, recipeId, stages, lastNumber + 1, ct);
+        }
+
         await transaction.CommitAsync(ct);
 
-        return new() { Status = RecipeChangeStatus.Saved, SelectedStageId = stageId };
+        return new() { Status = RecipeChangeStatus.Saved, SelectedStageId = stageId, TagPrefix = prefix };
     }
 
     /// <summary>

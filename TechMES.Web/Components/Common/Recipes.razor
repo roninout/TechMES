@@ -56,7 +56,7 @@
         <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@_error</RadzenAlert>
     }
 
-    @if (EditorMode)
+        @if (EditorMode)
     {
         <div class="recipes-management">
             <RadzenButton Text="New" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(!_canEdit || IsBusy || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
@@ -65,83 +65,152 @@
 
             <span class="recipes-management-divider" aria-hidden="true"></span>
 
-            <RadzenButton Text="Add stage" Icon="playlist_add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanAddStage)" Click="@AddStageAsync" />
             <RadzenButton Text="Up" Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageUp)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveUp))" />
             <RadzenButton Text="Down" Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanMoveStageDown)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.MoveDown))" />
-            <RadzenButton Text="Delete stage" Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Disabled="@(!CanChangeStage)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.Delete))" />
+
+            <div class="recipes-tag-switch">
+                <RadzenLabel Text="PLC tag prefix" Component="recipe-show-stage-tags" />
+                <RadzenSwitch Name="recipe-show-stage-tags" @bind-Value="_showStageTags" Disabled="@IsBusy" />
+            </div>
         </div>
     }
 
-    <RadzenCard class="recipes-card">
-        <div class="recipes-heading">
-            <span class="recipes-name">@(_snapshot?.Recipe.DisplayName ?? "Select a recipe")</span>
+    <div class="recipes-workspace @(EditorMode ? "recipes-workspace-editor" : "")">
+        @if (EditorMode)
+        {
+            <aside class="recipes-template-list" aria-label="Stage templates">
+                <RadzenTextBox @bind-Value="_templateSearch" Immediate="true" Placeholder="Search stages..." Style="width: 100%;" AriaLabel="Search stage templates" />
 
-            @if (_snapshot is not null)
-            {
-                <RadzenBadge Text="@($"Stages: {Stages.Count}")" BadgeStyle="BadgeStyle.Light" />
+                <div class="recipes-template-cards">
+                    @foreach (var template in FilteredStageTemplates)
+                    {
+                        <div @key="template.Id" class="recipes-template-item" draggable="@(CanAddStage ? "true" : "false")" @ondragstart="@(() => BeginTemplateDrag(template.Id))" @ondragend="@ClearStageDrag">
+                            <RadzenCard class="recipes-template-card">
+                                <RadzenIcon Icon="view_agenda" class="recipes-template-icon" />
 
-                @if (SelectedPage?.RecipeId == _snapshot.Recipe.Id)
-                {
-                    <RadzenBadge Text="Current" BadgeStyle="BadgeStyle.Success" />
-                }
-            }
+                                <div class="recipes-template-text">
+                                    <strong>@template.Code</strong>
+                                    <small>@template.Name</small>
+                                </div>
 
-            @if (!EditorMode)
-            {
-                <div class="recipes-open-editor">
-                    <RadzenButton Text="Edit recipes" Icon="edit_note" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@OpenEditor" />
+                                <RadzenBadge Text="@template.ParameterCount.ToString()" BadgeStyle="BadgeStyle.Light" />
+                            </RadzenCard>
+                        </div>
+                    }
+
+                    @if (!FilteredStageTemplates.Any())
+                    {
+                        <small class="recipes-template-empty">@(_stageTemplates.Templates.Count == 0 ? "No stage templates in this family." : "No stages match the search.")</small>
+                    }
                 </div>
-            }
-        </div>
+            </aside>
+        }
 
-        <RadzenDataGrid @key="_snapshot" Data="@Stages" TItem="RecipeStageDto" @bind-Value="_selectedStages" SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="@(!IsBusy)" AllowSorting="false" AllowFiltering="false" AllowPaging="false" AllowColumnResize="true" IsLoading="@_loading" ShowEmptyMessage="@(!_loading)" EmptyText="No recipe stages to display." Density="Density.Compact" class="recipes-grid">
-            <LoadingTemplate>
-                <JournalGridLoading />
-            </LoadingTemplate>
+        <RadzenCard class="recipes-card">
+            <div class="recipes-heading">
+                <span class="recipes-name">@(_snapshot?.Recipe.DisplayName ?? "Select a recipe")</span>
 
-            <Columns>
-                <RadzenDataGridColumn TItem="RecipeStageDto" Property="Number" Title="№" Width="60px" Frozen="true" TextAlign="TextAlign.Center" />
-                <RadzenDataGridColumn TItem="RecipeStageDto" Property="Name" Title="Stage" Width="280px" Frozen="true" />
-
-                @* Auto отображается только как параметр шаблона вместе с остальными параметрами. *@
-                @foreach (var column in Columns)
+                @if (_snapshot is not null)
                 {
-                    <RadzenDataGridColumn @key="column.Id" TItem="RecipeStageDto" Title="@column.Name" Width="@(column.Kind == RecipeParameterKind.CheckBox ? "80px" : "120px")" TextAlign="TextAlign.Center">
-                        <HeaderTemplate>
-                            <div class="recipes-column-heading" title="@column.TagSuffix">
-                                <span>@column.Name</span>
-                                <small>@column.Description.Replace("\\n", "\n", StringComparison.Ordinal)</small>
-                            </div>
-                        </HeaderTemplate>
+                    <RadzenBadge Text="@($"Stages: {Stages.Count}")" BadgeStyle="BadgeStyle.Light" />
 
-                        <Template Context="stage">
-                            @if (stage.Parameters.TryGetValue(column.Id, out var parameter))
-                            {
-                                <button type="button" class="recipes-value" disabled="@(!EditorMode || !_editValues || !_canEdit || IsBusy)" title="@(EditorMode ? _editValues ? "Edit saved value" : "Enable Edit values to change this parameter" : "Saved recipe value")" @onclick="@(() => EditParameterAsync(stage, column))">
-                                    @if (column.Kind == RecipeParameterKind.CheckBox)
+                    @if (SelectedPage?.RecipeId == _snapshot.Recipe.Id)
+                    {
+                        <RadzenBadge Text="Current" BadgeStyle="BadgeStyle.Success" />
+                    }
+                }
+
+                @if (!EditorMode)
+                {
+                    <div class="recipes-open-editor">
+                        <RadzenButton Text="Edit recipes" Icon="edit_note" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@OpenEditor" />
+                    </div>
+                }
+            </div>
+
+            <div class="recipes-grid-host" @ondragover:preventDefault="@(EditorMode && CanAddStage)" @ondrop="@DropStageAtEndAsync">
+                <RadzenDataGrid RowRender="@RenderStageRow" @key="_snapshot" Data="@Stages" TItem="RecipeStageDto" @bind-Value="_selectedStages" SelectionMode="DataGridSelectionMode.Single" AllowRowSelectOnRowClick="@(!IsBusy)" AllowSorting="false" AllowFiltering="false" AllowPaging="false" AllowColumnResize="true" IsLoading="@_loading" ShowEmptyMessage="@(!_loading)" EmptyText="No recipe stages to display." Density="Density.Compact" class="recipes-grid">
+                    <LoadingTemplate>
+                        <JournalGridLoading />
+                    </LoadingTemplate>
+
+                    <Columns>
+                        <RadzenDataGridColumn TItem="RecipeStageDto" Property="Number" Title="№" Width="60px" Frozen="true" TextAlign="TextAlign.Center" />
+
+                        <RadzenDataGridColumn TItem="RecipeStageDto" Property="Name" Title="@(EditorMode && _showStageTags ? "PLC tag prefix" : "Stage")" Width="280px" Frozen="true">
+                            <Template Context="stage">
+                                <div class="recipes-stage-label" title="@stage.Name">
+                                    @if (EditorMode && string.IsNullOrWhiteSpace(stage.TagPrefix))
                                     {
-                                        var isChecked = parameter.Value != 0;
-
-                                        <span role="img" aria-label="@(isChecked ? "On" : "Off")" title="@(isChecked ? "On" : "Off")" class="@(isChecked ? "recipes-check is-on" : "recipes-check")">
-                                            <RadzenIcon Icon="@(isChecked ? "check_box" : "check_box_outline_blank")" />
+                                        <span class="recipes-prefix-warning" title="PLC tag prefix is not assigned." aria-label="PLC tag prefix is not assigned.">
+                                            <RadzenIcon Icon="warning_amber" />
                                         </span>
+                                    }
+
+                                    <span>@(EditorMode && _showStageTags ? string.IsNullOrWhiteSpace(stage.TagPrefix) ? "Not assigned" : stage.TagPrefix : stage.Name)</span>
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        @* Auto остаётся обычным параметром шаблона. *@
+                        @foreach (var column in Columns)
+                        {
+                            <RadzenDataGridColumn @key="column.Id" TItem="RecipeStageDto" Title="@column.Name" Width="@(column.Kind == RecipeParameterKind.CheckBox ? "80px" : "120px")" TextAlign="TextAlign.Center">
+                                <HeaderTemplate>
+                                    <div class="recipes-column-heading" title="@column.TagSuffix">
+                                        <span>@column.Name</span>
+                                        <small>@column.Description.Replace("\\n", "\n", StringComparison.Ordinal)</small>
+                                    </div>
+                                </HeaderTemplate>
+
+                                <Template Context="stage">
+                                    @if (stage.Parameters.TryGetValue(column.Id, out var parameter))
+                                    {
+                                        <button type="button" class="recipes-value" disabled="@(!EditorMode || !_editValues || !_canEdit || IsBusy)" title="@(EditorMode ? _editValues ? "Edit saved value" : "Enable Edit values to change this parameter" : "Saved recipe value")" @onclick="@(() => EditParameterAsync(stage, column))">
+                                            @if (column.Kind == RecipeParameterKind.CheckBox)
+                                            {
+                                                var isChecked = parameter.Value != 0;
+
+                                                <span role="img" aria-label="@(isChecked ? "On" : "Off")" title="@(isChecked ? "On" : "Off")" class="@(isChecked ? "recipes-check is-on" : "recipes-check")">
+                                                    <RadzenIcon Icon="@(isChecked ? "check_box" : "check_box_outline_blank")" />
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span>@FormatValue(parameter.Value, column.Format)</span>
+                                            }
+                                        </button>
                                     }
                                     else
                                     {
-                                        <span>@FormatValue(parameter.Value, column.Format)</span>
+                                        <span class="recipes-empty-cell" title="Not used in this stage">—</span>
                                     }
-                                </button>
-                            }
-                            else
-                            {
-                                <span class="recipes-empty-cell" title="Not used in this stage">—</span>
-                            }
-                        </Template>
-                    </RadzenDataGridColumn>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        }
+
+                        @if (EditorMode)
+                        {
+                            <RadzenDataGridColumn TItem="RecipeStageDto" Width="72px" MaxWidth="72px" Sortable="false" Filterable="false" Resizable="false" TextAlign="TextAlign.Center">
+                                <Template Context="stage">
+                                    <div class="recipes-delete-action" @onclick:stopPropagation="true">
+                                        <RadzenButton Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Shade="Shade.Lighter" Variant="Variant.Flat" Size="ButtonSize.Small" class="recipes-delete-button" Disabled="@(!CanAddStage)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.Delete, stage))" aria-label="Delete stage" title="Delete stage" />
+                                    </div>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        }
+                    </Columns>
+                </RadzenDataGrid>
+
+                @if (EditorMode)
+                {
+                    <div class="recipes-drop-end @(_dropAtEnd ? "recipes-drop-end-active" : "")" @ondragenter="@MarkStageDropEnd">
+                        Drop a stage here to append
+                    </div>
                 }
-            </Columns>
-        </RadzenDataGrid>
-    </RadzenCard>
+            </div>
+        </RadzenCard>
+    </div>
 </div>
 
 
@@ -236,24 +305,26 @@
         _selectedRecipeId = page is not null && _availableRecipes.Any(recipe => recipe.Id == page.RecipeId) ? page.RecipeId : _availableRecipes.FirstOrDefault()?.Id;
     }
 
-    /// <summary>
-    /// Читает рецепт и восстанавливает выбранную стадию только в пределах этого рецепта.
-    /// Отменённый ответ не заменяет данные после ухода со страницы.
-    /// </summary>
+    /// <summary>Читает рецепт и каталог его семейства, затем восстанавливает выделенную стадию.</summary>
     private async Task LoadSelectedRecipeAsync(CancellationToken ct)
     {
+        ClearStageDrag();
+
         if (_selectedRecipeId is not int recipeId)
         {
+            _stageTemplates = new();
             RestoreStageSelection(null);
             return;
         }
 
         var selectedStageId = _stageSelectionRecipeId == recipeId ? _selectedStages.FirstOrDefault()?.Id : null;
-
         var snapshot = await RecipeApi.GetAsync(recipeId, ct);
+        var templates = EditorMode ? await RecipeApi.GetStageTemplatesAsync(recipeId, ct) : new RecipeStageTemplateCatalogDto();
+
         ct.ThrowIfCancellationRequested();
 
         _snapshot = snapshot;
+        _stageTemplates = templates;
         RestoreStageSelection(selectedStageId);
     }
 

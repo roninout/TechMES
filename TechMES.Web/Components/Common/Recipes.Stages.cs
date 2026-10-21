@@ -4,9 +4,7 @@ using TechMES.Contracts.Recipes;
 
 namespace TechMES.Web.Components.Common;
 
-/// <summary>
-/// Выбор и изменение существующих стадий сохранённого рецепта.
-/// </summary>
+/// <summary>Выбор, перемещение и удаление стадий сохранённого рецепта.</summary>
 public partial class Recipes
 {
     private IList<RecipeStageDto> _selectedStages = [];
@@ -19,9 +17,7 @@ public partial class Recipes
     private bool CanMoveStageUp => CanChangeStage && SelectedStageIndex > 0;
     private bool CanMoveStageDown => CanChangeStage && SelectedStageIndex >= 0 && SelectedStageIndex < Stages.Count - 1;
 
-    /// <summary>
-    /// Выделяет объект из нового снимка, а не ссылку на строку старой таблицы.
-    /// </summary>
+    /// <summary>Восстанавливает выделение объектом из нового снимка таблицы.</summary>
     private void RestoreStageSelection(int? preferredStageId)
     {
         _stageSelectionRecipeId = _snapshot?.Recipe.Id;
@@ -30,16 +26,15 @@ public partial class Recipes
         _selectedStages = stage is null ? [] : [stage];
     }
 
-    /// <summary>
-    /// Отправляет одну операцию и перечитывает фактически сохранённые стадии.
-    /// Удаление требует подтверждения и удаляет также параметры выбранной стадии.
-    /// </summary>
-    private async Task ChangeStageAsync(RecipeStageChangeOperation operation)
+    /// <summary>Отправляет одну операцию; удаление выбранной строки требует подтверждения.</summary>
+    private async Task ChangeStageAsync(RecipeStageChangeOperation operation, RecipeStageDto? row = null, int? targetIndex = null)
     {
-        var stage = SelectedStage;
+        var stage = row is null ? SelectedStage : Stages.FirstOrDefault(item => item.Id == row.Id);
 
-        if (!CanChangeStage || _disposed || _snapshot is null || stage is null)
+        if (!CanAddStage || _disposed || _snapshot is null || stage is null)
             return;
+
+        _selectedStages = [stage];
 
         var recipeId = _snapshot.Recipe.Id;
         var ct = _stop.Token;
@@ -47,6 +42,7 @@ public partial class Recipes
         {
             Operation = operation,
             StageId = stage.Id,
+            TargetIndex = targetIndex,
             Auto = operation == RecipeStageChangeOperation.SetAuto ? !stage.Auto : null,
             ExpectedStages = Stages.Select(item => new RecipeStagePositionDto { Id = item.Id, Number = item.Number, Auto = item.Auto }).ToList()
         };
@@ -73,6 +69,7 @@ public partial class Recipes
             }
 
             requestStarted = true;
+            _loading = true;
 
             var result = await RecipeApi.ChangeStageAsync(recipeId, request, ct);
             ct.ThrowIfCancellationRequested();
@@ -81,14 +78,9 @@ public partial class Recipes
                 throw new InvalidOperationException("Unexpected stage operation response. Press Refresh.");
 
             saved = true;
-            _loading = true;
 
             await InvokeAsync(StateHasChanged);
-
-            var snapshot = await RecipeApi.GetAsync(recipeId, ct);
-            ct.ThrowIfCancellationRequested();
-
-            _snapshot = snapshot;
+            await LoadSelectedRecipeAsync(ct);
             RestoreStageSelection(result.SelectedStageId);
 
             NotificationService.Notify(NotificationSeverity.Success, "Recipe", "Stage changes saved to database.", 2500);
@@ -103,7 +95,6 @@ public partial class Recipes
             {
                 Logger.LogError(ex, "Recipe stage operation failed. Recipe={RecipeId}, Stage={StageId}, Operation={Operation}.", recipeId, stage.Id, operation);
 
-                // После ошибки запроса сначала требуется получить актуальное состояние.
                 if (requestStarted)
                 {
                     _snapshot = null;
