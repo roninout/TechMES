@@ -86,7 +86,7 @@ public static class RecipePlcReader
     }
 
     /// <summary>Не допускает NaN/Infinity и не принимает произвольное число за Boolean.</summary>
-    private static bool TryReadValue(string? text, RecipeParameterKind kind, out double value)
+    public static bool TryReadValue(string? text, RecipeParameterKind kind, out double value)
     {
         text = text?.Trim();
 

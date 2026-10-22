@@ -74,4 +74,7 @@ public interface IEquipmentParamProvider
     /// Реализация обязана повторно проверить allow-list, режим DryRun/AllowWrites и audit.
     /// </summary>
     Task<ParamWriteResponse> WriteAsync(EquipmentDto equipment, ParamWriteRequest request, CancellationToken ct = default);
+
+    /// <summary>Общий audit SCADA для Equipment и Recipes; недоступный provider возвращает false.</summary>
+    Task<bool> TrySaveOperatorActionAsync(EquipmentDto equipment, string itemName, string? currentValue, string? newValue, string? description, string? actor, CancellationToken ct) => Task.FromResult(false);
 }

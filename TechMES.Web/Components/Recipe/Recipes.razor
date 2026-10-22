@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @implements IDisposable
 @inject RecipeApiClient RecipeApi
+@inject ParamWriteCoordinator ParamWriter
 @inject ILogger<Recipes> Logger
 @inject DialogService DialogService
 @inject NotificationService NotificationService
@@ -147,11 +148,6 @@
                     </div>
 
                     <div class="recipes-management">
-                        @if (_snapshot is not null)
-                        {
-                            <RadzenBadge Text="@($"Stages: {Stages.Count}")" BadgeStyle="BadgeStyle.Light" />
-                        }
-
                         <RadzenButton Text="Edit recipes" Icon="edit_note" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@OpenEditor" />
                     </div>
                 </div>
@@ -199,7 +195,7 @@
                                         var plcValue = FindPlcValue(stage, column);
                                         double? displayedValue = _plcEnabled ? plcValue?.Value : parameter.Value;
 
-                                        <button type="button" class="recipes-value" disabled="@(!CanAddStage)" title="@RecipeValueTitle(plcValue)" @onclick="@(() => EditParameterAsync(stage, column))">
+                                        <button type="button" class="recipes-value" disabled="@(!CanAddStage && !CanWritePlcParameter(stage, column))" title="@RecipeValueTitle(plcValue)" @onclick="@(() => OnRecipeValueClickedAsync(stage, column))">
                                             @if (!displayedValue.HasValue)
                                             {
                                                 <span class="recipes-plc-unavailable">—</span>
@@ -296,7 +292,7 @@
     private bool _disposed;
     private string? _error;
 
-    private bool IsBusy => _loading || _editingValue || _managingRecipe || _changingStage || _savingDraft;
+    private bool IsBusy => _loading || _editingValue || _managingRecipe || _changingStage || _savingDraft || _writingPlc;
     private RecipePageDto? SelectedPage => _catalog.Pages.FirstOrDefault(page => page.Id == _selectedPageId);
     private IReadOnlyList<RecipeStageDto> Stages => _snapshot?.Stages ?? [];
     private IReadOnlyList<RecipeColumnDto> Columns => _snapshot?.Columns ?? [];
@@ -311,7 +307,8 @@
 
         if (_disposed) return;
 
-        _canEdit = EditorMode && state.User.Identity?.IsAuthenticated == true;
+        _canWritePlc = state.User.Identity?.IsAuthenticated == true;
+        _canEdit = EditorMode && _canWritePlc;
 
         await RefreshAsync();
     }

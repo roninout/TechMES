@@ -1836,7 +1836,7 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
         return false;
     }
 
-    private async Task<bool> TrySaveOperatorActionAsync(EquipmentDto equipment, string itemName, string? currentValue, string? newValue, string? description, string? actor, CancellationToken ct)
+    public async Task<bool> TrySaveOperatorActionAsync(EquipmentDto equipment, string itemName, string? currentValue, string? newValue, string? description, string? actor, CancellationToken ct)
     {
         try
         {

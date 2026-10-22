@@ -50,15 +50,19 @@ public partial class Recipes
         _plcTask = PollPlcAsync(previous, source, _snapshot!.Recipe.Id, SelectedPage!.Id, RecipePlcLayout.GetStamp(_snapshot));
     }
 
-    /// <summary>Отменяет чтение до смены рецепта и сразу убирает данные прежнего Unit.</summary>
-    private void StopPlcReading()
+    /// <summary>Отменяет опрос; при смене рецепта также очищает предыдущий снимок.</summary>
+    private void StopPlcReading(bool clearValues = true)
     {
         _plcStop?.Cancel();
         _plcStop = null;
+        _plcLoading = false;
+
+        // На время диалога сохраняем последний снимок, чтобы таблица не мигала прочерками.
+        if (!clearValues) return;
+
         _plcValues = [];
         _plcReadAtUtc = null;
         _plcError = null;
-        _plcLoading = false;
     }
 
     /// <summary>Результаты отменённого запроса никогда не попадают в новый рецепт.</summary>

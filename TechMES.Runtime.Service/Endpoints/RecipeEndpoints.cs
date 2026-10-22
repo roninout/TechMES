@@ -16,6 +16,7 @@ public static partial class RecipeEndpoints
         app.MapGet("/api/recipes/catalog", GetCatalogAsync);
         app.MapGet("/api/recipes/{recipeId:int}", GetRecipeAsync);
         app.MapGet("/api/recipes/{recipeId:int}/plc", ReadRecipePlcAsync);
+        app.MapPost("/api/recipes/{recipeId:int}/plc/parameter", WriteRecipePlcAsync);
         app.MapPost("/api/recipes/{recipeId:int}/parameter", SaveParameterAsync);
         app.MapPost("/api/recipes/change", ChangeRecipeAsync);
         app.MapPost("/api/recipes/{recipeId:int}/stage/change", ChangeStageAsync);

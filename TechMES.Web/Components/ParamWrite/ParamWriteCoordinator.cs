@@ -14,11 +14,12 @@ public sealed class ParamWriteCoordinator(ParamApiClient paramApi, IOptions<Para
 {
     private bool _isBusy;
 
-    /// <summary>
-    /// Открывает общий Param write-dialog и выполняет запись только после подтверждения пользователя.
-    /// Null означает, что пользователь закрыл dialog/confirm либо другая запись уже выполняется.
-    /// </summary>
-    public async Task<ParamWriteResponse?> WriteAsync(string equipmentName, ParamItemDto item, CancellationToken ct = default)
+    public Task<ParamWriteResponse?> WriteAsync(string equipmentName, ParamItemDto item, CancellationToken ct = default) => WriteCoreAsync(equipmentName, item, (request, token) => paramApi.WriteAsync(equipmentName, request, token), ct);
+
+    /// <summary>Тот же диалог и confirm для модуля с собственным серверным разрешением адресов.</summary>
+    public Task<ParamWriteResponse?> WriteAsync(string equipmentName, ParamItemDto item, Func<ParamWriteRequest, CancellationToken, Task<ParamWriteResponse>> write, CancellationToken ct = default) => WriteCoreAsync(equipmentName, item, write, ct);
+
+    private async Task<ParamWriteResponse?> WriteCoreAsync(string equipmentName, ParamItemDto item, Func<ParamWriteRequest, CancellationToken, Task<ParamWriteResponse>> write, CancellationToken ct)
     {
         if (_isBusy || string.IsNullOrWhiteSpace(equipmentName) || item is null || !item.CanWrite)
             return null;
@@ -37,13 +38,17 @@ public sealed class ParamWriteCoordinator(ParamApiClient paramApi, IOptions<Para
                 CloseDialogOnEsc = true
             });
 
+            ct.ThrowIfCancellationRequested();
+
             if (dialogResult is not ParamWriteDialogResult writeResult)
                 return null;
 
             if (options.Value.ConfirmWrites && !await ConfirmAsync(equipmentName, item, writeResult.Value))
                 return null;
 
-            var response = await paramApi.WriteAsync(equipmentName, new ParamWriteRequest
+            ct.ThrowIfCancellationRequested();
+
+            var response = await write(new ParamWriteRequest
             {
                 ItemName = item.Name,
                 Value = writeResult.Value,
@@ -60,6 +65,7 @@ public sealed class ParamWriteCoordinator(ParamApiClient paramApi, IOptions<Para
         catch (Exception ex)
         {
             notificationService.Notify(NotificationSeverity.Error, "Param write", "Cannot write Param value: " + ex.Message, 4500);
+
             return new ParamWriteResponse { EquipmentName = equipmentName, ItemName = item.Name, Success = false, Error = ex.Message };
         }
         finally

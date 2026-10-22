@@ -174,6 +174,17 @@ public sealed class RecipeApiClient
         return await ReadResponseAsync<RecipeEditorSaveResult>(response, ct);
     }
 
+    /// <summary>Добавляет существующую Windows identity к записи одной ячейки PLC.</summary>
+    public async Task<ParamWriteResponse> WritePlcParameterAsync(int recipeId, RecipePlcWriteRequest request, CancellationToken ct = default)
+    {
+        await _paramApi.FillWriteActorAsync(request.Write);
+        ct.ThrowIfCancellationRequested();
+
+        using var response = await _clients.CreateClient("RuntimeService").PostAsJsonAsync($"api/recipes/{recipeId}/plc/parameter", request, ct);
+
+        return await ReadResponseAsync<ParamWriteResponse>(response, ct);
+    }
+
     /// <summary> Выполняет GET и освобождает HTTP-ответ. </summary>
     private async Task<T> ReadAsync<T>(string url, CancellationToken ct) where T : class
     {
