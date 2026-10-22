@@ -37,7 +37,7 @@ public static class RecipePlcReader
 
                 // Старый суффикс храним в БД; в контроллере Auto имеет другое имя.
                 var suffix = column.TagSuffix.Trim();
-                if (suffix.Equals("AUTO_CONT_SET", StringComparison.OrdinalIgnoreCase)) suffix = "AUTO_CONT";
+                //if (suffix.Equals("AUTO_CONT_SET", StringComparison.OrdinalIgnoreCase)) suffix = "AUTO_CONT";
 
                 item.TagName = $"{stage.TagPrefix.Trim()}_{stage.Number.ToString(CultureInfo.InvariantCulture)}_{suffix}";
             }
