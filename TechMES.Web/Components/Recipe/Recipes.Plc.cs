@@ -17,8 +17,17 @@ public partial class Recipes
     private DateTimeOffset? _plcReadAtUtc;
     private Dictionary<(int StageId, int ColumnId), RecipePlcValueDto> _plcValues = [];
 
-    private bool CanReadPlc => !EditorMode && !_disposed && _snapshot is not null && SelectedPage?.RecipeId == _snapshot.Recipe.Id;
-    private string PlcStatus => _plcError ?? (_plcReadAtUtc.HasValue ? $"PLC: {_plcValues.Values.Count(item => item.Value.HasValue)}/{_plcValues.Count} · {_plcReadAtUtc.Value.ToLocalTime():HH:mm:ss}" : "Reading PLC values...");
+    private bool CanReadPlc => !EditorMode && !_disposed && _snapshot is not null && SelectedPage is not null;
+
+    private string PlcStatus
+    {
+        get
+        {
+            if (!CanReadPlc) return _loading ? "Loading recipe..." : "Select a Unit and a recipe.";
+
+            return _plcError ?? (_plcReadAtUtc.HasValue ? $"PLC: {_plcValues.Values.Count(item => item.Value.HasValue)}/{_plcValues.Count} · {_plcReadAtUtc.Value.ToLocalTime():HH:mm:ss}" : "Reading PLC values...");
+        }
+    }
 
     /// <summary>Переключение источника не меняет черновик и ничего не сохраняет.</summary>
     private void ChangePlcMode(bool enabled)
@@ -31,11 +40,8 @@ public partial class Recipes
     /// <summary>Запускает один цикл для конкретного Unit и конкретной структуры рецепта.</summary>
     private void StartPlcReading()
     {
-        if (!_plcEnabled || !CanReadPlc)
-        {
-            _plcEnabled = false;
-            return;
-        }
+        // Выбор другого рецепта не меняет включённый пользователем режим PLC.
+        if (!_plcEnabled || !CanReadPlc || _plcStop is not null) return;
 
         var previous = _plcTask;
         var source = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);

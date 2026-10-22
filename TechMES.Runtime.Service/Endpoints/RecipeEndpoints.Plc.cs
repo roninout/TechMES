@@ -10,15 +10,16 @@ public static partial class RecipeEndpoints
     private static async Task<IResult> ReadRecipePlcAsync(int recipeId, int pageId, string layoutStamp, IRecipeStore store, IPlantScadaGateway gateway, ILoggerFactory loggerFactory, CancellationToken ct)
     {
         if (recipeId <= 0 || pageId <= 0 || string.IsNullOrWhiteSpace(layoutStamp))
-            return Results.Problem("Select a Unit and its current recipe.", statusCode: 400);
+            return Results.Problem("Select a Unit and a recipe.", statusCode: 400);
 
         try
         {
             var catalog = await store.GetCatalogAsync(ct);
             var page = catalog.Pages.FirstOrDefault(item => item.Id == pageId);
 
-            if (page is null || page.RecipeId != recipeId)
-                return Results.Problem("The selected recipe is no longer current for this Unit. Press Refresh.", statusCode: 409);
+            // PLC-адреса берём из выбранного рецепта, независимо от признака Current.
+            if (page is null)
+                return Results.Problem("The selected Unit no longer exists. Press Refresh.", statusCode: 404);
 
             var snapshot = await store.GetAsync(recipeId, ct);
 

@@ -13,7 +13,7 @@ public partial class Recipes
     private bool CanManageRecipe => _canEdit && !IsBusy && !_dialogOpen && !_uncertainDraft && _snapshot is not null;
     private int? NewRecipeSourceId => _snapshot?.Recipe.Id ?? SelectedPage?.BaseRecipeId;
 
-    /// <summary>Восстанавливает Unit и рецепт из ссылки при первом открытии.</summary>
+    /// <summary>Восстанавливает Unit и загружает Current при первом открытии просмотра.</summary>
     private async Task ReloadCatalogAndRecipeAsync(int? preferredRecipeId, CancellationToken ct)
     {
         var catalog = await RecipeApi.GetCatalogAsync(ct);
@@ -31,9 +31,16 @@ public partial class Recipes
             _selectedPageId = _catalog.Pages.FirstOrDefault()?.Id;
         }
 
+        // В просмотре всегда нужен конкретный Unit; старую ссылку unit=all восстанавливаем на первый.
+        if (firstLoad && !EditorMode && SelectedPage is null)
+            _selectedPageId = _catalog.Pages.FirstOrDefault()?.Id;
+
         _catalogLoaded = true;
 
-        SelectAvailableRecipes(preferredRecipeId ?? (firstLoad ? ReadQueryId("recipe") : null));
+        // При первом открытии просмотра выбираем Current. Refresh сохраняет ручной выбор.
+        var recipeId = firstLoad && !EditorMode ? SelectedPage?.RecipeId : preferredRecipeId ?? (firstLoad ? ReadQueryId("recipe") : null);
+        SelectAvailableRecipes(recipeId);
+
         await LoadSelectedRecipeAsync(ct);
     }
 
