@@ -15,7 +15,7 @@ public static partial class RecipeEndpoints
     // Проверка текущего значения и запись двух запросов Recipes не должны перемешиваться.
     private static readonly SemaphoreSlim RecipePlcWriteGate = new(1, 1);
 
-    /// <summary>Проверяет адреса, код слота и ожидаемое значение до записи одной ячейки.</summary>
+    /// <summary>Записывает один параметр по его адресу; код стадии _NUM здесь не читается и не изменяется.</summary>
     private static async Task<IResult> WriteRecipePlcAsync(int recipeId, RecipePlcWriteRequest request, IRecipeStore store, IPlantScadaGateway gateway, IEquipmentParamProvider paramProvider, IOptions<ParamWriteOptions> writeOptions, ILoggerFactory loggerFactory, CancellationToken ct)
     {
         if (recipeId <= 0 || request.Write is null || request.PageId <= 0 || request.StageId <= 0 || request.ColumnId <= 0 || string.IsNullOrWhiteSpace(request.LayoutStamp) || !double.IsFinite(request.ExpectedValue))
@@ -62,13 +62,12 @@ public static partial class RecipeEndpoints
             // Суффикс используем буквально из БД, как в работающем чтении.
             var prefix = stage.TagPrefix.Trim();
             var tag = RecipeParameterTag(stage, column);
-            var numberTag = $"{prefix}_{stage.Number.ToString(CultureInfo.InvariantCulture)}_NUM";
 
             result.EquipmentName = page.Page;
             result.ItemName = column.Name;
             result.TagName = tag;
 
-            if (tag.Equals(numberTag, StringComparison.OrdinalIgnoreCase))
+            if (column.TagSuffix.Trim().Equals("NUM", StringComparison.OrdinalIgnoreCase))
                 return RejectRecipePlcWrite(result, "NUM is a service tag and cannot be edited as a parameter.");
 
             var columns = snapshot.Columns.ToDictionary(item => item.Id);
@@ -87,21 +86,14 @@ public static partial class RecipeEndpoints
             if (current is null || !current.Stages.Any(item => item.TagPrefix.Trim().Equals(prefix, StringComparison.OrdinalIgnoreCase)))
                 return RejectRecipePlcWrite(result, "The PLC prefix does not belong to the selected Unit's current recipe.");
 
-            var definitions = await store.GetBaseStagesAsync(templates.BaseRecipeId, ct);
-            var definition = definitions.FirstOrDefault(item => item.Id == stage.BaseStageId);
-
-            if (!int.TryParse(definition?.Code.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var code) || code <= 0 || code > 999)
-                return RejectRecipePlcWrite(result, "The stage template must have a numeric code from 1 to 999.");
-
             if (!RecipePlcReader.TryReadValue(request.Write.Value, column.Kind, out var newValue))
                 return RejectRecipePlcWrite(result, "Enter a finite number or a Boolean value 0/1.");
 
             result.WrittenValue = newValue.ToString("G17", CultureInfo.InvariantCulture);
 
-            var readings = await ReadRecipeWriteValuesAsync(gateway, tag, numberTag, ct);
-
-            if (!TryRecipeWriteReading(readings, numberTag, RecipeParameterKind.InputField, out var actualCode) || actualCode != code)
-                return RejectRecipePlcWrite(result, $"PLC stage mismatch: {numberTag} must contain template code {code}. Refresh or load the correct recipe first.");
+            // Как в исходном приложении, отдельная ячейка работает только со своим тегом.
+            // _NUM записывается кодом шаблона при загрузке рецепта целиком.
+            var readings = await ReadRecipeWriteValuesAsync(gateway, tag, ct);
 
             if (!TryRecipeWriteReading(readings, tag, column.Kind, out var currentValue))
                 return RejectRecipePlcWrite(result, $"Cannot read the current PLC value: {tag}.");
@@ -116,7 +108,7 @@ public static partial class RecipeEndpoints
             {
                 result.Success = true;
                 result.DryRun = true;
-                result.Message = "Dry-run: PLC address, NUM and current value validated. No write was sent.";
+                result.Message = "Dry-run: PLC address and current value validated. No write was sent.";
                 return Results.Ok(result);
             }
 
@@ -144,10 +136,7 @@ public static partial class RecipeEndpoints
             for (var attempt = 0; attempt < 3; attempt++)
             {
                 await Task.Delay(200, ct);
-                readings = await ReadRecipeWriteValuesAsync(gateway, tag, numberTag, ct);
-
-                if (!TryRecipeWriteReading(readings, numberTag, RecipeParameterKind.InputField, out actualCode) || actualCode != code)
-                    break;
+                readings = await ReadRecipeWriteValuesAsync(gateway, tag, ct);
 
                 if (TryRecipeWriteReading(readings, tag, column.Kind, out var actual) && SameRecipePlcValue(actual, newValue))
                 {
@@ -157,7 +146,7 @@ public static partial class RecipeEndpoints
             }
 
             if (!verified)
-                return RejectRecipePlcWrite(result, "TagWrite was sent, but the PLC value or NUM could not be verified. Read current values before retrying.");
+                return RejectRecipePlcWrite(result, "TagWrite was sent, but the PLC value could not be verified. Read current values before retrying.");
 
             result.Success = true;
             result.Message = result.AuditAttempted && !result.AuditSucceeded ? "PLC value written and verified; operator audit failed." : "PLC value written and verified.";
@@ -184,9 +173,9 @@ public static partial class RecipeEndpoints
 
     private static string RecipeParameterTag(RecipeStageDto stage, RecipeColumnDto column) => $"{stage.TagPrefix.Trim()}_{stage.Number.ToString(CultureInfo.InvariantCulture)}_{column.TagSuffix.Trim()}";
 
-    private static async Task<Dictionary<string, ScadaTagBatchReadItem>> ReadRecipeWriteValuesAsync(IPlantScadaGateway gateway, string tag, string numberTag, CancellationToken ct)
+    private static async Task<Dictionary<string, ScadaTagBatchReadItem>> ReadRecipeWriteValuesAsync(IPlantScadaGateway gateway, string tag, CancellationToken ct)
     {
-        var batch = await gateway.ReadTagsAsync([tag, numberTag], ct);
+        var batch = await gateway.ReadTagsAsync([tag], ct);
         return batch.Items.ToDictionary(item => item.TagName, StringComparer.OrdinalIgnoreCase);
     }
 

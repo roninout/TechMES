@@ -120,26 +120,25 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IPlantScadaHeal
 
     public async Task RefreshHealthAsync(CancellationToken ct = default)
     {
+        // Проверки серверов имеют собственные gate и не занимают общую очередь TagRead/TagWrite.
+        if (_nativeClient is CtApiFailoverClient redundant)
+        {
+            await redundant.RefreshAsync(true, ct);
+            SetState(redundant.State.ActiveRole is null ? PlantScadaConnectionStatus.Disconnected : PlantScadaConnectionStatus.Connected, "CtApi health cycle completed.");
+            return;
+        }
+
         await _apiGate.WaitAsync(ct);
 
         try
         {
-            if (_nativeClient is CtApiFailoverClient redundant)
+            if (!await _nativeClient.TryProbeConnectionAsync(ct))
             {
-                await redundant.RefreshAsync(true, ct);
-
-                SetState(redundant.State.ActiveRole is null ? PlantScadaConnectionStatus.Disconnected : PlantScadaConnectionStatus.Connected, "CtApi health cycle completed.");
+                await _nativeClient.CloseAsync(ct);
+                await _nativeClient.OpenAsync(ct);
             }
-            else
-            {
-                if (!await _nativeClient.TryProbeConnectionAsync(ct))
-                {
-                    await _nativeClient.CloseAsync(ct);
-                    await _nativeClient.OpenAsync(ct);
-                }
 
-                SetState(await _nativeClient.TryProbeConnectionAsync(ct) ? PlantScadaConnectionStatus.Connected : PlantScadaConnectionStatus.Disconnected, "CtApi health cycle completed.");
-            }
+            SetState(await _nativeClient.TryProbeConnectionAsync(ct) ? PlantScadaConnectionStatus.Connected : PlantScadaConnectionStatus.Disconnected, "CtApi health cycle completed.");
         }
         finally
         {

@@ -5,20 +5,23 @@ using TechMES.Infrastructure.CtApi.Settings;
 
 namespace TechMES.Infrastructure.CtApi.Native;
 
-/// <summary>
-/// Два независимых CtApi handle и один маршрут для всех потребителей.
-/// Gate не позволяет менять активный handle посреди операции или записи статусов.
-/// </summary>
+/// <summary>Два независимых CtApi-подключения. Недоступный резерв не блокирует рабочий сервер.</summary>
 public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
 {
     private readonly ICtApiNativeClient[] _clients;
     private readonly bool[] _opened = new bool[2];
     private readonly bool?[] _lastSent = new bool?[2];
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly SemaphoreSlim[] _serverGates = [new(1, 1), new(1, 1)];
+    private readonly SemaphoreSlim _statusGate = new(1, 1);
+    private readonly SemaphoreSlim _closeGate = new(1, 1);
+    private readonly object _stateGate = new();
     private readonly CtApiOptions _options;
     private readonly ILogger _logger;
 
-    private int _active = -1;
+    private Task[] _cycles = [Task.CompletedTask, Task.CompletedTask];
+    private CancellationTokenSource? _stop = new();
+    private TaskCompletionSource _ready = NewSignal();
+    private bool _closing;
     private bool _disposed;
     private PlantScadaRedundancyState _state;
 
@@ -54,83 +57,124 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
         };
     }
 
+    private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private static int ActiveIndex(PlantScadaRedundancyState state) => state.Primary.Connected ? 0 : state.Secondary.Connected ? 1 : -1;
+
+    /// <summary>Запускает максимум одну проверку каждого сервера и ждёт только первого рабочего подключения.</summary>
     public async Task RefreshAsync(bool writeControlTags, CancellationToken ct = default)
     {
-        await _gate.WaitAsync(ct);
+        ct.ThrowIfCancellationRequested();
+        Task ready;
+        Task completed;
 
+        lock (_stateGate)
+        {
+            ThrowIfUnavailable();
+            _stop ??= new CancellationTokenSource();
+
+            for (var index = 0; index < _clients.Length; index++)
+            {
+                if (!_cycles[index].IsCompleted)
+                    continue;
+
+                var serverIndex = index;
+                var token = _stop.Token;
+                _cycles[index] = Task.Run(() => RefreshServerAsync(serverIndex, writeControlTags, token));
+            }
+
+            ready = _ready.Task;
+
+            if (ready.IsCompleted)
+                return;
+
+            completed = Task.WhenAll(_cycles);
+        }
+
+        // Второй сервер продолжает свою проверку в отслеживаемой задаче.
+        // Отмена ожидания не закрывает handle, которым пользуются другие запросы.
+        await Task.WhenAny(ready, completed).WaitAsync(ct);
+    }
+
+    private async Task RefreshServerAsync(int index, bool writeControlTags, CancellationToken ct)
+    {
         try
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
+            await _serverGates[index].WaitAsync(ct);
 
-            var primary = await ProbeAsync(0, State.Primary, ct);
-            var duplicate = primary.Server.Length > 0 && string.Equals(primary.Server, State.Secondary.Server, StringComparison.OrdinalIgnoreCase);
-            var secondary = duplicate 
-                ? State.Secondary with
-                {
-                    Connected = false,
-                    Message = "Primary and Secondary must be different servers."
-                }
-                : await ProbeAsync(1, State.Secondary, ct);
-
-            var next = primary.Connected ? 0 : secondary.Connected ? 1 : -1;
-
-            if (_active != next)
-                _logger.LogInformation("CtApi active server changed: {Previous} -> {Current}.", _active, next);
-
-            _active = next;
-
-            // Health API читает готовый снимок и не ждёт нативные операции.
-            // Для ответа PLC сохраняется собственное время чтения ReadAtUtc.
-            Volatile.Write(ref _state, State with
+            try
             {
-                Primary = primary with
-                {
-                    WriteOk = null,
-                    WriteMessage = "Health cycle in progress."
-                },
-                Secondary = secondary with
-                {
-                    WriteOk = null,
-                    WriteMessage = "Health cycle in progress."
-                },
-                CheckedAtUtc = DateTimeOffset.UtcNow,
-                ActiveRole = next == 0
-                    ? "Primary"
-                    : next == 1
-                        ? "Secondary"
-                        : null,
-                ActiveServer = next == 0
-                    ? primary.Server
-                    : next == 1
-                        ? secondary.Server
-                        : null
-            });
+                var state = index == 0 ? State.Primary : State.Secondary;
+                var duplicate = index == 1 && state.Server.Length > 0 && state.Server.Equals(State.Primary.Server, StringComparison.OrdinalIgnoreCase);
 
-            primary = await UpdateHeartbeatAsync(0, primary, writeControlTags, ct);
-            secondary = await UpdateHeartbeatAsync(1, secondary, writeControlTags, ct);
+                state = duplicate
+                    ? state with { Connected = false, Message = "Primary and Secondary must be different servers." }
+                    : await ProbeAsync(index, state, ct);
 
-            // Общие теги читаем через выбранное рабочее соединение.
-            // Ошибка heartbeat не отменяет чтение ответа PLC.
-            primary = await ReadPlcStatusAsync(primary, ct);
-            secondary = await ReadPlcStatusAsync(secondary, ct);
-
-            Volatile.Write(ref _state, State with
+                // Рабочий маршрут публикуем сразу после health-check, до heartbeat и чтения статусов.
+                PublishServer(index, state);
+                state = await UpdateHeartbeatAsync(index, state, writeControlTags, ct);
+                PublishServer(index, state);
+            }
+            finally
             {
-                Primary = primary,
-                Secondary = secondary
-            });
+                _serverGates[index].Release();
+            }
+
+            // Оба ответа PLC читаем через любой рабочий сервер, даже если второй отключён.
+            await RefreshPlcStatusesAsync(ct);
         }
-        finally
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            _gate.Release();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CtApi server cycle failed. Index={Index}.", index);
         }
     }
 
-    /// <summary>
-    /// Проверяет HealthCheckTag через собственное соединение указанного сервера.
-    /// Read/Write-теги PLC не участвуют в определении Connected.
-    /// Ошибка проверки закрывает соединение; следующий цикл попробует открыть его снова.
-    /// </summary>
+    private void PublishServer(int index, PlantScadaServerState server)
+    {
+        string? previous;
+        string? active;
+
+        lock (_stateGate)
+        {
+            var state = State;
+            var current = index == 0 ? state.Primary : state.Secondary;
+
+            // Проверка связи не должна затирать более свежий ответ PLC.
+            server = server with { ReadValue = current.ReadValue, ReadOk = current.ReadOk, ReadMessage = current.ReadMessage, ReadAtUtc = current.ReadAtUtc };
+            state = index == 0 ? state with { Primary = server } : state with { Secondary = server };
+
+            previous = State.ActiveRole;
+            var next = ActiveIndex(state);
+            active = next == 0 ? "Primary" : next == 1 ? "Secondary" : null;
+
+            if (next < 0)
+            {
+                // Без рабочего маршрута прежний ответ PLC нельзя выдавать за актуальный.
+                state = state with { Primary = ClearPlcStatus(state.Primary), Secondary = ClearPlcStatus(state.Secondary) };
+            }
+
+            Volatile.Write(ref _state, state with
+            {
+                ActiveRole = active,
+                ActiveServer = next == 0 ? state.Primary.Server : next == 1 ? state.Secondary.Server : null,
+                CheckedAtUtc = DateTimeOffset.UtcNow
+            });
+
+            if (next >= 0)
+                _ready.TrySetResult();
+            else if (_ready.Task.IsCompleted)
+                _ready = NewSignal();
+        }
+
+        if (previous != active)
+            _logger.LogInformation("CtApi active server changed: {Previous} -> {Current}.", previous, active);
+    }
+
+    /// <summary>Состояние соединения определяет только HealthCheckTag собственного сервера.</summary>
     private async Task<PlantScadaServerState> ProbeAsync(int index, PlantScadaServerState state, CancellationToken ct)
     {
         if (!state.Configured)
@@ -146,20 +190,15 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
                 _opened[index] = true;
             }
 
-            // Каждый сервер проверяется через собственный CtApi-клиент.
             var connected = await _clients[index].TryProbeConnectionAsync(ct);
+            ct.ThrowIfCancellationRequested();
 
-            // Передаём подробности в существующий снимок Diagnostics.
             var details = _clients[index] is CtApiNativeClient native ? native.LastProbeMessage : "CtApi health probe completed.";
 
             if (!connected)
                 throw new InvalidOperationException("CtApi health probe failed. " + details);
 
-            return state with
-            {
-                Connected = true,
-                Message = "CtApi health probe succeeded. " + details
-            };
+            return state with { Connected = true, Message = "CtApi health probe succeeded. " + details };
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -169,15 +208,41 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
         {
             _logger.LogWarning("CtApi {Role} health check failed. Server={Server}. {Reason}", state.Role, state.Server, ex.Message);
 
+            state = state with { Connected = false, Message = ex.Message, WriteOk = null };
+            PublishServer(index, state);
             await CloseClientAsync(index);
 
-            return state with
-            {
-                Connected = false,
-                Message = ex.Message
-            };
+            return state;
         }
     }
+
+    private async Task RefreshPlcStatusesAsync(CancellationToken ct)
+    {
+        if (State.ActiveRole is null || !await _statusGate.WaitAsync(0, ct))
+            return;
+
+        try
+        {
+            for (var index = 0; index < _clients.Length; index++)
+            {
+                var result = await ReadPlcStatusAsync(index == 0 ? State.Primary : State.Secondary, ct);
+
+                lock (_stateGate)
+                {
+                    var state = State;
+                    var current = index == 0 ? state.Primary : state.Secondary;
+                    var updated = state.ActiveRole is null ? ClearPlcStatus(current) : current with { ReadValue = result.ReadValue, ReadOk = result.ReadOk, ReadMessage = result.ReadMessage, ReadAtUtc = result.ReadAtUtc };
+                    Volatile.Write(ref _state, index == 0 ? state with { Primary = updated } : state with { Secondary = updated });
+                }
+            }
+        }
+        finally
+        {
+            _statusGate.Release();
+        }
+    }
+
+    private static PlantScadaServerState ClearPlcStatus(PlantScadaServerState state) => state with { ReadValue = null, ReadOk = null, ReadAtUtc = null, ReadMessage = "No connection. PLC status is unavailable." };
 
     private bool IsDuplicateTag(string tag)
     {
@@ -200,7 +265,10 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
         };
 
         if (!state.Connected || !state.Configured)
+        {
             _lastSent[index] = null;
+            return state with { WriteMessage = "Server is offline. Heartbeat is not written." };
+        }
 
         if (state.WriteTag.Length == 0)
         {
@@ -219,19 +287,10 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
             };
         }
 
-        if (_active < 0)
-        {
-            _lastSent[index] = null;
-
-            return state with
-            {
-                WriteMessage = "No connection. Heartbeat is not written."
-            };
-        }
-
         try
         {
-            var client = _clients[_active];
+            // Heartbeat сервера записывается через его собственный handle.
+            var client = _clients[index];
             var value = await client.ReadControlTagAsync(state.WriteTag, ct);
 
             state = state with { WriteValue = value };
@@ -246,18 +305,6 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
             }
 
             state = state with { WriteTagReadOk = true };
-
-            // Для отключённого сервера запрещена любая heartbeat-запись,
-            // в том числе запись нуля.
-            if (!state.Connected || !state.Configured)
-            {
-                _lastSent[index] = null;
-
-                return state with
-                {
-                    WriteMessage = "Server is offline. Heartbeat is not written."
-                };
-            }
 
             if (!write)
             {
@@ -339,7 +386,7 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
             };
         }
 
-        if (_active < 0)
+        if (State.ActiveRole is null)
         {
             return state with
             {
@@ -349,7 +396,7 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
 
         try
         {
-            var value = await _clients[_active].ReadControlTagAsync(state.ReadTag, ct);
+            var value = await UseAsync(client => client.ReadControlTagAsync(state.ReadTag, ct), ct);
             var valid = TryBoolean(value, out _);
 
             return state with
@@ -389,40 +436,71 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
         return false;
     }
 
+    private void ThrowIfUnavailable()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (_closing)
+            throw new InvalidOperationException("CtApi connections are closing.");
+    }
+
     private async Task<T> UseAsync<T>(Func<ICtApiNativeClient, Task<T>> operation, CancellationToken ct)
     {
-        await _gate.WaitAsync(ct);
-
-        try
+        while (true)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
+            int index;
 
-            if (_active < 0)
+            lock (_stateGate)
+            {
+                ThrowIfUnavailable();
+                index = ActiveIndex(State);
+            }
+
+            if (index < 0)
                 throw new InvalidOperationException("Neither CtApi server is connected.");
 
-            return await operation(_clients[_active]);
-        }
-        finally
-        {
-            _gate.Release();
+            // Ожидание недоступного резерва не занимает gate рабочего сервера.
+            await _serverGates[index].WaitAsync(ct);
+
+            try
+            {
+                lock (_stateGate)
+                {
+                    ThrowIfUnavailable();
+
+                    if (index != ActiveIndex(State))
+                        continue;
+                }
+
+                // Уже отправленную операцию автоматически не повторяем на другом сервере.
+                return await operation(_clients[index]);
+            }
+            finally
+            {
+                _serverGates[index].Release();
+            }
         }
     }
 
     public Task OpenAsync(CancellationToken ct = default) => RefreshAsync(false, ct);
 
-    public Task<bool> TryProbeConnectionAsync(CancellationToken ct = default) => Task.FromResult(State.ActiveRole is not null);
+    public Task<bool> TryProbeConnectionAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult(State.ActiveRole is not null);
+    }
 
-    public Task<string?> TagReadAsync(string tagName, CancellationToken ct = default) => UseAsync(c => c.TagReadAsync(tagName, ct), ct);
+    public Task<string?> TagReadAsync(string tagName, CancellationToken ct = default) => UseAsync(client => client.TagReadAsync(tagName, ct), ct);
 
-    public Task<string?> ReadControlTagAsync(string tagName, CancellationToken ct = default) => UseAsync(c => c.ReadControlTagAsync(tagName, ct), ct);
+    public Task<string?> ReadControlTagAsync(string tagName, CancellationToken ct = default) => UseAsync(client => client.ReadControlTagAsync(tagName, ct), ct);
 
-    public async Task WriteControlTagAsync(string tagName, string value, CancellationToken ct = default) => await UseAsync(async c => { await c.WriteControlTagAsync(tagName, value, ct); return true; }, ct);
+    public async Task WriteControlTagAsync(string tagName, string value, CancellationToken ct = default) => await UseAsync(async client => { await client.WriteControlTagAsync(tagName, value, ct); return true; }, ct);
 
-    public Task<string?> CicodeAsync(string command, CancellationToken ct = default) => UseAsync(c => c.CicodeAsync(command, ct), ct);
+    public Task<string?> CicodeAsync(string command, CancellationToken ct = default) => UseAsync(client => client.CicodeAsync(command, ct), ct);
 
-    public Task<IReadOnlyList<Dictionary<string, string>>> FindAsync(string tableName, string? filter, string? cluster, IReadOnlyList<string> properties, CancellationToken ct = default) => UseAsync(c => c.FindAsync(tableName, filter, cluster, properties, ct), ct);
+    public Task<IReadOnlyList<Dictionary<string, string>>> FindAsync(string tableName, string? filter, string? cluster, IReadOnlyList<string> properties, CancellationToken ct = default) => UseAsync(client => client.FindAsync(tableName, filter, cluster, properties, ct), ct);
 
-    public async Task TagWriteAsync(string tagName, string? value, CancellationToken ct = default) => await UseAsync(async c => { await c.TagWriteAsync(tagName, value, ct); return true; }, ct);
+    public async Task TagWriteAsync(string tagName, string? value, CancellationToken ct = default) => await UseAsync(async client => { await client.TagWriteAsync(tagName, value, ct); return true; }, ct);
 
     private async Task CloseClientAsync(int index)
     {
@@ -442,31 +520,70 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
 
     public async Task CloseAsync(CancellationToken ct = default)
     {
-        await _gate.WaitAsync(ct);
+        await _closeGate.WaitAsync(ct);
 
         try
         {
-            await CloseClientAsync(0);
-            await CloseClientAsync(1);
+            CancellationTokenSource stop;
+            Task completed;
 
-            _active = -1;
-            Array.Clear(_lastSent);
+            lock (_stateGate)
+            {
+                if (_stop is null)
+                    return;
 
-            Volatile.Write(ref _state, State with { ActiveRole = null, ActiveServer = null, Primary = State.Primary with { Connected = false }, Secondary = State.Secondary with { Connected = false } });
+                _closing = true;
+                stop = _stop;
+                completed = Task.WhenAll(_cycles);
+            }
+
+            // Не закрываем handle, пока нативный вызов действительно не завершился.
+            stop.Cancel();
+            await completed;
+
+            for (var index = 0; index < _clients.Length; index++)
+            {
+                await _serverGates[index].WaitAsync();
+
+                try
+                {
+                    await CloseClientAsync(index);
+                }
+                finally
+                {
+                    _serverGates[index].Release();
+                }
+            }
+
+            lock (_stateGate)
+            {
+                Array.Clear(_lastSent);
+                Volatile.Write(ref _state, State with { ActiveRole = null, ActiveServer = null, Primary = ClearPlcStatus(State.Primary with { Connected = false }), Secondary = ClearPlcStatus(State.Secondary with { Connected = false }) });
+                _cycles = [Task.CompletedTask, Task.CompletedTask];
+                _ready = NewSignal();
+                _stop = null;
+                _closing = false;
+            }
+
+            stop.Dispose();
         }
         finally
         {
-            _gate.Release();
+            _closeGate.Release();
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
-            return;
+        lock (_stateGate)
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+        }
 
         await CloseAsync();
-        _disposed = true;
 
         foreach (var client in _clients)
         {

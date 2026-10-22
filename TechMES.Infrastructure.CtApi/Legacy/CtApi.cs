@@ -803,9 +803,8 @@ namespace CtApi
         }
 
         /// <summary>
-        /// Проверяет соединение прежним способом и сохраняет подробности результата.
-        /// Значение "0" само по себе не означает потерю связи: это может быть ответ тега.
-        /// Read/Write-теги PLC здесь не используются.
+        /// Проверяет соединение через настроенную Cicode-команду.
+        /// Read/Write-теги PLC не участвуют в определении доступности сервера.
         /// </summary>
         public bool TryProbeConnection(string cmd = "TagRead(sWndTitle)", uint win = 0)
         {
@@ -819,7 +818,9 @@ namespace CtApi
                     return false;
                 }
 
-                var value = new StringBuilder(100);
+                // sWndTitle содержит описание для журнала и может быть длиннее 100 символов.
+                // Маленький буфер вызывал ложный отказ health-check после записи рецепта.
+                var value = new StringBuilder(4096);
                 var result = CtCicode(_ctapi, cmd, win, 0, value, value.Capacity, IntPtr.Zero);
 
                 // Получаем код ошибки сразу после нативного вызова.
@@ -833,12 +834,9 @@ namespace CtApi
                     return false;
                 }
 
-                // Сохраняем прежний критерий успешной проверки.
-                var success = !string.IsNullOrWhiteSpace(response);
-
-                LastProbeMessage = $"Command: {cmd}; native result: {result}; response: [{display}]; probe: {(success ? "OK" : "empty response")}.";
-
-                return success;
+                // Успешное чтение пустой строки или значения "0" подтверждает связь.
+                LastProbeMessage = $"Command: {cmd}; native result: {result}; response: [{display}]; probe: OK.";
+                return true;
             }
             catch (Exception ex)
             {
