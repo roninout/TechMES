@@ -125,9 +125,11 @@ public static partial class RecipeEndpoints
             {
                 result.AuditAttempted = true;
 
-                var equipment = new EquipmentDto { Name = prefix, Description = $"Recipe [{recipeId}] {snapshot.Recipe.Name}; stage {stage.Number}: {stage.Name}" };
+                // SaveActionOperators добавляет sWndTitle в квадратных скобках после описания.
+                var auditDescription = $"stage { stage.Number} : {column.Name}";
+                var equipment = new EquipmentDto { Name = tag, Description = $"{snapshot.Recipe.Name.Trim()}" };
 
-                result.AuditSucceeded = await paramProvider.TrySaveOperatorActionAsync(equipment, $"{stage.Number}_{column.TagSuffix.Trim()}", result.CurrentValue, result.WrittenValue, request.Write.Comment, request.Write.Actor, ct);
+                result.AuditSucceeded = await paramProvider.TrySaveOperatorActionAsync(equipment, $"{stage.Number}_{column.TagSuffix.Trim()}", result.CurrentValue, result.WrittenValue, auditDescription, request.Write.Actor, ct);
             }
 
             var verified = false;

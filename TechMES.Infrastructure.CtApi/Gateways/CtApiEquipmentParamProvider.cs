@@ -1849,24 +1849,14 @@ public sealed class CtApiEquipmentParamProvider : IEquipmentParamProvider
             var safeDeviceName = ToCicodeStringArg(actor);
 
             var equipmentDescription = GetEquipmentAuditTitle(equipment);
-            await _nativeClient.TagWriteAsync(
-                "sWndTitle",
-                $"\"{EscapeCicodeString(equipmentDescription)}\"",
-                ct);
-
-            await _nativeClient.CicodeAsync(
-                $"SaveActionOperators({safeName}, {safeCurrent}, {safeNew}, {safeDescription}, {safeDeviceName})",
-                ct);
+            await _nativeClient.TagWriteAsync("sWndTitle", $"\"{EscapeCicodeString(equipmentDescription)}\"", ct);
+            await _nativeClient.CicodeAsync($"SaveActionOperators({safeName}, {safeCurrent}, {safeNew}, {safeDescription}, {safeDeviceName})", ct);
 
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
-                ex,
-                "Param write operator action audit failed. Equipment={Equipment}, Item={Item}",
-                equipment.Name,
-                itemName);
+            _logger.LogWarning(ex, "Param write operator action audit failed. Equipment={Equipment}, Item={Item}", equipment.Name,itemName);
 
             return false;
         }
