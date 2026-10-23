@@ -19,13 +19,19 @@ public partial class Recipes
 
     private bool CanReadPlc => !EditorMode && !_disposed && _snapshot is not null && SelectedPage is not null;
 
+    private int PlcExpectedValueCount => Stages.Sum(stage => stage.Parameters.Count);
+    private int PlcReadValueCount => Stages.Sum(stage => Columns.Count(column => stage.Parameters.ContainsKey(column.Id) && IsReadablePlcValue(FindPlcValue(stage, column), column.Kind)));
+    private bool HasPlcReadWarning => _plcEnabled && (_plcError is not null || (_plcReadAtUtc.HasValue && PlcReadValueCount < PlcExpectedValueCount));
+
     private string PlcStatus
     {
         get
         {
             if (!CanReadPlc) return _loading ? "Loading recipe..." : "Select a Unit and a recipe.";
 
-            return _plcError ?? (_plcReadAtUtc.HasValue ? $"PLC: {_plcValues.Values.Count(item => item.Value.HasValue)}/{_plcValues.Count} · {_plcReadAtUtc.Value.ToLocalTime():HH:mm:ss}" : "Reading PLC values...");
+            var status = _plcReadAtUtc.HasValue ? $"PLC: {PlcReadValueCount}/{PlcExpectedValueCount} · {_plcReadAtUtc.Value.ToLocalTime():HH:mm:ss}" : "Reading PLC values...";
+
+            return _plcError is null ? status : _plcReadAtUtc.HasValue ? $"{status} · {_plcError}" : _plcError;
         }
     }
 
@@ -57,7 +63,7 @@ public partial class Recipes
         _plcStop = null;
         _plcLoading = false;
 
-        // На время диалога сохраняем последний снимок, чтобы таблица не мигала прочерками.
+        // На время диалога сохраняем последний снимок, чтобы таблица не очищалась.
         if (!clearValues) return;
 
         _plcValues = [];
@@ -104,7 +110,7 @@ public partial class Recipes
 
                         _plcValues = values;
                         _plcReadAtUtc = result.ReadAtUtc;
-                        _plcError = values.Values.Any(item => item.Error is not null) ? "Some PLC values are unavailable. Hover over — for details." : null;
+                        _plcError = PlcReadValueCount < PlcExpectedValueCount ? "Some PLC values are unavailable. Hover over the warning icon for details." : null;
                     });
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -159,5 +165,29 @@ public partial class Recipes
 
     private RecipePlcValueDto? FindPlcValue(RecipeStageDto stage, RecipeColumnDto column) => _plcValues.GetValueOrDefault((stage.Id, column.Id));
 
-    private string RecipeValueTitle(RecipePlcValueDto? item) => !_plcEnabled ? EditorMode ? "Edit recipe value" : "Saved recipe value" : item is null ? _plcError ?? "Waiting for PLC value." : $"{item.TagName}: {item.Error ?? "Read from PLC"}";
+    /// <summary>До первого ответа ячейка остаётся пустой; некорректный полученный ответ отображается предупреждением.</summary>
+    private string? RecipeValueError(RecipeStageDto stage, RecipeColumnDto column)
+    {
+        if (!stage.Parameters.TryGetValue(column.Id, out var parameter)) return null;
+        if (!_plcEnabled) return IsValidRecipeValue(parameter.Value, column.Kind) ? null : "Invalid saved recipe value.";
+
+        var item = FindPlcValue(stage, column);
+
+        if (item is null)
+            return _plcReadAtUtc.HasValue ? "PLC did not return this parameter." : _plcError;
+
+        if (item.Error is not null)
+            return string.IsNullOrWhiteSpace(item.Error) ? "PLC value is unavailable." : item.Error;
+
+        if (!item.Value.HasValue)
+            return "PLC did not return a value for this parameter.";
+
+        return IsValidRecipeValue(item.Value.Value, column.Kind) ? null : "PLC returned an invalid numeric or Boolean value.";
+    }
+
+    private static bool IsValidRecipeValue(double value, RecipeParameterKind kind) => double.IsFinite(value) && (kind == RecipeParameterKind.InputField || (kind == RecipeParameterKind.CheckBox && value is 0 or 1));
+
+    private static bool IsReadablePlcValue(RecipePlcValueDto? item, RecipeParameterKind kind) => item is { Error: null, Value: not null } && IsValidRecipeValue(item.Value.Value, kind);
+
+    private string RecipeValueTitle(RecipePlcValueDto? item, string? error = null) => !_plcEnabled ? error ?? (EditorMode ? "Edit recipe value" : "Saved recipe value") : item is null ? error ?? _plcError ?? "Waiting for PLC value." : $"{item.TagName}: {error ?? item.Error ?? "Read from PLC"}";
 }

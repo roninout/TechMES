@@ -163,7 +163,7 @@
                     <Columns>
                         <RadzenDataGridColumn TItem="RecipeStageDto" Property="Number" Title="№" Width="60px" Frozen="true" TextAlign="TextAlign.Center" />
 
-                        <RadzenDataGridColumn TItem="RecipeStageDto" Property="Name" Title="@(EditorMode && _showStageTags ? "PLC tag prefix" : "Stage")" Width="280px" Frozen="true">
+                        <RadzenDataGridColumn TItem="RecipeStageDto" Property="Name" Title="@(EditorMode && _showStageTags ? "PLC tag prefix" : "Stage")" Width="300px" Frozen="true">
                             <Template Context="stage">
                                 <div class="recipes-stage-label" title="@stage.Name">
                                     @if (EditorMode && string.IsNullOrWhiteSpace(stage.TagPrefix))
@@ -181,7 +181,7 @@
                         @* Auto остаётся обычным параметром шаблона. *@
                         @foreach (var column in Columns)
                         {
-                            <RadzenDataGridColumn @key="column.Id" TItem="RecipeStageDto" Title="@column.Name" Width="@(column.Kind == RecipeParameterKind.CheckBox ? "80px" : "120px")" TextAlign="TextAlign.Center">
+                            <RadzenDataGridColumn @key="column.Id" TItem="RecipeStageDto" Title="@column.Name" Width="@(column.Kind == RecipeParameterKind.CheckBox ? "60px" : "100px")" TextAlign="TextAlign.Center">
                                 <HeaderTemplate>
                                     <div class="recipes-column-heading" title="@column.TagSuffix">
                                         <span>@column.Name</span>
@@ -194,32 +194,34 @@
                                     {
                                         var plcValue = FindPlcValue(stage, column);
                                         double? displayedValue = _plcEnabled ? plcValue?.Value : parameter.Value;
+                                        var valueError = RecipeValueError(stage, column);
+                                        var valueTitle = RecipeValueTitle(plcValue, valueError);
 
-                                        <button type="button" class="recipes-value" disabled="@(!CanAddStage && !CanWritePlcParameter(stage, column))" title="@RecipeValueTitle(plcValue)" @onclick="@(() => OnRecipeValueClickedAsync(stage, column))">
-                                            @if (!displayedValue.HasValue)
-                                            {
-                                                <span class="recipes-plc-unavailable">—</span>
-                                            }
-                                            else if (column.Kind == RecipeParameterKind.CheckBox)
-                                            {
-                                                var isChecked = displayedValue.Value != 0;
+                                        @if (valueError is not null || displayedValue.HasValue)
+                                        {
+                                            <button type="button" class="recipes-value" disabled="@(!CanAddStage && (valueError is not null || !CanWritePlcParameter(stage, column)))" title="@valueTitle" @onclick="@(() => OnRecipeValueClickedAsync(stage, column))">
+                                                @if (valueError is not null)
+                                                {
+                                                    <span class="recipes-value-warning" role="img" aria-label="@valueTitle">
+                                                        <RadzenIcon Icon="warning_amber" />
+                                                    </span>
+                                                }
+                                                else if (column.Kind == RecipeParameterKind.CheckBox)
+                                                {
+                                                    var isChecked = displayedValue!.Value != 0;
 
-                                                <span role="img" aria-label="@(isChecked ? "On" : "Off")" title="@(isChecked ? "On" : "Off")" class="@(isChecked ? "recipes-check is-on" : "recipes-check")">
-                                                    <RadzenIcon Icon="@(isChecked ? "check_box" : "check_box_outline_blank")" />
-                                                </span>
-                                            }
-                                            else
-                                            {
-                                                <span>@FormatValue(displayedValue.Value, column.Format)</span>
-                                            }
-                                        </button>
-                                    }
-                                    else
-                                    {
-                                        <span class="recipes-empty-cell" title="Not used in this stage">—</span>
+                                                    <span role="img" aria-label="@(isChecked ? "On" : "Off")" title="@(isChecked ? "On" : "Off")" class="@(isChecked ? "recipes-check is-on" : "recipes-check")">
+                                                        <RadzenIcon Icon="@(isChecked ? "check_box" : "check_box_outline_blank")" />
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span>@FormatValue(displayedValue!.Value, column.Format)</span>
+                                                }
+                                            </button>
+                                        }
                                     }
                                 </Template>
-
                             </RadzenDataGridColumn>
                         }
 
@@ -234,6 +236,7 @@
                             </RadzenDataGridColumn>
                         }
                     </Columns>
+
                 </RadzenDataGrid>
 
                 @if (EditorMode)
@@ -254,11 +257,19 @@
                 }
                 else
                 {
+                    
                     <div class="recipes-view-footer">
                         <div class="recipes-plc-status" role="status" aria-live="polite">
                             @if (_plcEnabled && _plcLoading)
                             {
                                 <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" ShowValue="false" Style="width: 18px; height: 18px;" AriaLabel="Reading PLC values" />
+                            }
+
+                            @if (HasPlcReadWarning)
+                            {
+                                <span class="recipes-plc-warning" role="img" title="@PlcStatus" aria-label="Not all PLC values were read successfully.">
+                                    <RadzenIcon Icon="warning_amber" />
+                                </span>
                             }
 
                             <span>@(_plcEnabled ? PlcStatus : "Database values")</span>
@@ -269,6 +280,7 @@
                             <RadzenSwitch Name="recipe-plc-values" Value="@_plcEnabled" Change="@ChangePlcMode" Disabled="@(IsBusy || (!CanReadPlc && !_plcEnabled))" />
                         </div>
                     </div>
+
                 }
 
             </div>

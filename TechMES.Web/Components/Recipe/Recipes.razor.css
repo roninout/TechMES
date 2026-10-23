@@ -73,17 +73,32 @@
     --rz-grid-loading-indicator-background-opacity: 1;
 }
 
+/* Одинаковая высота заголовков и отдельная нижняя строка для единиц измерения. */
 .recipes-column-heading {
-    display: flex;
-    flex-direction: column;
+    --recipe-heading-height: 100px;
+    --recipe-unit-height: 18px;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) var(--recipe-unit-height);
+    align-items: center;
+    height: var(--recipe-heading-height);
+    box-sizing: border-box;
     gap: 4px;
     white-space: normal;
     overflow-wrap: anywhere;
     padding: 6px 0;
 }
 
+    .recipes-column-heading > span {
+        min-height: 0;
+    }
+
     .recipes-column-heading small {
-        white-space: pre-line;
+        display: block;
+        height: var(--recipe-unit-height);
+        line-height: var(--recipe-unit-height);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
         font-weight: 400;
         color: var(--rz-text-secondary-color);
     }
@@ -98,11 +113,6 @@
     .recipes-check.is-on {
         color: var(--rz-success);
     }
-
-.recipes-empty-cell {
-    color: var(--rz-text-secondary-color);
-}
-
 
 /* Переключатель редактирования сохранённых значений. */
 .recipes-edit-mode {
@@ -402,9 +412,22 @@
     font-size: 0.85rem;
 }
 
-.recipes-plc-unavailable {
+/* Предупреждения в ячейках и нижней диагностической строке. */
+.recipes-value-warning,
+.recipes-plc-warning {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    vertical-align: middle;
     color: var(--rz-warning);
 }
+
+    .recipes-value-warning ::deep .rzi,
+    .recipes-plc-warning ::deep .rzi {
+        font-size: 20px;
+        line-height: 1;
+    }
 
 /* Оставляем место под нижнюю строку состояния и переключатель PLC. */
 .recipes-view ::deep .recipes-grid {
