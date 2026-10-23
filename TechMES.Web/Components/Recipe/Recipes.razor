@@ -34,6 +34,7 @@
         <RecipeEditorHeader Title="Recipes">
             <Right>
                 <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@RefreshAsync" />
+                <RadzenButton Text="Save to DB" Icon="save" IsBusy="@_savingValues" BusyText="Saving..." Disabled="@(!CanSavePlcValues)" Click="@SavePlcValuesToDbAsync" title="Save the displayed PLC values to the selected recipe in the database" />
             </Right>
         </RecipeEditorHeader>
     }
@@ -216,7 +217,16 @@
                                                 }
                                                 else
                                                 {
+                                                    var direction = RecipeValueDirection(stage, column);
+
                                                     <span>@FormatValue(displayedValue!.Value, column.Format)</span>
+
+                                                    @if (direction != 0)
+                                                    {
+                                                        <span class="recipes-value-direction @(direction > 0 ? "is-increased" : "")" title="@RecipeDifferenceTitle(displayedValue.Value, parameter.Value)" role="img" aria-label="@(direction > 0 ? "PLC value is higher than the saved value" : "PLC value is lower than the saved value")">
+                                                            <RadzenIcon Icon="@(direction > 0 ? "arrow_upward" : "arrow_downward")" />
+                                                        </span>
+                                                    }
                                                 }
                                             </button>
                                         }
@@ -304,7 +314,7 @@
     private bool _disposed;
     private string? _error;
 
-    private bool IsBusy => _loading || _editingValue || _managingRecipe || _changingStage || _savingDraft || _writingPlc;
+    private bool IsBusy => _loading || _editingValue || _managingRecipe || _changingStage || _savingDraft || _writingPlc || _savingValues;
     private RecipePageDto? SelectedPage => _catalog.Pages.FirstOrDefault(page => page.Id == _selectedPageId);
     private IReadOnlyList<RecipeStageDto> Stages => _snapshot?.Stages ?? [];
     private IReadOnlyList<RecipeColumnDto> Columns => _snapshot?.Columns ?? [];

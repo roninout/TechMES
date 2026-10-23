@@ -685,13 +685,15 @@ namespace CtApi
             var value = new StringBuilder(100);
             var result = CtCicode(_ctapi, $"TagRead({tag})", 0, 0, value, value.Capacity, IntPtr.Zero);
 
-            if (isLogger)
+            // Ошибку нативного вызова нельзя выдавать за пустое или нулевое значение PLC.
+            if (result == 0)
             {
-                if (result == 0)
-                    _logger?.LogError($"Citect.CtApi > Cicode TagRead, tag = {tag}, value = {value}, error = read with error");
-                else
-                    _logger?.LogDebug($"Citect.CtApi > Cicode TagRead, tag = {tag}, value = {value}");
+                var error = Marshal.GetLastWin32Error();
+                throw new Win32Exception(error, $"CtApi TagRead failed. Tag={tag}; Error={error}: {new Win32Exception(error).Message}");
             }
+
+            if (isLogger)
+                _logger?.LogDebug($"Citect.CtApi > Cicode TagRead, tag = {tag}, value = {value}");
 
             return value.ToString();
         }

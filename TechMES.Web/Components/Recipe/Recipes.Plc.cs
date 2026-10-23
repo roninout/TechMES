@@ -79,6 +79,7 @@ public partial class Recipes
         try
         {
             await previous;
+            var firstRequest = true;
 
             while (true)
             {
@@ -93,6 +94,7 @@ public partial class Recipes
                 });
 
                 var stop = false;
+                var nextDelay = PlcRefreshInterval;
 
                 try
                 {
@@ -121,6 +123,10 @@ public partial class Recipes
                 {
                     stop = ex is HttpRequestException { StatusCode: HttpStatusCode.Conflict or HttpStatusCode.NotFound or HttpStatusCode.BadRequest };
 
+                    // Один быстрый повтор первого сбоя HTTP; повторов записи здесь нет.
+                    if (firstRequest && !stop)
+                        nextDelay = TimeSpan.FromSeconds(1);
+
                     Logger.LogWarning(ex, "Recipe PLC read failed. Recipe={RecipeId}, Unit={PageId}.", recipeId, pageId);
 
                     await InvokeAsync(() =>
@@ -143,7 +149,8 @@ public partial class Recipes
 
                 if (stop) return;
 
-                await Task.Delay(PlcRefreshInterval, ct);
+                firstRequest = false;
+                await Task.Delay(nextDelay, ct);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -157,7 +164,8 @@ public partial class Recipes
         }
         finally
         {
-            if (ReferenceEquals(_plcStop, source)) _plcStop = null;
+            if (ReferenceEquals(_plcStop, source))
+                _plcStop = null;
 
             source.Dispose();
         }

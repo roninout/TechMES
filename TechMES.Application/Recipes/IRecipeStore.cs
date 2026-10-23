@@ -23,6 +23,9 @@ public interface IRecipeStore
     /// </summary>
     Task<RecipeParameterSaveResult> SaveParameterAsync(int recipeId, RecipeParameterSaveRequest request, CancellationToken ct = default);
 
+    /// <summary>Сохраняет только значения PLC-снимка одной транзакцией.</summary>
+    Task<RecipeEditorSaveResult> SaveValuesAsync(int recipeId, RecipeValuesSaveRequest request, CancellationToken ct = default);
+
     /// <summary>
     /// Создаёт пустой рецепт, копирует рецепт или изменяет его имя.
     /// </summary>

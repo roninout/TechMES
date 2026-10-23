@@ -434,6 +434,28 @@
     height: calc(100dvh - 300px);
 }
 
+/* Расхождение текущего PLC-значения с сохранённым значением рецепта. */
+.recipes-value-direction {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    margin-left: 4px;
+    vertical-align: middle;
+    color: var(--rz-info);
+}
+
+    .recipes-value-direction.is-increased {
+        color: var(--rz-success);
+    }
+
+    .recipes-value-direction ::deep .rzi {
+        font-size: 18px;
+        line-height: 1;
+    }
+
 @media (max-width: 760px) {
     .recipes-editor .recipes-template-list {
         padding-top: 0;

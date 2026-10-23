@@ -29,15 +29,20 @@ public static class RecipePlcReader
 
                 kinds[(stage.Id, columnId)] = column.Kind;
 
+                if (!Enum.IsDefined(column.Kind))
+                {
+                    item.Error = "Unknown recipe parameter type.";
+                    continue;
+                }
+
                 if (stage.Number <= 0 || string.IsNullOrWhiteSpace(stage.TagPrefix) || string.IsNullOrWhiteSpace(column.TagSuffix))
                 {
                     item.Error = "PLC tag prefix, stage number or parameter suffix is not assigned.";
                     continue;
                 }
 
-                // Старый суффикс храним в БД; в контроллере Auto имеет другое имя.
+                // Используем суффикс из БД буквально, включая AUTO_CONT_SET.
                 var suffix = column.TagSuffix.Trim();
-                //if (suffix.Equals("AUTO_CONT_SET", StringComparison.OrdinalIgnoreCase)) suffix = "AUTO_CONT";
 
                 item.TagName = $"{stage.TagPrefix.Trim()}_{stage.Number.ToString(CultureInfo.InvariantCulture)}_{suffix}";
             }
@@ -52,8 +57,12 @@ public static class RecipePlcReader
 
         var pending = result.Values.Where(item => item.Error is null).ToList();
 
-        if (pending.Count > 0)
+        // Повторяем только неудачные чтения, один раз. Ошибки структуры сюда не входят.
+        for (var attempt = 0; attempt < 2 && pending.Count > 0; attempt++)
         {
+            if (attempt > 0)
+                await Task.Delay(TimeSpan.FromMilliseconds(350), ct);
+
             // Один логический batch. Сам gateway последовательно работает с общим CtApi.
             var batch = await gateway.ReadTagsAsync(pending.Select(item => item.TagName).ToArray(), ct);
             ct.ThrowIfCancellationRequested();
@@ -62,6 +71,9 @@ public static class RecipePlcReader
 
             foreach (var item in pending)
             {
+                item.Error = null;
+                item.Value = null;
+
                 if (!readings.TryGetValue(item.TagName, out var reading))
                 {
                     item.Error = "PLC did not return this tag.";
@@ -79,6 +91,8 @@ public static class RecipePlcReader
                     item.Error = "PLC returned an invalid numeric or Boolean value.";
                 }
             }
+
+            pending = pending.Where(item => item.Error is not null).ToList();
         }
 
         result.ReadAtUtc = DateTimeOffset.UtcNow;

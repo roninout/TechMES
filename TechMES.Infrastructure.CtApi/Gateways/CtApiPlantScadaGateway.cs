@@ -191,12 +191,15 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IPlantScadaHeal
                 Time = DateTime.Now
             };
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Ошибка TagRead. Tag={TagName}", tagName);
+            _logger.LogWarning(ex, "Error TagRead. Tag={TagName}", tagName);
 
-            SetState(PlantScadaConnectionStatus.Disconnected, "Ошибка TagRead: " + ex.Message);
-
+            // Ошибка отдельного тега не означает потерю связи. Её проверяет health probe.
             return new ScadaTagReadResponse
             {
                 TagName = tagName,
@@ -204,10 +207,6 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IPlantScadaHeal
                 Error = ex.Message,
                 Time = DateTime.Now
             };
-        }
-        finally
-        {
-            _apiGate.Release();
         }
     }
 

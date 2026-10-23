@@ -185,6 +185,22 @@ public sealed class RecipeApiClient
         return await ReadResponseAsync<ParamWriteResponse>(response, ct);
     }
 
+    /// <summary>Сохраняет PLC-снимок в БД с существующей Windows identity.</summary>
+    public async Task<RecipeEditorSaveResult> SaveValuesAsync(int recipeId, RecipeValuesSaveRequest request, CancellationToken ct = default)
+    {
+        var actor = new ParamWriteRequest();
+
+        await _paramApi.FillWriteActorAsync(actor);
+        ct.ThrowIfCancellationRequested();
+
+        request.Actor = actor.Actor;
+        request.ActorGroups = actor.ActorGroups;
+
+        using var response = await _clients.CreateClient("RuntimeService").PostAsJsonAsync($"api/recipes/{recipeId}/values", request, ct);
+
+        return await ReadResponseAsync<RecipeEditorSaveResult>(response, ct);
+    }
+
     /// <summary> Выполняет GET и освобождает HTTP-ответ. </summary>
     private async Task<T> ReadAsync<T>(string url, CancellationToken ct) where T : class
     {
