@@ -195,13 +195,13 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Date" Title="Date" Width="180px" SortOrder="SortOrder.Descending">
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Date" Title="Date" Width="120px" MinWidth="120px" MaxWidth="120px" SortOrder="SortOrder.Descending">
                             <Template Context="entry">
                                 @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="User" Title="User" Width="120px" />
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="User" Title="User" Width="240px" MaxWidth="280px" />
 
                         <RadzenDataGridColumn @ref="_equipmentColumn" TItem="OperationActionRow"
                                               Property="Equipment" Title="Equipment" Width="180px">
@@ -210,7 +210,7 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Action" Title="Action" Width="180px" />
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Action" Title="Action" Width="320px" />
 
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Description" Title="Description" Width="620px">
                             <Template Context="entry">
@@ -219,7 +219,7 @@
                         </RadzenDataGridColumn>
 
                         @* Известные состояния показываем иконками. Для числового New добавляем направление изменения относительно Old. *@
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Old" Title="Old" Width="120px">
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="Old" Title="Old" Width="100px">
                             <Template Context="entry">
                                 <span class="event-journal-value-cell">
                                     @if (TryGetActionValueIcon(entry.Old, out var icon, out var label, out var cssClass))
@@ -236,7 +236,7 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="OperationActionRow" Property="New" Title="New" Width="120px">
+                        <RadzenDataGridColumn TItem="OperationActionRow" Property="New" Title="New" Width="100px">
                             <Template Context="entry">
                                 <span class="event-journal-value-cell">
                                     @if (TryGetActionValueIcon(entry.New, out var icon, out var label, out var cssClass))
