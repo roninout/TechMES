@@ -5,7 +5,13 @@
     gap: 12px;
 }
 
-.recipe-editor-toolbar-left, .recipe-editor-toolbar-right {
+/* Длинное имя рецепта ограничено центральной частью; редакторы сохраняют прежнюю сетку. */
+.recipe-editor-toolbar-custom-title {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.recipe-editor-toolbar-left,
+.recipe-editor-toolbar-right {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
@@ -18,6 +24,7 @@
 }
 
 .recipe-editor-toolbar-title {
+    min-width: 0;
     margin: 0;
     font-size: 1.35rem;
     font-weight: 600;
@@ -36,7 +43,8 @@
         grid-row: 1;
     }
 
-    .recipe-editor-toolbar-left, .recipe-editor-toolbar-right {
+    .recipe-editor-toolbar-left,
+    .recipe-editor-toolbar-right {
         grid-row: 2;
     }
 }
@@ -46,7 +54,8 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .recipe-editor-toolbar-left, .recipe-editor-toolbar-right {
+    .recipe-editor-toolbar-left,
+    .recipe-editor-toolbar-right {
         justify-content: center;
     }
 

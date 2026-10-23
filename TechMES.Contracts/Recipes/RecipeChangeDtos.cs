@@ -7,7 +7,8 @@ public enum RecipeChangeOperation
     Copy = 2,
     Rename = 3,
     Delete = 4,
-    SetBase = 5
+    SetBase = 5,
+    SetCurrent = 6
 }
 
 /// <summary>

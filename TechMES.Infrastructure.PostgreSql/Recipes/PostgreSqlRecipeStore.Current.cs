@@ -1,0 +1,95 @@
+﻿using Npgsql;
+using TechMES.Contracts.Recipes;
+
+namespace TechMES.Infrastructure.PostgreSql.Recipes;
+
+public sealed partial class PostgreSqlRecipeStore
+{
+    /// <summary>Назначает Current только выбранному Unit; значения рецепта и PLC не изменяются.</summary>
+    private async Task<RecipeChangeResult> SetCurrentRecipeAsync(RecipeChangeRequest request, CancellationToken ct)
+    {
+        if (request.SourceRecipeId <= 0 || !ValidEditorShape(request.ExpectedSnapshot) || request.ExpectedSnapshot!.Recipe.Id != request.SourceRecipeId || request.ExpectedPages is not { Count: 1 } || request.ExpectedPages[0] is null)
+            return new() { Status = RecipeChangeStatus.Invalid, Error = "Invalid Current recipe assignment. Press Refresh." };
+
+        var expected = request.ExpectedPages[0];
+
+        if (expected.Id <= 0 || expected.RecipeId <= 0 || expected.BaseRecipeId <= 0 || string.IsNullOrWhiteSpace(expected.Page) || request.ExpectedBaseRecipeId != expected.BaseRecipeId)
+            return new() { Status = RecipeChangeStatus.Invalid, Error = "Select a Unit with a valid recipe family." };
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        await using var transaction = await connection.BeginTransactionAsync(ct);
+
+        // Согласуемся с редакторами; справочники и снимок кандидата сохраняем неизменными до commit.
+        const string lockSql = """
+        SELECT pg_advisory_xact_lock(1380270928, 1);
+        LOCK TABLE public."BaseParameter", public."BaseRecipeStage" IN SHARE MODE;
+        SELECT p."id" FROM public."RecipeParameter" p JOIN public."RecipeStage" s ON s."id" = p."recipeStageId"
+        WHERE s."recipeId" = @recipe_id ORDER BY p."id" FOR SHARE OF p;
+        SELECT "id" FROM public."RecipeStage" WHERE "recipeId" = @recipe_id ORDER BY "id" FOR SHARE;
+        SELECT "id" FROM public."Recipe" WHERE "id" = @recipe_id FOR SHARE;
+        """;
+
+        await using (var command = new NpgsqlCommand(lockSql, connection, transaction) { CommandTimeout = GetCommandTimeout() })
+        {
+            command.Parameters.AddWithValue("recipe_id", request.SourceRecipeId);
+            await command.ExecuteNonQueryAsync(ct);
+        }
+
+        RecipePageDto page;
+
+        await using (var command = new NpgsqlCommand("SELECT \"id\", \"page\", \"recipeId\", \"baseRecipeId\" FROM public.\"RecipePage\" WHERE \"id\" = @id FOR UPDATE;", connection, transaction) { CommandTimeout = GetCommandTimeout() })
+        {
+            command.Parameters.AddWithValue("id", expected.Id);
+            await using var reader = await command.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+                return new() { Status = RecipeChangeStatus.NotFound, Error = "The Unit no longer exists. Press Refresh." };
+
+            page = new() { Id = reader.GetInt32(0), Page = ReadText(reader, 1), RecipeId = reader.GetInt32(2), BaseRecipeId = reader.GetInt32(3) };
+        }
+
+        if (page.Page != expected.Page || page.RecipeId != expected.RecipeId || page.BaseRecipeId != expected.BaseRecipeId)
+            return new() { Status = RecipeChangeStatus.Conflict, Error = "The Unit's Current recipe or family changed. Press Refresh before assigning." };
+
+        var candidate = await ReadRecipeSnapshotAsync(connection, transaction, request.SourceRecipeId, ct);
+
+        if (candidate is null)
+            return new() { Status = RecipeChangeStatus.NotFound, Error = "The recipe no longer exists. Press Refresh." };
+
+        if (EditorStamp(candidate) != EditorStamp(request.ExpectedSnapshot))
+            return new() { Status = RecipeChangeStatus.Conflict, Error = "The selected recipe changed. Press Refresh before assigning it as Current." };
+
+        // Повторяем отбор комбобокса: семейство и имя выбранного Unit.
+        if (candidate.Recipe.Id == page.BaseRecipeId || candidate.Recipe.BaseRecipeId != page.BaseRecipeId || !candidate.Recipe.Name.Contains(page.Page, StringComparison.OrdinalIgnoreCase))
+            return new() { Status = RecipeChangeStatus.Invalid, Error = "Select a working recipe for this Unit and its family." };
+
+        await using (var command = new NpgsqlCommand("SELECT EXISTS (SELECT 1 FROM public.\"RecipePage\" WHERE \"baseRecipeId\" = @id);", connection, transaction) { CommandTimeout = GetCommandTimeout() })
+        {
+            command.Parameters.AddWithValue("id", candidate.Recipe.Id);
+
+            if (await command.ExecuteScalarAsync(ct) is true)
+                return new() { Status = RecipeChangeStatus.Invalid, Error = "An assigned base recipe cannot be selected as Current." };
+        }
+
+        const string assignSql = """
+        UPDATE public."RecipePage" SET "recipeId" = @recipe_id
+        WHERE "id" = @page_id AND "recipeId" = @expected_current AND "baseRecipeId" = @family;
+        """;
+
+        await using (var command = new NpgsqlCommand(assignSql, connection, transaction) { CommandTimeout = GetCommandTimeout() })
+        {
+            command.Parameters.AddWithValue("recipe_id", candidate.Recipe.Id);
+            command.Parameters.AddWithValue("page_id", page.Id);
+            command.Parameters.AddWithValue("expected_current", expected.RecipeId);
+            command.Parameters.AddWithValue("family", page.BaseRecipeId);
+
+            if (await command.ExecuteNonQueryAsync(ct) != 1)
+                return new() { Status = RecipeChangeStatus.Conflict, Error = "The Unit assignment changed during saving. Press Refresh." };
+        }
+
+        await transaction.CommitAsync(ct);
+
+        return new() { Status = RecipeChangeStatus.Saved, RecipeId = candidate.Recipe.Id };
+    }
+}

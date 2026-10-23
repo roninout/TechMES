@@ -456,6 +456,59 @@
         line-height: 1;
     }
 
+/* Заголовок выбранного рецепта: длинное имя сокращается, полное доступно в подсказке. */
+.recipes-view-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.recipes-view-title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Цветная закладка без фона для Current выбранного Unit. */
+.recipes-current-bookmark {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    color: var(--rz-success);
+    background: transparent;
+}
+
+    .recipes-current-bookmark ::deep .rzi {
+        font-size: 24px;
+        line-height: 1;
+    }
+
+/* Просмотр сохранённых значений БД выделяем миганием заголовка. */
+.recipes-view-title.is-database .recipes-view-title-text {
+    animation: recipe-database-title 1.4s ease-in-out infinite;
+}
+
+@keyframes recipe-database-title {
+    0%, 100% {
+        color: var(--rz-warning);
+    }
+
+    50% {
+        color: var(--rz-text-title-color);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .recipes-view-title.is-database .recipes-view-title-text {
+        animation: none;
+        color: var(--rz-warning);
+    }
+}
+
 @media (max-width: 760px) {
     .recipes-editor .recipes-template-list {
         padding-top: 0;
