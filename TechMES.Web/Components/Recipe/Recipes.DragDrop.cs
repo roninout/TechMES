@@ -66,12 +66,12 @@ public partial class Recipes
         _dropAtEnd = true;
     }
 
-    /// <summary>Подключает подсветку выполняемой стадии и HTML Drag & Drop редактора.</summary>
+    /// <summary>Сохраняет выделение, индикацию стадии и обработчики перетягивания.</summary>
     private void RenderStageRow(RowRenderEventArgs<RecipeStageDto> args)
     {
         if (args.Data is not { } stage) return;
 
-        // RowRender заменяет class: сохраняем базовый класс и выделение Radzen.
+        // RowRender заменяет class: сохраняем базовые классы Radzen.
         var classes = new List<string> { "rz-data-row" };
 
         if (_selectedStages.Any(item => item.Id == stage.Id))
@@ -79,6 +79,10 @@ public partial class Recipes
 
         if (IsCurrentPlcStage(stage))
             classes.Add("recipes-current-stage");
+
+        // Уголок рисуется непосредственно в ячейке, независимо от высоты внутреннего блока.
+        if (StageAutoEnabled(stage))
+            classes.Add("recipes-stage-auto");
 
         if (EditorMode && string.IsNullOrWhiteSpace(stage.TagPrefix))
             classes.Add("recipes-missing-prefix");

@@ -194,17 +194,12 @@
 
                         <RadzenDataGridColumn TItem="RecipeStageDto" Width="42px" MinWidth="42px" MaxWidth="42px" Frozen="true" Sortable="false" Filterable="false" Resizable="false" TextAlign="TextAlign.Center" CssClass="recipes-state-column">
                             <Template Context="stage">
-                                <div class="recipes-stage-indicators">
+                                <div class="recipes-stage-indicators" title="@(StageAutoEnabled(stage) ? "Auto" : null)">
                                     @if (StageThermalState(stage) is { } thermal)
                                     {
                                         <span class="recipes-thermal-state @thermal.CssClass" title="@thermal.Title" role="img" aria-label="@thermal.Title">
                                             <RadzenIcon Icon="@thermal.Icon" />
                                         </span>
-                                    }
-
-                                    @if (StageAutoEnabled(stage))
-                                    {
-                                        <span class="recipes-auto-corner" title="Auto" role="img" aria-label="Auto" />
                                     }
                                 </div>
                             </Template>

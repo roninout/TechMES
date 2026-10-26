@@ -165,9 +165,11 @@ public sealed partial class PostgreSqlRecipeStore
             if (family is null || value.Name.Length == 0 || value.Order < 0 || !Enum.IsDefined(value.Kind) || !Enum.IsDefined(value.Format) || value.Tag.Any(char.IsWhiteSpace) || value.Tag.Any(char.IsControl))
                 preview.Errors.Add($"{value.Name}: select an existing family, enter a name and check the order, tag, type and format.");
 
-            if (stageUses.Any(use => use.FamilyId != value.BaseRecipeId || (use.RecipeId.HasValue && use.RecipeFamilyId != value.BaseRecipeId)) || valueUses.Any(use => (use.StageId.HasValue && use.StageFamilyId != value.BaseRecipeId) || (use.RecipeId.HasValue && use.RecipeFamilyId != value.BaseRecipeId)))
-                preview.Errors.Add($"{value.Name}: the parameter is used by stages or recipes from another family. Remove those links before changing its family.");
+            // Существующие связи с другими семействами не запрещают изменение метаданных.
+            // Принадлежность самого параметра выбранному семейству проверена выше.
+            // Все связанные экземпляры синхронизируются по baseParameterId независимо от семейства.
 
+            // При изменении типа сохраняем проверку совместимости существующих значений.
             if (value.Kind == RecipeParameterKind.CheckBox && valueUses.Any(use => use.Value != 0 && use.Value != 1))
                 preview.Errors.Add($"{value.Name}: existing recipe values must be 0 or 1 for the CheckBox type.");
         }

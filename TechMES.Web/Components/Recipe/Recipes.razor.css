@@ -543,9 +543,8 @@
         color: var(--rz-info);
     }
 
-/* Сохраняем область индикаторов и при выключенных Heating/Cooling. */
+/* Внутренний блок отвечает только за центровку Heating/Cooling. */
 .recipes-stage-indicators {
-    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -553,13 +552,16 @@
     min-height: 28px;
 }
 
-/* Убираем внутренний отступ только у нулевой колонки. */
+/* Колонка Frozen: сохраняем sticky-позиционирование.
+   Оно также становится точкой привязки уголка. */
 .recipes-page ::deep .recipes-grid td.recipes-state-column {
+    position: sticky;
     padding: 0 !important;
 }
 
-/* Зелёный уголок Auto в верхнем правом углу. */
-.recipes-auto-corner {
+/* Уголок привязан к верхнему правому углу ячейки, а не к её содержимому. */
+.recipes-page ::deep .recipes-grid tr.recipes-stage-auto > td.recipes-state-column::after {
+    content: "";
     position: absolute;
     top: 0;
     right: 0;
@@ -567,6 +569,7 @@
     height: 0;
     border-top: 9px solid var(--rz-success);
     border-left: 9px solid transparent;
+    pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
