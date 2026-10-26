@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Radzen;
 using TechMES.Contracts.Recipes;
@@ -64,7 +66,7 @@ public partial class Recipes
         return $"{basis} {suffix}";
     }
 
-    /// <summary>New/Copy создают рецепт через прежний API; Rename изменяет черновик до Save.</summary>
+    /// <summary>Rename сразу сохраняет имя в БД; New/Copy сохраняют прежнее поведение.</summary>
     private async Task ChangeRecipeAsync(RecipeChangeOperation operation)
     {
         var sourceId = operation == RecipeChangeOperation.Create ? NewRecipeSourceId : _snapshot?.Recipe.Id;
@@ -72,12 +74,15 @@ public partial class Recipes
         if (IsBusy || _disposed || !_canEdit || _dialogOpen || _uncertainDraft || sourceId is null)
             return;
 
+        // Переименование не сохраняет и не сбрасывает изменения стадий и значений.
         if (operation != RecipeChangeOperation.Rename && !await SaveBeforeManagementAsync())
             return;
 
-        var expectedName = _snapshot?.Recipe.Name;
+        // Для Rename передаём последнее подтверждённое имя из БД.
+        var expectedName = operation == RecipeChangeOperation.Rename ? _savedSnapshot?.Recipe.Name ?? _snapshot?.Recipe.Name : _snapshot?.Recipe.Name;
         var ct = _stop.Token;
         int? savedRecipeId = null;
+        var requestSent = false;
 
         _managingRecipe = true;
         _error = null;
@@ -95,7 +100,7 @@ public partial class Recipes
             {
                 RecipeChangeOperation.Create => "Creates an empty working recipe in the same recipe family.",
                 RecipeChangeOperation.Copy => "Creates a working copy in the same family, including all stages and parameter values.",
-                _ => "Changes the draft name. Apply it with the main Save button."
+                _ => "Saves the new recipe name to the database immediately. Unsaved stage and parameter changes remain in the editor."
             };
 
             _dialogOpen = true;
@@ -113,12 +118,8 @@ public partial class Recipes
             if (input is not string name)
                 return;
 
-            if (operation == RecipeChangeOperation.Rename)
-            {
-                _snapshot!.Recipe.Name = name;
-                MarkRecipeChanges();
-                return;
-            }
+            // Все три операции выполняются сервером сразу после подтверждения окна.
+            requestSent = true;
 
             var result = await RecipeApi.ChangeAsync(new RecipeChangeRequest
             {
@@ -133,7 +134,40 @@ public partial class Recipes
             if (result.Status != RecipeChangeStatus.Saved || result.RecipeId is not int recipeId)
                 throw new InvalidOperationException("Unexpected recipe operation response. Refresh the list.");
 
-            // New/Copy, как и раньше, создают рабочий рецепт, а не новое семейство.
+            if (operation == RecipeChangeOperation.Rename && recipeId != sourceId.Value)
+                throw new InvalidOperationException("Rename response does not match the selected recipe.");
+
+            savedRecipeId = recipeId;
+
+            if (operation == RecipeChangeOperation.Rename)
+            {
+                // Меняем только имя. Стадии, значения и выделение строки сохраняем.
+                _snapshot!.Recipe.Name = name;
+
+                // Обновляем базовый снимок, чтобы следующий Save не считал Rename конфликтом.
+                if (_savedSnapshot is not null)
+                {
+                    _savedSnapshot.Recipe.Name = name;
+                    _savedRecipeStamp = JsonSerializer.Serialize(_savedSnapshot);
+                }
+
+                // Обновляем название в каталоге и текущем списке комбобокса.
+                foreach (var recipe in _catalog.Recipes.Where(item => item.Id == recipeId))
+                    recipe.Name = name;
+
+                foreach (var recipe in _availableRecipes.Where(item => item.Id == recipeId))
+                    recipe.Name = name;
+
+                _selectorRevision++;
+
+                // Остальные несохранённые изменения продолжают учитываться кнопкой Save.
+                MarkRecipeChanges();
+
+                NotificationService.Notify(NotificationSeverity.Success, "Recipe", "Recipe renamed in the database.", 2500);
+                return;
+            }
+
+            // New/Copy создают рабочий рецепт, а не новое семейство.
             if (IsBaseRecipeMode)
             {
                 _selectedPageId = CreationPage?.Id;
@@ -141,7 +175,6 @@ public partial class Recipes
                 _selectorRevision++;
             }
 
-            savedRecipeId = recipeId;
             _selectedRecipeId = recipeId;
             _loading = true;
             _snapshot = null;
@@ -153,7 +186,7 @@ public partial class Recipes
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // После закрытия страницы операцию автоматически не повторяем.
+            // После закрытия страницы команду автоматически не повторяем.
         }
         catch (Exception ex)
         {
@@ -161,8 +194,21 @@ public partial class Recipes
             {
                 Logger.LogError(ex, "Recipe operation failed. Operation={Operation}, Source={SourceId}.", operation, sourceId);
 
-                _error = savedRecipeId.HasValue ? $"Recipe [{savedRecipeId}] was saved, but the page could not be refreshed. Press Refresh. {ex.Message}"
-                    : ex is HttpRequestException { StatusCode: not null } ? ex.Message : "Operation result could not be confirmed. Refresh the list before retrying. " + ex.Message;
+                // При потере ответа Rename мог уже выполниться.
+                // Не разрешаем последующий Save со старым базовым именем до Refresh.
+                var uncertainRename = operation == RecipeChangeOperation.Rename && requestSent && !savedRecipeId.HasValue
+                    && ex is not HttpRequestException { StatusCode: HttpStatusCode.BadRequest or HttpStatusCode.Forbidden or HttpStatusCode.Conflict or HttpStatusCode.NotFound };
+
+                if (uncertainRename)
+                    _uncertainDraft = true;
+
+                _error = savedRecipeId.HasValue
+                    ? $"Recipe [{savedRecipeId}] was saved, but the interface could not be updated. Press Refresh. {ex.Message}"
+                    : uncertainRename
+                        ? "Rename result could not be confirmed. Press Refresh before saving further changes. " + ex.Message
+                        : ex is HttpRequestException { StatusCode: not null }
+                            ? ex.Message
+                            : "Operation result could not be confirmed. Refresh the list before retrying. " + ex.Message;
             }
         }
         finally
@@ -172,4 +218,5 @@ public partial class Recipes
             _loading = false;
         }
     }
+
 }

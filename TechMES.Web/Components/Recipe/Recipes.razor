@@ -144,9 +144,9 @@
                     </div>
 
                     <div class="recipes-management">
-                        <RadzenButton Text="New" Icon="add_circle_outline" ButtonStyle="ButtonStyle.Success" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!_canEdit || IsBusy || _dialogOpen || _uncertainDraft || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
-                        <RadzenButton Text="Copy" Icon="content_copy" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Copy))" />
                         <RadzenButton Text="Rename" Icon="drive_file_rename_outline" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Rename))" />
+                        <RadzenButton Text="Copy" Icon="content_copy" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanManageRecipe)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Copy))" />
+                        <RadzenButton Text="New" Icon="add_circle_outline" ButtonStyle="ButtonStyle.Success" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!_canEdit || IsBusy || _dialogOpen || _uncertainDraft || NewRecipeSourceId is null)" Click="@(() => ChangeRecipeAsync(RecipeChangeOperation.Create))" />
                         <RadzenButton Text="Delete" Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Shade="Shade.Lighter" Variant="Variant.Flat" Disabled="@(!CanDeleteRecipe)" Click="@DeleteRecipeAsync" title="@RecipeDeleteHint" />
                     </div>
 
