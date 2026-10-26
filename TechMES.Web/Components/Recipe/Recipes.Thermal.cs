@@ -4,6 +4,9 @@ namespace TechMES.Web.Components.Recipe;
 
 public partial class Recipes
 {
+    /// <summary>Auto — обычный параметр рецепта; старое поле Stage.Auto не используется.</summary>
+    private bool StageAutoEnabled(RecipeStageDto stage) => StageBooleanValue(stage, "Auto") == true;
+
     /// <summary>В PLC-режиме используем только прочитанные значения, без подмены данными БД.</summary>
     private bool? StageBooleanValue(RecipeStageDto stage, string name)
     {

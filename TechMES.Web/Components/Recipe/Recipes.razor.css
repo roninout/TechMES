@@ -543,6 +543,32 @@
         color: var(--rz-info);
     }
 
+/* Сохраняем область индикаторов и при выключенных Heating/Cooling. */
+.recipes-stage-indicators {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 28px;
+}
+
+/* Убираем внутренний отступ только у нулевой колонки. */
+.recipes-page ::deep .recipes-grid td.recipes-state-column {
+    padding: 0 !important;
+}
+
+/* Зелёный уголок Auto в верхнем правом углу. */
+.recipes-auto-corner {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 0;
+    height: 0;
+    border-top: 9px solid var(--rz-success);
+    border-left: 9px solid transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .recipes-view-title.is-plc-other .recipes-view-title-text {
         animation: none;
