@@ -5,12 +5,13 @@
 @inject DialogService DialogService
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 
 <RadzenLayout>
     <RadzenHeader class="app-header">
         <div class="app-header-bar">
             <div class="app-brand">
-                <RadzenText Text="TechMES WEB" TextStyle="TextStyle.H6" />
+                <RadzenText Text="@ApplicationTitle" TextStyle="TextStyle.H6" />
             </div>
 
             <nav class="top-nav" aria-label="Main navigation">
@@ -142,6 +143,17 @@
 <QrScannerDialog @ref="_qrScannerDialog" OnScanned="@OnQrScannedAsync" />
 
 @code {
+
+    /// <summary>Название из Maintenance → Settings → Server → WEB title.</summary>
+    private string ApplicationTitle
+    {
+        get
+        {
+            var title = Configuration["App:Title"];
+            return string.IsNullOrWhiteSpace(title) ? "TechMES" : title.Trim();
+        }
+    }
+
     private QrScannerDialog? _qrScannerDialog;
     private bool _isAuthenticated;
     private string? _authUserName;
