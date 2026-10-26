@@ -1,40 +1,76 @@
-﻿using TechMES.Application.Recipes;
+﻿using Microsoft.Extensions.Options;
+using TechMES.Application.Param;
+using TechMES.Application.Recipes;
 using TechMES.Application.Scada;
+using TechMES.Contracts.Equipment;
 using TechMES.Contracts.Recipes;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
 public static partial class RecipeEndpoints
 {
-    /// <summary>Тег mode берём из БД; WEB не может подменить адрес проверки режима.</summary>
-    private static async Task<IResult?> CheckCurrentRecipeModeAsync(RecipeChangeRequest request, IRecipeStore store, IPlantScadaGateway gateway, ILoggerFactory loggerFactory, CancellationToken ct)
+    /// <summary>Один gate с записью ячейки: загрузки рецепта и одиночные записи не перемешиваются.</summary>
+    private static async Task<IResult> ActivateCurrentRecipeAsync(RecipeChangeRequest request, IRecipeStore store, IPlantScadaGateway gateway, IEquipmentParamProvider paramProvider, IOptions<ParamWriteOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
     {
-        if (request.ExpectedPages is not { Count: 1 } || request.ExpectedPages[0] is not { } expected)
-            return Results.Problem("Select one Unit before assigning the Current recipe.", statusCode: 400);
+        if (!options.Value.Enabled || options.Value.DryRun)
+            return Results.Problem("Recipe loading requires ParamWrites:Enabled = true and DryRun = false.", statusCode: 409);
 
-        var catalog = await store.GetCatalogAsync(ct);
-        var page = catalog.Pages.FirstOrDefault(item => item.Id == expected.Id);
+        var logger = loggerFactory.CreateLogger("RecipeEndpoints");
+        RecipePlcUpload? plan = null;
 
-        if (page is null)
-            return Results.Problem("The selected Unit no longer exists. Press Refresh.", statusCode: 404);
-
-        if (page.Page != expected.Page || page.RecipeId != expected.RecipeId || page.BaseRecipeId != expected.BaseRecipeId || page.CurrentStageTag != expected.CurrentStageTag || page.ModeTag != expected.ModeTag)
-            return Results.Problem("The Unit assignment or control tags changed. Press Refresh before assigning.", statusCode: 409);
+        await RecipePlcWriteGate.WaitAsync(ct);
 
         try
         {
-            var error = await RecipePlcReader.ReadManualModeErrorAsync(page, gateway, ct);
+            var result = await store.ActivateAsync(request, async (prepared, token) =>
+            {
+                plan = prepared;
+                await prepared.ExecuteAsync(gateway, token);
+            }, ct);
 
-            return error is null ? null : Results.Problem(error, statusCode: 409);
+            if (result.Status != RecipeChangeStatus.Saved)
+                return Results.Problem(result.Error ?? "Current recipe was not assigned.", statusCode: result.Status == RecipeChangeStatus.NotFound ? 404 : result.Status == RecipeChangeStatus.Conflict ? 409 : 400);
+
+            // PLC уже проверен, Current зафиксирован. Ошибка аудита не отменяет загрузку.
+            if (options.Value.AuditEnabled && plan is not null)
+            {
+                try
+                {
+                    var equipment = new EquipmentDto { Name = plan.Page.Page, Description = request.ExpectedSnapshot!.Recipe.Name };
+                    var saved = await paramProvider.TrySaveOperatorActionAsync(equipment, "Set as current", request.ExpectedPages[0].RecipeId.ToString(), request.SourceRecipeId.ToString(), "Load recipe from database to PLC", request.Actor, ct);
+
+                    if (!saved)
+                        result.Warning = "Recipe loaded; operator audit failed.";
+                }
+                catch (Exception ex)
+                {
+                    result.Warning = "Recipe loaded; operator audit could not be confirmed.";
+                    logger.LogWarning(ex, "Recipe activation audit failed. Recipe={RecipeId}.", request.SourceRecipeId);
+                }
+            }
+
+            logger.LogInformation("Recipe loaded and assigned Current. Recipe={RecipeId}, Unit={PageId}, Actor={Actor}.", result.RecipeId, plan?.Page.Id, request.Actor);
+
+            return Results.Ok(result);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            logger.LogWarning("Recipe activation cancelled. Recipe={RecipeId}, WriteAttempted={Attempted}.", request.SourceRecipeId, plan?.WriteAttempted == true);
             throw;
         }
         catch (Exception ex)
         {
-            loggerFactory.CreateLogger("RecipeEndpoints").LogWarning(ex, "Cannot verify recipe manual mode. Unit={PageId}, Tag={Tag}.", page.Id, page.ModeTag);
-            return Results.Problem("Manual mode could not be verified. Current recipe was not changed. Check the Runtime log.", statusCode: 409);
+            var attempted = plan?.WriteAttempted == true;
+
+            logger.LogError(ex, "Recipe activation failed. Recipe={RecipeId}, WriteAttempted={Attempted}.", request.SourceRecipeId, attempted);
+
+            var detail = ex is InvalidOperationException ? ex.Message : "Check the Runtime log for details.";
+
+            return Results.Problem(attempted ? "Recipe loading did not complete or its outcome is uncertain. PLC may contain partially written data. Check PLC and refresh before retrying. " + detail : "Recipe was not loaded; no TagWrite was sent. " + detail, statusCode: attempted ? 502 : 409);
+        }
+        finally
+        {
+            RecipePlcWriteGate.Release();
         }
     }
 }

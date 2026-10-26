@@ -31,6 +31,9 @@ public interface IRecipeStore
     /// </summary>
     Task<RecipeChangeResult> ChangeAsync(RecipeChangeRequest request, CancellationToken ct = default);
 
+    /// <summary>Удерживает снимок БД до загрузки PLC; назначает Current после успешной проверки.</summary>
+    Task<RecipeChangeResult> ActivateAsync(RecipeChangeRequest request, Func<RecipePlcUpload, CancellationToken, Task> upload, CancellationToken ct = default);
+
     /// <summary>
     /// Перемещает или удаляет стадию либо изменяет признак автоматического перехода.
     /// </summary>

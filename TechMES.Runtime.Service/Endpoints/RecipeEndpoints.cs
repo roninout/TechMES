@@ -117,8 +117,8 @@ public static partial class RecipeEndpoints
         }
     }
 
-    /// <summary>Управляет рецептами; перед назначением Current проверяет mode выбранного Unit.</summary>
-    private static async Task<IResult> ChangeRecipeAsync(RecipeChangeRequest request, IRecipeStore store, IPlantScadaGateway gateway, IOptions<ParamWriteOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
+    /// <summary>Управляет рецептами; SetCurrent загружает сохранённый рецепт в PLC.</summary>
+    private static async Task<IResult> ChangeRecipeAsync(RecipeChangeRequest request, IRecipeStore store, IPlantScadaGateway gateway, IEquipmentParamProvider paramProvider, IOptions<ParamWriteOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
     {
         var authorizationError = AuthorizeRecipeWrite(request.Actor, request.ActorGroups, options.Value.Authorization);
 
@@ -128,12 +128,7 @@ public static partial class RecipeEndpoints
         try
         {
             if (request.Operation == RecipeChangeOperation.SetCurrent)
-            {
-                var modeError = await CheckCurrentRecipeModeAsync(request, store, gateway, loggerFactory, ct);
-
-                if (modeError is not null)
-                    return modeError;
-            }
+                return await ActivateCurrentRecipeAsync(request, store, gateway, paramProvider, options, loggerFactory, ct);
 
             var result = await store.ChangeAsync(request, ct);
 

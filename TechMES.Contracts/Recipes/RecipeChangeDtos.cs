@@ -42,10 +42,13 @@ public enum RecipeChangeStatus
     Invalid = 4
 }
 
-/// <summary>Идентификатор рецепта, с которым выполнена операция.</summary>
+/// <summary>Результат операции с рецептом.</summary>
 public sealed class RecipeChangeResult
 {
     public RecipeChangeStatus Status { get; set; }
     public int? RecipeId { get; set; }
     public string? Error { get; set; }
+
+    /// <summary>Предупреждение после успешной операции, например при ошибке аудита.</summary>
+    public string? Warning { get; set; }
 }

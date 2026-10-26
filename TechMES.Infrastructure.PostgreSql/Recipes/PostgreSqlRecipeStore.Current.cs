@@ -1,14 +1,15 @@
 ﻿using Npgsql;
+using TechMES.Application.Recipes;
 using TechMES.Contracts.Recipes;
 
 namespace TechMES.Infrastructure.PostgreSql.Recipes;
 
 public sealed partial class PostgreSqlRecipeStore
 {
-    /// <summary>Назначает Current только выбранному Unit; значения рецепта и PLC не изменяются.</summary>
-    private async Task<RecipeChangeResult> SetCurrentRecipeAsync(RecipeChangeRequest request, CancellationToken ct)
+    /// <summary>Проверяет сохранённый рецепт, загружает PLC и затем фиксирует Current.</summary>
+    public async Task<RecipeChangeResult> ActivateAsync(RecipeChangeRequest request, Func<RecipePlcUpload, CancellationToken, Task> upload, CancellationToken ct = default)
     {
-        if (request.SourceRecipeId <= 0 || !ValidEditorShape(request.ExpectedSnapshot) || request.ExpectedSnapshot!.Recipe.Id != request.SourceRecipeId || request.ExpectedPages is not { Count: 1 } || request.ExpectedPages[0] is null)
+        if (request.Operation != RecipeChangeOperation.SetCurrent || request.SourceRecipeId <= 0 || !ValidEditorShape(request.ExpectedSnapshot) || request.ExpectedSnapshot!.Recipe.Id != request.SourceRecipeId || request.ExpectedPages is not { Count: 1 } || request.ExpectedPages[0] is null)
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Invalid Current recipe assignment. Press Refresh." };
 
         var expected = request.ExpectedPages[0];
@@ -71,6 +72,36 @@ public sealed partial class PostgreSqlRecipeStore
             if (await command.ExecuteScalarAsync(ct) is true)
                 return new() { Status = RecipeChangeStatus.Invalid, Error = "An assigned base recipe cannot be selected as Current." };
         }
+
+        // Справочники уже заблокированы; читаем коды и ВСЕ параметры семейства.
+        var parameters = new List<RecipeColumnDto>();
+        var codes = new Dictionary<int, string>();
+
+        const string metadataSql = """
+        SELECT "id", "tag", "kind" FROM public."BaseParameter" WHERE "baseRecipeId" = @family ORDER BY "id";
+        SELECT "id", "description" FROM public."BaseRecipeStage" WHERE "baseRecipeId" = @family ORDER BY "id";
+        """;
+
+        await using (var command = new NpgsqlCommand(metadataSql, connection, transaction) { CommandTimeout = GetCommandTimeout() })
+        {
+            command.Parameters.AddWithValue("family", page.BaseRecipeId);
+            await using var reader = await command.ExecuteReaderAsync(ct);
+
+            while (await reader.ReadAsync(ct))
+                parameters.Add(new() { Id = reader.GetInt32(0), TagSuffix = ReadText(reader, 1), Kind = (RecipeParameterKind)reader.GetInt32(2) });
+
+            await reader.NextResultAsync(ct);
+
+            while (await reader.ReadAsync(ct))
+                codes.Add(reader.GetInt32(0), ReadText(reader, 1).Trim());
+        }
+
+        var prefixes = await ReadStagePrefixesAsync(connection, transaction, page.RecipeId, ct);
+        var plan = new RecipePlcUpload(candidate, page, parameters, codes, prefixes);
+
+        // Передаём канонические данные БД, а не присланные WEB значения.
+        // Блокировки удерживаются до завершения загрузки PLC.
+        await upload(plan, ct);
 
         const string assignSql = """
         UPDATE public."RecipePage" SET "recipeId" = @recipe_id

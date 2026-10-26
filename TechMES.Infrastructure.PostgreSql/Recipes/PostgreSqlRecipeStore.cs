@@ -253,7 +253,7 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
             return await SetBaseRecipeAsync(request, ct);
 
         if (request.Operation == RecipeChangeOperation.SetCurrent)
-            return await SetCurrentRecipeAsync(request, ct);
+            return new() { Status = RecipeChangeStatus.Invalid, Error = "Current recipe must be assigned through PLC activation." };
 
         if (name.Length == 0 || request.SourceRecipeId <= 0 || !Enum.IsDefined(request.Operation))
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Select a recipe and enter a valid name." };

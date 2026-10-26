@@ -131,10 +131,16 @@
                             </RadzenDropDown>
                         </div>
 
+                        @if (!IsBaseRecipeMode)
+                        {
+                            <RadzenButton Text="Set as current" Icon="bookmark_add" ButtonStyle="ButtonStyle.Light" IsBusy="@_settingCurrent" BusyText="Loading PLC..." Disabled="@(!CanSetCurrentRecipe)" Click="@SetCurrentRecipeAsync" title="@(HasRecipeChanges ? "Save recipe changes before loading PLC." : "Load saved database values into PLC and set this recipe as Current")" />
+                        }
+
                         @if (IsBaseRecipeMode)
                         {
                             <RadzenButton Text="Set as base" Icon="bookmark_add" ButtonStyle="ButtonStyle.Light" Disabled="@(!CanSetBaseRecipe)" Click="@SetBaseRecipeAsync" title="@(IsAssignedBaseRecipe(_selectedRecipeId) ? "This recipe is already assigned as base." : "Assign as the base recipe for this family")" />
                         }
+
                     </div>
 
                     <div class="recipes-management">
@@ -156,7 +162,8 @@
                             <RadzenDropDown @key="_selectorRevision" TValue="int?" Name="recipe-unit" Data="@_catalog.Pages" TextProperty="Page" ValueProperty="Id" Value="@_selectedPageId" Change="@OnPageChangedAsync" AllowClear="false" Disabled="@(IsBusy || _dialogOpen)" Style="width: var(--recipe-unit-width);" />
                         </div>
 
-                        <div class="recipes-field recipes-field-wide">
+                         @* Временно скрыт выбор рецепта в основном просмотре.
+                         <div class="recipes-field recipes-field-wide">
                             <RadzenLabel Text="Recipe" Component="recipe-selection" />
                             <RadzenDropDown @key="_selectorRevision" TValue="int?" Name="recipe-selection" Data="@_availableRecipes" TextProperty="DisplayName" ValueProperty="Id" Value="@_selectedRecipeId" Change="@OnRecipeChangedAsync" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@(IsBusy || _dialogOpen)" Style="width: 100%;">
                                 <Template Context="item">
@@ -167,9 +174,11 @@
                                     <RecipeChoiceLabel Recipe="@((RecipeListItemDto)item)" Current="@(SelectedPage?.RecipeId == ((RecipeListItemDto)item).Id)" AssignedBase="@IsAssignedBaseRecipe(((RecipeListItemDto)item).Id)" />
                                 </ValueTemplate>
                             </RadzenDropDown>
-                        </div>
+                        </div>                         
 
                         <RadzenButton Text="Set as current" Icon="bookmark_add" ButtonStyle="ButtonStyle.Light" IsBusy="@_settingCurrent" BusyText="Assigning..." Disabled="@(!CanSetCurrentRecipe)" Click="@SetCurrentRecipeAsync" title="Assign the selected recipe as Current for this Unit after checking manual mode" />
+                        *@
+
                     </div>
                 </div>
             }

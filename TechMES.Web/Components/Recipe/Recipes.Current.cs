@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using Microsoft.Extensions.Logging;
 using Radzen;
 using TechMES.Contracts.Recipes;
 
@@ -13,9 +12,11 @@ public partial class Recipes
     private string RecipeViewTitle => _plcEnabled ? SelectedRecipeTitle : $"DB values: {SelectedRecipeTitle}";
     private string RecipeViewTitleClass => !_plcEnabled ? "is-database" : SelectedPage is not null && _selectedRecipeId.HasValue && !IsSelectedRecipeCurrent ? "is-plc-other" : "";
     private bool IsSelectedRecipeCurrent => _selectedRecipeId.HasValue && SelectedPage?.RecipeId == _selectedRecipeId.Value;
-    private bool CanSetCurrentRecipe => !EditorMode && _canWritePlc && !IsBusy && !_dialogOpen && !_disposed && !_uncertainDraft && _snapshot is not null && SelectedPage is not null && _snapshot.Recipe.Id == _selectedRecipeId && !IsSelectedRecipeCurrent && !IsAssignedBaseRecipe(_selectedRecipeId) && _snapshot.Recipe.BaseRecipeId == SelectedPage.BaseRecipeId;
 
-    /// <summary>Назначает Current после предупреждения; Runtime проверяет mode непосредственно перед назначением.</summary>
+    // Current тоже разрешено загрузить повторно после сохранения изменённых значений.
+    private bool CanSetCurrentRecipe => EditorMode && !IsBaseRecipeMode && _canEdit && _canWritePlc && !IsBusy && !_dialogOpen && !_disposed && !_uncertainDraft && !HasRecipeChanges && _snapshot is not null && SelectedPage is not null && _snapshot.Recipe.Id == _selectedRecipeId && !IsAssignedBaseRecipe(_selectedRecipeId) && _snapshot.Recipe.BaseRecipeId == SelectedPage.BaseRecipeId;
+
+    /// <summary>Загружает сохранённые БД-значения; черновик сначала нужно сохранить кнопкой Save.</summary>
     private async Task SetCurrentRecipeAsync()
     {
         if (!CanSetCurrentRecipe || _snapshot is null || SelectedPage is null) return;
@@ -37,42 +38,36 @@ public partial class Recipes
 
         _settingCurrent = true;
         _error = null;
-        StopPlcReading(clearValues: false);
 
         try
         {
-            await _plcTask;
-            ct.ThrowIfCancellationRequested();
-
             _dialogOpen = true;
 
-            var sourceWarning = _plcEnabled ? "PLC values are live values of the Unit; the selected recipe is not Current. " : "You are viewing database values. ";
-            var message = $"{sourceWarning}Set {original.Recipe.DisplayName} as Current for Unit {page.Page}? Manual mode will be checked before assignment. This step updates the database assignment only; PLC values will remain unchanged.";
-            var confirmed = await DialogService.Confirm(message, "Warning: set Current recipe", new ConfirmOptions { OkButtonText = "Set as current", CancelButtonText = "Cancel" });
+            var message = $"Load saved database values of {original.Recipe.DisplayName} into Unit {page.Page} and set this recipe as Current? PLC recipe values will be overwritten. The Unit must be in manual mode. Continue?";
+            var confirmed = await DialogService.Confirm(message, "Warning: load recipe to PLC", new ConfirmOptions { OkButtonText = "Load and set Current", CancelButtonText = "Cancel" });
 
             _dialogOpen = false;
             ct.ThrowIfCancellationRequested();
 
             if (confirmed != true) return;
 
-            // Запрос назначения не повторяем автоматически при потере ответа.
+            // Команду записи автоматически не повторяем при потере HTTP-ответа.
             requestSent = true;
             var result = await RecipeApi.ChangeAsync(request, ct);
             ct.ThrowIfCancellationRequested();
 
             if (result.Status != RecipeChangeStatus.Saved || result.RecipeId != original.Recipe.Id)
-                throw new InvalidOperationException("Unexpected Current recipe assignment response.");
+                throw new InvalidOperationException("Unexpected PLC recipe loading response.");
 
             assigned = true;
             page.RecipeId = original.Recipe.Id;
-            StopPlcReading();
             _selectorRevision++;
             _loading = true;
 
             await InvokeAsync(StateHasChanged);
             await ReloadCatalogAndRecipeAsync(original.Recipe.Id, ct);
 
-            NotificationService.Notify(NotificationSeverity.Success, "Recipe", $"Current recipe assigned for Unit {page.Page}.", 2500);
+            NotificationService.Notify(result.Warning is null ? NotificationSeverity.Success : NotificationSeverity.Warning, "Recipe", result.Warning ?? $"Recipe loaded to PLC and assigned Current for Unit {page.Page}.", 4500);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -82,10 +77,10 @@ public partial class Recipes
             if (!_disposed)
             {
                 _uncertainDraft = !assigned && requestSent && ex is not HttpRequestException { StatusCode: HttpStatusCode.BadRequest or HttpStatusCode.Forbidden or HttpStatusCode.Conflict or HttpStatusCode.NotFound };
-                _error = assigned ? "Current recipe assigned, but the page could not be refreshed. Press Refresh. " + ex.Message
-                    : _uncertainDraft ? "Assignment result is uncertain. Press Refresh before trying again. " + ex.Message : ex.Message;
+                _error = assigned ? "Recipe loaded, but the page could not be refreshed. Press Refresh. " + ex.Message
+                    : _uncertainDraft ? "Loading outcome is uncertain. Check PLC and press Refresh before trying again. " + ex.Message : ex.Message;
 
-                Logger.LogWarning(ex, "Failed to assign Current recipe. Recipe={RecipeId}, Unit={PageId}.", original.Recipe.Id, page.Id);
+                Logger.LogWarning(ex, "Failed to load Current recipe. Recipe={RecipeId}, Unit={PageId}.", original.Recipe.Id, page.Id);
             }
         }
         finally
@@ -93,9 +88,6 @@ public partial class Recipes
             _dialogOpen = false;
             _settingCurrent = false;
             _loading = false;
-
-            if (!_disposed)
-                StartPlcReading();
         }
     }
 }

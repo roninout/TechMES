@@ -60,6 +60,10 @@ public sealed class RecipeApiClient
 
         var client = _clients.CreateClient("RuntimeService");
 
+        // Полная загрузка содержит много последовательных TagWrite. Общий timeout остальных запросов не меняем.
+        if (request.Operation == RecipeChangeOperation.SetCurrent)
+            client.Timeout = TimeSpan.FromMinutes(5);
+
         using var response = await client.PostAsJsonAsync("api/recipes/change", request, ct);
 
         return await ReadResponseAsync<RecipeChangeResult>(response, ct);
