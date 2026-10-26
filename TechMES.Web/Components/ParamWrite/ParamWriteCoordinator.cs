@@ -29,7 +29,8 @@ public sealed class ParamWriteCoordinator(ParamApiClient paramApi, IOptions<Para
 
         try
         {
-            var dialogResult = await dialogService.OpenAsync<ParamWriteDialog>($"Write: {item.Name}", new Dictionary<string, object?>
+            // В заголовке показываем только название параметра.
+            var dialogResult = await dialogService.OpenAsync<ParamWriteDialog>(item.Name, new Dictionary<string, object?>
             {
                 [nameof(ParamWriteDialog.Item)] = item,
                 [nameof(ParamWriteDialog.InitialBooleanValue)] = initialBooleanValue

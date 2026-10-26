@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using Radzen;
+using Microsoft.AspNetCore.Components;
 using TechMES.Contracts.Recipes;
 
 namespace TechMES.Web.Components.Recipe;
@@ -43,8 +44,28 @@ public partial class Recipes
         {
             _dialogOpen = true;
 
-            var message = $"Load saved database values of {original.Recipe.DisplayName} into Unit {page.Page} and set this recipe as Current? PLC recipe values will be overwritten. The Unit must be in manual mode. Continue?";
-            var confirmed = await DialogService.Confirm(message, "Warning: load recipe to PLC", new ConfirmOptions { OkButtonText = "Load and set Current", CancelButtonText = "Cancel" });
+            // Отдельно показываем выбранный рецепт, Unit и последствия подтверждения.
+            var description = string.Join("\n",
+                $"Recipe: {original.Recipe.DisplayName}",
+                $"Unit: {page.Page}",
+                $"Stages: {original.Stages.Count}",
+                "",
+                "Saved database values will be loaded into PLC.",
+                "Existing PLC recipe values will be overwritten.",
+                "The Unit must be in manual mode.",
+                "",
+                "Load this recipe and set it as Current?");
+
+            // Сохраняем переносы строк; названия из БД выводим обычным текстом.
+            RenderFragment message = builder =>
+            {
+                builder.OpenElement(0, "div");
+                builder.AddAttribute(1, "style", "white-space: pre-line; line-height: 1.6; text-align: left;");
+                builder.AddContent(2, description);
+                builder.CloseElement();
+            };
+
+            var confirmed = await DialogService.Confirm(message, "Warning: load recipe to PLC", new ConfirmOptions { Width = "560px", OkButtonText = "Load and set Current", CancelButtonText = "Cancel" });
 
             _dialogOpen = false;
             ct.ThrowIfCancellationRequested();
