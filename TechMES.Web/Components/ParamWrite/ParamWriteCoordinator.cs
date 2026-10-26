@@ -17,9 +17,10 @@ public sealed class ParamWriteCoordinator(ParamApiClient paramApi, IOptions<Para
     public Task<ParamWriteResponse?> WriteAsync(string equipmentName, ParamItemDto item, CancellationToken ct = default) => WriteCoreAsync(equipmentName, item, (request, token) => paramApi.WriteAsync(equipmentName, request, token), ct);
 
     /// <summary>Тот же диалог и confirm для модуля с собственным серверным разрешением адресов.</summary>
-    public Task<ParamWriteResponse?> WriteAsync(string equipmentName, ParamItemDto item, Func<ParamWriteRequest, CancellationToken, Task<ParamWriteResponse>> write, CancellationToken ct = default) => WriteCoreAsync(equipmentName, item, write, ct);
+    /// <summary>Стартовое Boolean-значение не меняет текущее значение в snapshot.</summary>
+    public Task<ParamWriteResponse?> WriteAsync(string equipmentName, ParamItemDto item, Func<ParamWriteRequest, CancellationToken, Task<ParamWriteResponse>> write, bool initialBooleanValue, CancellationToken ct = default) => WriteCoreAsync(equipmentName, item, write, ct, initialBooleanValue);
 
-    private async Task<ParamWriteResponse?> WriteCoreAsync(string equipmentName, ParamItemDto item, Func<ParamWriteRequest, CancellationToken, Task<ParamWriteResponse>> write, CancellationToken ct)
+    private async Task<ParamWriteResponse?> WriteCoreAsync(string equipmentName, ParamItemDto item, Func<ParamWriteRequest, CancellationToken, Task<ParamWriteResponse>> write, CancellationToken ct, bool? initialBooleanValue = null)
     {
         if (_isBusy || string.IsNullOrWhiteSpace(equipmentName) || item is null || !item.CanWrite)
             return null;
@@ -30,7 +31,8 @@ public sealed class ParamWriteCoordinator(ParamApiClient paramApi, IOptions<Para
         {
             var dialogResult = await dialogService.OpenAsync<ParamWriteDialog>($"Write: {item.Name}", new Dictionary<string, object?>
             {
-                [nameof(ParamWriteDialog.Item)] = item
+                [nameof(ParamWriteDialog.Item)] = item,
+                [nameof(ParamWriteDialog.InitialBooleanValue)] = initialBooleanValue
             }, new DialogOptions
             {
                 Width = "420px",

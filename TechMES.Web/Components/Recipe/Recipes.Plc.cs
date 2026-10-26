@@ -78,15 +78,16 @@ public partial class Recipes
         _plcCurrentStageError = null;
     }
 
-    /// <summary>Результаты отменённого запроса никогда не попадают в новый рецепт.</summary>
+    /// <summary>Опрос принадлежит конкретным Unit и рецепту; отменённые ответы не публикуются.</summary>
     private async Task PollPlcAsync(Task previous, CancellationTokenSource source, int recipeId, int pageId, string layoutStamp)
     {
         var ct = source.Token;
 
         try
         {
+            // Новый цикл ждёт завершения отменённого предыдущего, чтобы запросы не накапливались.
             await previous;
-            var firstRequest = true;
+            var quickRetries = 0;
 
             while (true)
             {
@@ -113,19 +114,26 @@ public partial class Recipes
 
                     var values = result.Values.ToDictionary(item => (item.StageId, item.ColumnId));
 
+                    // HTTP 200 ещё не означает, что все отдельные теги прочитались.
+                    var incomplete = result.Values.Count < PlcExpectedValueCount || result.Values.Any(item => item.Error is not null || !item.Value.HasValue) || result.CurrentStageError is not null;
+                    nextDelay = NextPlcReadDelay(incomplete, ref quickRetries);
+
                     await InvokeAsync(() =>
                     {
                         if (ct.IsCancellationRequested || _disposed) return;
 
                         _plcValues = values;
                         _plcReadAtUtc = result.ReadAtUtc;
-                        _plcError = PlcReadValueCount < PlcExpectedValueCount ? "Some PLC values are unavailable. Hover over the warning icon for details." : null;
+
+                        var failed = result.Values.FirstOrDefault(item => item.Error is not null || !item.Value.HasValue);
+                        _plcError = PlcReadValueCount < PlcExpectedValueCount ? $"Some PLC values are unavailable. {failed?.TagName}: {failed?.Error ?? "A parameter was not returned."}" : null;
+
                         _plcCurrentStage = result.CurrentStage;
                         _plcCurrentStageError = result.CurrentStageError;
 
                         var page = _catalog.Pages.FirstOrDefault(item => item.Id == pageId);
 
-                        // Назначение Current могло измениться в другом окне; выбор пользователя сохраняем.
+                        // Назначение Current могло измениться в другом окне.
                         if (page is not null && page.RecipeId != result.CurrentRecipeId)
                         {
                             page.RecipeId = result.CurrentRecipeId;
@@ -139,10 +147,11 @@ public partial class Recipes
                 }
                 catch (Exception ex)
                 {
+                    // Изменённую структуру или удалённый рецепт повторным чтением не исправить.
                     stop = ex is HttpRequestException { StatusCode: HttpStatusCode.Conflict or HttpStatusCode.NotFound or HttpStatusCode.BadRequest };
 
-                    if (firstRequest && !stop)
-                        nextDelay = TimeSpan.FromSeconds(1);
+                    if (!stop)
+                        nextDelay = NextPlcReadDelay(true, ref quickRetries);
 
                     Logger.LogWarning(ex, "Recipe PLC read failed. Recipe={RecipeId}, Unit={PageId}.", recipeId, pageId);
 
@@ -168,13 +177,12 @@ public partial class Recipes
 
                 if (stop) return;
 
-                firstRequest = false;
                 await Task.Delay(nextDelay, ct);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // При смене рецепта, выключении PLC и закрытии страницы опрос завершается.
+            // Смена Unit, выключение PLC и закрытие страницы завершают этот цикл.
         }
         catch (Exception ex)
         {
@@ -187,6 +195,18 @@ public partial class Recipes
 
             source.Dispose();
         }
+    }
+
+    /// <summary>Три быстрых повторных чтения; затем обычный интервал. К записи не применяется.</summary>
+    private static TimeSpan NextPlcReadDelay(bool incomplete, ref int quickRetries)
+    {
+        if (!incomplete)
+        {
+            quickRetries = 0;
+            return PlcRefreshInterval;
+        }
+
+        return quickRetries++ < 3 ? TimeSpan.FromSeconds(1) : PlcRefreshInterval;
     }
 
     private RecipePlcValueDto? FindPlcValue(RecipeStageDto stage, RecipeColumnDto column) => _plcValues.GetValueOrDefault((stage.Id, column.Id));

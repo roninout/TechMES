@@ -14,7 +14,7 @@ public partial class Recipes
 
     private Task OnRecipeValueClickedAsync(RecipeStageDto stage, RecipeColumnDto column) => EditorMode ? EditParameterAsync(stage, column) : WritePlcParameterAsync(stage, column);
 
-    /// <summary>В просмотре меняет только PLC; в БД сохраняет существующий редактор.</summary>
+    /// <summary>В просмотре меняет только PLC; для дискретки предлагает противоположное значение.</summary>
     private async Task WritePlcParameterAsync(RecipeStageDto stage, RecipeColumnDto column)
     {
         if (!CanWritePlcParameter(stage, column) || _snapshot is null || SelectedPage is null) return;
@@ -24,6 +24,7 @@ public partial class Recipes
 
         var request = new RecipePlcWriteRequest { PageId = SelectedPage.Id, StageId = stage.Id, ColumnId = column.Id, ExpectedValue = current.Value!.Value, LayoutStamp = RecipePlcLayout.GetStamp(_snapshot) };
 
+        // Текущее значение сохраняем настоящим: оно используется для подписи и проверки перед записью.
         var item = new ParamItemDto { Name = column.Name, Kind = column.Kind == RecipeParameterKind.CheckBox ? ParamValueKind.Boolean : ParamValueKind.Number, NumericValue = current.Value, BooleanValue = column.Kind == RecipeParameterKind.CheckBox ? current.Value != 0 : null, ValueText = FormatValue(current.Value.Value, column.Format), Unit = column.Description, CanWrite = true };
 
         var description = $"Recipe [{recipeId}] {_snapshot.Recipe.Name}; stage {stage.Number}: {column.Name}";
@@ -45,21 +46,24 @@ public partial class Recipes
                 request.Write = write;
 
                 return RecipeApi.WritePlcParameterAsync(recipeId, request, token);
-            }, ct);
+            }, column.Kind == RecipeParameterKind.CheckBox && current.Value == 0, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
         catch (Exception ex)
         {
-            if (!_disposed) NotificationService.Notify(NotificationSeverity.Error, "Recipe PLC write", ex.Message, 4500);
+            if (!_disposed)
+                NotificationService.Notify(NotificationSeverity.Error, "Recipe PLC write", ex.Message, 4500);
         }
         finally
         {
             _dialogOpen = false;
             _writingPlc = false;
 
-            if (!_disposed) StartPlcReading();
+            if (!_disposed)
+                StartPlcReading();
         }
     }
+
 }

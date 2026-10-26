@@ -148,9 +148,7 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IPlantScadaHeal
 
     private bool IsConnected => _nativeClient is CtApiFailoverClient redundant ? redundant.State.ActiveRole is not null : _status == PlantScadaConnectionStatus.Connected;
 
-    /// <summary>
-    /// Читает один SCADA tag через CtApi и возвращает контролируемый DTO-ответ для Runtime endpoint-а.
-    /// </summary>
+    /// <summary>Читает один тег и освобождает общий gate при любом результате.</summary>
     public async Task<ScadaTagReadResponse> ReadTagAsync(string tagName, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(tagName))
@@ -180,7 +178,6 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IPlantScadaHeal
         try
         {
             var normalizedTagName = tagName.Trim();
-
             var value = await _nativeClient.TagReadAsync(normalizedTagName, ct);
 
             return new ScadaTagReadResponse
@@ -199,7 +196,7 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IPlantScadaHeal
         {
             _logger.LogWarning(ex, "Error TagRead. Tag={TagName}", tagName);
 
-            // Ошибка отдельного тега не означает потерю связи. Её проверяет health probe.
+            // Ошибка отдельного тега не означает потерю соединения.
             return new ScadaTagReadResponse
             {
                 TagName = tagName,
@@ -207,6 +204,11 @@ public sealed class CtApiPlantScadaGateway : IPlantScadaGateway, IPlantScadaHeal
                 Error = ex.Message,
                 Time = DateTime.Now
             };
+        }
+        finally
+        {
+            // Без Release последующие чтения и записи останутся ждать этот gate.
+            _apiGate.Release();
         }
     }
 

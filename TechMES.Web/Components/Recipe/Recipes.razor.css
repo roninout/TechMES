@@ -527,6 +527,22 @@
         box-shadow: inset 3px 0 0 var(--rz-success);
     }
 
+/* Состояние нагрева/охлаждения стадии. Цвета учитывают текущую тему. */
+.recipes-thermal-state {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+}
+
+    .recipes-thermal-state.is-heating {
+        color: var(--rz-warning);
+    }
+
+    .recipes-thermal-state.is-cooling {
+        color: var(--rz-info);
+    }
+
 @media (prefers-reduced-motion: reduce) {
     .recipes-view-title.is-plc-other .recipes-view-title-text {
         animation: none;

@@ -191,6 +191,18 @@
                     </LoadingTemplate>
 
                     <Columns>
+
+                        <RadzenDataGridColumn TItem="RecipeStageDto" Width="42px" MinWidth="42px" MaxWidth="42px" Frozen="true" Sortable="false" Filterable="false" Resizable="false" TextAlign="TextAlign.Center">
+                            <Template Context="stage">
+                                @if (StageThermalState(stage) is { } thermal)
+                                {
+                                    <span class="recipes-thermal-state @thermal.CssClass" title="@thermal.Title" role="img" aria-label="@thermal.Title">
+                                        <RadzenIcon Icon="@thermal.Icon" />
+                                    </span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+
                         <RadzenDataGridColumn TItem="RecipeStageDto" Property="Number" Title="№" Width="60px" Frozen="true" TextAlign="TextAlign.Center" />
 
                         <RadzenDataGridColumn TItem="RecipeStageDto" Property="Name" Title="@(EditorMode && _showStageTags ? "PLC tag prefix" : "Stage")" Width="300px" Frozen="true">
@@ -372,15 +384,28 @@
         await RunAsync(ct => ReloadCatalogAndRecipeAsync(_selectedRecipeId, ct));
     }
 
-    /// <summary>Меняет Unit после проверки несохранённых изменений.</summary>
+    /// <summary>При смене Unit перечитывает Current и семейство перед загрузкой адресов PLC.</summary>
     private async Task OnPageChangedAsync(object? value)
     {
         var id = value is int number ? number : (int?)null;
 
         if (id == _selectedPageId || IsBusy || _dialogOpen) return;
-        if (!await DiscardRecipeAsync()) { _selectorRevision++; return; }
 
-        await RunAsync(async ct => { _selectedPageId = id; SelectAvailableRecipes(null); await LoadSelectedRecipeAsync(ct); });
+        if (!await DiscardRecipeAsync())
+        {
+            _selectorRevision++;
+            return;
+        }
+
+        await RunAsync(async ct =>
+        {
+            _selectedPageId = id;
+
+            // Current и семейство могли измениться после первоначальной загрузки страницы.
+            // null означает выбор текущего рецепта нового Unit.
+            await ReloadCatalogAndRecipeAsync(null, ct);
+            _selectorRevision++;
+        });
     }
 
     /// <summary>Предупреждает о черновике при выборе другого рецепта.</summary>
