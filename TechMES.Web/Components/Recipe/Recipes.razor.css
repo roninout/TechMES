@@ -559,16 +559,26 @@
     padding: 0 !important;
 }
 
-/* Уголок привязан к верхнему правому углу ячейки, а не к её содержимому. */
+/* Сбрасываем позиционирование псевдоэлемента Radzen.
+   Уголок закреплён строго сверху справа внутри ячейки. */
 .recipes-page ::deep .recipes-grid tr.recipes-stage-auto > td.recipes-state-column::after {
     content: "";
     position: absolute;
-    top: 0;
-    right: 0;
+    inset: auto !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: auto !important;
+    left: auto !important;
     width: 0;
     height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
     border-top: 9px solid var(--rz-success);
     border-left: 9px solid transparent;
+    background: transparent !important;
+    box-shadow: none;
+    z-index: 1;
     pointer-events: none;
 }
 
