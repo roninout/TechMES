@@ -18,23 +18,21 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
         _configuration = configuration;
     }
 
-    /// <summary>
-    /// Получает привязки объектов и список рецептов без загрузки всех стадий.
-    /// </summary>
+    /// <summary>Получает привязки Unit, служебные теги и список рецептов.</summary>
     public async Task<RecipeCatalogDto> GetCatalogAsync(CancellationToken ct = default)
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(ct);
 
         const string sql = """
-        SELECT "id", "page", "recipeId", "baseRecipeId"
-        FROM public."RecipePage"
-        ORDER BY "page", "id";
+    SELECT "id", "page", "recipeId", "baseRecipeId", "currentStageTag", "modeTag"
+    FROM public."RecipePage"
+    ORDER BY "page", "id";
 
-        SELECT "id", "numb", "name", "baseRecipeId"
-        FROM public."Recipe"
-        ORDER BY "name", "id";
-        """;
+    SELECT "id", "numb", "name", "baseRecipeId"
+    FROM public."Recipe"
+    ORDER BY "name", "id";
+    """;
 
         await using var command = new NpgsqlCommand(sql, connection) { CommandTimeout = GetCommandTimeout() };
         await using var reader = await command.ExecuteReaderAsync(ct);
@@ -48,7 +46,9 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
                 Id = reader.GetInt32(0),
                 Page = ReadText(reader, 1),
                 RecipeId = reader.GetInt32(2),
-                BaseRecipeId = reader.GetInt32(3)
+                BaseRecipeId = reader.GetInt32(3),
+                CurrentStageTag = ReadText(reader, 4),
+                ModeTag = ReadText(reader, 5)
             });
         }
 

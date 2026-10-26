@@ -30,15 +30,19 @@ public sealed class RecipeCatalogDto
     public List<RecipeListItemDto> Recipes { get; set; } = [];
 }
 
-/// <summary>
-/// Привязка страницы SCADA к текущему и базовому рецептам.
-/// </summary>
+/// <summary>Привязка Unit к рецептам и служебным тегам PLC.</summary>
 public sealed class RecipePageDto
 {
     public int Id { get; set; }
     public string Page { get; set; } = "";
     public int RecipeId { get; set; }
     public int BaseRecipeId { get; set; }
+
+    /// <summary>Полное имя тега номера выполняемой стадии.</summary>
+    public string CurrentStageTag { get; set; } = "";
+
+    /// <summary>Полное имя тега режима: 0 — ручной, 1 — автоматический.</summary>
+    public string ModeTag { get; set; } = "";
 }
 
 /// <summary>

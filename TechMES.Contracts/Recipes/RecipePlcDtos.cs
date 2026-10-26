@@ -10,6 +10,13 @@ public sealed class RecipePlcSnapshotDto
     public int PageId { get; set; }
     public string LayoutStamp { get; set; } = "";
     public DateTimeOffset ReadAtUtc { get; set; }
+
+    /// <summary>Актуальная привязка Current из RecipePage, а не номер, прочитанный из PLC.</summary>
+    public int CurrentRecipeId { get; set; }
+
+    public int? CurrentStage { get; set; }
+    public string? CurrentStageError { get; set; }
+
     public List<RecipePlcValueDto> Values { get; set; } = [];
 }
 

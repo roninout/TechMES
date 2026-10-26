@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Options;
 using TechMES.Application.Param;
 using TechMES.Application.Recipes;
+using TechMES.Application.Scada;
 using TechMES.Contracts.Recipes;
 
 namespace TechMES.Runtime.Service.Endpoints;
@@ -116,10 +117,8 @@ public static partial class RecipeEndpoints
         }
     }
 
-    /// <summary>
-    /// Управляет сохранённым рецептом, не назначая его текущим и не обращаясь к PLC.
-    /// </summary>
-    private static async Task<IResult> ChangeRecipeAsync(RecipeChangeRequest request, IRecipeStore store, IOptions<ParamWriteOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
+    /// <summary>Управляет рецептами; перед назначением Current проверяет mode выбранного Unit.</summary>
+    private static async Task<IResult> ChangeRecipeAsync(RecipeChangeRequest request, IRecipeStore store, IPlantScadaGateway gateway, IOptions<ParamWriteOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
     {
         var authorizationError = AuthorizeRecipeWrite(request.Actor, request.ActorGroups, options.Value.Authorization);
 
@@ -128,6 +127,14 @@ public static partial class RecipeEndpoints
 
         try
         {
+            if (request.Operation == RecipeChangeOperation.SetCurrent)
+            {
+                var modeError = await CheckCurrentRecipeModeAsync(request, store, gateway, loggerFactory, ct);
+
+                if (modeError is not null)
+                    return modeError;
+            }
+
             var result = await store.ChangeAsync(request, ct);
 
             if (result.Status != RecipeChangeStatus.Saved)

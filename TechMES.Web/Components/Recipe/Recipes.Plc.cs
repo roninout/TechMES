@@ -14,6 +14,8 @@ public partial class Recipes
     private bool _plcEnabled;
     private bool _plcLoading;
     private string? _plcError;
+    private int? _plcCurrentStage;
+    private string? _plcCurrentStageError;
     private DateTimeOffset? _plcReadAtUtc;
     private Dictionary<(int StageId, int ColumnId), RecipePlcValueDto> _plcValues = [];
 
@@ -21,7 +23,9 @@ public partial class Recipes
 
     private int PlcExpectedValueCount => Stages.Sum(stage => stage.Parameters.Count);
     private int PlcReadValueCount => Stages.Sum(stage => Columns.Count(column => stage.Parameters.ContainsKey(column.Id) && IsReadablePlcValue(FindPlcValue(stage, column), column.Kind)));
-    private bool HasPlcReadWarning => _plcEnabled && (_plcError is not null || (_plcReadAtUtc.HasValue && PlcReadValueCount < PlcExpectedValueCount));
+    private bool HasPlcReadWarning => _plcEnabled && (_plcError is not null || _plcCurrentStageError is not null || (_plcReadAtUtc.HasValue && PlcReadValueCount < PlcExpectedValueCount));
+
+    private bool IsCurrentPlcStage(RecipeStageDto stage) => !EditorMode && _plcEnabled && IsSelectedRecipeCurrent && _plcReadAtUtc.HasValue && _plcCurrentStageError is null && _plcCurrentStage is > 0 && stage.Number == _plcCurrentStage.Value;
 
     private string PlcStatus
     {
@@ -29,9 +33,11 @@ public partial class Recipes
         {
             if (!CanReadPlc) return _loading ? "Loading recipe..." : "Select a Unit and a recipe.";
 
-            var status = _plcReadAtUtc.HasValue ? $"PLC: {PlcReadValueCount}/{PlcExpectedValueCount} · {_plcReadAtUtc.Value.ToLocalTime():HH:mm:ss}" : "Reading PLC values...";
+            if (!_plcReadAtUtc.HasValue) return _plcError ?? "Reading PLC values...";
 
-            return _plcError is null ? status : _plcReadAtUtc.HasValue ? $"{status} · {_plcError}" : _plcError;
+            var status = $"PLC: {PlcReadValueCount}/{PlcExpectedValueCount} · {_plcReadAtUtc.Value.ToLocalTime():HH:mm:ss} · Stage: {_plcCurrentStage?.ToString() ?? "unavailable"}";
+
+            return string.Join(" · ", new[] { status, _plcError, _plcCurrentStageError }.Where(value => !string.IsNullOrWhiteSpace(value)));
         }
     }
 
@@ -46,7 +52,6 @@ public partial class Recipes
     /// <summary>Запускает один цикл для конкретного Unit и конкретной структуры рецепта.</summary>
     private void StartPlcReading()
     {
-        // Выбор другого рецепта не меняет включённый пользователем режим PLC.
         if (!_plcEnabled || !CanReadPlc || _plcStop is not null) return;
 
         var previous = _plcTask;
@@ -63,12 +68,14 @@ public partial class Recipes
         _plcStop = null;
         _plcLoading = false;
 
-        // На время диалога сохраняем последний снимок, чтобы таблица не очищалась.
+        // На время диалога сохраняем последний снимок.
         if (!clearValues) return;
 
         _plcValues = [];
         _plcReadAtUtc = null;
         _plcError = null;
+        _plcCurrentStage = null;
+        _plcCurrentStageError = null;
     }
 
     /// <summary>Результаты отменённого запроса никогда не попадают в новый рецепт.</summary>
@@ -101,7 +108,7 @@ public partial class Recipes
                     var result = await RecipeApi.ReadPlcAsync(recipeId, pageId, layoutStamp, ct);
                     ct.ThrowIfCancellationRequested();
 
-                    if (result.RecipeId != recipeId || result.PageId != pageId || result.LayoutStamp != layoutStamp)
+                    if (result.RecipeId != recipeId || result.PageId != pageId || result.LayoutStamp != layoutStamp || result.CurrentRecipeId <= 0)
                         throw new InvalidOperationException("PLC response does not match the selected recipe.");
 
                     var values = result.Values.ToDictionary(item => (item.StageId, item.ColumnId));
@@ -113,6 +120,17 @@ public partial class Recipes
                         _plcValues = values;
                         _plcReadAtUtc = result.ReadAtUtc;
                         _plcError = PlcReadValueCount < PlcExpectedValueCount ? "Some PLC values are unavailable. Hover over the warning icon for details." : null;
+                        _plcCurrentStage = result.CurrentStage;
+                        _plcCurrentStageError = result.CurrentStageError;
+
+                        var page = _catalog.Pages.FirstOrDefault(item => item.Id == pageId);
+
+                        // Назначение Current могло измениться в другом окне; выбор пользователя сохраняем.
+                        if (page is not null && page.RecipeId != result.CurrentRecipeId)
+                        {
+                            page.RecipeId = result.CurrentRecipeId;
+                            _selectorRevision++;
+                        }
                     });
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -123,7 +141,6 @@ public partial class Recipes
                 {
                     stop = ex is HttpRequestException { StatusCode: HttpStatusCode.Conflict or HttpStatusCode.NotFound or HttpStatusCode.BadRequest };
 
-                    // Один быстрый повтор первого сбоя HTTP; повторов записи здесь нет.
                     if (firstRequest && !stop)
                         nextDelay = TimeSpan.FromSeconds(1);
 
@@ -136,6 +153,8 @@ public partial class Recipes
                         _plcValues = [];
                         _plcReadAtUtc = null;
                         _plcError = ex.Message;
+                        _plcCurrentStage = null;
+                        _plcCurrentStageError = null;
                     });
                 }
 
@@ -159,7 +178,6 @@ public partial class Recipes
         }
         catch (Exception ex)
         {
-            // Ошибка уже закрытого Blazor renderer не должна оставлять необработанную Task.
             Logger.LogWarning(ex, "Recipe PLC polling stopped. Recipe={RecipeId}, Unit={PageId}.", recipeId, pageId);
         }
         finally
@@ -173,7 +191,7 @@ public partial class Recipes
 
     private RecipePlcValueDto? FindPlcValue(RecipeStageDto stage, RecipeColumnDto column) => _plcValues.GetValueOrDefault((stage.Id, column.Id));
 
-    /// <summary>До первого ответа ячейка остаётся пустой; некорректный полученный ответ отображается предупреждением.</summary>
+    /// <summary>До первого ответа ячейка остаётся пустой; некорректный ответ отображается предупреждением.</summary>
     private string? RecipeValueError(RecipeStageDto stage, RecipeColumnDto column)
     {
         if (!stage.Parameters.TryGetValue(column.Id, out var parameter)) return null;

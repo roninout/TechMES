@@ -38,7 +38,7 @@ public sealed partial class PostgreSqlRecipeStore
 
         RecipePageDto page;
 
-        await using (var command = new NpgsqlCommand("SELECT \"id\", \"page\", \"recipeId\", \"baseRecipeId\" FROM public.\"RecipePage\" WHERE \"id\" = @id FOR UPDATE;", connection, transaction) { CommandTimeout = GetCommandTimeout() })
+        await using (var command = new NpgsqlCommand("SELECT \"id\", \"page\", \"recipeId\", \"baseRecipeId\", \"currentStageTag\", \"modeTag\" FROM public.\"RecipePage\" WHERE \"id\" = @id FOR UPDATE;", connection, transaction) { CommandTimeout = GetCommandTimeout() })
         {
             command.Parameters.AddWithValue("id", expected.Id);
             await using var reader = await command.ExecuteReaderAsync(ct);
@@ -46,11 +46,11 @@ public sealed partial class PostgreSqlRecipeStore
             if (!await reader.ReadAsync(ct))
                 return new() { Status = RecipeChangeStatus.NotFound, Error = "The Unit no longer exists. Press Refresh." };
 
-            page = new() { Id = reader.GetInt32(0), Page = ReadText(reader, 1), RecipeId = reader.GetInt32(2), BaseRecipeId = reader.GetInt32(3) };
+            page = new() { Id = reader.GetInt32(0), Page = ReadText(reader, 1), RecipeId = reader.GetInt32(2), BaseRecipeId = reader.GetInt32(3), CurrentStageTag = ReadText(reader, 4), ModeTag = ReadText(reader, 5) };
         }
 
-        if (page.Page != expected.Page || page.RecipeId != expected.RecipeId || page.BaseRecipeId != expected.BaseRecipeId)
-            return new() { Status = RecipeChangeStatus.Conflict, Error = "The Unit's Current recipe or family changed. Press Refresh before assigning." };
+        if (page.Page != expected.Page || page.RecipeId != expected.RecipeId || page.BaseRecipeId != expected.BaseRecipeId || page.CurrentStageTag != expected.CurrentStageTag || page.ModeTag != expected.ModeTag)
+            return new() { Status = RecipeChangeStatus.Conflict, Error = "The Unit assignment or control tags changed. Press Refresh before assigning." };
 
         var candidate = await ReadRecipeSnapshotAsync(connection, transaction, request.SourceRecipeId, ct);
 

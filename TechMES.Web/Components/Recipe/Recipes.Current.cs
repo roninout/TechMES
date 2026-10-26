@@ -10,10 +10,12 @@ public partial class Recipes
     private bool _settingCurrent;
 
     private string SelectedRecipeTitle => _availableRecipes.FirstOrDefault(recipe => recipe.Id == _selectedRecipeId)?.DisplayName ?? "Recipes";
+    private string RecipeViewTitle => _plcEnabled ? SelectedRecipeTitle : $"DB values: {SelectedRecipeTitle}";
+    private string RecipeViewTitleClass => !_plcEnabled ? "is-database" : SelectedPage is not null && _selectedRecipeId.HasValue && !IsSelectedRecipeCurrent ? "is-plc-other" : "";
     private bool IsSelectedRecipeCurrent => _selectedRecipeId.HasValue && SelectedPage?.RecipeId == _selectedRecipeId.Value;
-    private bool CanSetCurrentRecipe => !EditorMode && !_plcEnabled && _canWritePlc && !IsBusy && !_dialogOpen && !_disposed && !_uncertainDraft && _snapshot is not null && SelectedPage is not null && _snapshot.Recipe.Id == _selectedRecipeId && !IsSelectedRecipeCurrent && !IsAssignedBaseRecipe(_selectedRecipeId) && _snapshot.Recipe.BaseRecipeId == SelectedPage.BaseRecipeId;
+    private bool CanSetCurrentRecipe => !EditorMode && _canWritePlc && !IsBusy && !_dialogOpen && !_disposed && !_uncertainDraft && _snapshot is not null && SelectedPage is not null && _snapshot.Recipe.Id == _selectedRecipeId && !IsSelectedRecipeCurrent && !IsAssignedBaseRecipe(_selectedRecipeId) && _snapshot.Recipe.BaseRecipeId == SelectedPage.BaseRecipeId;
 
-    /// <summary>Назначает выбранный рецепт текущим для одного Unit, сохраняя режим просмотра БД.</summary>
+    /// <summary>Назначает Current после предупреждения; Runtime проверяет mode непосредственно перед назначением.</summary>
     private async Task SetCurrentRecipeAsync()
     {
         if (!CanSetCurrentRecipe || _snapshot is null || SelectedPage is null) return;
@@ -26,7 +28,7 @@ public partial class Recipes
             SourceRecipeId = original.Recipe.Id,
             ExpectedSnapshot = original,
             ExpectedBaseRecipeId = page.BaseRecipeId,
-            ExpectedPages = [new() { Id = page.Id, Page = page.Page, RecipeId = page.RecipeId, BaseRecipeId = page.BaseRecipeId }]
+            ExpectedPages = [new() { Id = page.Id, Page = page.Page, RecipeId = page.RecipeId, BaseRecipeId = page.BaseRecipeId, CurrentStageTag = page.CurrentStageTag, ModeTag = page.ModeTag }]
         };
 
         var ct = _stop.Token;
@@ -35,13 +37,18 @@ public partial class Recipes
 
         _settingCurrent = true;
         _error = null;
+        StopPlcReading(clearValues: false);
 
         try
         {
+            await _plcTask;
+            ct.ThrowIfCancellationRequested();
+
             _dialogOpen = true;
 
-            var message = $"Set {original.Recipe.DisplayName} as Current for Unit {page.Page}? This updates the database assignment only. PLC values will remain unchanged.";
-            var confirmed = await DialogService.Confirm(message, "Set as current", new ConfirmOptions { OkButtonText = "Set as current", CancelButtonText = "Cancel" });
+            var sourceWarning = _plcEnabled ? "PLC values are live values of the Unit; the selected recipe is not Current. " : "You are viewing database values. ";
+            var message = $"{sourceWarning}Set {original.Recipe.DisplayName} as Current for Unit {page.Page}? Manual mode will be checked before assignment. This step updates the database assignment only; PLC values will remain unchanged.";
+            var confirmed = await DialogService.Confirm(message, "Warning: set Current recipe", new ConfirmOptions { OkButtonText = "Set as current", CancelButtonText = "Cancel" });
 
             _dialogOpen = false;
             ct.ThrowIfCancellationRequested();
@@ -58,6 +65,7 @@ public partial class Recipes
 
             assigned = true;
             page.RecipeId = original.Recipe.Id;
+            StopPlcReading();
             _selectorRevision++;
             _loading = true;
 
@@ -85,6 +93,9 @@ public partial class Recipes
             _dialogOpen = false;
             _settingCurrent = false;
             _loading = false;
+
+            if (!_disposed)
+                StartPlcReading();
         }
     }
 }

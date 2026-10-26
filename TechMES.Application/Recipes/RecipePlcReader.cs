@@ -5,14 +5,13 @@ using TechMES.Contracts.Scada;
 
 namespace TechMES.Application.Recipes;
 
-/// <summary>Читает параметры сохранённого рецепта через общий SCADA gateway.</summary>
+/// <summary>Читает параметры рецепта и CurrentStage одним логическим пакетом.</summary>
 public static class RecipePlcReader
 {
-    public static async Task<RecipePlcSnapshotDto> ReadAsync(RecipeSnapshotDto snapshot, int pageId, IPlantScadaGateway gateway, CancellationToken ct = default)
+    public static async Task<RecipePlcSnapshotDto> ReadAsync(RecipeSnapshotDto snapshot, RecipePageDto page, IPlantScadaGateway gateway, CancellationToken ct = default)
     {
-        var result = new RecipePlcSnapshotDto { RecipeId = snapshot.Recipe.Id, PageId = pageId, LayoutStamp = RecipePlcLayout.GetStamp(snapshot) };
+        var result = new RecipePlcSnapshotDto { RecipeId = snapshot.Recipe.Id, PageId = page.Id, CurrentRecipeId = page.RecipeId, LayoutStamp = RecipePlcLayout.GetStamp(snapshot) };
         var columns = snapshot.Columns.ToDictionary(column => column.Id);
-        var kinds = new Dictionary<(int StageId, int ColumnId), RecipeParameterKind>();
 
         foreach (var stage in snapshot.Stages)
         {
@@ -27,8 +26,6 @@ public static class RecipePlcReader
                     continue;
                 }
 
-                kinds[(stage.Id, columnId)] = column.Kind;
-
                 if (!Enum.IsDefined(column.Kind))
                 {
                     item.Error = "Unknown recipe parameter type.";
@@ -41,14 +38,11 @@ public static class RecipePlcReader
                     continue;
                 }
 
-                // Используем суффикс из БД буквально, включая AUTO_CONT_SET.
-                var suffix = column.TagSuffix.Trim();
-
-                item.TagName = $"{stage.TagPrefix.Trim()}_{stage.Number.ToString(CultureInfo.InvariantCulture)}_{suffix}";
+                // Суффикс используем буквально, включая AUTO_CONT_SET.
+                item.TagName = $"{stage.TagPrefix.Trim()}_{stage.Number.ToString(CultureInfo.InvariantCulture)}_{column.TagSuffix.Trim()}";
             }
         }
 
-        // Две разные ячейки не должны случайно читать один адрес PLC.
         foreach (var group in result.Values.Where(item => item.Error is null).GroupBy(item => item.TagName, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
         {
             foreach (var item in group)
@@ -56,40 +50,40 @@ public static class RecipePlcReader
         }
 
         var pending = result.Values.Where(item => item.Error is null).ToList();
+        var stageTag = page.CurrentStageTag?.Trim() ?? "";
+        var readStage = stageTag.Length > 0;
 
-        // Повторяем только неудачные чтения, один раз. Ошибки структуры сюда не входят.
-        for (var attempt = 0; attempt < 2 && pending.Count > 0; attempt++)
+        if (!readStage)
+            result.CurrentStageError = "CurrentStage tag is not configured.";
+
+        // Повторяем только неудачные теги, один раз; CurrentStage входит в тот же пакет.
+        for (var attempt = 0; attempt < 2 && (pending.Count > 0 || readStage); attempt++)
         {
             if (attempt > 0)
                 await Task.Delay(TimeSpan.FromMilliseconds(350), ct);
 
-            // Один логический batch. Сам gateway последовательно работает с общим CtApi.
-            var batch = await gateway.ReadTagsAsync(pending.Select(item => item.TagName).ToArray(), ct);
+            var tags = pending.Select(item => item.TagName).Concat(readStage ? new[] { stageTag } : Array.Empty<string>()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var batch = await gateway.ReadTagsAsync(tags, ct);
             ct.ThrowIfCancellationRequested();
 
             var readings = batch.Items.ToDictionary(item => item.TagName, StringComparer.OrdinalIgnoreCase);
 
             foreach (var item in pending)
             {
-                item.Error = null;
-                item.Value = null;
+                item.Error = ReadValueError(readings, item.TagName, columns[item.ColumnId].Kind, out var value);
+                item.Value = item.Error is null ? value : null;
+            }
 
-                if (!readings.TryGetValue(item.TagName, out var reading))
-                {
-                    item.Error = "PLC did not return this tag.";
-                }
-                else if (!reading.Success || reading.Quality is ScadaTagQuality.Bad or ScadaTagQuality.Uncertain)
-                {
-                    item.Error = reading.Error ?? "PLC value is unavailable or has invalid quality.";
-                }
-                else if (TryReadValue(reading.Value, kinds[(item.StageId, item.ColumnId)], out var value))
-                {
-                    item.Value = value;
-                }
-                else
-                {
-                    item.Error = "PLC returned an invalid numeric or Boolean value.";
-                }
+            if (readStage)
+            {
+                var error = ReadValueError(readings, stageTag, RecipeParameterKind.InputField, out var value);
+
+                if (error is null && (value < 0 || value > int.MaxValue || value != Math.Truncate(value)))
+                    error = "CurrentStage must be a non-negative integer.";
+
+                result.CurrentStage = error is null ? (int)value : null;
+                result.CurrentStageError = error is null ? null : $"{stageTag}: {error}";
+                readStage = error is not null;
             }
 
             pending = pending.Where(item => item.Error is not null).ToList();
@@ -99,7 +93,41 @@ public static class RecipePlcReader
         return result;
     }
 
-    /// <summary>Не допускает NaN/Infinity и не принимает произвольное число за Boolean.</summary>
+    /// <summary>Читает mode только по запросу назначения: 0 — ручной режим, 1 — автоматический.</summary>
+    public static async Task<string?> ReadManualModeErrorAsync(RecipePageDto page, IPlantScadaGateway gateway, CancellationToken ct = default)
+    {
+        var tag = page.ModeTag?.Trim() ?? "";
+
+        if (tag.Length == 0)
+            return $"Mode tag is not configured for Unit {page.Page}.";
+
+        var batch = await gateway.ReadTagsAsync([tag], ct);
+        ct.ThrowIfCancellationRequested();
+
+        var readings = batch.Items.ToDictionary(item => item.TagName, StringComparer.OrdinalIgnoreCase);
+        var error = ReadValueError(readings, tag, RecipeParameterKind.CheckBox, out var mode);
+
+        if (error is not null)
+            return $"Cannot verify manual mode. {tag}: {error}";
+
+        return mode == 0 ? null : $"Unit {page.Page} is in automatic mode. Switch it to manual mode before setting the Current recipe.";
+    }
+
+    /// <summary>Недоступность и плохое качество не преобразуются в ноль.</summary>
+    private static string? ReadValueError(IReadOnlyDictionary<string, ScadaTagBatchReadItem> readings, string tag, RecipeParameterKind kind, out double value)
+    {
+        value = 0;
+
+        if (!readings.TryGetValue(tag, out var item))
+            return "PLC did not return this tag.";
+
+        if (!item.Success || item.Quality is ScadaTagQuality.Bad or ScadaTagQuality.Uncertain)
+            return string.IsNullOrWhiteSpace(item.Error) ? "PLC value is unavailable or has invalid quality." : item.Error;
+
+        return TryReadValue(item.Value, kind, out value) ? null : "PLC returned an invalid numeric or Boolean value.";
+    }
+
+    /// <summary>Не допускает NaN/Infinity и произвольные числа вместо Boolean.</summary>
     public static bool TryReadValue(string? text, RecipeParameterKind kind, out double value)
     {
         text = text?.Trim();

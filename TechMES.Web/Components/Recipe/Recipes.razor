@@ -13,7 +13,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 
-<PageTitle>@(EditorMode ? "Recipe editor" : SelectedRecipeTitle)</PageTitle>
+<PageTitle>@(EditorMode ? "Recipe editor" : RecipeViewTitle)</PageTitle>
 <NavigationLock ConfirmExternalNavigation="@HasRecipeChanges" OnBeforeInternalNavigation="@BeforeRecipeNavigationAsync" />
 
 <div class="recipes-page @(EditorMode ? "recipes-editor" : "recipes-view")">
@@ -31,7 +31,7 @@
     }
     else
     {
-        <RecipeEditorHeader Title="@SelectedRecipeTitle">
+        <RecipeEditorHeader Title="@RecipeViewTitle">
             <Left>
                 <RadzenSelectBar TValue="string" Value="@("view")" ValueChanged="@((string value) => OpenEditor())" Disabled="@(IsBusy || _dialogOpen)" AriaLabel="Open recipe editor">
                     <Items>
@@ -41,7 +41,7 @@
             </Left>
 
             <TitleContent>
-                <span class="recipes-view-title @(!_plcEnabled ? "is-database" : "")">
+                <span class="recipes-view-title @RecipeViewTitleClass">
                     @if (IsSelectedRecipeCurrent)
                     {
                         <span class="recipes-current-bookmark" title="Current recipe for the selected Unit" role="img" aria-label="Current recipe">
@@ -49,7 +49,7 @@
                         </span>
                     }
 
-                    <span class="recipes-view-title-text" title="@SelectedRecipeTitle">@SelectedRecipeTitle</span>
+                    <span class="recipes-view-title-text" title="@RecipeViewTitle">@RecipeViewTitle</span>
                 </span>
             </TitleContent>
 
@@ -169,10 +169,7 @@
                             </RadzenDropDown>
                         </div>
 
-                        @if (!_plcEnabled)
-                        {
-                            <RadzenButton Text="Set as current" Icon="bookmark_add" ButtonStyle="ButtonStyle.Light" IsBusy="@_settingCurrent" BusyText="Assigning..." Disabled="@(!CanSetCurrentRecipe)" Click="@SetCurrentRecipeAsync" title="Assign the selected recipe as Current for this Unit in the database" />
-                        }
+                        <RadzenButton Text="Set as current" Icon="bookmark_add" ButtonStyle="ButtonStyle.Light" IsBusy="@_settingCurrent" BusyText="Assigning..." Disabled="@(!CanSetCurrentRecipe)" Click="@SetCurrentRecipeAsync" title="Assign the selected recipe as Current for this Unit after checking manual mode" />
                     </div>
                 </div>
             }

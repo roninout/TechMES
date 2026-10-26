@@ -502,6 +502,38 @@
     }
 }
 
+/* PLC-просмотр рецепта, который не назначен Current выбранному Unit. */
+.recipes-view-title.is-plc-other .recipes-view-title-text {
+    animation: recipe-other-plc-title 1.4s ease-in-out infinite;
+}
+
+@keyframes recipe-other-plc-title {
+    0%, 100% {
+        color: var(--rz-danger);
+    }
+
+    50% {
+        color: var(--rz-text-title-color);
+    }
+}
+
+/* Подсветка ячеек работает и для замороженных колонок. */
+.recipes-page ::deep .recipes-grid tr.recipes-current-stage > td {
+    background-color: color-mix(in srgb, var(--rz-success) 24%, var(--rz-grid-background-color, var(--rz-base-background-color))) !important;
+    color: var(--rz-text-color) !important;
+}
+
+    .recipes-page ::deep .recipes-grid tr.recipes-current-stage > td:first-child {
+        box-shadow: inset 3px 0 0 var(--rz-success);
+    }
+
+@media (prefers-reduced-motion: reduce) {
+    .recipes-view-title.is-plc-other .recipes-view-title-text {
+        animation: none;
+        color: var(--rz-danger);
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .recipes-view-title.is-database .recipes-view-title-text {
         animation: none;

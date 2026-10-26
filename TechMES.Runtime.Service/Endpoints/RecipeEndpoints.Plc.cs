@@ -29,7 +29,7 @@ public static partial class RecipeEndpoints
             if (!RecipePlcLayout.GetStamp(snapshot).Equals(layoutStamp, StringComparison.Ordinal))
                 return Results.Problem("The recipe structure has changed. Press Refresh before reading PLC values.", statusCode: 409);
 
-            return Results.Ok(await RecipePlcReader.ReadAsync(snapshot, pageId, gateway, ct));
+            return Results.Ok(await RecipePlcReader.ReadAsync(snapshot, page, gateway, ct));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

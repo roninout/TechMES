@@ -66,17 +66,25 @@ public partial class Recipes
         _dropAtEnd = true;
     }
 
-    /// <summary>Подключает HTML Drag & Drop через RowRender Radzen.</summary>
+    /// <summary>Подключает подсветку выполняемой стадии и HTML Drag & Drop редактора.</summary>
     private void RenderStageRow(RowRenderEventArgs<RecipeStageDto> args)
     {
         if (args.Data is not { } stage) return;
 
         // RowRender заменяет class: сохраняем базовый класс и выделение Radzen.
         var classes = new List<string> { "rz-data-row" };
-        if (_selectedStages.Any(item => item.Id == stage.Id)) classes.Add("rz-state-highlight");
 
-        if (EditorMode && string.IsNullOrWhiteSpace(stage.TagPrefix)) classes.Add("recipes-missing-prefix");
-        if (HasCurrentStageDrag && _dropTargetId == stage.Id) classes.Add("recipes-drop-target");
+        if (_selectedStages.Any(item => item.Id == stage.Id))
+            classes.Add("rz-state-highlight");
+
+        if (IsCurrentPlcStage(stage))
+            classes.Add("recipes-current-stage");
+
+        if (EditorMode && string.IsNullOrWhiteSpace(stage.TagPrefix))
+            classes.Add("recipes-missing-prefix");
+
+        if (HasCurrentStageDrag && _dropTargetId == stage.Id)
+            classes.Add("recipes-drop-target");
 
         args.Attributes["class"] = string.Join(" ", classes);
         args.Attributes["draggable"] = CanAddStage ? "true" : "false";
