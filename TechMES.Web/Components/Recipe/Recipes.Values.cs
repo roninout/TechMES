@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using Radzen;
 using TechMES.Contracts.Recipes;
+using Microsoft.AspNetCore.Components;
 
 namespace TechMES.Web.Components.Recipe;
 
@@ -35,7 +36,7 @@ public partial class Recipes
 
     private static string RecipeDifferenceTitle(double plc, double database) => $"PLC: {plc.ToString("G", CultureInfo.CurrentCulture)}; DB: {database.ToString("G", CultureInfo.CurrentCulture)}";
 
-    /// <summary>Как в исходнике: сохраняем показанный PLC-снимок в выбранный рецепт.</summary>
+    /// <summary>Сохраняет показанный PLC-снимок в выбранный рецепт после подтверждения.</summary>
     private async Task SavePlcValuesToDbAsync()
     {
         if (!CanSavePlcValues || _snapshot is null) return;
@@ -63,16 +64,38 @@ public partial class Recipes
                 Values = Stages.SelectMany(stage => stage.Parameters.Keys.Select(columnId => new RecipeValueSaveItem { StageId = stage.Id, ColumnId = columnId, Value = _plcValues[(stage.Id, columnId)].Value!.Value })).ToList()
             };
 
-            var message = $"Save {request.Values.Count} PLC values read at {_plcReadAtUtc!.Value.ToLocalTime():HH:mm:ss} to recipe [{recipeId}] {_snapshot.Recipe.Name}? Existing database values will be replaced.";
+            // Данные снимка и последствия сохранения показываем отдельными строками.
+            var description = string.Join("\n",
+                $"Recipe: {_snapshot.Recipe.DisplayName}",
+                $"PLC values: {request.Values.Count}",
+                $"Read at: {_plcReadAtUtc!.Value.ToLocalTime():dd.MM.yyyy HH:mm:ss}",
+                "",
+                "The displayed PLC values will be saved to the database.",
+                "Existing database values will be replaced.",
+                "",
+                "Save these values to the recipe?");
+
+            // Переносы строк сохраняются, названия из БД выводятся обычным текстом.
+            RenderFragment message = builder =>
+            {
+                builder.OpenElement(0, "div");
+                builder.AddAttribute(1, "style", "white-space: pre-line; line-height: 1.6; text-align: left;");
+                builder.AddContent(2, description);
+                builder.CloseElement();
+            };
 
             _dialogOpen = true;
-            var confirmed = await DialogService.Confirm(message, "Save to DB", new ConfirmOptions { OkButtonText = "Save to DB", CancelButtonText = "Cancel" });
+
+            var confirmed = await DialogService.Confirm(message, "Save to DB", new ConfirmOptions { Width = "560px", OkButtonText = "Save to DB", CancelButtonText = "Cancel" });
+
             _dialogOpen = false;
             ct.ThrowIfCancellationRequested();
 
             if (confirmed != true) return;
 
+            // POST не повторяем автоматически: результат записи может быть неопределённым.
             requestSent = true;
+
             var result = await RecipeApi.SaveValuesAsync(recipeId, request, ct);
             ct.ThrowIfCancellationRequested();
 
@@ -80,10 +103,12 @@ public partial class Recipes
                 throw new InvalidOperationException("Unexpected recipe value save response.");
 
             var stageId = _selectedStages.FirstOrDefault()?.Id;
+
             _snapshot = result.Snapshot;
             _savedSnapshot = CloneRecipe(_snapshot);
             _savedRecipeStamp = JsonSerializer.Serialize(_savedSnapshot);
             _hasRecipeChanges = false;
+
             RestoreStageSelection(stageId);
 
             NotificationService.Notify(NotificationSeverity.Success, "Recipe", "PLC values saved to database.", 2500);
@@ -95,9 +120,10 @@ public partial class Recipes
         {
             if (!_disposed)
             {
-                // POST не повторяем: при потере ответа сначала перечитываем БД кнопкой Refresh.
+                // При потере ответа сначала перечитываем БД кнопкой Refresh.
                 _uncertainDraft = requestSent && ex is not HttpRequestException { StatusCode: HttpStatusCode.BadRequest or HttpStatusCode.Forbidden or HttpStatusCode.Conflict or HttpStatusCode.NotFound };
                 _error = _uncertainDraft ? "Save result is uncertain. Press Refresh before saving again. " + ex.Message : ex.Message;
+
                 Logger.LogWarning(ex, "Saving recipe PLC values to database failed.");
             }
         }
@@ -110,4 +136,5 @@ public partial class Recipes
                 StartPlcReading();
         }
     }
+
 }

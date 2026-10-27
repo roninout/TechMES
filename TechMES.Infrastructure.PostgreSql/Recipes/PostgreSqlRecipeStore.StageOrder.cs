@@ -6,6 +6,19 @@ namespace TechMES.Infrastructure.PostgreSql.Recipes;
 
 public sealed partial class PostgreSqlRecipeStore
 {
+    /// <summary>Проверяет использование рецепта как Current внутри транзакции управления рецептами.</summary>
+    private async Task<bool> IsCurrentRecipeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, int recipeId, CancellationToken ct)
+    {
+        const string sql = """
+        SELECT EXISTS (SELECT 1 FROM public."RecipePage" WHERE "recipeId" = @recipe_id);
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction) { CommandTimeout = GetCommandTimeout() };
+        command.Parameters.AddWithValue("recipe_id", recipeId);
+
+        return await command.ExecuteScalarAsync(ct) is true;
+    }
+
     /// <summary>Записывает порядок 1..N без изменения ID и параметров стадий.</summary>
     private async Task RenumberRecipeStagesAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, int recipeId, IReadOnlyList<RecipeStagePositionDto> stages, int maxNumber, CancellationToken ct)
     {

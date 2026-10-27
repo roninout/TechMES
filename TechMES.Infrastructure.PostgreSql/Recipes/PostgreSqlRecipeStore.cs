@@ -415,6 +415,10 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
                 return new() { Status = RecipeChangeStatus.NotFound, Error = "The recipe no longer exists. Refresh the list." };
         }
 
+        // Прежний endpoint тоже не должен менять состав или порядок Current. Отдельная операция SetAuto не переставляет стадии.
+        if (request.Operation != RecipeStageChangeOperation.SetAuto && await IsCurrentRecipeAsync(connection, transaction, recipeId, ct))
+            return new() { Status = RecipeChangeStatus.Conflict, Error = "Stages of a Current recipe cannot be removed or reordered. Copy the recipe and edit the copy." };
+
         // При удалении сохраняем порядок блокировок: сначала параметры, затем стадии.
         if (request.Operation == RecipeStageChangeOperation.Delete)
         {

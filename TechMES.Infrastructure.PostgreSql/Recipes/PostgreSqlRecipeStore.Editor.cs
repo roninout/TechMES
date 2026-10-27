@@ -63,6 +63,14 @@ public sealed partial class PostgreSqlRecipeStore
         if (draft.Recipe.Number != current.Recipe.Number || draft.Recipe.BaseRecipeId != current.Recipe.BaseRecipeId)
             return new() { Status = RecipeChangeStatus.Invalid, Error = "The recipe family cannot be changed here." };
 
+        // Save записывает номера по позиции в списке. Проверяем именно будущие номера.
+        var savedStageLayout = current.Stages.OrderBy(stage => stage.Number).ThenBy(stage => stage.Id).Select(stage => (stage.Id, stage.Number));
+        var draftStageLayout = draft.Stages.Select((stage, index) => (stage.Id, Number: index + 1));
+
+        // Проверяем БД, а не присланный клиентом признак Current. Значения параметров сохранять можно, состав и порядок стадий — нельзя.
+        if (!savedStageLayout.SequenceEqual(draftStageLayout) && await IsCurrentRecipeAsync(connection, transaction, recipeId, ct))
+            return new() { Status = RecipeChangeStatus.Conflict, Error = "Stages of a Current recipe cannot be added, removed or reordered. Copy the recipe, edit the copy and use Set as current." };
+
         const string familySql = """
         SELECT CASE WHEN EXISTS (SELECT 1 FROM public."RecipePage" WHERE "baseRecipeId" = @id)
                     THEN @id ELSE COALESCE("baseRecipeId", "id") END

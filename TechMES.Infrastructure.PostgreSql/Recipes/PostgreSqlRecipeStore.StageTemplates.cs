@@ -90,6 +90,10 @@ public sealed partial class PostgreSqlRecipeStore
             familyId = id;
         }
 
+        // Прежний endpoint добавления подчиняется тому же ограничению.
+        if (await IsCurrentRecipeAsync(connection, transaction, recipeId, ct))
+            return new() { Status = RecipeChangeStatus.Conflict, Error = "Stages cannot be added to a Current recipe. Copy the recipe and edit the copy." };
+
         var stages = new List<RecipeStagePositionDto>();
 
         await using (var select = new NpgsqlCommand("SELECT \"id\", \"stageNumb\", \"auto\" FROM public.\"RecipeStage\" WHERE \"recipeId\" = @id ORDER BY \"stageNumb\", \"id\" FOR UPDATE;", connection, transaction) { CommandTimeout = GetCommandTimeout() })
