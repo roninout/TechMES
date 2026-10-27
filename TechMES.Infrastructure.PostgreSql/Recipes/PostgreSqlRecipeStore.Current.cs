@@ -73,18 +73,26 @@ public sealed partial class PostgreSqlRecipeStore
                 return new() { Status = RecipeChangeStatus.Invalid, Error = "An assigned base recipe cannot be selected as Current." };
         }
 
-        // Справочники уже заблокированы; читаем коды и ВСЕ параметры семейства.
+        // Справочники уже заблокированы; читаем только определения, используемые кандидатом.
+        var parameterIds = candidate.Stages.SelectMany(stage => stage.Parameters.Keys).Distinct().ToArray();
+        var templateIds = candidate.Stages.Select(stage => stage.BaseStageId).Distinct().ToArray();
         var parameters = new List<RecipeColumnDto>();
         var codes = new Dictionary<int, string>();
 
         const string metadataSql = """
-        SELECT "id", "tag", "kind" FROM public."BaseParameter" WHERE "baseRecipeId" = @family ORDER BY "id";
-        SELECT "id", "description" FROM public."BaseRecipeStage" WHERE "baseRecipeId" = @family ORDER BY "id";
+        SELECT "id", "tag", "kind" FROM public."BaseParameter"
+        WHERE "baseRecipeId" = @family AND "id" = ANY(@parameter_ids) ORDER BY "id";
+
+        SELECT "id", "description" FROM public."BaseRecipeStage"
+        WHERE "baseRecipeId" = @family AND "id" = ANY(@template_ids) ORDER BY "id";
         """;
 
         await using (var command = new NpgsqlCommand(metadataSql, connection, transaction) { CommandTimeout = GetCommandTimeout() })
         {
             command.Parameters.AddWithValue("family", page.BaseRecipeId);
+            command.Parameters.AddWithValue("parameter_ids", parameterIds);
+            command.Parameters.AddWithValue("template_ids", templateIds);
+
             await using var reader = await command.ExecuteReaderAsync(ct);
 
             while (await reader.ReadAsync(ct))

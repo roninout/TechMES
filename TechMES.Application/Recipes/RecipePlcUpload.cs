@@ -36,12 +36,19 @@ public sealed class RecipePlcUpload
         if (!stages.Select(stage => stage.Number).SequenceEqual(Enumerable.Range(1, stages.Length)) || stages.Length > LastStageNumber)
             throw new InvalidOperationException($"Recipe stages must be numbered consecutively from 1 to {LastStageNumber}.");
 
-        var definitions = familyParameters.Where(column => !string.IsNullOrWhiteSpace(column.TagSuffix)).ToDictionary(column => column.Id);
+        // Справочник может содержать новые и ещё не используемые параметры.
+        // Для загрузки нужны только определения параметров выбранного рецепта.
+        var usedParameterIds = stages.SelectMany(stage => stage.Parameters.Keys).ToHashSet();
+        var definitions = familyParameters.Where(column => usedParameterIds.Contains(column.Id)).ToDictionary(column => column.Id);
 
-        if (definitions.Values.Any(column => !ValidAddressPart(column.TagSuffix.Trim()) || column.TagSuffix.Trim().Equals("NUM", StringComparison.OrdinalIgnoreCase) || !Enum.IsDefined(column.Kind)) || definitions.Values.GroupBy(column => column.TagSuffix.Trim(), StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
-            throw new InvalidOperationException("Family parameter tags must be valid and unique; NUM is reserved.");
+        if (definitions.Count != usedParameterIds.Count)
+            throw new InvalidOperationException("A recipe parameter is missing from its family. Refresh the recipe before loading PLC.");
 
-        // Отключаем также хвост предыдущего рецепта; каждый prefix очищаем один раз.
+        if (definitions.Values.Any(column => string.IsNullOrWhiteSpace(column.TagSuffix) || !ValidAddressPart(column.TagSuffix.Trim()) || column.TagSuffix.Trim().Equals("NUM", StringComparison.OrdinalIgnoreCase) || !Enum.IsDefined(column.Kind)) || definitions.Values.GroupBy(column => column.TagSuffix.Trim(), StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
+            throw new InvalidOperationException("Used recipe parameter tags must be valid and unique; NUM is reserved.");
+
+        // NUM — служебные теги: отключаем также хвост предыдущего рецепта.
+        // Параметры неиспользуемых стадий при этом не читаем и не записываем.
         foreach (var prefix in prefixes.Order(StringComparer.OrdinalIgnoreCase))
         {
             for (var number = 1; number <= LastStageNumber; number++)
@@ -61,21 +68,22 @@ public sealed class RecipePlcUpload
             var address = $"{prefix}_{stage.Number.ToString(CultureInfo.InvariantCulture)}";
             _codes.Add($"{address}_NUM", code);
 
-            foreach (var column in definitions.Values)
-            {
-                _parameters.Add($"{address}_{column.TagSuffix.Trim()}", 0);
-
-                if (column.Kind == RecipeParameterKind.CheckBox)
-                    _booleanTags.Add($"{address}_{column.TagSuffix.Trim()}");
-            }
-
+            // Адрес создаём только для параметра, присутствующего в этой стадии.
+            // Нельзя размножать все параметры семейства на каждую позицию рецепта.
             foreach (var (id, parameter) in stage.Parameters)
             {
                 if (!definitions.TryGetValue(id, out var column) || !double.IsFinite(parameter.Value) || (column.Kind == RecipeParameterKind.CheckBox && parameter.Value is not (0 or 1)))
                     throw new InvalidOperationException($"Stage {stage.Number}: invalid parameter [{id}] or PLC value.");
 
-                // Суффиксы используем буквально. Старое отдельное поле Stage.Auto не записываем.
-                _values.Add($"{address}_{column.TagSuffix.Trim()}", parameter.Value);
+                var tag = $"{address}_{column.TagSuffix.Trim()}";
+
+                if (column.Kind == RecipeParameterKind.CheckBox)
+                    _booleanTags.Add(tag);
+
+                // Сохраняем существующую последовательность: обнуление, затем значение из БД.
+                // Оба действия относятся только к параметрам конкретной стадии.
+                _parameters.Add(tag, 0);
+                _values.Add(tag, parameter.Value);
             }
         }
 
