@@ -135,34 +135,73 @@ public sealed class RecipePlcUpload
             throw new InvalidOperationException(error);
     }
 
+    /// <summary>Повторяет только неудачные чтения; команды записи здесь не выполняются.</summary>
     private async Task CheckReadingsAsync(IPlantScadaGateway gateway, Dictionary<string, double> expected, bool compare, CancellationToken ct)
     {
-        // Повторяем только контрольное чтение; TagWrite автоматически не повторяется.
+        // Перед записью даём CtApi до четырёх попыток получить корректные значения.
+        // После записи сохраняем прежние три попытки проверки результата.
+        var attempts = compare ? 3 : 4;
         var pending = expected;
+        var firstError = "";
 
-        for (var attempt = 0; attempt < (compare ? 3 : 1); attempt++)
+        for (var attempt = 0; attempt < attempts; attempt++)
         {
+            ct.ThrowIfCancellationRequested();
+
             if (attempt > 0)
-                await Task.Delay(250, ct);
+            {
+                // Паузы перед повторным чтением: 500, 1000 и 1500 мс.
+                // Проверка после записи использует прежнюю паузу 250 мс.
+                var delay = compare ? 250 : attempt * 500;
+                await Task.Delay(delay, ct);
+            }
 
             var batch = await gateway.ReadTagsAsync(pending.Keys.ToArray(), ct);
+            ct.ThrowIfCancellationRequested();
+
             var readings = batch.Items.ToDictionary(item => item.TagName, StringComparer.OrdinalIgnoreCase);
             var failed = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            firstError = "";
 
             foreach (var (tag, value) in pending)
             {
                 var kind = _booleanTags.Contains(tag) ? RecipeParameterKind.CheckBox : RecipeParameterKind.InputField;
+                string? error = null;
 
-                if (!readings.TryGetValue(tag, out var item) || !item.Success || item.Quality is ScadaTagQuality.Bad or ScadaTagQuality.Uncertain || !RecipePlcReader.TryReadValue(item.Value, kind, out var actual) || (compare && Math.Abs(actual - value) > Math.Max(1e-9, Math.Abs(value) * 1e-7)))
-                    failed.Add(tag, value);
+                if (!readings.TryGetValue(tag, out var item))
+                {
+                    error = "PLC did not return this tag.";
+                }
+                else if (!item.Success || item.Quality is ScadaTagQuality.Bad or ScadaTagQuality.Uncertain)
+                {
+                    error = string.IsNullOrWhiteSpace(item.Error) ? $"PLC value is unavailable. Quality: {item.Quality}." : item.Error;
+                }
+                else if (!RecipePlcReader.TryReadValue(item.Value, kind, out var actual))
+                {
+                    error = $"PLC returned an invalid numeric or Boolean value: '{item.Value ?? "<null>"}'.";
+                }
+                else if (compare && Math.Abs(actual - value) > Math.Max(1e-9, Math.Abs(value) * 1e-7))
+                {
+                    error = $"Expected {value.ToString("G17", CultureInfo.InvariantCulture)}, received {actual.ToString("G17", CultureInfo.InvariantCulture)}.";
+                }
+
+                if (error is null) continue;
+
+                failed.Add(tag, value);
+
+                if (failed.Count == 1)
+                    firstError = error;
             }
 
             if (failed.Count == 0) return;
 
+            // Успешно прочитанные адреса повторно не запрашиваем.
             pending = failed;
         }
 
-        throw new InvalidOperationException($"PLC {(compare ? "verification" : "preflight reading")} failed for {pending.Count} tag(s). First: {pending.Keys.First()}.");
+        var operation = compare ? "verification" : "preflight reading";
+
+        throw new InvalidOperationException($"PLC {operation} failed after {attempts} attempts for {pending.Count} tag(s). First: {pending.Keys.First()}. Reason: {firstError}");
     }
 
     private static bool ValidAddressPart(string value) => value.Length > 0 && !value.Any(character => char.IsWhiteSpace(character) || char.IsControl(character));
