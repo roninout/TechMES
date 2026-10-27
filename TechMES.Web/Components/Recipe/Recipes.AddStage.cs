@@ -10,8 +10,11 @@ public partial class Recipes
     // Для Current каталог стадий не отображаем.
     private bool ShowStageTemplateList => EditorMode && !IsCurrentRecipeStructureLocked;
 
-    // Добавление, удаление и перенос меняют позиции стадий и адреса PLC.
-    private bool CanAddStage => EditorMode && CanManageRecipe && !_dialogOpen && !IsCurrentRecipeStructureLocked;
+    // Значения разрешено редактировать также для Current.
+    private bool CanEditRecipeValues => EditorMode && CanManageRecipe && !_dialogOpen;
+
+    // Для Current запрещаем только изменение состава и порядка стадий.
+    private bool CanAddStage => CanEditRecipeValues && !IsCurrentRecipeStructureLocked;
 
     /// <summary>Добавляет локальную стадию; новые параметры инициализируются нулями.</summary>
     private async Task AddStageAsync(int templateId, int? beforeStageId)

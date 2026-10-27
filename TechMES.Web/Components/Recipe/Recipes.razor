@@ -194,8 +194,8 @@
                     </LoadingTemplate>
 
                     <Columns>
-
-                        <RadzenDataGridColumn TItem="RecipeStageDto" Width="42px" MinWidth="42px" MaxWidth="42px" Frozen="true" Sortable="false" Filterable="false" Resizable="false" TextAlign="TextAlign.Center" CssClass="recipes-state-column">
+                        @* Три служебные колонки всегда находятся первыми. *@
+                        <RadzenDataGridColumn TItem="RecipeStageDto" OrderIndex="0" Width="42px" MinWidth="42px" MaxWidth="42px" Frozen="true" Sortable="false" Filterable="false" Resizable="false" TextAlign="TextAlign.Center" CssClass="recipes-state-column">
                             <Template Context="stage">
                                 <div class="recipes-stage-indicators" title="@(StageAutoEnabled(stage) ? "Auto" : null)">
                                     @if (StageThermalState(stage) is { } thermal)
@@ -208,9 +208,9 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="RecipeStageDto" Property="Number" Title="№" Width="60px" Frozen="true" TextAlign="TextAlign.Center" />
+                        <RadzenDataGridColumn TItem="RecipeStageDto" OrderIndex="1" Property="Number" Title="№" Width="60px" Frozen="true" TextAlign="TextAlign.Center" />
 
-                        <RadzenDataGridColumn TItem="RecipeStageDto" Property="Name" Title="@(EditorMode && _showStageTags ? "PLC tag prefix" : "Stage")" Width="300px" Frozen="true">
+                        <RadzenDataGridColumn TItem="RecipeStageDto" OrderIndex="2" Property="Name" Title="@(EditorMode && _showStageTags ? "PLC tag prefix" : "Stage")" Width="300px" Frozen="true">
                             <Template Context="stage">
                                 <div class="recipes-stage-label" title="@stage.Name">
                                     @if (EditorMode && string.IsNullOrWhiteSpace(stage.TagPrefix))
@@ -225,10 +225,10 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        @* Auto остаётся обычным параметром шаблона. *@
-                        @foreach (var column in Columns)
+                        @* Параметры идут после трёх служебных колонок, в порядке списка Columns. *@
+                        @foreach (var (column, columnIndex) in Columns.Select((column, index) => (column, index)))
                         {
-                            <RadzenDataGridColumn @key="column.Id" TItem="RecipeStageDto" Title="@column.Name" Width="@(column.Kind == RecipeParameterKind.CheckBox ? "60px" : "100px")" TextAlign="TextAlign.Center">
+                            <RadzenDataGridColumn @key="column.Id" TItem="RecipeStageDto" OrderIndex="@(columnIndex + 3)" Title="@column.Name" Width="@(column.Kind == RecipeParameterKind.CheckBox ? "60px" : "100px")" TextAlign="TextAlign.Center">
                                 <HeaderTemplate>
                                     <div class="recipes-column-heading" title="@column.TagSuffix">
                                         <span>@column.Name</span>
@@ -246,7 +246,7 @@
 
                                         @if (valueError is not null || displayedValue.HasValue)
                                         {
-                                            <button type="button" class="recipes-value" disabled="@(!CanAddStage && (valueError is not null || !CanWritePlcParameter(stage, column)))" title="@valueTitle" @onclick="@(() => OnRecipeValueClickedAsync(stage, column))">
+                                            <button type="button" class="recipes-value" disabled="@(!CanEditRecipeValues && (valueError is not null || !CanWritePlcParameter(stage, column)))" title="@valueTitle" @onclick="@(() => OnRecipeValueClickedAsync(stage, column))">
                                                 @if (valueError is not null)
                                                 {
                                                     <span class="recipes-value-warning" role="img" aria-label="@valueTitle">
@@ -283,7 +283,8 @@
 
                         @if (EditorMode)
                         {
-                            <RadzenDataGridColumn TItem="RecipeStageDto" Width="72px" MaxWidth="72px" Sortable="false" Filterable="false" Resizable="false" TextAlign="TextAlign.Center">
+                            @* При изменении числа параметров удаление остаётся последней колонкой. *@
+                            <RadzenDataGridColumn TItem="RecipeStageDto" OrderIndex="@(Columns.Count + 3)" Width="72px" MaxWidth="72px" Sortable="false" Filterable="false" Resizable="false" TextAlign="TextAlign.Center">
                                 <Template Context="stage">
                                     <div class="recipes-delete-action" @onclick:stopPropagation="true">
                                         <RadzenButton Icon="delete_outline" ButtonStyle="ButtonStyle.Danger" Shade="Shade.Lighter" Variant="Variant.Flat" Size="ButtonSize.Small" class="recipes-delete-button" Disabled="@(!CanAddStage)" Click="@(() => ChangeStageAsync(RecipeStageChangeOperation.Delete, stage))" aria-label="Delete stage" title="Delete stage" />
