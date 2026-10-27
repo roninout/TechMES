@@ -388,6 +388,14 @@ public sealed class PostgreSqlDatabaseBootstrapper
             PRIMARY KEY (equip_name, info_page_kind, file_id)
     );
 
+    -- Персональная тема WEB. Используем Windows-имя владельца, как для Favorites.
+    CREATE TABLE IF NOT EXISTS public.web_user_appearance
+    (
+        user_name  text PRIMARY KEY,
+        dark_theme boolean NOT NULL DEFAULT false,
+        updated_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS public.equip_favorite
     (
         device_name text NOT NULL,

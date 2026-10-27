@@ -51,6 +51,7 @@ public static class PostgreSqlServiceCollectionExtensions
         services.TryAddScoped<IParamTuneStore, PostgreSqlParamTuneStore>();
         services.TryAddScoped<ICalcJobStore, PostgreSqlCalcJobStore>();
         services.TryAddScoped<ICalcJobStateStore, PostgreSqlCalcJobStateStore>();
+        services.TryAddScoped<TechMES.Application.Users.IUserAppearanceStore, TechMES.Infrastructure.PostgreSql.Users.PostgreSqlUserAppearanceStore>();
 
         return services;
     }

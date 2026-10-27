@@ -208,5 +208,6 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.MapRuntimeEndpoints();
+app.MapUserAppearanceEndpoints();
 
 app.Run();

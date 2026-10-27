@@ -88,14 +88,7 @@
                               aria-label="@GetAuthButtonTitle()"
                               Click="@OpenAuthDialogAsync" />
 
-                <RadzenAppearanceToggle LightTheme="standard"
-                                        DarkTheme="standard-dark"
-                                        ButtonStyle="ButtonStyle.Light"
-                                        ToggleButtonStyle="ButtonStyle.Light"
-                                        Variant="Variant.Text"
-                                        class="header-icon-button header-appearance-toggle"
-                                        title="Switch light/dark theme"
-                                        aria-label="Switch light/dark theme" />
+                <UserAppearanceToggle />
 
                 <RadzenButton Icon="@(_isFooterVisible ? "bottom_panel_close" : "bottom_panel_open")"
                               ButtonStyle="ButtonStyle.Light"

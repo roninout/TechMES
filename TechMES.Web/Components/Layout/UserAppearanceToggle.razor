@@ -1,0 +1,94 @@
+﻿@implements IDisposable
+@inject Radzen.ThemeService ThemeService
+@inject TechMES.Web.Clients.UserAppearanceApiClient AppearanceApi
+@inject ILogger<UserAppearanceToggle> Logger
+@inject Radzen.NotificationService NotificationService
+
+<RadzenAppearanceToggle Visible="@_ready" LightTheme="standard" DarkTheme="standard-dark" ButtonStyle="ButtonStyle.Light" ToggleButtonStyle="ButtonStyle.Light" Variant="Variant.Text" class="header-icon-button header-appearance-toggle" title="Switch light/dark theme" aria-label="Switch light/dark theme" />
+
+@code {
+    private readonly CancellationTokenSource _stop = new();
+    private Task _saveTask = Task.CompletedTask;
+    private bool _ready, _disposed;
+
+    /// <summary>Тему применяем после первого render, когда доступно переключение CSS через JS.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _disposed) return;
+
+        using var loading = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+        loading.CancelAfter(TimeSpan.FromSeconds(5));
+
+        try
+        {
+            var appearance = await AppearanceApi.GetAsync(loading.Token);
+
+            if (_disposed) return;
+
+            // Восстановление не должно отправлять сохранение обратно в БД.
+            ThemeService.SetTheme(appearance.IsDarkTheme ? "standard-dark" : "standard");
+        }
+        catch (OperationCanceledException) when (_disposed)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (!_disposed)
+            {
+                Logger.LogWarning(ex, "Could not restore personal appearance.");
+                NotificationService.Notify(Radzen.NotificationSeverity.Warning, "Theme", "Saved theme could not be loaded.", 4000);
+            }
+        }
+        finally
+        {
+            if (!_disposed)
+            {
+                ThemeService.ThemeChanged += OnThemeChanged;
+                _ready = true;
+
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    /// <summary>Запоминаем выбор в момент переключения, а не после завершения предыдущего запроса.</summary>
+    private void OnThemeChanged()
+    {
+        if (!_ready || _disposed) return;
+
+        var isDarkTheme = ThemeService.Theme == "standard-dark";
+        _saveTask = SaveAsync(_saveTask, isDarkTheme, _stop.Token);
+    }
+
+    /// <summary>Последовательные запросы гарантируют сохранение последнего выбора при быстрых кликах.</summary>
+    private async Task SaveAsync(Task previous, bool isDarkTheme, CancellationToken ct)
+    {
+        try
+        {
+            await previous;
+            ct.ThrowIfCancellationRequested();
+
+            await AppearanceApi.SaveAsync(isDarkTheme, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (!_disposed)
+            {
+                Logger.LogWarning(ex, "Could not save personal appearance.");
+                NotificationService.Notify(Radzen.NotificationSeverity.Warning, "Theme", "Theme changed, but the preference could not be saved.", 5000);
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        ThemeService.ThemeChanged -= OnThemeChanged;
+
+        _stop.Cancel();
+        _stop.Dispose();
+    }
+}

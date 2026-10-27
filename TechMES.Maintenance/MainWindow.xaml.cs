@@ -1467,27 +1467,22 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         }
     }
 
-    /// <summary>
-    /// Заменяет именованный TechMes-ресурс на кисть из текущей темы WPF UI.
-    /// </summary>
+    /// <summary>Заменяет именованный TechMES-ресурс на кисть из текущей темы WPF UI.</summary>
     private void SetThemeResource(string resourceKey, string wpfUiResourceKey, Brush fallback)
     {
         var brush = TryFindResource(wpfUiResourceKey) as Brush
-            ?? Application.Current.TryFindResource(wpfUiResourceKey) as Brush
+            ?? global::System.Windows.Application.Current.TryFindResource(wpfUiResourceKey) as Brush
             ?? fallback;
 
         Resources[resourceKey] = brush;
-        Application.Current.Resources[resourceKey] = brush;
+        global::System.Windows.Application.Current.Resources[resourceKey] = brush;
     }
 
-    /// <summary>
-    /// Безопасно обновляет цветовой ресурс темы. WPF UI может замораживать кисти
-    /// в словарях ресурсов, поэтому при read-only состоянии мы заменяем ресурс новой кистью.
-    /// </summary>
+    /// <summary>Обновляет цветовой ресурс окна и приложения с учётом замороженных кистей.</summary>
     private void SetThemeBrush(string resourceKey, Color color)
     {
         SetThemeBrush(Resources, resourceKey, color);
-        SetThemeBrush(Application.Current.Resources, resourceKey, color);
+        SetThemeBrush(global::System.Windows.Application.Current.Resources, resourceKey, color);
     }
 
     /// <summary>

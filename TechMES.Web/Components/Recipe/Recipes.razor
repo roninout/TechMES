@@ -502,7 +502,7 @@
     /// <summary>Общий ParamWriteDialog изменяет значение только в черновике.</summary>
     private async Task EditParameterAsync(RecipeStageDto stage, RecipeColumnDto column)
     {
-        if (!CanAddStage || _disposed || _snapshot is null || !stage.Parameters.TryGetValue(column.Id, out var parameter)) return;
+        if (!CanEditRecipeValues || _disposed || _snapshot is null || !stage.Parameters.TryGetValue(column.Id, out var parameter)) return;
 
         var ct = _stop.Token;
 
