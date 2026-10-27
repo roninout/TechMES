@@ -9,6 +9,7 @@
 @inject QrScannerState QrScannerState
 @inject FavoriteOwnerContext FavoriteOwnerContext
 @inject NavigationManager NavigationManager
+@inject UserStateContext UserState
 @implements IDisposable
 
 <PageTitle>@(IsParamMode ? "Param" : "Info")</PageTitle>
@@ -390,6 +391,10 @@
     {
         NavigationManager.LocationChanged += OnLocationChanged;
         QrScannerState.Scanned += SelectEquipmentFromQrAsync;
+
+        await UserState.EnsureLoadedAsync();
+        if (!RestoreUserState()) return;
+
         RememberEquipmentMode(NavigationManager.Uri);
 
         await RefreshFavoriteOwnerAsync();
@@ -484,8 +489,8 @@
         // Если в текущей странице выбранного equipment ещё нет,
         // пробуем взять выбор из глобального state.
         // Это пригодится, когда пользователь вернулся на /equipment с другой страницы.
-        var preferredName = _selectedEquipment?.Name ?? SelectedEquipmentState.SelectedEquipmentName;
-        var preferredNodeId = _selectedEquipment?.NodeId;
+        var preferredName = _selectedEquipment?.Name ?? SelectedEquipmentState.SelectedEquipmentName ?? SavedEquipmentName();
+        var preferredNodeId = _selectedEquipment?.NodeId ?? SavedEquipmentNodeId();
 
         try
         {
@@ -509,6 +514,10 @@
 
             typeItems.AddRange(response.TypeGroups.Select(x => x.ToString()));
             _typeItems = typeItems;
+
+            // Сохранённые станция и тип могли исчезнуть из нового каталога.
+            _selectedStation = _stationItems.FirstOrDefault(item => item.Equals(_selectedStation, StringComparison.OrdinalIgnoreCase)) ?? AllStationsText;
+            _selectedType = _typeItems.FirstOrDefault(item => item.Equals(_selectedType, StringComparison.OrdinalIgnoreCase)) ?? AllTypesText;
 
             if (!_canEditFavorites && IsFavoritesTypeFilterActive())
             {
@@ -553,7 +562,10 @@
     /// </summary>
     private void ApplyFilters()
     {
-        ApplyFilters(_selectedEquipment?.Name, _selectedEquipment?.NodeId);
+        var filterChanged = !UserFilterKey().Equals(_activeFilterKey, StringComparison.OrdinalIgnoreCase);
+        var name = filterChanged ? SavedEquipmentForFilter() ?? _selectedEquipment?.Name : _selectedEquipment?.Name;
+
+        ApplyFilters(name, filterChanged ? null : _selectedEquipment?.NodeId);
     }
 
     /// <summary>
@@ -718,9 +730,7 @@
     /// <summary>
     /// Добавляет узел и всех его родителей в набор видимых node ids.
     /// </summary>
-    private void IncludeNodeWithParents(
-        EquipmentDto equipment,
-        HashSet<string> includedNodeIds)
+    private void IncludeNodeWithParents(EquipmentDto equipment, HashSet<string> includedNodeIds)
     {
         var current = equipment;
 
@@ -747,9 +757,7 @@
     /// <summary>
     /// Добавляет дочерние узлы группы. Оставлено рекурсивным на случай многоуровневого дерева.
     /// </summary>
-    private void IncludeNodeWithChildren(
-        EquipmentDto equipment,
-        HashSet<string> includedNodeIds)
+    private void IncludeNodeWithChildren(EquipmentDto equipment, HashSet<string> includedNodeIds)
     {
         var parentNodeId = GetNodeId(equipment);
 
@@ -971,10 +979,8 @@
     private void SetSelectedEquipment(EquipmentDto? equipment)
     {
         _selectedEquipment = equipment;
-
-        // Сохраняем выбор в общем state service.
-        // Теперь другие страницы могут узнать, какое оборудование выбрано.
         SelectedEquipmentState.SetSelectedEquipment(equipment);
+        RememberUserSelection();
     }
 
     /// <summary>

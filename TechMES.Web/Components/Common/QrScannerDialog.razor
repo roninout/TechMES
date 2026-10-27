@@ -1,6 +1,7 @@
 @using ZXing
 @using ZXing.Common
 @inject IJSRuntime JSRuntime
+@inject UserStateContext UserState
 @implements IDisposable
 
 @if (_isOpen)
@@ -64,6 +65,8 @@
     /// Пустой deviceId означает, что браузер сам выберет камеру по умолчанию.
     /// </summary>
     private const string DefaultCameraDeviceId = "";
+
+    private bool _restoreCameraSelection;
 
     /// <summary>
     /// Событие успешного считывания QR-кода.
@@ -131,6 +134,9 @@
     /// </summary>
     public async Task OpenAsync()
     {
+        await UserState.EnsureLoadedAsync();
+        _restoreCameraSelection = true;
+
         _statusText = string.Empty;
         _isOpen = true;
 
@@ -171,20 +177,25 @@
     {
         try
         {
-            var devices = await JSRuntime.InvokeAsync<QrCameraDevice[]>(
-                "techMesQrScanner.listCameras");
+            var devices = await JSRuntime.InvokeAsync<QrCameraDevice[]>("techMesQrScanner.listCameras");
 
             _cameraDevices.Clear();
             _cameraDevices.Add(new QrCameraDevice(DefaultCameraDeviceId, "Default camera"));
+            _cameraDevices.AddRange(devices.Where(item => !string.IsNullOrWhiteSpace(item.DeviceId)).DistinctBy(item => item.DeviceId));
 
-            foreach (var device in devices
-                         .Where(x => !string.IsNullOrWhiteSpace(x.DeviceId))
-                         .DistinctBy(x => x.DeviceId))
+            if (_restoreCameraSelection)
             {
-                _cameraDevices.Add(device);
+                var index = UserState.Value.QrCameraIndex;
+
+                // Пока браузер не выдал список камер, откладываем восстановление.
+                if (index is null || _cameraDevices.Count > 1)
+                {
+                    _selectedCameraDeviceId = index is >= 0 && index.Value + 1 < _cameraDevices.Count ? _cameraDevices[index.Value + 1].DeviceId : DefaultCameraDeviceId;
+                    _restoreCameraSelection = false;
+                }
             }
 
-            if (_cameraDevices.All(x => x.DeviceId != _selectedCameraDeviceId))
+            if (_cameraDevices.All(item => item.DeviceId != _selectedCameraDeviceId))
                 _selectedCameraDeviceId = DefaultCameraDeviceId;
         }
         catch
@@ -217,6 +228,10 @@
     private async Task OnCameraChangedAsync(object? value)
     {
         _selectedCameraDeviceId = Convert.ToString(value) ?? DefaultCameraDeviceId;
+        _restoreCameraSelection = false;
+
+        var index = _cameraDevices.FindIndex(item => item.DeviceId == _selectedCameraDeviceId) - 1;
+        UserState.Update(new { QrCameraIndex = index >= 0 ? index : (int?)null });
 
         if (_isOpen)
             await StartScannerAsync();
@@ -234,21 +249,26 @@
         {
             _dotNetReference ??= DotNetObjectReference.Create(this);
 
-            var result = await JSRuntime.InvokeAsync<QrScannerStartResult>(
-                "techMesQrScanner.start",
-                VideoElementId,
-                _dotNetReference,
-                _selectedCameraDeviceId);
-
-            if (result?.Success == true)
+            // После выдачи разрешения может впервые появиться сохранённая камера.
+            // В этом случае один раз переключаем поток на неё.
+            for (var attempt = 0; attempt < 2; attempt++)
             {
+                var deviceId = _selectedCameraDeviceId;
+                var result = await JSRuntime.InvokeAsync<QrScannerStartResult>("techMesQrScanner.start", VideoElementId, _dotNetReference, deviceId);
+
+                if (result?.Success != true)
+                {
+                    SetStatus(AlertStyle.Warning, result?.Message ?? "Cannot start camera.");
+                    return;
+                }
+
                 SetStatus(AlertStyle.Info, result.Message ?? "Camera started.");
                 _diagnostics = await LoadDiagnosticsAsync();
                 await LoadCameraDevicesAsync();
-                return;
-            }
 
-            SetStatus(AlertStyle.Warning, result?.Message ?? "Cannot start camera.");
+                if (deviceId == _selectedCameraDeviceId || _selectedCameraDeviceId == DefaultCameraDeviceId)
+                    return;
+            }
         }
         catch (Exception ex)
         {

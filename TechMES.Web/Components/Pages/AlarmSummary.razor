@@ -2,6 +2,7 @@
 @implements IAsyncDisposable
 @inject AlarmSummaryApiClient SummaryApi
 @inject NavigationManager Navigation
+@inject UserStateContext UserState
 
 <PageTitle>Alarm history</PageTitle>
 
@@ -354,6 +355,10 @@
 
         if (_grid is not null)
             await _grid.FirstPage(true);
+
+        // Как в исходнике: запоминаем дату, но при новом открытии истории её не восстанавливаем.
+        if (!_stop.IsCancellationRequested)
+            await UserState.UpdateAsync(new { DbDate = new DateTimeOffset(_from.ToDateTime(TimeOnly.MinValue)) });
     }
 
     /// <summary>

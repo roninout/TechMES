@@ -5,6 +5,7 @@
 @implements IAsyncDisposable
 @inject EventJournalApiClient JournalApi
 @inject IJSRuntime JSRuntime
+@inject UserStateContext UserState
 
 <PageTitle>Events</PageTitle>
 
@@ -625,6 +626,10 @@
 
         // Если HTTP-запрос прежнего периода ещё идёт, PollAsync запросит новый период после его окончания.
         await LoadAsync(false);
+
+        // Как в исходнике: запоминаем дату, но при новом открытии истории её не восстанавливаем.
+        if (!_stop.IsCancellationRequested)
+            await UserState.UpdateAsync(new { DbDate = new DateTimeOffset(_from.ToDateTime(TimeOnly.MinValue)) });
     }
 
     /// <summary>

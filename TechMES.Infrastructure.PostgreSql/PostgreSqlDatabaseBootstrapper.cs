@@ -388,13 +388,29 @@ public sealed class PostgreSqlDatabaseBootstrapper
             PRIMARY KEY (equip_name, info_page_kind, file_id)
     );
 
-    -- Персональная тема WEB. Используем Windows-имя владельца, как для Favorites.
+    -- Общий JSON состояния пользователя вместо отдельного флага темы.
     CREATE TABLE IF NOT EXISTS public.web_user_appearance
     (
-        user_name  text PRIMARY KEY,
-        dark_theme boolean NOT NULL DEFAULT false,
+        user_name text PRIMARY KEY,
+        settings jsonb NOT NULL DEFAULT '{}'::jsonb,
         updated_at timestamp with time zone NOT NULL DEFAULT now()
     );
+
+    ALTER TABLE public.web_user_appearance
+        ADD COLUMN IF NOT EXISTS settings jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+    -- Переносим уже сохранённую тему один раз, затем удаляем старую колонку.
+    DO $migration$
+    BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'web_user_appearance' AND column_name = 'dark_theme') THEN
+            UPDATE public.web_user_appearance
+            SET settings = jsonb_build_object('IsDarkTheme', dark_theme) || settings;
+
+            ALTER TABLE public.web_user_appearance DROP COLUMN dark_theme;
+        END IF;
+    END
+    $migration$;
 
     CREATE TABLE IF NOT EXISTS public.equip_favorite
     (

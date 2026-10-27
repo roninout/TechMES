@@ -1,0 +1,65 @@
+﻿@implements IDisposable
+@inject Radzen.ThemeService ThemeService
+@inject TechMES.Web.State.UserStateContext UserState
+@inject NavigationManager Navigation
+
+<RadzenAppearanceToggle Visible="@_ready" LightTheme="standard" DarkTheme="standard-dark" ButtonStyle="ButtonStyle.Light" ToggleButtonStyle="ButtonStyle.Light" Variant="Variant.Text" class="header-icon-button header-appearance-toggle" title="Switch light/dark theme" aria-label="Switch light/dark theme" />
+
+@code {
+    private bool _ready, _disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _disposed) return;
+
+        await UserState.EnsureLoadedAsync();
+        if (_disposed) return;
+
+        ThemeService.SetTheme(UserState.Value.IsDarkTheme ? "standard-dark" : "standard");
+        ThemeService.ThemeChanged += OnThemeChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+        _ready = true;
+
+        RememberPage();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnThemeChanged()
+    {
+        if (_ready && !_disposed)
+            UserState.Update(new { IsDarkTheme = ThemeService.Theme == "standard-dark" });
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args) => RememberPage();
+
+    private void RememberPage()
+    {
+        if (!_ready || _disposed) return;
+
+        var route = "/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/');
+        var pages = new[] { "/equipment", "/equipment/param", "/events", "/alarm-history", "/alarms", "/soe", "/messages", "/recipes", "/calculations" };
+
+        // Не сохраняем login, служебные адреса и параметры внешних ссылок.
+        if (!pages.Contains(route, StringComparer.OrdinalIgnoreCase)) return;
+
+        var tab = route.ToLowerInvariant() switch
+        {
+            "/equipment/param" => 0,
+            "/equipment" => 1,
+            "/events" => 2,
+            "/alarm-history" => 3,
+            "/soe" => 4,
+            "/messages" => 5,
+            _ => UserState.Value.SelectedTab
+        };
+
+        UserState.Update(new { LastPage = route, SelectedTab = tab });
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        ThemeService.ThemeChanged -= OnThemeChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}
