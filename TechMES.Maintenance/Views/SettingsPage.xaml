@@ -1245,6 +1245,7 @@
                 </TabItem.Header>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="12">
+                        
                         <views:MaintenanceSection Header="WEB login" Margin="0,0,0,12">
                             <StackPanel Margin="12">
                                 <Grid Margin="0,0,0,10">
@@ -1260,6 +1261,31 @@
                                 </Grid>
                             </StackPanel>
                         </views:MaintenanceSection>
+                        
+                        <views:MaintenanceSection Header="Roles — Allowed groups" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <TextBlock Text="Привяжите Windows-группы к ролям TechMES. Сейчас роли используются для иконок; разрешение на запись настраивается отдельно ниже." Style="{StaticResource SettingsHintText}" Margin="0,0,0,10" />
+
+                                <ItemsControl ItemsSource="{Binding TypedAppSettings.RoleGroups}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="240" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock Text="{Binding Title}" Style="{StaticResource SettingsFieldLabel}" />
+                                                <ui:TextBox Grid.Column="1" Text="{Binding AllowedGroups, UpdateSourceTrigger=PropertyChanged}" Width="640" Style="{StaticResource SettingsTextBox}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="Формат: DOMAIN\Group или короткое имя группы; разделители — точка с запятой или запятая. При нескольких ролях отображаются все их иконки." Style="{StaticResource SettingsHintText}" />
+                            </StackPanel>
+                        </views:MaintenanceSection>
+                        
                         <views:MaintenanceSection Header="Param write access" Margin="0,0,0,12">
                             <StackPanel Margin="12">
                                 <Grid Margin="0,0,0,10">
@@ -1311,6 +1337,7 @@
                                 </Grid>
                             </StackPanel>
                         </views:MaintenanceSection>
+                        
                         <views:MaintenanceSection Header="Write behavior" Margin="0,0,0,12">
                             <StackPanel Margin="12">
                                 <Grid Margin="0,0,0,10">
@@ -1337,6 +1364,7 @@
                                 </Grid>
                             </StackPanel>
                         </views:MaintenanceSection>
+                        
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -1663,6 +1691,7 @@
                     </Grid>
                 </Grid>
             </TabItem>
+            
         </TabControl>
 
         <!--

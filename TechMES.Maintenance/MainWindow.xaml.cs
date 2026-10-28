@@ -21,6 +21,7 @@ using TechMES.Maintenance.Models;
 using TechMES.Maintenance.Services;
 using TechMES.Maintenance.ViewModels;
 using Wpf.Ui.Appearance;
+using TechMES.Contracts.Security;
 
 namespace TechMES.Maintenance;
 
@@ -1819,20 +1820,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
     /// <summary>
     /// Загружает typed-представление Runtime, Calc.Service и WEB appsettings.
-    /// Если сервис уже опубликован, читается рабочий published appsettings.
+    /// Если сервис опубликован, читается рабочий published appsettings.
+    /// Привязки ролей читаются только из Runtime.
     /// </summary>
     private void LoadTypedAppSettings()
     {
         try
         {
-            var runtime = ReadJsonObject(GetPreferredAppsettingsPath(
-                "runtime", @"TechMES.Runtime.Service\appsettings.json", "Runtime.Service"));
-
-            var calc = ReadJsonObject(GetPreferredAppsettingsPath(
-                "calc", @"TechMES.Calc.Service\appsettings.json", "Calc.Service"));
-
-            var web = ReadJsonObject(GetPreferredAppsettingsPath(
-                "web", @"TechMES.Web\appsettings.json", "Web"));
+            var runtime = ReadJsonObject(GetPreferredAppsettingsPath("runtime", @"TechMES.Runtime.Service\appsettings.json", "Runtime.Service"));
+            var calc = ReadJsonObject(GetPreferredAppsettingsPath("calc", @"TechMES.Calc.Service\appsettings.json", "Calc.Service"));
+            var web = ReadJsonObject(GetPreferredAppsettingsPath("web", @"TechMES.Web\appsettings.json", "Web"));
 
             TypedAppSettings.RuntimeUrls = GetString(runtime, "Urls");
             TypedAppSettings.RuntimeDeviceName = GetString(runtime, "Runtime", "DeviceName");
@@ -1860,7 +1857,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             TypedAppSettings.RuntimeDatabaseConnectionString = GetString(runtime, "Database", "ConnectionString");
             TypedAppSettings.RuntimeEventDatabaseConnectionString = GetString(runtime, "EventDatabase", "ConnectionString");
 
-            // Настройки ODBC хранятся в Runtime appsettings; старые файлы получают исходные интервалы.
+            // Настройки ODBC принадлежат Runtime.
             TypedAppSettings.RuntimeAlarmOdbcConnectionString = GetString(runtime, "CtApi", "AlarmOdbcConnectionString");
             TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds = GetInt(runtime, 120, "CtApi", "AlarmOdbcRequestTimeoutSeconds");
             TypedAppSettings.RuntimeAlarmOdbcRefreshPeriodSeconds = GetInt(runtime, 30, "CtApi", "AlarmOdbcRefreshPeriodSeconds");
@@ -1874,7 +1871,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             TypedAppSettings.ParamWritesAllowedUsers = GetString(runtime, "ParamWrites", "Authorization", "AllowedUsers");
             TypedAppSettings.ParamWritesAllowedGroups = GetString(runtime, "ParamWrites", "Authorization", "AllowedGroups");
 
-            // Runtime-side Calc settings.
+            // Роли читаются отдельно от существующего разрешения на запись.
+            foreach (var role in TypedAppSettings.RoleGroups)
+                role.AllowedGroups = GetString(runtime, RoleGroupOptions.SectionName, "AllowedGroups", role.Id);
+
             TypedAppSettings.CalcWritesEnabled = GetBool(runtime, false, "CalcWrites", "Enabled");
             TypedAppSettings.CalcConfigurationEditingEnabled = GetBool(runtime, false, "CalcConfiguration", "EditingEnabled");
             TypedAppSettings.CalcServiceOfflineAfterSeconds = GetInt(runtime, 20, "CalcServiceMonitor", "OfflineAfterSeconds");
@@ -1885,16 +1885,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             TypedAppSettings.RuntimeFileLoggingDirectory = GetString(runtime, "FileLogging", "Directory");
             TypedAppSettings.RuntimeFileLoggingPrefix = GetString(runtime, "FileLogging", "FileNamePrefix");
 
-            // Calc.Service own settings.
             TypedAppSettings.CalcRuntimeBaseAddress = GetString(calc, "Runtime", "BaseAddress");
             TypedAppSettings.CalcRuntimeRequestTimeoutSeconds = GetInt(calc, 15, "Runtime", "RequestTimeoutSeconds");
             TypedAppSettings.CalcConfigurationRefreshSeconds = GetInt(calc, 30, "Runtime", "ConfigurationRefreshSeconds");
             TypedAppSettings.CalcHeartbeatSeconds = GetInt(calc, 5, "Runtime", "HeartbeatSeconds");
-
             TypedAppSettings.CalcSchedulerTickMilliseconds = GetInt(calc, 250, "Execution", "SchedulerTickMilliseconds");
             TypedAppSettings.CalcDefaultMaxAgeSeconds = GetInt(calc, 30, "Execution", "DefaultMaxAgeSeconds");
             TypedAppSettings.CalcAcceptUnknownQuality = GetBool(calc, true, "Execution", "AcceptUnknownQuality");
-
             TypedAppSettings.CalcLogLevel = GetString(calc, "Logging", "LogLevel", "Default");
             TypedAppSettings.CalcLifetimeLogLevel = GetString(calc, "Logging", "LogLevel", "Microsoft.Hosting.Lifetime");
 
@@ -2021,8 +2018,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     }
 
     /// <summary>
-    /// Переносит typed Runtime-поля в JSON-объект appsettings.
-    /// Списки типов оборудования и aliases намеренно не трогаем: это более тонкая настройка каталога.
+    /// Переносит typed Runtime-поля в JSON appsettings.
+    /// Привязки ролей сохраняются в отдельный раздел и не изменяют ParamWrites.Authorization.
     /// </summary>
     private void ApplyRuntimeTypedSettings(JsonObject root)
     {
@@ -2052,7 +2049,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         SetValue(root, TypedAppSettings.RuntimeDatabaseConnectionString, "Database", "ConnectionString");
         SetValue(root, TypedAppSettings.RuntimeEventDatabaseConnectionString, "EventDatabase", "ConnectionString");
 
-        // Оба интервала принадлежат Runtime: первый ограничивает SQL-запрос, второй задаёт паузу перед следующим автоматическим чтением.
+        // Первый интервал ограничивает SQL-запрос, второй задаёт период автоматического чтения.
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcConnectionString, "CtApi", "AlarmOdbcConnectionString");
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds, "CtApi", "AlarmOdbcRequestTimeoutSeconds");
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcRefreshPeriodSeconds, "CtApi", "AlarmOdbcRefreshPeriodSeconds");
@@ -2065,6 +2062,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         SetValue(root, TypedAppSettings.ParamWritesRequireWindowsUser, "ParamWrites", "Authorization", "RequireWindowsUser");
         SetValue(root, TypedAppSettings.ParamWritesAllowedUsers, "ParamWrites", "Authorization", "AllowedUsers");
         SetValue(root, TypedAppSettings.ParamWritesAllowedGroups, "ParamWrites", "Authorization", "AllowedGroups");
+
+        // Сохраняем четыре привязки ролей через существующий механизм typed-настроек.
+        foreach (var role in TypedAppSettings.RoleGroups)
+            SetValue(root, role.AllowedGroups, RoleGroupOptions.SectionName, "AllowedGroups", role.Id);
 
         SetValue(root, TypedAppSettings.CalcWritesEnabled, "CalcWrites", "Enabled");
         SetValue(root, TypedAppSettings.CalcConfigurationEditingEnabled, "CalcConfiguration", "EditingEnabled");

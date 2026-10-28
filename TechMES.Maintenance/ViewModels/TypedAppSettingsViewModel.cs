@@ -1,3 +1,5 @@
+using TechMES.Contracts.Security;
+
 namespace TechMES.Maintenance.ViewModels;
 
 /// <summary>
@@ -646,5 +648,22 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     {
         get => _ctApiSecondaryConnectionTag;
         set => SetProperty(ref _ctApiSecondaryConnectionTag, value);
+    }
+
+    /// <summary>
+    /// Четыре строки настройки создаются из общего справочника ролей.
+    /// </summary>
+    public IReadOnlyList<RoleGroupSettingViewModel> RoleGroups { get; } = AppRoles.All.Select(role => new RoleGroupSettingViewModel(role)).ToArray();
+
+    /// <summary>
+    /// Формирует общую модель привязок из введённых в Maintenance значений.
+    /// Не изменяет существующий список разрешений на запись.
+    /// </summary>
+    public RoleGroupOptions GetRoleGroupOptions()
+    {
+        return new RoleGroupOptions
+        {
+            AllowedGroups = RoleGroups.ToDictionary(role => role.Id, role => role.AllowedGroups, StringComparer.OrdinalIgnoreCase)
+        };
     }
 }

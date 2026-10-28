@@ -14,6 +14,7 @@ using TechMES.Runtime.Service.Settings;
 using TechMES.Runtime.Service.Workers;
 using TechMES.Calc.Abstractions;
 using TechMES.Runtime.Service.Calc;
+using TechMES.Contracts.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +39,9 @@ builder.Services.Configure<RuntimeOptions>(builder.Configuration.GetSection("Run
 builder.Services.Configure<MessagesOptions>(builder.Configuration.GetSection("Messages"));
 builder.Services.Configure<SoeOptions>(builder.Configuration.GetSection("Soe"));
 builder.Services.Configure<ParamWriteOptions>(builder.Configuration.GetSection("ParamWrites"));
+
+// Привязки глобальных ролей к Windows-группам хранятся только в Runtime.
+builder.Services.Configure<RoleGroupOptions>(builder.Configuration.GetSection(RoleGroupOptions.SectionName));
 
 // Настройки каталога оборудования. Provider выбирается из appsettings.json: InMemory или CtApi.
 builder.Services.Configure<EquipmentCatalogOptions>(builder.Configuration.GetSection("EquipmentCatalog"));

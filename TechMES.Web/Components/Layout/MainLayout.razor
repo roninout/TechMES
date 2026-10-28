@@ -4,7 +4,7 @@
 @inject SelectedEquipmentState SelectedEquipmentState
 @inject DialogService DialogService
 @inject NavigationManager NavigationManager
-@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject CurrentUserRoles UserRoles
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 
 <RadzenLayout>
@@ -80,13 +80,27 @@
             @* Все глобальные действия собраны справа в одном flex-контейнере:
                переключение темы и Footer не влияют на ширину основного меню. *@
             <div class="header-actions">
-                <RadzenButton Icon="@GetAuthButtonIcon()"
-                              ButtonStyle="ButtonStyle.Light"
-                              Variant="Variant.Text"
-                              class="@GetAuthButtonCssClass()"
-                              title="@GetAuthButtonTitle()"
-                              aria-label="@GetAuthButtonTitle()"
-                              Click="@OpenAuthDialogAsync" />
+                <RadzenButton ButtonStyle="ButtonStyle.Light" Variant="Variant.Text" class="@GetAuthButtonCssClass()" title="@GetAuthButtonTitle()" aria-label="@GetAuthButtonTitle()" Click="@OpenAuthDialogAsync">
+                    <ChildContent>
+                        @if (!_isAuthenticated)
+                        {
+                            <RadzenIcon Icon="login" aria-hidden="true" />
+                        }
+                        else if (UserRoles.Roles.Count == 0)
+                        {
+                            <RoleIcon />
+                        }
+                        else
+                        {
+                            @foreach (var role in UserRoles.Roles)
+                            {
+                                <span class="header-role-icon" title="@role.Title">
+                                    <RoleIcon Role="@role.Id" />
+                                </span>
+                            }
+                        }
+                    </ChildContent>
+                </RadzenButton>
 
                 <UserStateBridge />
 
@@ -148,8 +162,10 @@
     }
 
     private QrScannerDialog? _qrScannerDialog;
-    private bool _isAuthenticated;
-    private string? _authUserName;
+
+    // Header читает пользователя из общего контекста текущей Blazor-сессии.
+    private bool _isAuthenticated => UserRoles.IsAuthenticated;
+    private string? _authUserName => UserRoles.UserName;
 
     /// <summary>
     /// Определяет, отображается ли диагностическая Footer-зона.
@@ -238,15 +254,12 @@
     }
 
     /// <summary>
-    /// Обновляет имя пользователя, которое Blazor видит после optional Windows authentication.
+    /// Обновляет пользователя и роли через общий scoped-контекст.
+    /// Вызывается при открытии страницы и перед открытием диалога Authentication.
     /// </summary>
     private async Task RefreshAuthStateAsync()
     {
-        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        _isAuthenticated = authenticationState.User.Identity?.IsAuthenticated == true;
-        _authUserName = _isAuthenticated
-            ? authenticationState.User.Identity?.Name
-            : null;
+        await UserRoles.RefreshAsync();
     }
 
     /// <summary>
@@ -260,16 +273,23 @@
             : "/" + relativePath;
     }
 
-    private string GetAuthButtonIcon()
-    {
-        return _isAuthenticated ? "account_circle" : "login";
-    }
-
+    /// <summary>
+    /// Показывает имя пользователя и назначенные роли.
+    /// Отсутствие роли отличается от ошибки получения ролей из Runtime.
+    /// </summary>
     private string GetAuthButtonTitle()
     {
-        return _isAuthenticated
-            ? $"Logged in: {_authUserName}"
-            : "Read-only mode. Click to login.";
+        if (!_isAuthenticated)
+            return "Read-only mode. Click to login.";
+
+        var roleTitle = "No role assigned";
+
+        if (UserRoles.RolesUnavailable)
+            roleTitle = "Roles unavailable";
+        else if (UserRoles.Roles.Count > 0)
+            roleTitle = string.Join(", ", UserRoles.Roles.Select(role => role.Title));
+
+        return $"Logged in: {_authUserName} — {roleTitle}";
     }
 
     private string GetAuthButtonCssClass()

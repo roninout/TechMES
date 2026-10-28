@@ -6,7 +6,8 @@ namespace TechMES.Runtime.Service.Endpoints;
 public static class RuntimeEndpointRouteBuilderExtensions
 {
     /// <summary>
-    /// Регистрирует HTTP API модулей Runtime.Service.
+    /// Регистрирует HTTP API всех модулей Runtime.Service.
+    /// Сохраняет существующий модуль рецептов и добавляет определение глобальных ролей.
     /// </summary>
     public static IEndpointRouteBuilder MapRuntimeEndpoints(this IEndpointRouteBuilder app)
     {
@@ -15,6 +16,10 @@ public static class RuntimeEndpointRouteBuilderExtensions
         app.MapEquipmentEndpoints();
         app.MapInfoEndpoints();
         app.MapParamEndpoints();
+
+        // Определение отображаемых ролей пользователя по Windows-группам.
+        app.MapRoleEndpoints();
+
         app.MapEventLogEndpoints();
         app.MapSoeEndpoints();
         app.MapActiveAlarmEndpoints();
@@ -22,6 +27,9 @@ public static class RuntimeEndpointRouteBuilderExtensions
         app.MapEventJournalEndpoints();
         app.MapScadaEndpoints();
         app.MapCalcEndpoints();
+
+        // Обязательная регистрация API рецептов, параметров и стадий.
+        // Без неё WEB открывает страницу, но её запросы к Runtime возвращают HTTP 404.
         app.MapRecipeEndpoints();
 
         return app;

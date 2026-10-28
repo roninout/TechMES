@@ -512,18 +512,19 @@
     align-items: center;
     justify-content: center;
     height: var(--event-journal-value-icon-size);
+    font-size: 24px;
     vertical-align: top;
     color: var(--rz-info);
 }
 
-    /* Для пустой или неизвестной роли используем нейтральный цвет текущей темы. */
+    /* Пустая или неизвестная роль использует нейтральный цвет. */
     .event-journal-table ::deep .event-journal-role.is-unknown {
         color: var(--rz-text-secondary-color);
     }
 
     /* Обычные и SVG-иконки имеют одинаковый размер. */
     .event-journal-table ::deep .event-journal-role .rzi,
-    .event-journal-table ::deep .event-journal-role .event-journal-role-svg {
+    .event-journal-table ::deep .event-journal-role .techmes-role-svg {
         flex: none;
         width: 24px;
         height: 24px;
@@ -532,17 +533,11 @@
         color: inherit;
     }
 
-/* Силуэт руководителя наследует цвет роли. */
-.event-journal-table ::deep .event-journal-role-svg {
+.event-journal-table ::deep .techmes-role-svg {
     fill: currentColor;
 }
 
-
-
-
-
-
-/* Иконка роли центрируется внутри круга и наследует его размер и цвет. */
+/* Иконка Timeline наследует размер и цвет круга. */
 .event-journal-timeline-scroll ::deep .event-journal-timeline-role {
     display: inline-flex;
     align-items: center;
@@ -552,7 +547,6 @@
     color: inherit;
 }
 
-    /* Размер обычной иконки следует за размером выбранного или обычного круга. */
     .event-journal-timeline-scroll ::deep .event-journal-timeline-role .rzi {
         width: 1em;
         height: 1em;
@@ -561,15 +555,13 @@
         color: inherit;
     }
 
-    /* Силуэт руководителя масштабируется так же, как остальные иконки. */
-    .event-journal-timeline-scroll ::deep .event-journal-timeline-role .event-journal-role-svg {
+    .event-journal-timeline-scroll ::deep .event-journal-timeline-role .techmes-role-svg {
         display: block;
         width: 1em;
         height: 1em;
         fill: currentColor;
     }
 
-    /* Неизвестная роль отображается серым цветом текущей темы. */
     .event-journal-timeline-scroll ::deep .event-journal-timeline-role.is-unknown {
         color: var(--rz-text-secondary-color);
     }

@@ -71,24 +71,18 @@
 
                             @* Круг содержит ту же иконку роли, что и первая колонка таблицы. *@
                             <RadzenTimelineItem @key="action" PointVariant="Variant.Outlined" PointStyle="PointStyle.Info" PointShadow="0" PointSize="@(isSelected ? PointSize.Large : PointSize.Medium)" class="@(isSelected ? "event-journal-timeline-item is-selected" : "event-journal-timeline-item")" @onclick="() => OnTimelineItemClickAsync(action)">
+                                
                                 <PointContent>
                                     <span class="@(isKnownRole ? "event-journal-timeline-role" : "event-journal-timeline-role is-unknown")" role="img" title="@roleTitle" aria-label="@roleTitle">
-                                        @if (roleIcon == "account-tie")
-                                        {
-                                            <svg class="event-journal-role-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                                <path d="M12 3C14.21 3 16 4.79 16 7S14.21 11 12 11 8 9.21 8 7 9.79 3 12 3M16 13.54C16 14.6 15.72 17.07 13.81 19.83L13 15L13.94 13.12C13.32 13.05 12.67 13 12 13S10.68 13.05 10.06 13.12L11 15L10.19 19.83C8.28 17.07 8 14.6 8 13.54C5.61 14.24 4 15.5 4 17V21H20V17C20 15.5 18.4 14.24 16 13.54Z" />
-                                            </svg>
-                                        }
-                                        else
-                                        {
-                                            <RadzenIcon Icon="@roleIcon" />
-                                        }
+                                        <RoleIcon Role="@action.Role" />
                                     </span>
                                 </PointContent>
+
                                 <ChildContent>
                                     <span class="event-journal-timeline-user" title="@($"{action.User} — {action.Date:dd.MM.yyyy HH:mm:ss}")">@action.User</span>
                                     <span class="event-journal-timeline-equipment" title="@action.Equipment">@action.Equipment</span>
                                 </ChildContent>
+
                             </RadzenTimelineItem>
                         }
                     </Items>
@@ -178,20 +172,11 @@
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Role" Title="" Width="48px" Filterable="false" Sortable="false" TextAlign="TextAlign.Center">
                             <Template Context="entry">
                                 @{
-                                    GetOperationRoleDisplay(entry.Role, out var roleIcon, out var roleTitle, out var isKnownRole);
+                                    GetOperationRoleDisplay(entry.Role, out _, out var roleTitle, out var isKnownRole);
                                 }
 
                                 <span class="@(isKnownRole ? "event-journal-role" : "event-journal-role is-unknown")" role="img" title="@roleTitle" aria-label="@roleTitle">
-                                    @if (roleIcon == "account-tie")
-                                    {
-                                        <svg class="event-journal-role-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                            <path d="M12 3C14.21 3 16 4.79 16 7S14.21 11 12 11 8 9.21 8 7 9.79 3 12 3M16 13.54C16 14.6 15.72 17.07 13.81 19.83L13 15L13.94 13.12C13.32 13.05 12.67 13 12 13S10.68 13.05 10.06 13.12L11 15L10.19 19.83C8.28 17.07 8 14.6 8 13.54C5.61 14.24 4 15.5 4 17V21H20V17C20 15.5 18.4 14.24 16 13.54Z" />
-                                        </svg>
-                                    }
-                                    else
-                                    {
-                                        <RadzenIcon Icon="@roleIcon" />
-                                    }
+                                    <RoleIcon Role="@entry.Role" />
                                 </span>
                             </Template>
                         </RadzenDataGridColumn>
@@ -419,21 +404,16 @@
     private int VisibleCount => _selectedCategory == InterfaceEventCategory ? _operationItems.Count : _eventItems.Count;
 
     /// <summary>
-    /// Определяет иконку и подсказку роли без учёта регистра и крайних пробелов.
-    /// Пустая или неизвестная роль отображается серой иконкой пользователя.
+    /// Получает оформление роли из общего справочника приложения.
+    /// Для журнала используется роль, записанная в событии, а не текущие группы пользователя.
     /// </summary>
     private static void GetOperationRoleDisplay(string? role, out string icon, out string title, out bool isKnownRole)
     {
-        var roleText = role?.Trim() ?? "";
+        var display = TechMES.Contracts.Security.AppRoles.GetDisplay(role);
 
-        (icon, title, isKnownRole) = roleText.ToLowerInvariant() switch
-        {
-            "operator" => ("person", "Operator", true),
-            "supervisor" => ("account-tie", "Supervisor", true),
-            "developer" => ("code", "Developer", true),
-            "engineer" => ("engineering", "Engineer", true),
-            _ => ("person", roleText.Length == 0 ? "Role not recorded" : $"Unknown role: {roleText}", false)
-        };
+        icon = display.Icon;
+        title = display.Title;
+        isKnownRole = display.IsKnown;
     }
 
     /// <summary>

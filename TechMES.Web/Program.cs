@@ -99,6 +99,10 @@ builder.Services.AddScoped<InfoApiClient>();
 // Клиент Param-модуля. WEB вызывает Runtime.Service, а детали CtApi остаются за границей backend-а.
 builder.Services.AddScoped<ParamApiClient>();
 
+// Получение отображаемых ролей через Runtime и общий контекст текущей Blazor-сессии.
+builder.Services.AddScoped<RoleApiClient>();
+builder.Services.AddScoped<CurrentUserRoles>();
+
 // Общая WEB-точка входа в существующий Param write-dialog/API flow для Calc-панелей.
 builder.Services.AddScoped<ParamWriteCoordinator>();
 

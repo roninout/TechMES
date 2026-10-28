@@ -1,10 +1,9 @@
 ﻿using System.Globalization;
 using System.Net.Http.Json;
-using System.Runtime.Versioning;
 using System.Security.Claims;
-using System.Security.Principal;
 using Microsoft.AspNetCore.Components.Authorization;
 using TechMES.Contracts.Param;
+using TechMES.Web.Security;
 
 namespace TechMES.Web.Clients;
 
@@ -347,8 +346,8 @@ public sealed class ParamApiClient
     }
 
     /// <summary>
-    /// Добавляет к write-запросу Windows-пользователя и группы.
-    /// Runtime.Service использует эти данные для allow-list enforcement, а WEB остается только транспортным слоем.
+    /// Добавляет к write-запросу Windows-пользователя и его группы.
+    /// Отображаемые роли TechMES не подмешиваются в ActorGroups.
     /// </summary>
     private async Task EnrichWriteActorAsync(ParamWriteRequest request)
     {
@@ -363,28 +362,26 @@ public sealed class ParamApiClient
         }
 
         request.Actor = actor.Trim();
-
-        request.ActorGroups = ReadActorGroups(principal)
-            .Where(group => !string.IsNullOrWhiteSpace(group))
-            .Select(group => group!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        request.ActorGroups = WindowsPrincipalGroups.Read(principal).Where(group => !string.IsNullOrWhiteSpace(group)).Select(group => group!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>
-    /// Переиспользует сбор Windows identity для других write-модулей.
-    /// Read-only не обходится через HttpContext fallback.
-    /// HTTP-запросов и записи в SCADA этот метод не делает.
+    /// Заполняет Windows-пользователя и его группы для других write-модулей.
+    /// Использует только эффективный Blazor authentication state, чтобы read-only режим не обходился через HttpContext.
+    /// HTTP-запросов и записи в SCADA этот метод не выполняет.
     /// </summary>
     public async Task FillWriteActorAsync(ParamWriteRequest request)
     {
         var state = await _authenticationStateProvider.GetAuthenticationStateAsync();
 
+        // Сохраняем существующую проверку: редактирование требует авторизованного пользователя.
         if (state.User.Identity?.IsAuthenticated != true)
             throw new InvalidOperationException("Sign in to edit recipe values.");
 
         request.Actor = ReadActorName(state.User)?.Trim();
-        request.ActorGroups = ReadActorGroups(state.User).Where(group => !string.IsNullOrWhiteSpace(group)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        // Используем общий механизм чтения Windows-групп вместо удалённого локального метода.
+        request.ActorGroups = WindowsPrincipalGroups.Read(state.User).Where(group => !string.IsNullOrWhiteSpace(group)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>
@@ -410,96 +407,6 @@ public sealed class ParamApiClient
         return principal?.Identity?.IsAuthenticated == true
             ? principal.Identity.Name
             : null;
-    }
-
-    /// <summary>
-    /// Собирает Windows-группы из WindowsIdentity и claims.
-    /// SID-группы переводятся в DOMAIN\Group, чтобы appsettings оставался читаемым.
-    /// </summary>
-    private static IEnumerable<string> ReadActorGroups(ClaimsPrincipal? principal)
-    {
-        if (OperatingSystem.IsWindows() && principal?.Identity is WindowsIdentity windowsIdentity)
-        {
-            foreach (var group in ReadWindowsIdentityGroups(windowsIdentity))
-                yield return group;
-        }
-
-        if (principal is null)
-            yield break;
-
-        foreach (var claim in principal.Claims)
-        {
-            if (claim.Type == ClaimTypes.Role
-                || claim.Type == ClaimTypes.GroupSid
-                || claim.Type.EndsWith("/groupsid", StringComparison.OrdinalIgnoreCase))
-            {
-                var translated = OperatingSystem.IsWindows()
-                    ? TryTranslateSid(claim.Value)
-                    : null;
-                yield return translated ?? claim.Value;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Безопасно читает группы WindowsIdentity: некоторые SID могут не переводиться на локальной машине.
-    /// </summary>
-    [SupportedOSPlatform("windows")]
-    private static IEnumerable<string> ReadWindowsIdentityGroups(WindowsIdentity windowsIdentity)
-    {
-        if (windowsIdentity.Groups is null)
-            yield break;
-
-        foreach (var group in windowsIdentity.Groups)
-        {
-            var translated = TryTranslateIdentityReference(group);
-            if (!string.IsNullOrWhiteSpace(translated))
-                yield return translated;
-        }
-    }
-
-    /// <summary>
-    /// Переводит SID-строку в DOMAIN\Name, если Windows может ее разрешить.
-    /// </summary>
-    [SupportedOSPlatform("windows")]
-    private static string? TryTranslateSid(string value)
-    {
-        try
-        {
-            return new SecurityIdentifier(value).Translate(typeof(NTAccount)).Value;
-        }
-        catch (ArgumentException)
-        {
-            return null;
-        }
-        catch (IdentityNotMappedException)
-        {
-            return null;
-        }
-        catch (SystemException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Переводит IdentityReference в читаемое имя Windows-группы.
-    /// </summary>
-    [SupportedOSPlatform("windows")]
-    private static string? TryTranslateIdentityReference(IdentityReference reference)
-    {
-        try
-        {
-            return reference.Translate(typeof(NTAccount)).Value;
-        }
-        catch (IdentityNotMappedException)
-        {
-            return reference.Value;
-        }
-        catch (SystemException)
-        {
-            return reference.Value;
-        }
     }
 
     /// <summary>

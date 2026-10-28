@@ -173,6 +173,29 @@
     flex: 1 1 auto;
 }
 
+/* Кнопка вмещает все назначенные роли без выбора «старшей». */
+::deep .header-auth-button {
+    width: auto;
+    gap: 5px;
+    padding: 0 7px;
+    font-size: 21px;
+}
+
+.header-role-icon {
+    display: inline-flex;
+    align-items: center;
+}
+
+::deep .header-auth-button .rzi {
+    font-size: 21px;
+}
+
+::deep .header-auth-button .rz-button-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
 @media (max-width: 900px) {
     .app-header-bar {
         align-items: flex-start;
