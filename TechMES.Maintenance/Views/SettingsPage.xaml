@@ -493,14 +493,14 @@
                         </views:MaintenanceSection>
                         <views:MaintenanceSection Header="CtApi connection" Margin="0,0,0,12">
                             <StackPanel Margin="12">
-                                
+
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBlock Text="Path" 
+                                    <TextBlock Text="Path"
                                                Style="{StaticResource SettingsFieldLabel}" />
 
                                     <StackPanel Grid.Column="1">
@@ -673,7 +673,7 @@
                                         </StackPanel>
                                     </StackPanel>
                                 </Grid>
-                                
+
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -685,7 +685,7 @@
                                         <TextBlock Text="Имя пользователя CtApi для подключения Runtime Service." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
-                                
+
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -697,7 +697,7 @@
                                         <TextBlock Text="Пароль CtApi для подключения Runtime Service." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
-                                
+
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -709,7 +709,7 @@
                                         <TextBlock Text="Тег, который периодически читается для проверки связи с CtApi." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
-                                
+
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -721,7 +721,7 @@
                                         <TextBlock Text="Интервал в секундах между проверками health-тега Runtime." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
-                                
+
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -733,7 +733,7 @@
                                         <TextBlock Text="Максимальное количество параллельных операций чтения тегов CtApi." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
-                                
+
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
@@ -745,7 +745,7 @@
                                         <TextBlock Text="Главный переключатель, который разрешает Runtime Service записывать значения через CtApi." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
-                                
+
                             </StackPanel>
                         </views:MaintenanceSection>
                         <views:MaintenanceSection Header="WEB Param behavior" Margin="0,0,0,12">
@@ -1135,7 +1135,7 @@
                                 </Grid>
                             </StackPanel>
                         </views:MaintenanceSection>
-                        
+
                         <views:MaintenanceSection Header="WEB Param behavior" Margin="0,0,0,12">
                             <StackPanel Margin="12">
                                 <Grid Margin="0,0,0,10">
@@ -1164,7 +1164,7 @@
                 </TabItem.Header>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="12">
-                        
+
                         <views:MaintenanceSection Header="PostgreSQL" Margin="0,0,0,12">
                             <StackPanel Margin="12">
                                 <Grid Margin="0,0,0,10">
@@ -1245,7 +1245,7 @@
                 </TabItem.Header>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="12">
-                        
+
                         <views:MaintenanceSection Header="WEB login" Margin="0,0,0,12">
                             <StackPanel Margin="12">
                                 <Grid Margin="0,0,0,10">
@@ -1261,7 +1261,7 @@
                                 </Grid>
                             </StackPanel>
                         </views:MaintenanceSection>
-                        
+
                         <views:MaintenanceSection Header="Roles — Allowed groups" Margin="0,0,0,12">
                             <StackPanel Margin="12">
                                 <TextBlock Text="Привяжите Windows-группы к ролям TechMES. Сейчас роли используются для иконок; разрешение на запись настраивается отдельно ниже." Style="{StaticResource SettingsHintText}" Margin="0,0,0,10" />
@@ -1285,7 +1285,7 @@
                                 <TextBlock Text="Формат: DOMAIN\Group или короткое имя группы; разделители — точка с запятой или запятая. При нескольких ролях отображаются все их иконки." Style="{StaticResource SettingsHintText}" />
                             </StackPanel>
                         </views:MaintenanceSection>
-                        
+
                         <views:MaintenanceSection Header="Param write access" Margin="0,0,0,12">
                             <StackPanel Margin="12">
                                 <Grid Margin="0,0,0,10">
@@ -1337,7 +1337,7 @@
                                 </Grid>
                             </StackPanel>
                         </views:MaintenanceSection>
-                        
+
                         <views:MaintenanceSection Header="Write behavior" Margin="0,0,0,12">
                             <StackPanel Margin="12">
                                 <Grid Margin="0,0,0,10">
@@ -1364,7 +1364,7 @@
                                 </Grid>
                             </StackPanel>
                         </views:MaintenanceSection>
-                        
+
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -1691,7 +1691,7 @@
                     </Grid>
                 </Grid>
             </TabItem>
-            
+
         </TabControl>
 
         <!--
@@ -1914,9 +1914,3 @@
         </Border>
     </Grid>
 </views:MaintenancePageControl>
-
-
-
-
-
-
