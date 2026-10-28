@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.WebUtilities;
+using TechMES.Contracts.Security;
 
 namespace TechMES.Web.Components.Recipe;
 
@@ -7,6 +8,12 @@ namespace TechMES.Web.Components.Recipe;
 public partial class Recipes
 {
     [Parameter] public bool EditorMode { get; set; }
+
+    /// <summary>
+    /// Разрешает отображение кнопки редактора для Supervisor, Engineer и Developer.
+    /// Пустой набор ролей или только Operator не разрешают этот переход.
+    /// </summary>
+    private bool CanOpenRecipeEditor => UserRoles.HasRole(AppRoles.Supervisor) || UserRoles.HasRole(AppRoles.Engineer) || UserRoles.HasRole(AppRoles.Developer);
 
     /// <summary>Читает положительный идентификатор из адреса страницы.</summary>
     private int? ReadQueryId(string name)
@@ -34,8 +41,17 @@ public partial class Recipes
         _selectedPageId = page?.Id;
     }
 
-    /// <summary>Открывает редактор с тем же рецептом; незавершённая операция блокирует переход.</summary>
-    private void OpenEditor() => OpenRecipePage("/recipes/editor");
+    /// <summary>
+    /// Открывает редактор с тем же рецептом только при наличии разрешённой роли.
+    /// Существующий OpenRecipePage сохраняет выбор и проверяет незавершённые операции.
+    /// </summary>
+    private void OpenEditor()
+    {
+        if (!CanOpenRecipeEditor)
+            return;
+
+        OpenRecipePage("/recipes/editor");
+    }
 
     /// <summary>Возвращает пользователя к просмотру выбранного рецепта.</summary>
     private void OpenRecipes() => OpenRecipePage("/recipes");

@@ -33,12 +33,16 @@
     else
     {
         <RecipeEditorHeader Title="@RecipeViewTitle">
+
             <Left>
-                <RadzenSelectBar TValue="string" Value="@("view")" ValueChanged="@((string value) => OpenEditor())" Disabled="@(IsBusy || _dialogOpen)" AriaLabel="Open recipe editor">
-                    <Items>
-                        <RadzenSelectBarItem Text=" Edit recipes" Value="@("editor")" Icon="edit_note" />
-                    </Items>
-                </RadzenSelectBar>
+                @if (CanOpenRecipeEditor)
+                {
+                    <RadzenSelectBar TValue="string" Value="@("view")" ValueChanged="@((string value) => OpenEditor())" Disabled="@(IsBusy || _dialogOpen)" AriaLabel="Open recipe editor">
+                        <Items>
+                            <RadzenSelectBarItem Text=" Edit recipes" Value="@("editor")" Icon="edit_note" />
+                        </Items>
+                    </RadzenSelectBar>
+                }
             </Left>
 
             <TitleContent>
@@ -58,6 +62,7 @@
                 <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="@IsBusy" Click="@RefreshAsync" />
                 <RadzenButton Text="Save to DB" Icon="save" IsBusy="@_savingValues" BusyText="Saving..." Disabled="@(!CanSavePlcValues)" Click="@SavePlcValuesToDbAsync" title="Save the displayed PLC values to the selected recipe in the database" />
             </Right>
+
         </RecipeEditorHeader>
     }
 
