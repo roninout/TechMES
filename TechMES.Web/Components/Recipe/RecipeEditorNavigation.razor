@@ -1,11 +1,18 @@
 ﻿@using Microsoft.AspNetCore.WebUtilities
+@using TechMES.Contracts.Security
 @inject NavigationManager Navigation
+@inject CurrentUserRoles UserRoles
 
 <RadzenSelectBar @key="_revision" TValue="string" Value="@View" ValueChanged="@ChangeViewAsync" Disabled="@Disabled" AriaLabel="Recipe editor view">
     <Items>
         <RadzenSelectBarItem Text=" Back" Value="@("back")" Icon="arrow_back" />
-        <RadzenSelectBarItem Text=" Parameters" Value="@("parameters")" Icon="tune" />
-        <RadzenSelectBarItem Text=" Stages" Value="@("stages")" Icon="view_agenda" />
+
+        @if (UserRoles.HasRole(AppRoles.Developer))
+        {
+            <RadzenSelectBarItem Text=" Parameters" Value="@("parameters")" Icon="tune" />
+            <RadzenSelectBarItem Text=" Stages" Value="@("stages")" Icon="view_agenda" />
+        }
+
         <RadzenSelectBarItem Text=" Recipes" Value="@("recipes")" Icon="menu_book" />
     </Items>
 </RadzenSelectBar>
@@ -18,10 +25,25 @@
 
     private int _revision;
 
-    /// <summary>Общая навигация редакторов; черновики защищает NavigationLock страницы.</summary>
+    /// <summary>
+    /// Ожидает общие роли до отображения навигации.
+    /// Повторный запрос не создаётся, если роли уже загружает Header.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await UserRoles.EnsureLoadedAsync();
+    }
+
+    /// <summary>
+    /// Общая навигация редакторов.
+    /// Несохранённые черновики защищает существующий NavigationLock страницы.
+    /// </summary>
     private async Task ChangeViewAsync(string value)
     {
         if (Disabled || value == View) return;
+
+        // Ограничение перехода соответствует отображению кнопок.
+        if ((value is "parameters" or "stages") && !UserRoles.HasRole(AppRoles.Developer)) return;
 
         if (value == "back" && Back.HasDelegate)
         {
@@ -37,7 +59,9 @@
         _revision++;
     }
 
-    /// <summary>Передаёт выбранное семейство между редакторами.</summary>
+    /// <summary>
+    /// Передаёт выбранное семейство между редакторами.
+    /// </summary>
     public static int? ReadFamily(string uri)
     {
         var query = QueryHelpers.ParseQuery(new Uri(uri).Query);

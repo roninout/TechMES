@@ -1,21 +1,32 @@
 using Microsoft.AspNetCore.WebUtilities;
 using TechMES.Contracts.Recipes;
+using TechMES.Contracts.Security;
 
 namespace TechMES.Web.Components.Recipe;
 
-/// <summary>Разделяет базовые и рабочие рецепты только в редакторе.</summary>
+/// <summary>
+/// Разделяет базовые и рабочие рецепты в редакторе.
+/// Базовый режим доступен в интерфейсе только пользователю с ролью Developer.
+/// </summary>
 public partial class Recipes
 {
     private string _recipeScope = "recipes";
     private int? _lastBaseRecipeId, _lastWorkingRecipeId, _lastWorkingPageId;
 
-    private bool IsBaseRecipeMode => EditorMode && _recipeScope == "base";
+    // Проверяем общую роль приложения, а не имя Windows-группы внутри компонента.
+    private bool CanManageRecipeDefinitions => UserRoles.HasRole(AppRoles.Developer);
+    private bool IsBaseRecipeMode => EditorMode && CanManageRecipeDefinitions && _recipeScope == "base";
     private RecipePageDto? CreationPage => SelectedPage ?? _catalog.Pages.FirstOrDefault(page => page.BaseRecipeId == EditorFamilyId);
 
-    /// <summary>Current определяется по всем Unit, а не только по выбранному.</summary>
+    /// <summary>
+    /// Current определяется по всем Unit, а не только по выбранному.
+    /// </summary>
     private bool IsCurrentRecipe(int? recipeId) => recipeId.HasValue && _catalog.Pages.Any(page => page.RecipeId == recipeId.Value);
 
-    /// <summary>Восстанавливает режим и Unit при первом открытии редактора.</summary>
+    /// <summary>
+    /// Восстанавливает режим и Unit при первом открытии редактора.
+    /// Ссылка scope=base не включает базовый режим пользователю без Developer.
+    /// </summary>
     private void RestoreRecipeScope()
     {
         RestoreInitialUnit();
@@ -32,7 +43,8 @@ public partial class Recipes
 
         _lastWorkingPageId = _selectedPageId;
 
-        if (query.TryGetValue("scope", out var scope) ? scope.ToString() == "base" : isBase)
+        // Базовый режим восстанавливаем только при наличии Developer.
+        if (CanManageRecipeDefinitions && (query.TryGetValue("scope", out var scope) ? scope.ToString() == "base" : isBase))
         {
             _recipeScope = "base";
             _lastBaseRecipeId = isBase ? recipeId : familyId ?? SelectedPage?.BaseRecipeId;
@@ -40,10 +52,13 @@ public partial class Recipes
         }
     }
 
-    /// <summary>Меняет режим после подтверждения отказа от несохранённого черновика.</summary>
+    /// <summary>
+    /// Меняет режим после подтверждения отказа от несохранённого черновика.
+    /// Проверка Developer соответствует видимости переключателя.
+    /// </summary>
     private async Task ChangeRecipeScopeAsync(string value)
     {
-        if (!EditorMode || value is not ("base" or "recipes") || value == _recipeScope || IsBusy || _dialogOpen) return;
+        if (!CanManageRecipeDefinitions || !EditorMode || value is not ("base" or "recipes") || value == _recipeScope || IsBusy || _dialogOpen) return;
         if (!await DiscardRecipeAsync()) { _selectorRevision++; return; }
 
         var familyId = EditorFamilyId;
@@ -70,7 +85,10 @@ public partial class Recipes
         });
     }
 
-    /// <summary>В режиме Base recipes показывает только рецепты с соответствующим началом имени.</summary>
+    /// <summary>
+    /// В режиме Base recipes показывает только рецепты с соответствующим началом имени.
+    /// В рабочем режиме сохраняет существующую фильтрацию по Unit и семейству.
+    /// </summary>
     private void SelectAvailableRecipes(int? preferredRecipeId)
     {
         var baseIds = _catalog.Pages.Select(page => page.BaseRecipeId).ToHashSet();
@@ -92,5 +110,4 @@ public partial class Recipes
         _selectedRecipeId = preferredRecipeId.HasValue && _availableRecipes.Any(recipe => recipe.Id == preferredRecipeId) ? preferredRecipeId
             : page is not null && _availableRecipes.Any(recipe => recipe.Id == page.RecipeId) ? page.RecipeId : _availableRecipes.FirstOrDefault()?.Id;
     }
-
 }

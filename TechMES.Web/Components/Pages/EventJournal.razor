@@ -62,16 +62,15 @@
     {
         <div class="event-journal-timeline-layout @(_equipmentPrefixes.Count > 1 ? "" : "event-journal-timeline-layout-full")">
             <div class="event-journal-timeline-scroll" aria-label="Latest operation actions">
+
                 <RadzenTimeline Orientation="Orientation.Horizontal" LinePosition="LinePosition.Start" AlignItems="AlignItems.Center" class="event-journal-timeline">
                     <Items>
                         @foreach (var action in _timelineItems)
                         {
                             var isSelected = IsTimelineItemSelected(action);
-                            GetOperationRoleDisplay(action.Role, out var roleIcon, out var roleTitle, out var isKnownRole);
+                            GetOperationRoleDisplay(action.Role, out _, out var roleTitle, out var isKnownRole);
 
-                            @* Круг содержит ту же иконку роли, что и первая колонка таблицы. *@
                             <RadzenTimelineItem @key="action" PointVariant="Variant.Outlined" PointStyle="PointStyle.Info" PointShadow="0" PointSize="@(isSelected ? PointSize.Large : PointSize.Medium)" class="@(isSelected ? "event-journal-timeline-item is-selected" : "event-journal-timeline-item")" @onclick="() => OnTimelineItemClickAsync(action)">
-                                
                                 <PointContent>
                                     <span class="@(isKnownRole ? "event-journal-timeline-role" : "event-journal-timeline-role is-unknown")" role="img" title="@roleTitle" aria-label="@roleTitle">
                                         <RoleIcon Role="@action.Role" />
@@ -82,11 +81,11 @@
                                     <span class="event-journal-timeline-user" title="@($"{action.User} — {action.Date:dd.MM.yyyy HH:mm:ss}")">@action.User</span>
                                     <span class="event-journal-timeline-equipment" title="@action.Equipment">@action.Equipment</span>
                                 </ChildContent>
-
                             </RadzenTimelineItem>
                         }
                     </Items>
                 </RadzenTimeline>
+
             </div>
         </div>
     }
@@ -249,7 +248,9 @@
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Client" Title="Client" Width="190px" Visible="@_showClientColumns" />
+
                         <RadzenDataGridColumn TItem="OperationActionRow" Property="Address" Title="Address" Width="180px" Visible="@_showClientColumns" />
+
                     </Columns>
 
                 </RadzenDataGrid>
@@ -267,6 +268,7 @@
                     </LoadingTemplate>
 
                     <Columns>
+
                         <RadzenDataGridColumn TItem="EventJournalDto" Property="Date" Title="Date" Width="180px" SortOrder="SortOrder.Descending" FormatString="{0:dd.MM.yyyy HH:mm:ss}">
                             <Template Context="entry">
                                 @(entry.Date?.ToString("dd.MM.yyyy HH:mm:ss") ?? "")
@@ -281,8 +283,11 @@
 
                         @* Source отображается в Archiving, Client address и User — в System. *@
                         <RadzenDataGridColumn TItem="EventJournalDto" Property="Source" Title="Source" Width="320px" Visible="@(_selectedCategory == ArchivingCategory)" />
+
                         <RadzenDataGridColumn TItem="EventJournalDto" Property="ClientAddressDesc" Title="Client address" Width="180px" Visible="@(_selectedCategory == SystemCategory)" />
+
                         <RadzenDataGridColumn TItem="EventJournalDto" Property="User" Title="User" Width="160px" Visible="@(_selectedCategory == SystemCategory)" />
+
                     </Columns>
                 </RadzenDataGrid>
             }

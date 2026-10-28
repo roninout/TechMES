@@ -12,6 +12,7 @@
 @inject NotificationService NotificationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
+@inject CurrentUserRoles UserRoles
 
 <PageTitle>@(EditorMode ? "Recipe editor" : RecipeViewTitle)</PageTitle>
 <NavigationLock ConfirmExternalNavigation="@HasRecipeChanges" OnBeforeInternalNavigation="@BeforeRecipeNavigationAsync" />
@@ -299,12 +300,15 @@
                 @if (EditorMode)
                 {
                     <div class="recipes-drop-end @(_dropAtEnd ? "recipes-drop-end-active" : "")" @ondragenter="@MarkStageDropEnd">
-                        <RadzenSelectBar @key="_selectorRevision" TValue="string" Value="@_recipeScope" ValueChanged="@ChangeRecipeScopeAsync" Disabled="@(IsBusy || _dialogOpen)" AriaLabel="Recipe type">
-                            <Items>
-                                <RadzenSelectBarItem Text=" Base recipes" Value="@("base")" Icon="menu_book" />
-                                <RadzenSelectBarItem Text=" Recipes" Value="@("recipes")" Icon="menu_book" />
-                            </Items>
-                        </RadzenSelectBar>
+                        @if (CanManageRecipeDefinitions)
+                        {
+                            <RadzenSelectBar @key="_selectorRevision" TValue="string" Value="@_recipeScope" ValueChanged="@ChangeRecipeScopeAsync" Disabled="@(IsBusy || _dialogOpen)" AriaLabel="Recipe type">
+                                <Items>
+                                    <RadzenSelectBarItem Text=" Base recipes" Value="@("base")" Icon="menu_book" />
+                                    <RadzenSelectBarItem Text=" Recipes" Value="@("recipes")" Icon="menu_book" />
+                                </Items>
+                            </RadzenSelectBar>
+                        }
 
                         <div class="recipes-tag-switch">
                             <RadzenLabel Text="PLC tag prefix" Component="recipe-show-stage-tags" />
@@ -366,16 +370,22 @@
     private IReadOnlyList<RecipeStageDto> Stages => _snapshot?.Stages ?? [];
     private IReadOnlyList<RecipeColumnDto> Columns => _snapshot?.Columns ?? [];
 
-    /// <summary>Определяет пользователя и загружает первый рецепт.</summary>
+    /// <summary>
+    /// Определяет пользователя, загружает роли и открывает первый рецепт.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         // В просмотре сразу читаем PLC, в редакторе работаем с сохранёнными значениями.
         _plcEnabled = !EditorMode;
 
+        // Роли должны быть известны до восстановления базового или рабочего режима редактора.
+        await UserRoles.EnsureLoadedAsync();
+
         var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
 
         if (_disposed) return;
 
+        // Существующие правила редактирования рабочих рецептов сохраняются.
         _canWritePlc = state.User.Identity?.IsAuthenticated == true;
         _canEdit = EditorMode && _canWritePlc;
 
