@@ -15,64 +15,7 @@
             </div>
 
             <nav class="top-nav" aria-label="Main navigation">
-                @* Верхний пункт Equipment теперь ведет в общий модуль оборудования.
-                   Переключение Info/Param вынесено в локальный SelectBar на странице Equipment,
-                   поэтому отдельная кнопка Param в глобальном меню больше не нужна. *@
-                <NavLink class="top-nav-link"
-                         href="@SelectedEquipmentState.EquipmentRoute"
-                         Match="NavLinkMatch.Prefix">
-                    <RadzenIcon Icon="precision_manufacturing" />
-                    <span>Equipment</span>
-                </NavLink>
-
-@*                 <NavLink class="top-nav-link" href="/operation-actions">
-                    <RadzenIcon Icon="fact_check" />
-                    <span>Operation actions</span>
-                </NavLink>
-
-                <NavLink class="top-nav-link" href="/alarm-history">
-                    <RadzenIcon Icon="history" />
-                    <span>Alarm history</span>
-                </NavLink> *@
-
-                <NavLink class="top-nav-link" href="/alarms">
-                    <RadzenIcon Icon="notification_important" />
-                    <span>Alarm</span>
-                </NavLink>
-
-                <NavLink class="top-nav-link" href="/events">
-                    <RadzenIcon Icon="event_note" />
-                    <span>Events</span>
-                </NavLink>
-
-                <NavLink class="top-nav-link" href="/soe">
-                    <RadzenIcon Icon="timeline" />
-                    <span>SOE</span>
-                </NavLink>
-
-                <NavLink class="top-nav-link" href="/calculations">
-                    <RadzenIcon Icon="calculate" />
-                    <span>Calculations</span>
-                </NavLink>
-
-                <NavLink class="top-nav-link" href="/recipes">
-                    <RadzenIcon Icon="menu_book" />
-                    <span>Recipes</span>
-                </NavLink>
-
-                <NavLink class="top-nav-link" href="/messages">
-                    <RadzenIcon Icon="mail" />
-                    <span>Messages</span>
-                </NavLink>
-
-                <button type="button"
-                        class="top-nav-link top-nav-button"
-                        title="Scan QR"
-                        aria-label="Scan QR"
-                        @onclick="OpenQrScannerAsync">
-                    <RadzenIcon Icon="qr_code_scanner" />
-                    <span>Scan QR</span>
-                </button>
+                <MainMenu EquipmentRoute="@SelectedEquipmentState.EquipmentRoute" OnScan="@OpenQrScannerAsync" />
             </nav>
 
             <div class="header-spacer"></div>

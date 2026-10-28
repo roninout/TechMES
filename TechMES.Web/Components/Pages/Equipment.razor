@@ -8,7 +8,7 @@
 @inject EquipmentFooterState EquipmentFooterState
 @inject QrScannerState QrScannerState
 @inject FavoriteOwnerContext FavoriteOwnerContext
-@inject NavigationManager NavigationManager
+@inject MenuNavigation NavigationManager
 @inject UserStateContext UserState
 @implements IDisposable
 
@@ -449,12 +449,13 @@
     }
 
     /// <summary>
-    /// Запоминает последний Info/Param route только когда пользователь действительно находится
-    /// внутри Equipment-модуля. При уходе в журналы режим не перезаписывается.
+    /// Запоминает последний режим Info/Param только внутри Equipment.
+    /// Профиль меню и остальные query-параметры не являются частью маршрута.
     /// </summary>
     private void RememberEquipmentMode(string absoluteUri)
     {
-        var relativePath = NavigationManager.ToBaseRelativePath(absoluteUri);
+        var relativePath = NavigationManager.ToBaseRelativePath(absoluteUri).Split('?', '#')[0];
+
         if (!IsEquipmentRoute(relativePath))
             return;
 

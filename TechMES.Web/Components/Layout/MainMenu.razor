@@ -1,0 +1,52 @@
+﻿@inject MenuNavigation Menu
+@implements IDisposable
+
+@foreach (var item in Menu.Items)
+{
+    if (item.Id == "scanqr")
+    {
+        <button @key="item.Id" type="button" class="top-nav-link top-nav-button" title="@item.Title" aria-label="@item.Title" @onclick="OnScan">
+            <RadzenIcon Icon="@item.Icon" />
+            <span>@item.Title</span>
+        </button>
+    }
+    else
+    {
+        // Equipment сохраняет существующий выбор последнего режима Info/Param.
+        var path = item.Id == "equipment" ? EquipmentRoute : item.Path;
+
+        <NavLink @key="item.Id" class="top-nav-link" href="@Menu.GetUri(path)" Match="NavLinkMatch.Prefix">
+            <RadzenIcon Icon="@item.Icon" />
+            <span>@item.Title</span>
+        </NavLink>
+    }
+}
+
+@code {
+    [Parameter] public string EquipmentRoute { get; set; } = "/equipment";
+    [Parameter] public EventCallback OnScan { get; set; }
+
+    /// <summary>
+    /// Обновляет состав меню и при изменении menu внутри открытой вкладки.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        Menu.LocationChanged += OnLocationChanged;
+    }
+
+    /// <summary>
+    /// Перерисовывает меню после изменения адреса.
+    /// </summary>
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Освобождает подписку при закрытии компонента.
+    /// </summary>
+    public void Dispose()
+    {
+        Menu.LocationChanged -= OnLocationChanged;
+    }
+}

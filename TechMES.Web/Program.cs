@@ -67,10 +67,15 @@ builder.Services.AddScoped<IHostEnvironmentAuthenticationStateProvider>(sp =>
     sp.GetRequiredService<OptionalWindowsAuthenticationStateProvider>());
 builder.Services.AddSingleton<WindowsCredentialValidator>();
 
-// Настройки адреса Runtime Service берём из appsettings.json.
+// Настройки адреса Runtime и существующих WEB-модулей.
 builder.Services.Configure<RuntimeServiceOptions>(builder.Configuration.GetSection("RuntimeService"));
 builder.Services.Configure<ParamUiOptions>(builder.Configuration.GetSection("Param"));
 builder.Services.Configure<MessagesUiOptions>(builder.Configuration.GetSection("Messages"));
+
+// Профили главного меню читаются из WEB appsettings.
+// Выбранный профиль определяется URL текущей вкладки, отдельно от пользователя и ролей.
+builder.Services.Configure<MenuProfileOptions>(builder.Configuration.GetSection(MenuProfileOptions.SectionName));
+builder.Services.AddScoped<MenuNavigation>();
 
 // Именованный HttpClient для Runtime Service.
 // WEB не знает, где физически БД или CtApi — он вызывает Runtime Service по HTTP.

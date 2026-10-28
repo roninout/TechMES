@@ -1,6 +1,6 @@
 ﻿@using Microsoft.AspNetCore.WebUtilities
 @using TechMES.Contracts.Security
-@inject NavigationManager Navigation
+@inject MenuNavigation Navigation
 @inject CurrentUserRoles UserRoles
 
 <RadzenSelectBar @key="_revision" TValue="string" Value="@View" ValueChanged="@ChangeViewAsync" Disabled="@Disabled" AriaLabel="Recipe editor view">
