@@ -1199,10 +1199,12 @@
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="ODBC connection string" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <TextBlock Text="ODBC Primary connection string" Style="{StaticResource SettingsFieldLabel}" />
+
                                     <StackPanel Grid.Column="1">
                                         <ui:TextBox Text="{Binding TypedAppSettings.RuntimeAlarmOdbcConnectionString, UpdateSourceTrigger=PropertyChanged}" Width="682" Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="Строка подключения к CiAdvancedAlarm для списка активных аварий." Style="{StaticResource SettingsHintText}" />
+                                        <TextBlock Text="Основное подключение для аварий, истории и журнала событий." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
 
@@ -1211,7 +1213,24 @@
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="ODBC Secondary connection string" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.RuntimeAlarmOdbcConnectionStringSecondary, UpdateSourceTrigger=PropertyChanged}" Width="682" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Резервное подключение. Пустая строка отключает Secondary; после восстановления Primary выбирается автоматически." TextWrapping="Wrap" Style="{StaticResource SettingsHintText}" />
+                                        <TextBlock Text="Проверка ODBC использует существующий CtApi Health Period." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
                                     <TextBlock Text="Max request timeout, s" Style="{StaticResource SettingsFieldLabel}" />
+
                                     <StackPanel Grid.Column="1">
                                         <ui:TextBox Text="{Binding TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
                                         <TextBlock Text="Максимальное время выполнения одного ODBC-запроса." Style="{StaticResource SettingsHintText}" />
@@ -1223,7 +1242,9 @@
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
+
                                     <TextBlock Text="Request timeout, s" Style="{StaticResource SettingsFieldLabel}" />
+
                                     <StackPanel Grid.Column="1">
                                         <ui:TextBox Text="{Binding TypedAppSettings.RuntimeAlarmOdbcRefreshPeriodSeconds, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
                                         <TextBlock Text="Интервал между автоматическими чтениями активных аварий." Style="{StaticResource SettingsHintText}" />

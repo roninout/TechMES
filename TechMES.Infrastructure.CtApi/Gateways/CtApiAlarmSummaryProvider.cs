@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using TechMES.Application.Alarms;
 using TechMES.Contracts.Alarms;
+using TechMES.Infrastructure.CtApi.Odbc;
 
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
@@ -33,21 +34,22 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
     private readonly object _gate = new();
     private readonly Dictionary<RangeKey, RangeState> _ranges = [];
     private readonly ILogger<CtApiAlarmSummaryProvider> _logger;
-    private readonly string? _connectionString;
+    private readonly AlarmOdbcFailover _odbc;
     private readonly int _requestTimeoutSeconds;
     private readonly int _refreshPeriodSeconds;
 
     /// <summary>
-    /// Использует настройки ODBC, редактируемые в Maintenance.
-    /// История и активные аварии получают интервал из одного параметра Runtime.
+    /// История аварий использует тот же выбор ODBC, что активные аварии и журнал событий.
     /// </summary>
-    public CtApiAlarmSummaryProvider(IConfiguration configuration, ILogger<CtApiAlarmSummaryProvider> logger)
+    public CtApiAlarmSummaryProvider(IConfiguration configuration, AlarmOdbcFailover odbc, ILogger<CtApiAlarmSummaryProvider> logger)
     {
         _logger = logger;
-        _connectionString = configuration["CtApi:AlarmOdbcConnectionString"];
+        _odbc = odbc;
+
         _requestTimeoutSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRequestTimeoutSeconds"], out var timeoutSeconds) && timeoutSeconds > 0
             ? timeoutSeconds
             : 120;
+
         _refreshPeriodSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRefreshPeriodSeconds"], out var refreshSeconds) && refreshSeconds > 0
             ? refreshSeconds
             : 30;
@@ -172,91 +174,82 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
     }
 
     /// <summary>
-    /// Читает определения приоритетов и историю одним подключением ODBC.
-    /// Дни диапазона включительны; верхняя граница SQL — начало дня после To.
-    /// По принятому сейчас правилу TIMESTAMP в ODBC содержит время UTC.
+    /// Читает справочник приоритетов и историю на одном ODBC-сервере.
+    /// При failover весь сценарий начинается заново, без смешивания результатов.
     /// </summary>
     private async Task<(List<AlarmSummaryDto> Items, long DurationMs)> ReadRangeAsync(RangeKey key, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_connectionString))
-            throw new InvalidOperationException("CtApi:AlarmOdbcConnectionString is not configured.");
-
-        var localStart = DateTime.SpecifyKind(key.From.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
-        var localEnd = DateTime.SpecifyKind(key.To.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
-        var utcStart = TimeZoneInfo.ConvertTimeToUtc(localStart, TimeZoneInfo.Local);
-        var utcEnd = TimeZoneInfo.ConvertTimeToUtc(localEnd, TimeZoneInfo.Local);
         var watch = Stopwatch.StartNew();
 
-        using var connection = new OdbcConnection(_connectionString);
-        await connection.OpenAsync(ct);
-
-        // Исторические записи могут относиться к уже неактивным авариям,
-        // поэтому справочник приоритетов читаем без фильтра по состоянию.
-        var priorities = await ReadPrioritiesAsync(connection, ct);
-        var items = new List<AlarmSummaryDto>();
-
-        using var command = connection.CreateCommand();
-        command.CommandText = """
-    SELECT RecordId, Source, CustomStringField2, StateDesc, SeverityDesc, SeverityValue,
-           ActiveTime, InactiveTime, CustomNumericField13, AckTime, AckUserName, ClientAddressDesc, Id
-    FROM CDBAlarmSummary
-    WHERE ActiveTime >= ? AND ActiveTime < ?
-    """;
-        command.CommandTimeout = _requestTimeoutSeconds;
-        command.Parameters.Add("fromUtc", OdbcType.DateTime).Value = utcStart;
-        command.Parameters.Add("toUtc", OdbcType.DateTime).Value = utcEnd;
-
-        using var reader = await command.ExecuteReaderAsync(ct);
-
-        while (await reader.ReadAsync(ct))
+        return await _odbc.ReadAsync(async (connection, ct) =>
         {
-            ct.ThrowIfCancellationRequested();
+            var localStart = DateTime.SpecifyKind(key.From.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
+            var localEnd = DateTime.SpecifyKind(key.To.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
+            var utcStart = TimeZoneInfo.ConvertTimeToUtc(localStart, TimeZoneInfo.Local);
+            var utcEnd = TimeZoneInfo.ConvertTimeToUtc(localEnd, TimeZoneInfo.Local);
 
-            var tag = ReadText(reader, 1).Trim();
-            var severityValue = reader.IsDBNull(5)
-                ? (int?)null
-                : Convert.ToInt32(reader.GetValue(5), CultureInfo.InvariantCulture);
-            var duration = reader.IsDBNull(8)
-                ? (long?)null
-                : Convert.ToInt64(reader.GetValue(8), CultureInfo.InvariantCulture);
-            var id = reader.IsDBNull(12)
-                ? (int?)null
-                : Convert.ToInt32(reader.GetValue(12), CultureInfo.InvariantCulture);
+            // Исторические записи могут относиться к уже неактивным авариям.
+            var priorities = await ReadPrioritiesAsync(connection, ct);
+            var items = new List<AlarmSummaryDto>();
 
-            items.Add(new AlarmSummaryDto
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+        SELECT RecordId, Source, CustomStringField2, StateDesc, SeverityDesc, SeverityValue,
+               ActiveTime, InactiveTime, CustomNumericField13, AckTime, AckUserName, ClientAddressDesc, Id
+        FROM CDBAlarmSummary
+        WHERE ActiveTime >= ? AND ActiveTime < ?
+        """;
+            command.CommandTimeout = _requestTimeoutSeconds;
+            command.Parameters.Add(new OdbcParameter("fromUtc", OdbcType.DateTime) { Value = utcStart });
+            command.Parameters.Add(new OdbcParameter("toUtc", OdbcType.DateTime) { Value = utcEnd });
+
+            using var reader = await command.ExecuteReaderAsync(ct);
+
+            while (await reader.ReadAsync(ct))
             {
-                RecordId = ReadText(reader, 0),
-                Id = id,
-                Tag = tag,
-                Description = CleanDescription(ReadText(reader, 2)),
-                StateDesc = ReadText(reader, 3),
-                Severity = ReadText(reader, 4),
-                SeverityValue = severityValue,
-                Priority = priorities.TryGetValue(tag, out var priority) ? priority : null,
-                ActiveAt = ReadLocalTimestamp(reader, 6),
-                InactiveAt = ReadLocalTimestamp(reader, 7),
-                Duration = duration,
-                AckAt = ReadLocalTimestamp(reader, 9),
-                AckUserName = ReadText(reader, 10).Trim(),
-                ClientAddressDesc = ReadText(reader, 11).Trim()
-            });
-        }
+                ct.ThrowIfCancellationRequested();
 
-        items.Sort((left, right) => Nullable.Compare(right.ActiveAt, left.ActiveAt));
-        return (items, watch.ElapsedMilliseconds);
+                var tag = ReadText(reader, 1).Trim();
+                var severityValue = reader.IsDBNull(5) ? (int?)null : Convert.ToInt32(reader.GetValue(5), CultureInfo.InvariantCulture);
+                var duration = reader.IsDBNull(8) ? (long?)null : Convert.ToInt64(reader.GetValue(8), CultureInfo.InvariantCulture);
+                var id = reader.IsDBNull(12) ? (int?)null : Convert.ToInt32(reader.GetValue(12), CultureInfo.InvariantCulture);
+
+                items.Add(new AlarmSummaryDto
+                {
+                    RecordId = ReadText(reader, 0),
+                    Id = id,
+                    Tag = tag,
+                    Description = CleanDescription(ReadText(reader, 2)),
+                    StateDesc = ReadText(reader, 3),
+                    Severity = ReadText(reader, 4),
+                    SeverityValue = severityValue,
+                    Priority = priorities.TryGetValue(tag, out var priority) ? priority : null,
+                    ActiveAt = ReadLocalTimestamp(reader, 6),
+                    InactiveAt = ReadLocalTimestamp(reader, 7),
+                    Duration = duration,
+                    AckAt = ReadLocalTimestamp(reader, 9),
+                    AckUserName = ReadText(reader, 10).Trim(),
+                    ClientAddressDesc = ReadText(reader, 11).Trim()
+                });
+            }
+
+            items.Sort((left, right) => Nullable.Compare(right.ActiveAt, left.ActiveAt));
+
+            return (items, watch.ElapsedMilliseconds);
+        }, ct);
     }
 
     /// <summary>
-    /// Создаёт словарь FullName → Priority. Отсутствующий тег или пустое
-    /// значение приоритета позднее отображаются как Unknown.
+    /// Создаёт словарь FullName → Priority через уже открытое выбранное подключение.
     /// </summary>
-    private async Task<Dictionary<string, int?>> ReadPrioritiesAsync(OdbcConnection connection, CancellationToken ct)
+    private async Task<Dictionary<string, int?>> ReadPrioritiesAsync(DbConnection connection, CancellationToken ct)
     {
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT FullName, Priority FROM CiAdvancedAlarm";
         command.CommandTimeout = _requestTimeoutSeconds;
 
         using var reader = await command.ExecuteReaderAsync(ct);
+
         var priorities = new Dictionary<string, int?>(StringComparer.OrdinalIgnoreCase);
 
         while (await reader.ReadAsync(ct))
@@ -269,14 +262,13 @@ public sealed class CtApiAlarmSummaryProvider : IAlarmSummaryProvider
                 continue;
 
             var priorityText = ReadText(reader, 1);
-            var priority = int.TryParse(priorityText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-                ? parsed
-                : (int?)null;
+            var priority = int.TryParse(priorityText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : (int?)null;
 
             priorities[tag] = priority;
         }
 
         _logger.LogInformation("CiAdvancedAlarm priorities loaded. Tags={Count}", priorities.Count);
+
         return priorities;
     }
 

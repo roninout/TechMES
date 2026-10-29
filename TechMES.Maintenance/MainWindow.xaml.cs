@@ -1821,7 +1821,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// <summary>
     /// Загружает typed-представление Runtime, Calc.Service и WEB appsettings.
     /// Если сервис опубликован, читается рабочий published appsettings.
-    /// Привязки ролей читаются только из Runtime.
     /// </summary>
     private void LoadTypedAppSettings()
     {
@@ -1857,8 +1856,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             TypedAppSettings.RuntimeDatabaseConnectionString = GetString(runtime, "Database", "ConnectionString");
             TypedAppSettings.RuntimeEventDatabaseConnectionString = GetString(runtime, "EventDatabase", "ConnectionString");
 
-            // Настройки ODBC принадлежат Runtime.
+            // Прежняя строка остаётся Primary. Отсутствующий Secondary загружается как пустая строка.
             TypedAppSettings.RuntimeAlarmOdbcConnectionString = GetString(runtime, "CtApi", "AlarmOdbcConnectionString");
+            TypedAppSettings.RuntimeAlarmOdbcConnectionStringSecondary = GetString(runtime, "CtApi", "AlarmOdbcConnectionStringSecondary");
             TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds = GetInt(runtime, 120, "CtApi", "AlarmOdbcRequestTimeoutSeconds");
             TypedAppSettings.RuntimeAlarmOdbcRefreshPeriodSeconds = GetInt(runtime, 30, "CtApi", "AlarmOdbcRefreshPeriodSeconds");
 
@@ -2019,7 +2019,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
     /// <summary>
     /// Переносит typed Runtime-поля в JSON appsettings.
-    /// Привязки ролей сохраняются в отдельный раздел и не изменяют ParamWrites.Authorization.
+    /// Сохраняет оба ODBC-подключения и существующие интервалы.
     /// </summary>
     private void ApplyRuntimeTypedSettings(JsonObject root)
     {
@@ -2049,8 +2049,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         SetValue(root, TypedAppSettings.RuntimeDatabaseConnectionString, "Database", "ConnectionString");
         SetValue(root, TypedAppSettings.RuntimeEventDatabaseConnectionString, "EventDatabase", "ConnectionString");
 
-        // Первый интервал ограничивает SQL-запрос, второй задаёт период автоматического чтения.
+        // Проверка связи использует CtApi Health Period.
+        // Эти два параметра по-прежнему управляют SQL-запросом и обновлением данных.
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcConnectionString, "CtApi", "AlarmOdbcConnectionString");
+        SetValue(root, TypedAppSettings.RuntimeAlarmOdbcConnectionStringSecondary, "CtApi", "AlarmOdbcConnectionStringSecondary");
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds, "CtApi", "AlarmOdbcRequestTimeoutSeconds");
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcRefreshPeriodSeconds, "CtApi", "AlarmOdbcRefreshPeriodSeconds");
 
@@ -2063,7 +2065,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         SetValue(root, TypedAppSettings.ParamWritesAllowedUsers, "ParamWrites", "Authorization", "AllowedUsers");
         SetValue(root, TypedAppSettings.ParamWritesAllowedGroups, "ParamWrites", "Authorization", "AllowedGroups");
 
-        // Сохраняем четыре привязки ролей через существующий механизм typed-настроек.
         foreach (var role in TypedAppSettings.RoleGroups)
             SetValue(root, role.AllowedGroups, RoleGroupOptions.SectionName, "AllowedGroups", role.Id);
 

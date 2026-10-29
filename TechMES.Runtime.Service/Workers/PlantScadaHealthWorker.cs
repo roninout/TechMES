@@ -1,77 +1,69 @@
 ﻿using Microsoft.Extensions.Options;
 using TechMES.Application.Scada;
+using TechMES.Infrastructure.CtApi.Odbc;
 using TechMES.Infrastructure.CtApi.Settings;
 
 namespace TechMES.Runtime.Service.Workers;
 
 /// <summary>
-/// Фоновый health worker для Plant SCADA adapter-а.
-///
-/// Он периодически вызывает GetHealthAsync().
-/// Позже, когда добавим HealthCheckTag, можно будет дополнительно делать ReadTagAsync().
+/// Один Health Period для независимых проверок CtApi и ODBC.
 /// </summary>
-public sealed class PlantScadaHealthWorker : BackgroundService
+public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
 {
-    /// <summary>
-    /// Абстракция доступа к Plant SCADA/CtApi, через которую worker проверяет связь.
-    /// </summary>
-    private readonly IPlantScadaGateway _plantScadaGateway;
-
-    /// <summary>
-    /// Настройки CtApi, включая provider и период фоновой проверки.
-    /// </summary>
-    private readonly IOptions<CtApiOptions> _options;
-
-    /// <summary>
-    /// Логгер фонового health-check процесса.
-    /// </summary>
-    private readonly ILogger<PlantScadaHealthWorker> _logger;
-
-    /// <summary>
-    /// Создает worker, который периодически проверяет доступность Plant SCADA adapter-а.
-    /// </summary>
-    public PlantScadaHealthWorker(IPlantScadaGateway plantScadaGateway, IOptions<CtApiOptions> options, ILogger<PlantScadaHealthWorker> logger)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _plantScadaGateway = plantScadaGateway;
-        _options = options;
-        _logger = logger;
+        var seconds = Math.Max(5, options.Value.HealthCheckPeriodSeconds);
+        var odbc = odbcConnections.SingleOrDefault();
+        var scadaCycle = Task.CompletedTask;
+
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(seconds));
+
+        logger.LogInformation("PlantScadaHealthWorker запущен. Provider={Provider}, Period={Seconds} sec.", options.Value.Provider, seconds);
+
+        try
+        {
+            // Первую ODBC-проверку запускаем сразу. Дальше обе подсистемы используют один timer.
+            do
+            {
+                odbc?.RefreshHealth();
+
+                // Недоступный CtApi не останавливает ODBC-проверки.
+                // Второй CtApi-цикл поверх текущего не запускаем.
+                if (scadaCycle.IsCompleted)
+                    scadaCycle = CheckScadaAsync(stoppingToken);
+            }
+            while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            await scadaCycle;
+        }
     }
 
     /// <summary>
-    /// Основной цикл фоновой проверки связи с SCADA.
-    /// Проверка не читает производственные теги и не мешает Param/Info запросам.
+    /// Выполняет один существующий CtApi health-цикл и сохраняет его диагностику.
     /// </summary>
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    private async Task CheckScadaAsync(CancellationToken ct)
     {
-        var options = _options.Value;
-        var seconds = Math.Max(5, options.HealthCheckPeriodSeconds);
-        var period = TimeSpan.FromSeconds(seconds);
-
-        _logger.LogInformation("PlantScadaHealthWorker запущен. Provider={Provider}, Period={Seconds} sec.", options.Provider, seconds);
-
-        using var timer = new PeriodicTimer(period);
-
-        while (await timer.WaitForNextTickAsync(stoppingToken))
+        try
         {
-            try
-            {
-                // Проверка серверов, выбор активного подключения и запись контрольных тегов.
-                if (_plantScadaGateway is IPlantScadaHealthMonitor monitor)
-                    await monitor.RefreshHealthAsync(stoppingToken);
+            if (gateway is IPlantScadaHealthMonitor monitor)
+                await monitor.RefreshHealthAsync(ct);
 
-                var health = await _plantScadaGateway.GetHealthAsync(stoppingToken);
+            var health = await gateway.GetHealthAsync(ct);
 
-                if (!health.IsConnected)
-                    _logger.LogWarning("Plant SCADA status: {Status}. {Message}", health.Status, health.Message);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Ошибка PlantScadaHealthWorker.");
-            }
+            if (!health.IsConnected)
+                logger.LogWarning("Plant SCADA status: {Status}. {Message}", health.Status, health.Message);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Ошибка PlantScadaHealthWorker.");
         }
     }
 }

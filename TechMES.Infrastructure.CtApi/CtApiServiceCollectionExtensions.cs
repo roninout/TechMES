@@ -9,6 +9,7 @@ using TechMES.Application.Events;
 using TechMES.Infrastructure.CtApi.Gateways;
 using TechMES.Infrastructure.CtApi.Native;
 using TechMES.Infrastructure.CtApi.Settings;
+using TechMES.Infrastructure.CtApi.Odbc;
 
 namespace TechMES.Infrastructure.CtApi;
 
@@ -45,11 +46,15 @@ public static class CtApiServiceCollectionExtensions
         }
         else if (string.Equals(provider, "CtApi", StringComparison.OrdinalIgnoreCase))
         {
+            // Один выбор Primary/Secondary для всех ODBC-провайдеров.
+            services.AddSingleton<IAlarmOdbcConnectionFactory, AlarmOdbcConnectionFactory>();
+            services.AddSingleton<AlarmOdbcFailover>();
+
             services.AddSingleton<IActiveAlarmProvider, CtApiActiveAlarmProvider>();
             services.AddSingleton<IAlarmSummaryProvider, CtApiAlarmSummaryProvider>();
             services.AddSingleton<IEventJournalProvider, CtApiEventJournalProvider>();
 
-            // Все модули используют один failover client; native gate сериализует вызовы DLL.
+            // Все CtApi-модули используют существующий failover client.
             services.AddSingleton<ICtApiNativeClient>(serviceProvider =>
             {
                 var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<CtApiOptions>>().Value;
@@ -83,4 +88,5 @@ public static class CtApiServiceCollectionExtensions
 
         return services;
     }
+
 }

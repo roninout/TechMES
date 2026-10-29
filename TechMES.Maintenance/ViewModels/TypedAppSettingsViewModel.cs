@@ -30,6 +30,7 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     private string _runtimeDatabaseConnectionString = "";
     private string _runtimeEventDatabaseConnectionString = "";
     private string _runtimeAlarmOdbcConnectionString = "";
+    private string _runtimeAlarmOdbcConnectionStringSecondary = "";
     private int _runtimeAlarmOdbcRequestTimeoutSeconds = 120;
     private int _runtimeAlarmOdbcRefreshPeriodSeconds = 30;
     private bool _paramWritesEnabled;
@@ -275,6 +276,16 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     {
         get => _runtimeAlarmOdbcConnectionString;
         set => SetProperty(ref _runtimeAlarmOdbcConnectionString, value);
+    }
+
+    /// <summary>
+    /// Резервное ODBC-подключение.
+    /// Пустая строка отключает Secondary.
+    /// </summary>
+    public string RuntimeAlarmOdbcConnectionStringSecondary
+    {
+        get => _runtimeAlarmOdbcConnectionStringSecondary;
+        set => SetProperty(ref _runtimeAlarmOdbcConnectionStringSecondary, value);
     }
 
     /// <summary>

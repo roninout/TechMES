@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using TechMES.Application.Alarms;
 using TechMES.Contracts.Alarms;
+using TechMES.Infrastructure.CtApi.Odbc;
 
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
@@ -16,7 +17,7 @@ namespace TechMES.Infrastructure.CtApi.Gateways;
 public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
 {
     private readonly ILogger<CtApiActiveAlarmProvider> _logger;
-    private readonly string? _alarmOdbcConnectionString;
+    private readonly AlarmOdbcFailover _odbc;
     private readonly object _stateLock = new();
     private readonly int _alarmOdbcRequestTimeoutSeconds;
     private readonly int _alarmOdbcRefreshPeriodSeconds;
@@ -29,13 +30,12 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     private long _version;
 
     /// <summary>
-    /// Читает ограничение времени ODBC-запроса и интервал автоматического обновления.
-    /// Значения 120 и 30 секунд сохраняют поведение старых appsettings.
+    /// Получает общий выбор ODBC и существующие параметры чтения аварий.
     /// </summary>
-    public CtApiActiveAlarmProvider(IConfiguration configuration, ILogger<CtApiActiveAlarmProvider> logger)
+    public CtApiActiveAlarmProvider(IConfiguration configuration, AlarmOdbcFailover odbc, ILogger<CtApiActiveAlarmProvider> logger)
     {
         _logger = logger;
-        _alarmOdbcConnectionString = configuration["CtApi:AlarmOdbcConnectionString"];
+        _odbc = odbc;
 
         _alarmOdbcRequestTimeoutSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRequestTimeoutSeconds"], out var timeoutSeconds) && timeoutSeconds > 0
             ? timeoutSeconds
@@ -154,47 +154,48 @@ public sealed class CtApiActiveAlarmProvider : IActiveAlarmProvider
     }
 
     /// <summary>
-    /// Читает текущие аварии из CiAdvancedAlarm одним запросом. В проверенной
-    /// на данном сервере выборке AlarmState=0 означает Normal. Текст состояния
-    /// получаем из AlarmDesc, не преобразуя числовые коды в приложении.
+    /// Читает текущие аварии через выбранный ODBC.
+    /// При отказе связи весь снимок повторно читается из резервного подключения.
     /// </summary>
     private async Task<(List<ActiveAlarmDto> Items, long ReadDurationMs)> ReadCiAdvancedAlarmsAsync(CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_alarmOdbcConnectionString))
-            throw new InvalidOperationException("CtApi:AlarmOdbcConnectionString is not configured.");
-
         var watch = Stopwatch.StartNew();
-        using var connection = new OdbcConnection(_alarmOdbcConnectionString);
-        await connection.OpenAsync(ct);
-        var openDurationMs = watch.ElapsedMilliseconds;
 
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT FullName, Comment, Priority, AlarmCategory, AlarmState, AlarmDesc, OnTime, ConditionActiveTime, AckTime FROM CiAdvancedAlarm WHERE AlarmState <> 0";
-        command.CommandTimeout = _alarmOdbcRequestTimeoutSeconds;
-
-        using var reader = await command.ExecuteReaderAsync(ct);
-        var executeDurationMs = watch.ElapsedMilliseconds - openDurationMs;
-        var columns = Enumerable.Range(0, reader.FieldCount).ToDictionary(reader.GetName, index => index, StringComparer.OrdinalIgnoreCase);
-
-        if (!columns.ContainsKey("FullName") || !columns.ContainsKey("AlarmState") || !columns.ContainsKey("Priority"))
-            throw new InvalidOperationException("CiAdvancedAlarm must return FullName, AlarmState and Priority columns.");
-
-        var items = new List<ActiveAlarmDto>();
-
-        while (await reader.ReadAsync(ct))
+        // Один результат читается целиком из выбранного ODBC; частичная выборка при failover отбрасывается.
+        return await _odbc.ReadAsync(async (connection, ct) =>
         {
-            ct.ThrowIfCancellationRequested();
-            items.Add(ToCiAdvancedAlarm(reader, columns));
-        }
+            var openDurationMs = watch.ElapsedMilliseconds;
 
-        items.Sort((left, right) => Nullable.Compare(right.OccurredAt, left.OccurredAt));
-        var readDurationMs = watch.ElapsedMilliseconds;
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT FullName, Comment, Priority, AlarmCategory, AlarmState, AlarmDesc, OnTime, ConditionActiveTime, AckTime FROM CiAdvancedAlarm WHERE AlarmState <> 0";
+            command.CommandTimeout = _alarmOdbcRequestTimeoutSeconds;
 
-        _logger.LogInformation(
-            "CiAdvancedAlarm ODBC completed. Count={Count}, OpenMs={OpenMs}, ExecuteMs={ExecuteMs}, FetchAndMapMs={FetchAndMapMs}, ReadDurationMs={ReadDurationMs}",
-            items.Count, openDurationMs, executeDurationMs, readDurationMs - openDurationMs - executeDurationMs, readDurationMs);
+            using var reader = await command.ExecuteReaderAsync(ct);
 
-        return (items, readDurationMs);
+            var executeDurationMs = watch.ElapsedMilliseconds - openDurationMs;
+            var columns = Enumerable.Range(0, reader.FieldCount).ToDictionary(reader.GetName, index => index, StringComparer.OrdinalIgnoreCase);
+
+            if (!columns.ContainsKey("FullName") || !columns.ContainsKey("AlarmState") || !columns.ContainsKey("Priority"))
+                throw new InvalidOperationException("CiAdvancedAlarm must return FullName, AlarmState and Priority columns.");
+
+            var items = new List<ActiveAlarmDto>();
+
+            while (await reader.ReadAsync(ct))
+            {
+                ct.ThrowIfCancellationRequested();
+                items.Add(ToCiAdvancedAlarm(reader, columns));
+            }
+
+            items.Sort((left, right) => Nullable.Compare(right.OccurredAt, left.OccurredAt));
+
+            var readDurationMs = watch.ElapsedMilliseconds;
+
+            _logger.LogInformation(
+                "CiAdvancedAlarm ODBC completed. Count={Count}, OpenMs={OpenMs}, ExecuteMs={ExecuteMs}, FetchAndMapMs={FetchAndMapMs}, ReadDurationMs={ReadDurationMs}",
+                items.Count, openDurationMs, executeDurationMs, readDurationMs - openDurationMs - executeDurationMs, readDurationMs);
+
+            return (items, readDurationMs);
+        }, ct);
     }
 
     /// <summary>

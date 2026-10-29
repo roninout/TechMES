@@ -1,11 +1,12 @@
-﻿using System.Data.Common;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System.Data.Common;
 using System.Data.Odbc;
 using System.Diagnostics;
 using System.Globalization;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using TechMES.Application.Events;
 using TechMES.Contracts.Events;
+using TechMES.Infrastructure.CtApi.Odbc;
 
 namespace TechMES.Infrastructure.CtApi.Gateways;
 
@@ -33,21 +34,22 @@ public sealed class CtApiEventJournalProvider : IEventJournalProvider
     private readonly object _gate = new();
     private readonly Dictionary<RangeKey, RangeState> _ranges = [];
     private readonly ILogger<CtApiEventJournalProvider> _logger;
-    private readonly string? _connectionString;
+    private readonly AlarmOdbcFailover _odbc;
     private readonly int _requestTimeoutSeconds;
     private readonly int _refreshPeriodSeconds;
 
     /// <summary>
-    /// Использует настроенные в Maintenance ODBC-подключение, предел времени запроса
-    /// и период автоматического обновления страниц ODBC.
+    /// Журнал событий использует общий выбор Primary/Secondary для ODBC.
     /// </summary>
-    public CtApiEventJournalProvider(IConfiguration configuration, ILogger<CtApiEventJournalProvider> logger)
+    public CtApiEventJournalProvider(IConfiguration configuration, AlarmOdbcFailover odbc, ILogger<CtApiEventJournalProvider> logger)
     {
         _logger = logger;
-        _connectionString = configuration["CtApi:AlarmOdbcConnectionString"];
+        _odbc = odbc;
+
         _requestTimeoutSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRequestTimeoutSeconds"], out var timeoutSeconds) && timeoutSeconds > 0
             ? timeoutSeconds
             : 120;
+
         _refreshPeriodSeconds = int.TryParse(configuration["CtApi:AlarmOdbcRefreshPeriodSeconds"], out var refreshSeconds) && refreshSeconds > 0
             ? refreshSeconds
             : 30;
@@ -168,57 +170,56 @@ public sealed class CtApiEventJournalProvider : IEventJournalProvider
     }
 
     /// <summary>
-    /// Читает за выбранный период только Interface Event, System и Archiving.
-    /// Границы локальных дат переводит в UTC, как в истории аварий.
+    /// Читает выбранный период журнала через доступный ODBC.
+    /// При ошибке связи диапазон целиком перечитывается из другого доступного сервера.
     /// </summary>
     private async Task<(List<EventJournalDto> Items, long DurationMs)> ReadRangeAsync(RangeKey key, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_connectionString))
-            throw new InvalidOperationException("CtApi:AlarmOdbcConnectionString is not configured.");
-
-        var localStart = DateTime.SpecifyKind(key.From.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
-        var localEnd = DateTime.SpecifyKind(key.To.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
-        var utcStart = TimeZoneInfo.ConvertTimeToUtc(localStart, TimeZoneInfo.Local);
-        var utcEnd = TimeZoneInfo.ConvertTimeToUtc(localEnd, TimeZoneInfo.Local);
         var watch = Stopwatch.StartNew();
-        var items = new List<EventJournalDto>();
 
-        using var connection = new OdbcConnection(_connectionString);
-        await connection.OpenAsync(ct);
+        return await _odbc.ReadAsync(async (connection, ct) =>
+        {
+            var localStart = DateTime.SpecifyKind(key.From.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
+            var localEnd = DateTime.SpecifyKind(key.To.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
+            var utcStart = TimeZoneInfo.ConvertTimeToUtc(localStart, TimeZoneInfo.Local);
+            var utcEnd = TimeZoneInfo.ConvertTimeToUtc(localEnd, TimeZoneInfo.Local);
+            var items = new List<EventJournalDto>();
 
-        using var command = connection.CreateCommand();
-        command.CommandText = """
+            using var command = connection.CreateCommand();
+            command.CommandText = """
         SELECT "Time", Message, CustomStringField, Source, Category, ClientAddressDesc, "User", Id, AlarmStateDesc
         FROM CDBEventJournal
         WHERE "Time" >= ? AND "Time" < ?
           AND Category IN ('Interface Event', 'System', 'Archiving')
         """;
-        command.CommandTimeout = _requestTimeoutSeconds;
-        command.Parameters.Add("fromUtc", OdbcType.DateTime).Value = utcStart;
-        command.Parameters.Add("toUtc", OdbcType.DateTime).Value = utcEnd;
+            command.CommandTimeout = _requestTimeoutSeconds;
+            command.Parameters.Add(new OdbcParameter("fromUtc", OdbcType.DateTime) { Value = utcStart });
+            command.Parameters.Add(new OdbcParameter("toUtc", OdbcType.DateTime) { Value = utcEnd });
 
-        using var reader = await command.ExecuteReaderAsync(ct);
+            using var reader = await command.ExecuteReaderAsync(ct);
 
-        while (await reader.ReadAsync(ct))
-        {
-            ct.ThrowIfCancellationRequested();
-
-            items.Add(new EventJournalDto
+            while (await reader.ReadAsync(ct))
             {
-                Date = ReadLocalTimestamp(reader, 0),
-                Description = ReadText(reader, 1),
-                CustomStringField = ReadText(reader, 2),
-                Source = ReadText(reader, 3),
-                Category = ReadText(reader, 4),
-                ClientAddressDesc = ReadText(reader, 5),
-                User = ReadText(reader, 6),
-                Id = reader.IsDBNull(7) ? null : Convert.ToInt32(reader.GetValue(7), CultureInfo.InvariantCulture),
-                AlarmStateDesc = ReadText(reader, 8)
-            });
-        }
+                ct.ThrowIfCancellationRequested();
 
-        items.Sort((left, right) => Nullable.Compare(right.Date, left.Date));
-        return (items, watch.ElapsedMilliseconds);
+                items.Add(new EventJournalDto
+                {
+                    Date = ReadLocalTimestamp(reader, 0),
+                    Description = ReadText(reader, 1),
+                    CustomStringField = ReadText(reader, 2),
+                    Source = ReadText(reader, 3),
+                    Category = ReadText(reader, 4),
+                    ClientAddressDesc = ReadText(reader, 5),
+                    User = ReadText(reader, 6),
+                    Id = reader.IsDBNull(7) ? null : Convert.ToInt32(reader.GetValue(7), CultureInfo.InvariantCulture),
+                    AlarmStateDesc = ReadText(reader, 8)
+                });
+            }
+
+            items.Sort((left, right) => Nullable.Compare(right.Date, left.Date));
+
+            return (items, watch.ElapsedMilliseconds);
+        }, ct);
     }
 
     /// <summary>
