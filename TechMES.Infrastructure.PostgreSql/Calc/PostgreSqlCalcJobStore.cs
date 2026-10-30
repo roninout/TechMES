@@ -4,6 +4,8 @@ using Npgsql;
 using NpgsqlTypes;
 using TechMES.Application.Calc;
 using TechMES.Contracts.Calc;
+using TechMES.Infrastructure.PostgreSql.Connections;
+
 
 namespace TechMES.Infrastructure.PostgreSql.Calc;
 
@@ -16,13 +18,11 @@ namespace TechMES.Infrastructure.PostgreSql.Calc;
 /// </summary>
 public sealed class PostgreSqlCalcJobStore : ICalcJobStore
 {
-    private readonly string _connectionString;
+    private readonly MainDatabaseFailover _database;
 
-    public PostgreSqlCalcJobStore(IConfiguration configuration)
+    public PostgreSqlCalcJobStore(MainDatabaseFailover database)
     {
-        _connectionString = configuration.GetConnectionString("Default")
-            ?? configuration["Database:ConnectionString"]
-            ?? throw new InvalidOperationException("PostgreSQL connection string is not configured.");
+        _database = database;
     }
 
     /// <summary>
@@ -703,20 +703,13 @@ public sealed class PostgreSqlCalcJobStore : ICalcJobStore
         throw new InvalidOperationException($"Unsupported calculation input source type '{value}' in PostgreSQL.");
     }
 
-    private async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
+    /// <summary>
+    /// Открывает соединение через общий маршрут Main DB.
+    /// Выбор сервера происходит до начала SQL-операции; сами команды не повторяются.
+    /// </summary>
+    private Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
     {
-        var connection = new NpgsqlConnection(_connectionString);
-
-        try
-        {
-            await connection.OpenAsync(ct);
-            return connection;
-        }
-        catch
-        {
-            await connection.DisposeAsync();
-            throw;
-        }
+        return _database.OpenAsync(ct);
     }
 
     private static async Task SafeRollbackAsync(NpgsqlTransaction transaction, CancellationToken ct)

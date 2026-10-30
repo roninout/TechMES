@@ -2,18 +2,20 @@
 using TechMES.Application.Scada;
 using TechMES.Infrastructure.CtApi.Odbc;
 using TechMES.Infrastructure.CtApi.Settings;
+using TechMES.Infrastructure.PostgreSql.Connections;
 
 namespace TechMES.Runtime.Service.Workers;
 
 /// <summary>
-/// Один Health Period для независимых проверок CtApi и ODBC.
+/// Один Health Period для независимых проверок CtApi, ODBC и Main DB.
 /// </summary>
-public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
+public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, IEnumerable<MainDatabaseFailover> databases, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var seconds = Math.Max(5, options.Value.HealthCheckPeriodSeconds);
         var odbc = odbcConnections.SingleOrDefault();
+        var database = databases.SingleOrDefault();
         var scadaCycle = Task.CompletedTask;
 
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(seconds));
@@ -22,13 +24,13 @@ public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<
 
         try
         {
-            // Первую ODBC-проверку запускаем сразу. Дальше обе подсистемы используют один timer.
+            // Первые проверки запускаем сразу. Дальше все подсистемы используют один timer.
             do
             {
                 odbc?.RefreshHealth();
+                database?.RefreshHealth();
 
-                // Недоступный CtApi не останавливает ODBC-проверки.
-                // Второй CtApi-цикл поверх текущего не запускаем.
+                // Долгая проверка CtApi не останавливает проверки ODBC и Main DB.
                 if (scadaCycle.IsCompleted)
                     scadaCycle = CheckScadaAsync(stoppingToken);
             }
@@ -43,9 +45,6 @@ public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<
         }
     }
 
-    /// <summary>
-    /// Выполняет один существующий CtApi health-цикл и сохраняет его диагностику.
-    /// </summary>
     private async Task CheckScadaAsync(CancellationToken ct)
     {
         try

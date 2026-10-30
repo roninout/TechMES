@@ -3,6 +3,7 @@ using Npgsql;
 using NpgsqlTypes;
 using TechMES.Application.Info;
 using TechMES.Contracts.Info;
+using TechMES.Infrastructure.PostgreSql.Connections;
 
 namespace TechMES.Infrastructure.PostgreSql.Info;
 
@@ -66,18 +67,14 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// <summary>
     /// Строка подключения к PostgreSQL, где лежат Info-таблицы.
     /// </summary>
-    private readonly string _connectionString;
+    private readonly MainDatabaseFailover _database;
 
     /// <summary>
-    /// Создает store и берет строку подключения из appsettings Runtime.Service.
+    /// Получает общий выбор подключения Main DB.
     /// </summary>
-    public PostgreSqlEquipmentInfoStore(IConfiguration configuration)
+    public PostgreSqlEquipmentInfoStore(MainDatabaseFailover database)
     {
-        _connectionString =
-            configuration.GetConnectionString("Default")
-            ?? configuration["Database:ConnectionString"]
-            ?? throw new InvalidOperationException(
-                "PostgreSQL connection string is not configured.");
+        _database = database;
     }
 
     /// <summary>
@@ -166,9 +163,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// Загружает только счетчики вложений/заметок для списка оборудования.
     /// Используется для иконок слева и счетчиков вкладок без чтения полной карточки Info.
     /// </summary>
-    public async Task<IReadOnlyList<EquipmentInfoSummaryDto>> GetSummariesAsync(
-        IEnumerable<string> equipNames,
-        CancellationToken ct = default)
+    public async Task<IReadOnlyList<EquipmentInfoSummaryDto>> GetSummariesAsync(IEnumerable<string> equipNames, CancellationToken ct = default)
     {
         var names = equipNames
             .Select(NormalizeName)
@@ -218,10 +213,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// <summary>
     /// Сохраняет редактируемое описание в equip_info и возвращает обновленный снимок карточки.
     /// </summary>
-    public async Task<EquipmentInfoDto> SaveDescriptionAsync(
-        string equipName,
-        string? description,
-        CancellationToken ct = default)
+    public async Task<EquipmentInfoDto> SaveDescriptionAsync(string equipName, string? description, CancellationToken ct = default)
     {
         equipName = NormalizeName(equipName);
         if (string.IsNullOrWhiteSpace(equipName))
@@ -262,9 +254,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// Возвращает имена оборудования, добавленного в избранное для текущего Windows-пользователя.
     /// Название колонки device_name сохранено только ради совместимости с существующей схемой БД.
     /// </summary>
-    public async Task<IReadOnlyCollection<string>> GetFavoriteEquipNamesAsync(
-        string userName,
-        CancellationToken ct = default)
+    public async Task<IReadOnlyCollection<string>> GetFavoriteEquipNamesAsync(string userName, CancellationToken ct = default)
     {
         userName = NormalizeUser(userName);
 
@@ -298,11 +288,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// Добавляет или удаляет оборудование из избранного.
     /// Групповые узлы на фронтенде сюда не отправляются, поэтому store работает только с реальными equipName.
     /// </summary>
-    public async Task SetFavoriteAsync(
-        string equipName,
-        bool isFavorite,
-        string userName,
-        CancellationToken ct = default)
+    public async Task SetFavoriteAsync(string equipName, bool isFavorite, string userName, CancellationToken ct = default)
     {
         equipName = NormalizeName(equipName);
         userName = NormalizeUser(userName);
@@ -360,10 +346,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// Загружает бинарное содержимое файла только по прямому запросу браузера.
     /// Это серверная часть ленивой загрузки фото/PDF и повторного использования кэша браузера.
     /// </summary>
-    public async Task<EquipmentInfoFileContentDto?> GetFileAsync(
-        EquipmentInfoFileKind kind,
-        long id,
-        CancellationToken ct = default)
+    public async Task<EquipmentInfoFileContentDto?> GetFileAsync(EquipmentInfoFileKind kind, long id, CancellationToken ct = default)
     {
         if (id <= 0)
             return null;
@@ -413,11 +396,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// <summary>
     /// Читает запомненные страницу, zoom и якорь просмотра для одного PDF/схемы.
     /// </summary>
-    public async Task<EquipmentInfoDocumentViewStateDto?> GetDocumentViewStateAsync(
-        string equipName,
-        EquipmentInfoFileKind kind,
-        long fileId,
-        CancellationToken ct = default)
+    public async Task<EquipmentInfoDocumentViewStateDto?> GetDocumentViewStateAsync(string equipName, EquipmentInfoFileKind kind, long fileId, CancellationToken ct = default)
     {
         equipName = NormalizeName(equipName);
 
@@ -459,10 +438,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// <summary>
     /// Сохраняет запомненное положение PDF/схемы, чтобы при следующем открытии вернуться туда же.
     /// </summary>
-    public async Task<EquipmentInfoDocumentViewStateDto> SaveDocumentViewStateAsync(
-        string equipName,
-        SaveEquipmentInfoDocumentViewStateRequest request,
-        CancellationToken ct = default)
+    public async Task<EquipmentInfoDocumentViewStateDto> SaveDocumentViewStateAsync(string equipName, SaveEquipmentInfoDocumentViewStateRequest request, CancellationToken ct = default)
     {
         equipName = NormalizeName(equipName);
 
@@ -559,11 +535,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// <summary>
     /// Добавляет новую заметку в коллекцию оборудования.
     /// </summary>
-    public async Task<EquipmentInfoNoteDto> AddNoteAsync(
-        string equipName,
-        string noteText,
-        string userName,
-        CancellationToken ct = default)
+    public async Task<EquipmentInfoNoteDto> AddNoteAsync(string equipName, string noteText, string userName, CancellationToken ct = default)
     {
         equipName = NormalizeName(equipName);
         noteText = NormalizeText(noteText);
@@ -634,12 +606,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// <summary>
     /// Обновляет текст заметки и поля аудита. Возвращает null, если запись уже удалена.
     /// </summary>
-    public async Task<EquipmentInfoNoteDto?> UpdateNoteAsync(
-        string equipName,
-        long noteId,
-        string noteText,
-        string userName,
-        CancellationToken ct = default)
+    public async Task<EquipmentInfoNoteDto?> UpdateNoteAsync(string equipName, long noteId, string noteText, string userName, CancellationToken ct = default)
     {
         equipName = NormalizeName(equipName);
         noteText = NormalizeText(noteText);
@@ -690,10 +657,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// <summary>
     /// Удаляет одну заметку. Отсутствующая строка считается уже удаленной и не является ошибкой.
     /// </summary>
-    public async Task DeleteNoteAsync(
-        string equipName,
-        long noteId,
-        CancellationToken ct = default)
+    public async Task DeleteNoteAsync(string equipName, long noteId, CancellationToken ct = default)
     {
         equipName = NormalizeName(equipName);
         if (string.IsNullOrWhiteSpace(equipName) || noteId <= 0)
@@ -716,23 +680,18 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     }
 
     /// <summary>
-    /// Открывает новое Npgsql-соединение на время одной операции Info store-а.
+    /// Открывает соединение через общий маршрут Main DB.
+    /// Выбор сервера происходит до начала SQL-операции; сами команды не повторяются.
     /// </summary>
-    private async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
+    private Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
     {
-        var conn = new NpgsqlConnection(_connectionString);
-        await conn.OpenAsync(ct);
-        return conn;
+        return _database.OpenAsync(ct);
     }
 
     /// <summary>
     /// Создает минимальную строку equip_info, если дочерние операции Notes/PDF-state требуют внешний ключ.
     /// </summary>
-    private static async Task EnsureInfoRowExistsAsync(
-        NpgsqlConnection conn,
-        NpgsqlTransaction tx,
-        string equipName,
-        CancellationToken ct)
+    private static async Task EnsureInfoRowExistsAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string equipName, CancellationToken ct)
     {
         await using var cmd = new NpgsqlCommand(
             $"""
@@ -838,13 +797,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// <summary>
     /// Считает привязанные фото/PDF/схемы для пачки оборудования одним SQL-запросом.
     /// </summary>
-    private static async Task LoadLinkedFileCountsAsync(
-        NpgsqlConnection conn,
-        string linkTable,
-        string[] equipNames,
-        Dictionary<string, EquipmentInfoSummaryDto> summaries,
-        Action<EquipmentInfoSummaryDto, int> applyCount,
-        CancellationToken ct)
+    private static async Task LoadLinkedFileCountsAsync(NpgsqlConnection conn, string linkTable, string[] equipNames, Dictionary<string, EquipmentInfoSummaryDto> summaries, Action<EquipmentInfoSummaryDto, int> applyCount, CancellationToken ct)
     {
         await using var cmd = new NpgsqlCommand(
             $"""
@@ -879,11 +832,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// <summary>
     /// Считает непустые заметки для пачки оборудования.
     /// </summary>
-    private static async Task LoadNoteCountsAsync(
-        NpgsqlConnection conn,
-        string[] equipNames,
-        Dictionary<string, EquipmentInfoSummaryDto> summaries,
-        CancellationToken ct)
+    private static async Task LoadNoteCountsAsync(NpgsqlConnection conn, string[] equipNames, Dictionary<string, EquipmentInfoSummaryDto> summaries, CancellationToken ct)
     {
         await using var cmd = new NpgsqlCommand(
             $"""
@@ -919,10 +868,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// <summary>
     /// Загружает коллекцию заметок от новых к старым, как она отображается карточками в UI.
     /// </summary>
-    private static async Task<List<EquipmentInfoNoteDto>> GetNotesAsync(
-        NpgsqlConnection conn,
-        string equipName,
-        CancellationToken ct)
+    private static async Task<List<EquipmentInfoNoteDto>> GetNotesAsync(NpgsqlConnection conn, string equipName, CancellationToken ct)
     {
         await using var cmd = new NpgsqlCommand(
             $"""
@@ -957,10 +903,7 @@ public sealed class PostgreSqlEquipmentInfoStore : IEquipmentInfoStore
     /// Встраивает логотип поставщика как data URL.
     /// Логотип маленький и относится к шапке карточки, поэтому его удобно отдавать сразу с Info DTO.
     /// </summary>
-    private static async Task LoadSupplierLogoAsync(
-        NpgsqlConnection conn,
-        EquipmentInfoDto model,
-        CancellationToken ct)
+    private static async Task LoadSupplierLogoAsync(NpgsqlConnection conn, EquipmentInfoDto model, CancellationToken ct)
     {
         var productCode = NormalizeText(model.ProductCode);
         var supplier = NormalizeText(model.Supplier);

@@ -1165,28 +1165,33 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="12">
 
-                        <views:MaintenanceSection Header="PostgreSQL" Margin="0,0,0,12">
+                        <views:MaintenanceSection Header="PostgreSQL Main DB" Margin="0,0,0,12">
                             <StackPanel Margin="12">
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Main DB connection string" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <TextBlock Text="Main DB Primary connection string" Style="{StaticResource SettingsFieldLabel}" />
+
                                     <StackPanel Grid.Column="1">
                                         <ui:TextBox Text="{Binding TypedAppSettings.RuntimeDatabaseConnectionString, UpdateSourceTrigger=PropertyChanged}" Width="682" Style="{StaticResource SettingsTextBox}" />
                                         <TextBlock Text="Строка подключения PostgreSQL для информации по оборудованию, сообщений и основных данных." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
+
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Event DB connection string" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <TextBlock Text="Main DB Secondary connection string" Style="{StaticResource SettingsFieldLabel}" />
+
                                     <StackPanel Grid.Column="1">
-                                        <ui:TextBox Text="{Binding TypedAppSettings.RuntimeEventDatabaseConnectionString, UpdateSourceTrigger=PropertyChanged}" Width="682" Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="Строка подключения PostgreSQL/EventPicker для SOE и истории событий." Style="{StaticResource SettingsHintText}" />
+                                        <ui:TextBox Text="{Binding TypedAppSettings.RuntimeDatabaseConnectionStringSecondary, UpdateSourceTrigger=PropertyChanged}" Width="682" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Пустая строка отключает резерв. Проверка использует существующий CtApi Health Period." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
@@ -1248,6 +1253,24 @@
                                     <StackPanel Grid.Column="1">
                                         <ui:TextBox Text="{Binding TypedAppSettings.RuntimeAlarmOdbcRefreshPeriodSeconds, UpdateSourceTrigger=LostFocus}" Width="200" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
                                         <TextBlock Text="Интервал между автоматическими чтениями активных аварий." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </views:MaintenanceSection>
+
+                        <views:MaintenanceSection Header="PostgreSQL Event DB" Margin="0,0,0,12">
+                            <StackPanel Margin="12">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="Event DB connection string" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.RuntimeEventDatabaseConnectionString, UpdateSourceTrigger=PropertyChanged}" Width="682" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Строка подключения PostgreSQL/EventPicker для SOE и истории событий." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>

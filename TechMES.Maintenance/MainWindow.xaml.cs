@@ -1853,10 +1853,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             TypedAppSettings.CtApiAllowWrites = GetBool(runtime, false, "CtApi", "AllowWrites");
             TypedAppSettings.CtApiHealthCheckTag = GetString(runtime, "CtApi", "HealthCheckTag");
 
+            // Main DB получает отдельную резервную строку.
             TypedAppSettings.RuntimeDatabaseConnectionString = GetString(runtime, "Database", "ConnectionString");
+            TypedAppSettings.RuntimeDatabaseConnectionStringSecondary = GetString(runtime, "Database", "ConnectionStringSecondary");
+
+            // Event DB сохраняет собственную независимую настройку.
             TypedAppSettings.RuntimeEventDatabaseConnectionString = GetString(runtime, "EventDatabase", "ConnectionString");
 
-            // Прежняя строка остаётся Primary. Отсутствующий Secondary загружается как пустая строка.
             TypedAppSettings.RuntimeAlarmOdbcConnectionString = GetString(runtime, "CtApi", "AlarmOdbcConnectionString");
             TypedAppSettings.RuntimeAlarmOdbcConnectionStringSecondary = GetString(runtime, "CtApi", "AlarmOdbcConnectionStringSecondary");
             TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds = GetInt(runtime, 120, "CtApi", "AlarmOdbcRequestTimeoutSeconds");
@@ -1871,7 +1874,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             TypedAppSettings.ParamWritesAllowedUsers = GetString(runtime, "ParamWrites", "Authorization", "AllowedUsers");
             TypedAppSettings.ParamWritesAllowedGroups = GetString(runtime, "ParamWrites", "Authorization", "AllowedGroups");
 
-            // Роли читаются отдельно от существующего разрешения на запись.
             foreach (var role in TypedAppSettings.RoleGroups)
                 role.AllowedGroups = GetString(runtime, RoleGroupOptions.SectionName, "AllowedGroups", role.Id);
 
@@ -2047,10 +2049,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         SetValue(root, TypedAppSettings.CtApiHealthCheckTag, "CtApi", "HealthCheckTag");
 
         SetValue(root, TypedAppSettings.RuntimeDatabaseConnectionString, "Database", "ConnectionString");
+        SetValue(root, TypedAppSettings.RuntimeDatabaseConnectionStringSecondary, "Database", "ConnectionStringSecondary");
         SetValue(root, TypedAppSettings.RuntimeEventDatabaseConnectionString, "EventDatabase", "ConnectionString");
 
-        // Проверка связи использует CtApi Health Period.
-        // Эти два параметра по-прежнему управляют SQL-запросом и обновлением данных.
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcConnectionString, "CtApi", "AlarmOdbcConnectionString");
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcConnectionStringSecondary, "CtApi", "AlarmOdbcConnectionStringSecondary");
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds, "CtApi", "AlarmOdbcRequestTimeoutSeconds");

@@ -8,7 +8,7 @@
         var server = role == "Primary" ? _state?.Primary : _state?.Secondary;
         var status = Describe(_state, server, DateTimeOffset.UtcNow);
 
-        <RadzenBadge Text="@($"ODBC {role}: {status.Text}")" BadgeStyle="@status.Style" title="@(_error.Length > 0 ? _error : status.Hint)" />
+        <RadzenBadge Text="@($"ODBC: {status.Text}")" BadgeStyle="@status.Style" title="@($"{role}. {(_error.Length > 0 ? _error : status.Hint)}")" />
     }
 </div>
 

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using TechMES.Infrastructure.PostgreSql.Connections;
 
 namespace TechMES.Infrastructure.PostgreSql;
 
@@ -22,45 +23,33 @@ public sealed class PostgreSqlDatabaseBootstrapper
 
     private readonly IConfiguration _configuration;
     private readonly ILogger<PostgreSqlDatabaseBootstrapper> _logger;
+    private readonly MainDatabaseFailover _database;
 
-    public PostgreSqlDatabaseBootstrapper(IConfiguration configuration, ILogger<PostgreSqlDatabaseBootstrapper> logger)
+    public PostgreSqlDatabaseBootstrapper(IConfiguration configuration, MainDatabaseFailover database, ILogger<PostgreSqlDatabaseBootstrapper> logger)
     {
         _configuration = configuration;
+        _database = database;
         _logger = logger;
     }
 
     public async Task InitializeMainDatabaseAsync(CancellationToken cancellationToken = default)
     {
         var provider = _configuration["Database:Provider"] ?? "PostgreSql";
+
         if (!string.Equals(provider, "PostgreSql", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogInformation(
-                "PostgreSQL database bootstrap skipped. Database:Provider={Provider}.",
-                provider);
-
+            _logger.LogInformation("PostgreSQL database bootstrap skipped. Database:Provider={Provider}.", provider);
             return;
         }
 
-        var connectionString = GetMainConnectionString();
+        // При одном сервере сохраняем прежнее создание новой БД.
+        // При настроенном резерве используем существующую подготовленную Main DB.
+        if (!_database.HasSecondary)
+            await EnsureDatabaseExistsAsync(_database.PrimaryConnectionString, cancellationToken);
 
-        await EnsureDatabaseExistsAsync(connectionString, cancellationToken);
-        await EnsureMainSchemaAsync(connectionString, cancellationToken);
-    }
+        await using var connection = await _database.OpenAsync(cancellationToken);
 
-    private string GetMainConnectionString()
-    {
-        var connectionString =
-            _configuration.GetConnectionString("Default")
-            ?? _configuration["Database:ConnectionString"];
-
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new InvalidOperationException(
-                "PostgreSQL connection string is not configured. " +
-                "Set ConnectionStrings:Default or Database:ConnectionString.");
-        }
-
-        return connectionString;
+        await EnsureMainSchemaAsync(connection, cancellationToken);
     }
 
     private async Task EnsureDatabaseExistsAsync(string connectionString, CancellationToken cancellationToken)
@@ -156,13 +145,11 @@ public sealed class PostgreSqlDatabaseBootstrapper
     }
 
     /// <summary>
-    /// Создаёт основную схему TechMES и таблицы расчётного модуля.
+    /// Создаёт основную схему на выбранном открытом подключении.
     /// Все изменения выполняются одной транзакцией.
     /// </summary>
-    private async Task EnsureMainSchemaAsync(string connectionString, CancellationToken cancellationToken)
+    private async Task EnsureMainSchemaAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
     {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         try
@@ -170,14 +157,8 @@ public sealed class PostgreSqlDatabaseBootstrapper
             await ExecuteSchemaAsync(connection, transaction, MainSchemaSql, cancellationToken);
             await ExecuteSchemaAsync(connection, transaction, CalcSchemaSql, cancellationToken);
 
-            // SourceReference хранит исходную пользовательскую ссылку
-            // отдельно от реально разрешённого Plant SCADA TagName.
             await EnsureCalcInputSourceReferenceSchemaAsync(connection, transaction, cancellationToken);
-
-            // Идемпотентно обновляем существующие Calc БД новыми диагностическими полями.
             await EnsureCalcStateDiagnosticsSchemaAsync(connection, transaction, cancellationToken);
-
-            // equip_param_tune существовал до Test Kp. ADD COLUMN IF NOT EXISTS безопасно обновляет старую БД.
             await EnsureParamTuneExtensionSchemaAsync(connection, transaction, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);

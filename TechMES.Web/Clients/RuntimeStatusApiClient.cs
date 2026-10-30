@@ -90,4 +90,17 @@ public sealed class RuntimeStatusApiClient
 
         return await response.Content.ReadFromJsonAsync<OdbcHealthResponse>(cancellationToken: ct) ?? throw new InvalidOperationException("Runtime returned an empty ODBC health response.");
     }
+
+    /// <summary>
+    /// Читает снимок Main DB Primary/Secondary без строк подключения.
+    /// </summary>
+    public async Task<MainDatabaseHealthResponse> GetDatabaseHealthAsync(CancellationToken ct = default)
+    {
+        using var client = CreateClient();
+        using var response = await client.GetAsync("api/database/health", ct);
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<MainDatabaseHealthResponse>(cancellationToken: ct) ?? throw new InvalidOperationException("Runtime returned an empty Main DB health response.");
+    }
 }

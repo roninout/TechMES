@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Npgsql;
 using TechMES.Application.Messages;
 using TechMES.Contracts.Messages;
+using TechMES.Infrastructure.PostgreSql.Connections;
 
 namespace TechMES.Infrastructure.PostgreSql.Messages;
 
@@ -17,21 +18,14 @@ public sealed class PostgreSqlMessageStore : IMessageStore
     /// <summary>
     /// Строка подключения к рабочей PostgreSQL БД, где лежат сообщения и отметки просмотра.
     /// </summary>
-    private readonly string _connectionString;
+    private readonly MainDatabaseFailover _database;
 
     /// <summary>
-    /// Создает хранилище сообщений и читает строку подключения из конфигурации Runtime.Service.
+    /// Получает общий выбор подключения Main DB для сообщений.
     /// </summary>
-    public PostgreSqlMessageStore(IConfiguration configuration)
+    public PostgreSqlMessageStore(MainDatabaseFailover database)
     {
-        // Строку подключения держим в appsettings Runtime.Service.
-        // Сначала пробуем стандартный раздел ConnectionStrings, затем наш раздел Database.
-        _connectionString =
-            configuration.GetConnectionString("Default")
-            ?? configuration["Database:ConnectionString"]
-            ?? throw new InvalidOperationException(
-                "Не найдена строка подключения к PostgreSQL. " +
-                "Укажите ConnectionStrings:Default или Database:ConnectionString в appsettings.json.");
+        _database = database;
     }
 
     /// <summary>
@@ -140,10 +134,7 @@ public sealed class PostgreSqlMessageStore : IMessageStore
     /// <summary>
     /// Возвращает список сообщений для WEB-экрана Messages с учетом активности и отметок просмотра текущего устройства.
     /// </summary>
-    public async Task<IReadOnlyList<EquipmentMessageDto>> GetMessagesAsync(
-        bool includeInactive,
-        string deviceName,
-        CancellationToken ct = default)
+    public async Task<IReadOnlyList<EquipmentMessageDto>> GetMessagesAsync(bool includeInactive, string deviceName, CancellationToken ct = default)
     {
         await using var conn = await OpenConnectionAsync(ct);
 
@@ -234,8 +225,7 @@ public sealed class PostgreSqlMessageStore : IMessageStore
     /// <summary>
     /// Возвращает компактный снимок состояния таблиц Messages для watcher-а и диагностики Runtime.Service.
     /// </summary>
-    public async Task<MessageStorageSnapshot> GetStorageSnapshotAsync(
-        CancellationToken ct = default)
+    public async Task<MessageStorageSnapshot> GetStorageSnapshotAsync(CancellationToken ct = default)
     {
         await using var conn = await OpenConnectionAsync(ct);
 
@@ -288,11 +278,7 @@ public sealed class PostgreSqlMessageStore : IMessageStore
     /// <summary>
     /// Создает новое сообщение или обновляет существующее, затем повторно читает его в формате DTO для WEB.
     /// </summary>
-    public async Task<EquipmentMessageDto> SaveMessageAsync(
-        SaveMessageRequest request,
-        string userName,
-        string deviceName,
-        CancellationToken ct = default)
+    public async Task<EquipmentMessageDto> SaveMessageAsync(SaveMessageRequest request, string userName, string deviceName, CancellationToken ct = default)
     {
         var normalizedUserName = NormalizeDeviceName(userName);
         var normalizedDeviceName = NormalizeDeviceName(deviceName);
@@ -314,10 +300,7 @@ public sealed class PostgreSqlMessageStore : IMessageStore
     /// <summary>
     /// Переключает активность сообщения. Делать это может только устройство/пользователь, который создал сообщение.
     /// </summary>
-    public async Task<bool> ToggleActivityAsync(
-        long messageId,
-        string userName,
-        CancellationToken ct = default)
+    public async Task<bool> ToggleActivityAsync(long messageId, string userName, CancellationToken ct = default)
     {
         await using var conn = await OpenConnectionAsync(ct);
 
@@ -432,10 +415,7 @@ public sealed class PostgreSqlMessageStore : IMessageStore
     /// <summary>
     /// Вставляет новую строку equip_message и возвращает сгенерированный PostgreSQL идентификатор.
     /// </summary>
-    private async Task<long> InsertMessageAsync(
-        SaveMessageRequest request,
-        string userName,
-        CancellationToken ct)
+    private async Task<long> InsertMessageAsync(SaveMessageRequest request, string userName, CancellationToken ct)
     {
         await using var conn = await OpenConnectionAsync(ct);
 
@@ -476,10 +456,7 @@ public sealed class PostgreSqlMessageStore : IMessageStore
     /// <summary>
     /// Обновляет содержимое сообщения, не меняя автора и дату создания.
     /// </summary>
-    private async Task UpdateMessageAsync(
-        SaveMessageRequest request,
-        string userName,
-        CancellationToken ct)
+    private async Task UpdateMessageAsync(SaveMessageRequest request, string userName, CancellationToken ct)
     {
         await using var conn = await OpenConnectionAsync(ct);
 
@@ -509,10 +486,7 @@ public sealed class PostgreSqlMessageStore : IMessageStore
     /// <summary>
     /// Повторно читает одну запись после create/update, чтобы WEB получил все вычисленные поля просмотра.
     /// </summary>
-    private async Task<EquipmentMessageDto?> GetMessageByIdAsync(
-        long id,
-        string deviceName,
-        CancellationToken ct)
+    private async Task<EquipmentMessageDto?> GetMessageByIdAsync(long id, string deviceName, CancellationToken ct)
     {
         await using var conn = await OpenConnectionAsync(ct);
 
@@ -576,22 +550,18 @@ public sealed class PostgreSqlMessageStore : IMessageStore
     }
 
     /// <summary>
-    /// Открывает отдельное соединение Npgsql на время одной операции store-а.
+    /// Открывает соединение через общий маршрут Main DB.
+    /// Выбор сервера происходит до начала SQL-операции; сами команды не повторяются.
     /// </summary>
-    private async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
+    private Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
     {
-        var conn = new NpgsqlConnection(_connectionString);
-        await conn.OpenAsync(ct);
-        return conn;
+        return _database.OpenAsync(ct);
     }
 
     /// <summary>
     /// Выполняет простой DDL/DML SQL без параметров. Используется при инициализации схемы.
     /// </summary>
-    private static async Task ExecuteNonQueryAsync(
-        NpgsqlConnection conn,
-        string sql,
-        CancellationToken ct)
+    private static async Task ExecuteNonQueryAsync(NpgsqlConnection conn, string sql, CancellationToken ct)
     {
         await using var cmd = new NpgsqlCommand(sql, conn);
         await cmd.ExecuteNonQueryAsync(ct);

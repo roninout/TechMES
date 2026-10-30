@@ -11,6 +11,7 @@ using TechMES.Infrastructure.PostgreSql.EventLog;
 using TechMES.Infrastructure.PostgreSql.Info;
 using TechMES.Infrastructure.PostgreSql.Messages;
 using TechMES.Infrastructure.PostgreSql.Param;
+using TechMES.Infrastructure.PostgreSql.Connections;
 
 namespace TechMES.Infrastructure.PostgreSql;
 
@@ -26,7 +27,10 @@ public static class PostgreSqlServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddPostgreSqlInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        services.TryAddSingleton<IMainDatabaseConnector, MainDatabaseConnector>();
+        services.TryAddSingleton<MainDatabaseFailover>();
         services.TryAddSingleton<PostgreSqlDatabaseBootstrapper>();
+
         services.AddScoped<IMessageStore, PostgreSqlMessageStore>();
         services.TryAddScoped<IEquipmentInfoStore, PostgreSqlEquipmentInfoStore>();
         services.TryAddScoped<IParamTuneStore, PostgreSqlParamTuneStore>();
@@ -46,7 +50,11 @@ public static class PostgreSqlServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddPostgreSqlInfoInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        // TryAdd сохраняет один общий маршрут, даже если Messages также использует PostgreSQL.
+        services.TryAddSingleton<IMainDatabaseConnector, MainDatabaseConnector>();
+        services.TryAddSingleton<MainDatabaseFailover>();
         services.TryAddSingleton<PostgreSqlDatabaseBootstrapper>();
+
         services.TryAddScoped<IEquipmentInfoStore, PostgreSqlEquipmentInfoStore>();
         services.TryAddScoped<IParamTuneStore, PostgreSqlParamTuneStore>();
         services.TryAddScoped<ICalcJobStore, PostgreSqlCalcJobStore>();

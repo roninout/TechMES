@@ -1,31 +1,32 @@
 ﻿using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Npgsql;
 using NpgsqlTypes;
 using TechMES.Application.Users;
 using TechMES.Contracts.Users;
+using TechMES.Infrastructure.PostgreSql.Connections;
 
 namespace TechMES.Infrastructure.PostgreSql.Users;
 
-/// <summary>Сохраняет настройки в существующей основной БД Info/Favorites.</summary>
+/// <summary>
+/// Сохраняет настройки пользователя через общий маршрут Main DB.
+/// </summary>
 public sealed class PostgreSqlUserStateStore : IUserStateStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
-    private readonly string _connectionString;
+    private readonly MainDatabaseFailover _database;
 
-    public PostgreSqlUserStateStore(IConfiguration configuration)
+    public PostgreSqlUserStateStore(MainDatabaseFailover database)
     {
-        _connectionString = configuration.GetConnectionString("Default") ?? configuration["Database:ConnectionString"] ?? throw new InvalidOperationException("PostgreSQL connection string is not configured.");
+        _database = database;
     }
 
     public async Task<UserStateDto> GetAsync(string userName, CancellationToken ct = default)
     {
         var owner = NormalizeOwner(userName);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(ct);
-
+        await using var connection = await _database.OpenAsync(ct);
         await using var command = new NpgsqlCommand("SELECT settings::text FROM public.web_user_appearance WHERE user_name = @owner;", connection);
+
         command.Parameters.AddWithValue("owner", owner);
 
         return await command.ExecuteScalarAsync(ct) is string json ? JsonSerializer.Deserialize<UserStateDto>(json, JsonOptions) ?? throw new JsonException("User settings are empty.") : new();
@@ -44,8 +45,7 @@ public sealed class PostgreSqlUserStateStore : IUserStateStore
         if (state.LastEquipmentsByFilter is null || state.SelectedTypeFilter is < 0 or > 10 || state.SelectedTab is < 0 or > 5 || state.QrCameraIndex is < 0)
             throw new JsonException("Invalid user settings.");
 
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(ct);
+        await using var connection = await _database.OpenAsync(ct);
 
         const string sql = """
         INSERT INTO public.web_user_appearance (user_name, settings, updated_at)
@@ -60,8 +60,9 @@ public sealed class PostgreSqlUserStateStore : IUserStateStore
             updated_at = now();
         """;
 
-        // Обновляем только переданные поля: тема не затирает выбор оборудования и наоборот.
+        // Запись выполняется один раз на уже выбранном подключении.
         await using var command = new NpgsqlCommand(sql, connection);
+
         command.Parameters.AddWithValue("owner", owner);
         command.Parameters.Add("changes", NpgsqlDbType.Jsonb).Value = changes.GetRawText();
 

@@ -2,8 +2,14 @@
 @implements IAsyncDisposable
 
 <div class="runtime-status">
+    <div class="server-status-column server-roles" aria-hidden="true">
+        <span>Primary</span>
+        <span>Secondary</span>
+    </div>
+
     <ScadaServerStatusBlock />
     <OdbcServerStatusBlock />
+    <MainDatabaseStatusBlock />
 
     <div class="runtime-details">
         <div class="runtime-badges">
@@ -14,7 +20,6 @@
             else if (_health?.IsHealthy == true)
             {
                 <RadzenBadge Text="Runtime: Online" BadgeStyle="BadgeStyle.Success" />
-                <RadzenBadge Text="@($"DB: {_health.Database}")" BadgeStyle="BadgeStyle.Success" />
             }
             else
             {

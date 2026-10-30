@@ -45,3 +45,9 @@
     height: 28px;
     padding: 0;
 }
+
+.server-roles {
+    font-size: 10px;
+    color: gray;
+    white-space: nowrap;
+}

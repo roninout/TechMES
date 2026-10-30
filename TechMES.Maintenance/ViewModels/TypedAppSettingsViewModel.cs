@@ -666,4 +666,14 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     /// </summary>
     public IReadOnlyList<RoleGroupSettingViewModel> RoleGroups { get; } = AppRoles.All.Select(role => new RoleGroupSettingViewModel(role)).ToArray();
 
+    private string _runtimeDatabaseConnectionStringSecondary = "";
+
+    /// <summary>
+    /// Резерв Main DB. Пустая строка отключает Secondary.
+    /// </summary>
+    public string RuntimeDatabaseConnectionStringSecondary
+    {
+        get => _runtimeDatabaseConnectionStringSecondary;
+        set => SetProperty(ref _runtimeDatabaseConnectionStringSecondary, value);
+    }
 }
