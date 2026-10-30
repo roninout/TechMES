@@ -3,15 +3,15 @@
 @inject RuntimeStatusApiClient RuntimeStatusApi
 @implements IAsyncDisposable
 
-@foreach (var role in new[] { "Primary", "Secondary" })
-{
-    var server = role == "Primary" ? _state?.Primary : _state?.Secondary;
-    var status = Describe(_state, server, DateTimeOffset.UtcNow);
+<div class="server-status-column" aria-label="CtApi server status">
+    @foreach (var role in new[] { "Primary", "Secondary" })
+    {
+        var server = role == "Primary" ? _state?.Primary : _state?.Secondary;
+        var status = Describe(_state, server, DateTimeOffset.UtcNow);
 
-    <RadzenBadge Text="@($"{role}: {status.Text}")"
-                 BadgeStyle="@status.Style"
-                 title="@(_error.Length > 0 ? _error : status.Hint)" />
-}
+        <RadzenBadge Text="@($"CtApi {role}: {status.Text}")" BadgeStyle="@status.Style" title="@(_error.Length > 0 ? _error : status.Hint)" />
+    }
+</div>
 
 @code {
     private readonly CancellationTokenSource _stop = new();

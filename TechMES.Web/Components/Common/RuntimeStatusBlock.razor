@@ -1,111 +1,74 @@
 ﻿@inject RuntimeStatusApiClient RuntimeStatusApi
 @implements IAsyncDisposable
 
-<RadzenStack Orientation="Orientation.Horizontal"
-             AlignItems="AlignItems.Center"
-             Gap="8px">
-
+<div class="runtime-status">
     <ScadaServerStatusBlock />
+    <OdbcServerStatusBlock />
 
-    @if (_isLoading && _health is null)
-    {
-        <RadzenBadge Text="Runtime: checking..."
-                     BadgeStyle="BadgeStyle.Light" />
-    }
-    else if (_health?.IsHealthy == true)
-    {
-        <RadzenBadge Text="Runtime: Online"
-                     BadgeStyle="BadgeStyle.Success" />
+    <div class="runtime-details">
+        <div class="runtime-badges">
+            @if (_isLoading && _health is null)
+            {
+                <RadzenBadge Text="Runtime: checking..." BadgeStyle="BadgeStyle.Light" />
+            }
+            else if (_health?.IsHealthy == true)
+            {
+                <RadzenBadge Text="Runtime: Online" BadgeStyle="BadgeStyle.Success" />
+                <RadzenBadge Text="@($"DB: {_health.Database}")" BadgeStyle="BadgeStyle.Success" />
+            }
+            else
+            {
+                <RadzenBadge Text="Runtime: Offline" BadgeStyle="BadgeStyle.Danger" title="@_errorText" />
+            }
+        </div>
 
-        <RadzenBadge Text="@($"DB: {_health.Database}")"
-                     BadgeStyle="BadgeStyle.Success" />
+        <span class="runtime-storage" title="@(_health is null ? _errorText : $"Storage: {_health.MessageStorageProvider}")">@(_health is null ? "Storage: Unknown" : $"Storage: {_health.MessageStorageProvider}")</span>
+    </div>
 
-        <RadzenText Text="@($"Storage: {_health.MessageStorageProvider}")"
-                    TextStyle="TextStyle.Caption"
-                    Style="color: gray;" />
-
-@*         <RadzenText Text="@($"Active: {_health.ActiveMessageCount}")"
-                    TextStyle="TextStyle.Caption"
-                    Style="color: gray;" /> *@
-    }
-    else
-    {
-        <RadzenBadge Text="Runtime: Offline"
-                     BadgeStyle="BadgeStyle.Danger" />
-
-        <RadzenText Text="@_errorText"
-                    TextStyle="TextStyle.Caption"
-                    Style="color: #c62828;" />
-    }
-
-    <RadzenButton Icon="refresh"
-                  Size="ButtonSize.Small"
-                  ButtonStyle="ButtonStyle.Light"
-                  Disabled="@_isLoading"
-                  Click="@RefreshAsync" />
-</RadzenStack>
+    <RadzenButton class="status-refresh" Icon="refresh" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Disabled="@_isLoading" Click="@RefreshAsync" title="Refresh Runtime status" />
+</div>
 
 @code {
-    /// <summary>
-    /// Последний health response Runtime.Service.
-    /// </summary>
+    private readonly CancellationTokenSource _stop = new();
+    private readonly PeriodicTimer _timer = new(TimeSpan.FromSeconds(30));
+
     private RuntimeHealthResponse? _health;
-
-    /// <summary>
-    /// true, пока выполняется health request.
-    /// </summary>
     private bool _isLoading;
-
-    /// <summary>
-    /// Текст ошибки подключения к Runtime.Service.
-    /// </summary>
+    private bool _disposed;
     private string _errorText = "";
+    private Task? _loop;
 
-    /// <summary>
-    /// Таймер легкого heartbeat-а footer status.
-    /// </summary>
-    private PeriodicTimer? _timer;
-
-    /// <summary>
-    /// CancellationTokenSource для остановки heartbeat-а.
-    /// </summary>
-    private CancellationTokenSource? _timerCts;
-
-    /// <summary>
-    /// Выполняет первую health-проверку и запускает фоновый heartbeat.
-    /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        // Первая проверка запускается сразу при открытии WEB.
         await RefreshAsync();
 
-        // Это не polling данных Messages.
-        // Это лёгкий heartbeat состояния Runtime.Service.
-        _timerCts = new CancellationTokenSource();
-        _timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
-
-        _ = RunHealthLoopAsync(_timerCts.Token);
+        if (!_disposed)
+            _loop = RunHealthLoopAsync(_stop.Token);
     }
 
     /// <summary>
-    /// Читает /api/health Runtime.Service и обновляет footer badges.
+    /// Сохраняет прежний опрос Runtime/DB.
+    /// Статусы CtApi и ODBC обновляются независимо каждые 5 секунд.
     /// </summary>
     private async Task RefreshAsync()
     {
+        if (_disposed || _isLoading)
+            return;
+
         _isLoading = true;
 
         try
         {
-            _health = await RuntimeStatusApi.GetHealthAsync();
+            var health = await RuntimeStatusApi.GetHealthAsync(_stop.Token);
 
-            if (_health.IsHealthy)
-            {
-                _errorText = "";
-            }
-            else
-            {
-                _errorText = _health.Error ?? "Runtime Service health check failed.";
-            }
+            if (_disposed)
+                return;
+
+            _health = health;
+            _errorText = health.IsHealthy ? "" : health.Error ?? "Runtime Service health check failed.";
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
@@ -119,13 +82,10 @@
     }
 
     /// <summary>
-    /// Периодически обновляет health status без polling-а производственных данных.
+    /// Периодически обновляет Runtime/DB без опроса производственных данных.
     /// </summary>
     private async Task RunHealthLoopAsync(CancellationToken ct)
     {
-        if (_timer is null)
-            return;
-
         try
         {
             while (await _timer.WaitForNextTickAsync(ct))
@@ -133,25 +93,29 @@
                 await InvokeAsync(async () =>
                 {
                     await RefreshAsync();
-                    StateHasChanged();
+
+                    if (!_disposed)
+                        StateHasChanged();
                 });
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Нормальная ситуация при закрытии страницы/приложения.
         }
     }
 
-    /// <summary>
-    /// Останавливает heartbeat timer при закрытии layout/component.
-    /// </summary>
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        _timerCts?.Cancel();
-        _timerCts?.Dispose();
-        _timer?.Dispose();
+        if (_disposed)
+            return;
 
-        return ValueTask.CompletedTask;
+        _disposed = true;
+        _stop.Cancel();
+        _timer.Dispose();
+
+        if (_loop is not null)
+            await _loop;
+
+        _stop.Dispose();
     }
 }

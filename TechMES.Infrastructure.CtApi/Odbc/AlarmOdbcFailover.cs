@@ -2,6 +2,7 @@
 using System.Data.Odbc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using TechMES.Contracts.Scada;
 
 namespace TechMES.Infrastructure.CtApi.Odbc;
 
@@ -24,6 +25,8 @@ public sealed class AlarmOdbcFailover : IAsyncDisposable
     private TaskCompletionSource _changed = NewSignal();
     private bool _started;
     private bool _disposed;
+
+    private readonly DateTimeOffset?[] _checkedAtUtc = new DateTimeOffset?[2];
 
     public AlarmOdbcFailover(IConfiguration configuration, IAlarmOdbcConnectionFactory factory, ILogger<AlarmOdbcFailover> logger)
     {
@@ -109,6 +112,7 @@ public sealed class AlarmOdbcFailover : IAsyncDisposable
             var previous = ActiveIndex();
 
             _online[index] = online;
+            _checkedAtUtc[index] = DateTimeOffset.UtcNow;
 
             var active = ActiveIndex();
             var changed = _changed;
@@ -236,6 +240,36 @@ public sealed class AlarmOdbcFailover : IAsyncDisposable
     private static bool IsConnectionFailure(DbException exception)
     {
         return exception.IsTransient || exception is OdbcException odbc && odbc.Errors.Cast<OdbcError>().Any(error => error.SQLState.StartsWith("08", StringComparison.Ordinal) || error.SQLState is "HYT00" or "HYT01");
+    }
+
+    /// <summary>
+    /// Возвращает согласованный снимок без открытия ODBC и без запуска проверки.
+    /// Строки подключения, включая UID/PWD, остаются только внутри Runtime.
+    /// </summary>
+    public OdbcHealthResponse GetHealth()
+    {
+        lock (_gate)
+        {
+            OdbcServerState DescribeServer(int index) => new()
+            {
+                Role = Role(index),
+                Configured = _connections[index].Length > 0,
+                Connected = _online[index],
+                CheckedAtUtc = _checkedAtUtc[index],
+                Message = _connections[index].Length == 0 ? "Not configured." : _checkedAtUtc[index] is null ? "Waiting for the first ODBC health check." : _online[index] ? "ODBC connection and probe succeeded." : "ODBC connection is unavailable. See Runtime logs."
+            };
+
+            var active = ActiveIndex();
+
+            return new OdbcHealthResponse
+            {
+                Enabled = true,
+                HealthPeriodSeconds = _healthSeconds,
+                ActiveRole = active < 0 ? null : Role(active),
+                Primary = DescribeServer(0),
+                Secondary = DescribeServer(1)
+            };
+        }
     }
 
     /// <summary>

@@ -76,4 +76,18 @@ public sealed class RuntimeStatusApiClient
             ?? throw new InvalidOperationException(
                 "Runtime returned an empty SCADA health response.");
     }
+
+    /// <summary>
+    /// Читает готовую диагностику Primary/Secondary ODBC.
+    /// Строки подключения в ответе отсутствуют.
+    /// </summary>
+    public async Task<OdbcHealthResponse> GetOdbcHealthAsync(CancellationToken ct = default)
+    {
+        using var client = CreateClient();
+        using var response = await client.GetAsync("api/scada/odbc/health", ct);
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<OdbcHealthResponse>(cancellationToken: ct) ?? throw new InvalidOperationException("Runtime returned an empty ODBC health response.");
+    }
 }

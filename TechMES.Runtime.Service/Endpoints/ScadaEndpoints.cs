@@ -1,5 +1,6 @@
 using TechMES.Application.Scada;
 using TechMES.Contracts.Scada;
+using TechMES.Infrastructure.CtApi.Odbc;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
@@ -11,16 +12,28 @@ public static class ScadaEndpoints
     private const int MaximumBatchTagCount = 500;
 
     /// <summary>
-    /// Подключает health, одиночное и пакетное чтение, а также запись тега.
+    /// Подключает диагностику CtApi/ODBC, одиночное и пакетное чтение, а также запись тега.
     /// </summary>
     public static IEndpointRouteBuilder MapScadaEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/scada/health", GetScadaHealthAsync);
+        app.MapGet("/api/scada/odbc/health", GetOdbcHealth);
         app.MapGet("/api/scada/tags/{tagName}", ReadTagAsync);
         app.MapPost("/api/scada/tags/read-batch", ReadTagsAsync);
         app.MapPost("/api/scada/tags/write", WriteTagAsync);
 
         return app;
+    }
+
+    /// <summary>
+    /// HTTP читает готовый снимок.
+    /// Проверки ODBC остаются в существующем health worker.
+    /// </summary>
+    private static IResult GetOdbcHealth(IEnumerable<AlarmOdbcFailover> connections)
+    {
+        var connection = connections.SingleOrDefault();
+
+        return Results.Ok(connection?.GetHealth() ?? new OdbcHealthResponse());
     }
 
     private static async Task<IResult> GetScadaHealthAsync(IPlantScadaGateway gateway, CancellationToken ct)

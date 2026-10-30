@@ -1,0 +1,47 @@
+.runtime-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+    .runtime-status ::deep .server-status-column,
+    .runtime-details {
+        display: grid;
+        grid-template-rows: 20px 20px;
+        row-gap: 4px;
+        align-items: center;
+        min-width: 0;
+    }
+
+.runtime-badges {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.runtime-status ::deep .rz-badge {
+    white-space: nowrap;
+    font-size: 10px;
+    line-height: 20px;
+    padding: 0 5px;
+}
+
+.runtime-storage {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 160px;
+    font-size: 11px;
+    color: gray;
+}
+
+.runtime-status ::deep .status-refresh {
+    flex: 0 0 28px;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    padding: 0;
+}
