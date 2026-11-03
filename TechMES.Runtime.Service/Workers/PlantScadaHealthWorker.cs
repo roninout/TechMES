@@ -3,13 +3,14 @@ using TechMES.Application.Scada;
 using TechMES.Infrastructure.CtApi.Odbc;
 using TechMES.Infrastructure.CtApi.Settings;
 using TechMES.Infrastructure.PostgreSql.Connections;
+using TechMES.Runtime.Service.Runtime;
 
 namespace TechMES.Runtime.Service.Workers;
 
 /// <summary>
 /// Один Health Period для независимых проверок CtApi, ODBC и Main DB.
 /// </summary>
-public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, IEnumerable<MainDatabaseFailover> databases, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
+public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, IEnumerable<MainDatabaseFailover> databases, RuntimeActivityState activity, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -24,14 +25,12 @@ public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<
 
         try
         {
-            // Первые проверки запускаем сразу. Дальше все подсистемы используют один timer.
             do
             {
                 odbc?.RefreshHealth();
                 database?.RefreshHealth();
 
-                // Долгая проверка CtApi не останавливает проверки ODBC и Main DB.
-                if (scadaCycle.IsCompleted)
+                if (activity.GetStatus().CanExecuteCommands && scadaCycle.IsCompleted)
                     scadaCycle = CheckScadaAsync(stoppingToken);
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));
@@ -49,15 +48,24 @@ public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<
     {
         try
         {
-            if (gateway is IPlantScadaHealthMonitor monitor)
-                await monitor.RefreshHealthAsync(ct);
+            using var lease = activity.Acquire();
+            using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
 
-            var health = await gateway.GetHealthAsync(ct);
+            if (gateway is IPlantScadaHealthMonitor monitor)
+                await monitor.RefreshHealthAsync(stop.Token);
+
+            var health = await gateway.GetHealthAsync(stop.Token);
 
             if (!health.IsConnected)
                 logger.LogWarning("Plant SCADA status: {Status}. {Message}", health.Status, health.Message);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (RuntimeNotActiveException)
+        {
+        }
+        catch (OperationCanceledException) when (!activity.GetStatus().CanExecuteCommands)
         {
         }
         catch (Exception ex)

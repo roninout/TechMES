@@ -4,69 +4,69 @@ using TechMES.Runtime.Service.Runtime;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
-/// <summary>
-/// Runtime health API.
-/// WEB использует этот endpoint для footer-диагностики, а будущий configurator сможет
-/// по нему быстро понять состояние сервиса и подключенного хранилища.
-/// </summary>
 public static class HealthEndpoints
 {
     /// <summary>
-    /// Подключает endpoint общей диагностики Runtime.Service.
+    /// Проверка процесса доступна независимо от готовности рабочих зависимостей.
     /// </summary>
     public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/health", GetHealthAsync);
+        app.MapGet("/api/runtime/status", (RuntimeActivityState activity) => Results.Ok(activity.GetStatus())).WithMetadata(new RuntimeControlEndpoint());
+        app.MapGet("/api/health", GetHealthAsync).WithMetadata(new RuntimeControlEndpoint());
 
         return app;
     }
 
-    /// <summary>
-    /// Возвращает статус процесса, имя устройства, версию приложения и состояние message-хранилища.
-    /// При ошибке возвращается 503, но с тем же DTO, чтобы WEB мог показать подробность.
-    /// </summary>
-    private static async Task<IResult> GetHealthAsync(
-        IConfiguration configuration,
-        IAppRuntimeContext runtime,
-        IMessageStore messageStore,
-        CancellationToken ct)
+    private static async Task<IResult> GetHealthAsync(IConfiguration configuration, IAppRuntimeContext runtime, RuntimeActivityState activity, IServiceProvider services, CancellationToken ct)
     {
+        var state = activity.GetStatus();
+
+        var response = new RuntimeHealthResponse
+        {
+            Status = state.CanExecuteCommands ? "OK" : state.Mode.ToUpperInvariant(),
+            Service = "TechMES.Runtime.Service",
+            DeviceName = runtime.DeviceName,
+            UserName = runtime.UserName,
+            MachineName = runtime.MachineName,
+            AppVersion = runtime.AppVersion,
+            MessageStorageProvider = configuration["MessageStorage:Provider"] ?? "InMemory",
+            Database = "NOT_CHECKED",
+            Activity = state,
+            Time = DateTime.Now
+        };
+
+        // IMessageStore разрешаем из DI только для активного Runtime.
+        if (!state.CanExecuteCommands)
+            return Results.Ok(response);
+
         try
         {
-            var activeCount = await messageStore.GetActiveMessageCountAsync(ct);
+            using var lease = activity.Acquire();
+            using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
 
-            return Results.Ok(new RuntimeHealthResponse
-            {
-                Status = "OK",
-                Service = "TechMES.Runtime.Service",
-                DeviceName = runtime.DeviceName,
-                UserName = runtime.UserName,
-                MachineName = runtime.MachineName,
-                AppVersion = runtime.AppVersion,
-                MessageStorageProvider = configuration["MessageStorage:Provider"] ?? "InMemory",
-                Database = "OK",
-                ActiveMessageCount = activeCount,
-                Time = DateTime.Now
-            });
+            response.ActiveMessageCount = await services.GetRequiredService<IMessageStore>().GetActiveMessageCountAsync(stop.Token);
+            response.Database = "OK";
+
+            return Results.Ok(response);
+        }
+        catch (Exception ex) when (ex is RuntimeNotActiveException || ex is OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            response.Activity = activity.GetStatus();
+            response.Status = response.Activity.Mode.ToUpperInvariant();
+
+            return Results.Ok(response);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            return Results.Json(
-                new RuntimeHealthResponse
-                {
-                    Status = "ERROR",
-                    Service = "TechMES.Runtime.Service",
-                    DeviceName = runtime.DeviceName,
-                    UserName = runtime.UserName,
-                    MachineName = runtime.MachineName,
-                    AppVersion = runtime.AppVersion,
-                    MessageStorageProvider = configuration["MessageStorage:Provider"] ?? "InMemory",
-                    Database = "ERROR",
-                    ActiveMessageCount = 0,
-                    Time = DateTime.Now,
-                    Error = ex.Message
-                },
-                statusCode: StatusCodes.Status503ServiceUnavailable);
+            response.Status = "ERROR";
+            response.Database = "ERROR";
+            response.Error = ex.Message;
+
+            return Results.Json(response, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     }
 }

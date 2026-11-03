@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using TechMES.Contracts.Scada;
 using TechMES.Infrastructure.CtApi.Settings;
+using TechMES.Application.Scada;
 
 namespace TechMES.Infrastructure.CtApi.Native;
 
@@ -11,12 +12,14 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
     private readonly ICtApiNativeClient[] _clients;
     private readonly bool[] _opened = new bool[2];
     private readonly bool?[] _lastSent = new bool?[2];
+    private readonly string?[] _lastWriteEpoch = new string?[2];
     private readonly SemaphoreSlim[] _serverGates = [new(1, 1), new(1, 1)];
     private readonly SemaphoreSlim _statusGate = new(1, 1);
     private readonly SemaphoreSlim _closeGate = new(1, 1);
     private readonly object _stateGate = new();
     private readonly CtApiOptions _options;
     private readonly ILogger _logger;
+    private readonly IPlantScadaWritePermission? _writePermission;
 
     private Task[] _cycles = [Task.CompletedTask, Task.CompletedTask];
     private CancellationTokenSource? _stop = new();
@@ -27,16 +30,16 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
 
     public PlantScadaRedundancyState State => Volatile.Read(ref _state);
 
-    public CtApiFailoverClient(CtApiOptions options, ICtApiNativeClient primary, ICtApiNativeClient secondary, ILogger<CtApiFailoverClient> logger)
+    public CtApiFailoverClient(CtApiOptions options, ICtApiNativeClient primary, ICtApiNativeClient secondary, ILogger<CtApiFailoverClient> logger, IPlantScadaWritePermission? writePermission = null)
     {
         _options = options;
         _clients = [primary, secondary];
         _logger = logger;
+        _writePermission = writePermission;
 
         _state = new()
         {
             HealthPeriodSeconds = Math.Max(5, options.HealthCheckPeriodSeconds),
-
             Primary = new()
             {
                 Role = "Primary",
@@ -45,7 +48,6 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
                 WriteTag = options.PrimaryConnectionTag.Trim(),
                 ReadTag = options.PrimaryStatusTag.Trim()
             },
-
             Secondary = new()
             {
                 Role = "Secondary",
@@ -61,10 +63,13 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
 
     private static int ActiveIndex(PlantScadaRedundancyState state) => state.Primary.Connected ? 0 : state.Secondary.Connected ? 1 : -1;
 
-    /// <summary>Запускает максимум одну проверку каждого сервера и ждёт только первого рабочего подключения.</summary>
+    /// <summary>
+    /// Запоминает эпоху Runtime в момент запуска фонового цикла.
+    /// </summary>
     public async Task RefreshAsync(bool writeControlTags, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
+
         Task ready;
         Task completed;
 
@@ -80,7 +85,9 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
 
                 var serverIndex = index;
                 var token = _stop.Token;
-                _cycles[index] = Task.Run(() => RefreshServerAsync(serverIndex, writeControlTags, token));
+                var writeEpoch = _writePermission?.WriteEpoch;
+
+                _cycles[index] = Task.Run(() => RefreshServerAsync(serverIndex, writeControlTags, token, writeEpoch));
             }
 
             ready = _ready.Task;
@@ -91,12 +98,11 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
             completed = Task.WhenAll(_cycles);
         }
 
-        // Второй сервер продолжает свою проверку в отслеживаемой задаче.
-        // Отмена ожидания не закрывает handle, которым пользуются другие запросы.
+        // Медленный второй сервер продолжает проверку в отслеживаемой задаче.
         await Task.WhenAny(ready, completed).WaitAsync(ct);
     }
 
-    private async Task RefreshServerAsync(int index, bool writeControlTags, CancellationToken ct)
+    private async Task RefreshServerAsync(int index, bool writeControlTags, CancellationToken ct, string? writeEpoch)
     {
         try
         {
@@ -107,13 +113,13 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
                 var state = index == 0 ? State.Primary : State.Secondary;
                 var duplicate = index == 1 && state.Server.Length > 0 && state.Server.Equals(State.Primary.Server, StringComparison.OrdinalIgnoreCase);
 
-                state = duplicate
-                    ? state with { Connected = false, Message = "Primary and Secondary must be different servers." }
-                    : await ProbeAsync(index, state, ct);
+                state = duplicate ? state with { Connected = false, Message = "Primary and Secondary must be different servers." } : await ProbeAsync(index, state, ct);
 
-                // Рабочий маршрут публикуем сразу после health-check, до heartbeat и чтения статусов.
+                // Маршрут публикуем до heartbeat и чтения статусов.
                 PublishServer(index, state);
-                state = await UpdateHeartbeatAsync(index, state, writeControlTags, ct);
+
+                state = await UpdateHeartbeatAsync(index, state, writeControlTags, ct, writeEpoch);
+
                 PublishServer(index, state);
             }
             finally
@@ -121,7 +127,6 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
                 _serverGates[index].Release();
             }
 
-            // Оба ответа PLC читаем через любой рабочий сервер, даже если второй отключён.
             await RefreshPlcStatusesAsync(ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -255,78 +260,60 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
             }.Count(value => string.Equals(value, tag, StringComparison.OrdinalIgnoreCase)) > 1;
     }
 
-    private async Task<PlantScadaServerState> UpdateHeartbeatAsync(int index, PlantScadaServerState state, bool write, CancellationToken ct)
+    private async Task<PlantScadaServerState> UpdateHeartbeatAsync(int index, PlantScadaServerState state, bool write, CancellationToken ct, string? writeEpoch)
     {
-        state = state with
-        {
-            WriteValue = null,
-            WriteTagReadOk = null,
-            WriteOk = null
-        };
+        state = state with { WriteValue = null, WriteTagReadOk = null, WriteOk = null };
 
         if (!state.Connected || !state.Configured)
         {
             _lastSent[index] = null;
+
             return state with { WriteMessage = "Server is offline. Heartbeat is not written." };
         }
 
         if (state.WriteTag.Length == 0)
-        {
-            return state with
-            {
-                WriteMessage = "Write tag is not configured."
-            };
-        }
+            return state with { WriteMessage = "Write tag is not configured." };
 
         if (IsDuplicateTag(state.WriteTag))
-        {
-            return state with
-            {
-                WriteTagReadOk = false,
-                WriteMessage = "All four tag names must be different."
-            };
-        }
+            return state with { WriteTagReadOk = false, WriteMessage = "All four tag names must be different." };
 
         try
         {
-            // Heartbeat сервера записывается через его собственный handle.
             var client = _clients[index];
             var value = await client.ReadControlTagAsync(state.WriteTag, ct);
 
             state = state with { WriteValue = value };
 
             if (!TryBoolean(value, out var current))
-            {
-                return state with
-                {
-                    WriteTagReadOk = false,
-                    WriteMessage = "Expected a readable boolean Write tag (0/1)."
-                };
-            }
+                return state with { WriteTagReadOk = false, WriteMessage = "Expected a readable boolean Write tag (0/1)." };
 
             state = state with { WriteTagReadOk = true };
 
             if (!write)
-            {
-                return state with
-                {
-                    WriteMessage = "Readable. Waiting for the health cycle."
-                };
-            }
+                return state with { WriteMessage = "Readable. Waiting for the health cycle." };
 
             if (!_options.AllowWrites)
             {
                 _lastSent[index] = null;
 
-                return state with
-                {
-                    WriteMessage = "Writes disabled by CtApi:AllowWrites."
-                };
+                return state with { WriteMessage = "Writes disabled by CtApi:AllowWrites." };
             }
 
-            // При первом запуске инвертируем фактическое значение.
-            // Далее инвертируем последнюю успешную запись:
-            // задержка readback не должна повторять один и тот же бит.
+            // Цикл мог начаться в Active и продолжиться уже после потери активности.
+            if (_writePermission is not null && !_writePermission.CanWriteInEpoch(writeEpoch))
+            {
+                _lastSent[index] = null;
+
+                return state with { WriteMessage = "Heartbeat write is blocked because Runtime is not Active." };
+            }
+
+            if (_writePermission is not null && _lastWriteEpoch[index] != writeEpoch)
+            {
+                _lastWriteEpoch[index] = writeEpoch;
+                _lastSent[index] = null;
+            }
+
+            // Новая активация начинает с фактического бита, а не с значения прежней эпохи.
             var next = !(_lastSent[index] ?? current);
             var sent = next ? "1" : "0";
 
@@ -334,12 +321,7 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
 
             _lastSent[index] = next;
 
-            return state with
-            {
-                LastWrittenValue = sent,
-                WriteOk = true,
-                WriteMessage = $"Heartbeat write accepted: {sent}."
-            };
+            return state with { LastWrittenValue = sent, WriteOk = true, WriteMessage = $"Heartbeat write accepted: {sent}." };
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -347,16 +329,10 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            // После неподтверждённой записи следующий цикл
-            // снова синхронизируется с фактическим значением.
+            // Неподтверждённая запись требует повторной синхронизации с фактическим битом.
             _lastSent[index] = null;
 
-            return state with
-            {
-                WriteTagReadOk = state.WriteTagReadOk ?? false,
-                WriteOk = state.WriteTagReadOk == true ? false : null,
-                WriteMessage = ex.Message
-            };
+            return state with { WriteTagReadOk = state.WriteTagReadOk ?? false, WriteOk = state.WriteTagReadOk == true ? false : null, WriteMessage = ex.Message };
         }
     }
 

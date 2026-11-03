@@ -13,9 +13,6 @@ using TechMES.Infrastructure.CtApi.Odbc;
 
 namespace TechMES.Infrastructure.CtApi;
 
-/// <summary>
-/// Регистрация Plant SCADA / CtApi infrastructure.
-/// </summary>
 public static class CtApiServiceCollectionExtensions
 {
     public static IServiceCollection AddCtApiInfrastructure(this IServiceCollection services, IConfiguration configuration)
@@ -46,7 +43,6 @@ public static class CtApiServiceCollectionExtensions
         }
         else if (string.Equals(provider, "CtApi", StringComparison.OrdinalIgnoreCase))
         {
-            // Один выбор Primary/Secondary для всех ODBC-провайдеров.
             services.AddSingleton<IAlarmOdbcConnectionFactory, AlarmOdbcConnectionFactory>();
             services.AddSingleton<AlarmOdbcFailover>();
 
@@ -54,31 +50,27 @@ public static class CtApiServiceCollectionExtensions
             services.AddSingleton<IAlarmSummaryProvider, CtApiAlarmSummaryProvider>();
             services.AddSingleton<IEventJournalProvider, CtApiEventJournalProvider>();
 
-            // Все CtApi-модули используют существующий failover client.
             services.AddSingleton<ICtApiNativeClient>(serviceProvider =>
             {
                 var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<CtApiOptions>>().Value;
                 var logger = serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CtApiNativeClient>>();
 
-                CtApiNativeClient Create(string server) => new(
-                    Microsoft.Extensions.Options.Options.Create(new CtApiOptions
-                    {
-                        Path = options.Path,
-                        Server = server,
-                        User = options.User,
-                        Password = options.Password,
-                        HealthCheckTag = options.HealthCheckTag
-                    }),
-                    logger);
+                CtApiNativeClient Create(string server) => new(Microsoft.Extensions.Options.Options.Create(new CtApiOptions
+                {
+                    Path = options.Path,
+                    Server = server,
+                    User = options.User,
+                    Password = options.Password,
+                    HealthCheckTag = options.HealthCheckTag
+                }), logger);
 
-                return new CtApiFailoverClient(options, Create(options.Server), Create(options.ServerSecondary), serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CtApiFailoverClient>>());
+                // В Runtime сюда передаётся общий источник разрешения записей.
+                return new CtApiFailoverClient(options, Create(options.Server), Create(options.ServerSecondary), serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CtApiFailoverClient>>(), serviceProvider.GetService<IPlantScadaWritePermission>());
             });
 
             services.AddSingleton<IPlantScadaGateway, CtApiPlantScadaGateway>();
             services.AddSingleton<IEquipmentParamProvider, CtApiEquipmentParamProvider>();
             services.AddSingleton<IEquipmentSoeProvider, CtApiEquipmentSoeProvider>();
-
-            // Calc Catalog не загружается при старте Runtime.
             services.AddSingleton<ICalcModelCatalogProvider, CtApiCalcModelCatalogProvider>();
         }
         else
