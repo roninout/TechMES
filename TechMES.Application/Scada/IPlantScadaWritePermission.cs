@@ -11,4 +11,10 @@ public interface IPlantScadaWritePermission
     string? WriteEpoch { get; }
 
     bool CanWriteInEpoch(string? epoch);
+
+    /// <summary>
+    /// Учитывает фоновую запись как незавершённую операцию текущей эпохи.
+    /// null означает, что разрешение не выдано; полученное разрешение нужно освободить.
+    /// </summary>
+    IDisposable? TryAcquireWrite(string? epoch);
 }

@@ -299,8 +299,11 @@ public sealed class CtApiFailoverClient : ICtApiNativeClient, IAsyncDisposable
                 return state with { WriteMessage = "Writes disabled by CtApi:AllowWrites." };
             }
 
-            // Цикл мог начаться в Active и продолжиться уже после потери активности.
-            if (_writePermission is not null && !_writePermission.CanWriteInEpoch(writeEpoch))
+            // Учитываем heartbeat до завершения нативного вызова.
+            // Начатая запись удерживает Runtime в Draining, даже если её нельзя отменить.
+            using var permission = _writePermission?.TryAcquireWrite(writeEpoch);
+
+            if (_writePermission is not null && permission is null)
             {
                 _lastSent[index] = null;
 

@@ -9,6 +9,8 @@ public sealed record RuntimeActivityStatusResponse
     public string InstanceId { get; init; } = "";
     public string Mode { get; init; } = "Starting";
     public bool CanExecuteCommands { get; init; }
+    public bool StandbyRequested { get; init; }
+    public int PendingOperations { get; init; }
     public string? ActivationId { get; init; }
     public string Reason { get; init; } = "";
     public DateTimeOffset ChangedAtUtc { get; init; }

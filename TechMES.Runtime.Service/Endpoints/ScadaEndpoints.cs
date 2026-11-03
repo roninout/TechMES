@@ -3,6 +3,7 @@ using TechMES.Contracts.Scada;
 using TechMES.Contracts.Runtime;
 using TechMES.Infrastructure.CtApi.Odbc;
 using TechMES.Infrastructure.PostgreSql.Connections;
+using TechMES.Runtime.Service.Runtime;
 
 namespace TechMES.Runtime.Service.Endpoints;
 
@@ -18,9 +19,11 @@ public static class ScadaEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapScadaEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/scada/health", GetScadaHealthAsync);
-        app.MapGet("/api/scada/odbc/health", GetOdbcHealth);
-        app.MapGet("/api/database/health", GetDatabaseHealth);
+        // Диагностика возвращает готовые снимки и доступна также в Standby.
+        app.MapGet("/api/scada/health", GetScadaHealthAsync).WithMetadata(new RuntimeControlEndpoint());
+        app.MapGet("/api/scada/odbc/health", GetOdbcHealth).WithMetadata(new RuntimeControlEndpoint());
+        app.MapGet("/api/database/health", GetDatabaseHealth).WithMetadata(new RuntimeControlEndpoint());
+
         app.MapGet("/api/scada/tags/{tagName}", ReadTagAsync);
         app.MapPost("/api/scada/tags/read-batch", ReadTagsAsync);
         app.MapPost("/api/scada/tags/write", WriteTagAsync);
