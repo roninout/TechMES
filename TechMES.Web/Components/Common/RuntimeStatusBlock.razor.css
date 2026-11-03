@@ -15,10 +15,16 @@
         min-width: 0;
     }
 
+/* Режим и число операций занимают существующую колонку из двух строк. */
+.runtime-details {
+    flex: 0 0 112px;
+    width: 112px;
+}
+
 .runtime-badges {
     display: flex;
     align-items: center;
-    gap: 6px;
+    min-width: 0;
     white-space: nowrap;
 }
 
@@ -29,11 +35,17 @@
     padding: 0 5px;
 }
 
+.runtime-badges ::deep .rz-badge {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .runtime-storage {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 160px;
     font-size: 11px;
     color: gray;
 }

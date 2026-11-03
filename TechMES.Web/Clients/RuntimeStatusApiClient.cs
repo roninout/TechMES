@@ -34,17 +34,29 @@ public sealed class RuntimeStatusApiClient
     }
 
     /// <summary>
-    /// Читает /api/health. Даже при 503 пытается разобрать DTO,
-    /// потому что backend возвращает полезное описание ошибки.
+    /// Читает режим самого Runtime без обращения Runtime к БД и SCADA. Короткий таймаут относится только к HTTP-диагностике процесса.
+    /// </summary>
+    public async Task<RuntimeActivityStatusResponse> GetActivityStatusAsync(CancellationToken ct = default)
+    {
+        using var client = CreateClient();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+
+        using var response = await client.GetAsync("api/runtime/status", timeout.Token);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<RuntimeActivityStatusResponse>(cancellationToken: timeout.Token) ?? throw new InvalidOperationException("Runtime returned an empty activity status response.");
+    }
+
+    /// <summary>
+    /// Читает /api/health. Даже при 503 пытается разобрать DTO, потому что backend возвращает полезное описание ошибки.
     /// </summary>
     public async Task<RuntimeHealthResponse> GetHealthAsync(CancellationToken ct = default)
     {
-        var client = CreateClient();
+        using var client = CreateClient();
+        using var response = await client.GetAsync("api/health", ct);
 
-        var response = await client.GetAsync("api/health", ct);
-
-        var health = await response.Content.ReadFromJsonAsync<RuntimeHealthResponse>(
-            cancellationToken: ct);
+        var health = await response.Content.ReadFromJsonAsync<RuntimeHealthResponse>(cancellationToken: ct);
 
         if (health is null)
         {
