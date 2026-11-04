@@ -46,17 +46,20 @@ public sealed class PostgreSqlRuntimeLeadershipStore(MainDatabaseFailover databa
 
             if (request.Role == "Primary")
             {
+                // Готовность подтверждает Runtime своим счётчиком последовательных успехов.
+                // После ошибки он сбрасывает счётчик и отправляет CanAcquire=false.
+                // Старые успешные проверки в БД не должны преждевременно вызвать возврат.
                 var sql = request.AdvertisePrimary ? """
-                    UPDATE public.techmes_runtime_lease
-                    SET primary_successes = CASE WHEN primary_instance = @instance AND primary_seen > clock_timestamp() - make_interval(secs => @fresh) THEN LEAST(primary_successes + 1, @recovery) ELSE 1 END,
-                        primary_instance = @instance,
-                        primary_seen = clock_timestamp()
-                    WHERE scope = @scope AND (primary_instance IS NULL OR primary_instance = @instance OR primary_seen <= clock_timestamp() - make_interval(secs => @fresh));
-                    """ : """
-                    UPDATE public.techmes_runtime_lease
-                    SET primary_instance = NULL, primary_seen = NULL, primary_successes = 0
-                    WHERE scope = @scope AND primary_instance = @instance;
-                    """;
+                UPDATE public.techmes_runtime_lease
+                SET primary_successes = CASE WHEN @can_acquire THEN @recovery ELSE 0 END,
+                    primary_instance = @instance,
+                    primary_seen = clock_timestamp()
+                WHERE scope = @scope AND (primary_instance IS NULL OR primary_instance = @instance OR primary_seen <= clock_timestamp() - make_interval(secs => @fresh));
+                """ : """
+                UPDATE public.techmes_runtime_lease
+                SET primary_instance = NULL, primary_seen = NULL, primary_successes = 0
+                WHERE scope = @scope AND primary_instance = @instance;
+                """;
 
                 await ExecuteAsync(sql, connection, transaction, request, ct);
             }
@@ -64,30 +67,30 @@ public sealed class PostgreSqlRuntimeLeadershipStore(MainDatabaseFailover databa
             // Действующий владелец продлевает прежний lease.
             // Истёкший lease всегда получает новый UUID.
             const string claimSql = """
-                UPDATE public.techmes_runtime_lease
-                SET lease_id = CASE WHEN owner_instance = @instance AND expires_at > clock_timestamp() THEN lease_id ELSE @new_lease END,
-                    owner_node = @node,
-                    owner_instance = @instance,
-                    owner_role = @role,
-                    expires_at = clock_timestamp() + make_interval(secs => @lease_seconds)
-                WHERE scope = @scope AND
-                (
-                    (owner_instance = @instance AND expires_at > clock_timestamp())
-                    OR
-                    (@can_acquire AND expires_at <= clock_timestamp() AND
-                        (@role = 'Primary' OR primary_seen IS NULL OR primary_seen <= clock_timestamp() - make_interval(secs => @fresh)))
-                );
-                """;
+            UPDATE public.techmes_runtime_lease
+            SET lease_id = CASE WHEN owner_instance = @instance AND expires_at > clock_timestamp() THEN lease_id ELSE @new_lease END,
+                owner_node = @node,
+                owner_instance = @instance,
+                owner_role = @role,
+                expires_at = clock_timestamp() + make_interval(secs => @lease_seconds)
+            WHERE scope = @scope AND
+            (
+                (owner_instance = @instance AND expires_at > clock_timestamp())
+                OR
+                (@can_acquire AND expires_at <= clock_timestamp() AND
+                    (@role = 'Primary' OR primary_seen IS NULL OR primary_seen <= clock_timestamp() - make_interval(secs => @fresh)))
+            );
+            """;
 
             await ExecuteAsync(claimSql, connection, transaction, request, ct);
 
             const string readSql = """
-                SELECT owner_instance = @instance AND expires_at > clock_timestamp() AS is_owner,
-                       owner_instance = @instance AND owner_role = 'Secondary' AND primary_successes >= @recovery AND primary_seen > clock_timestamp() - make_interval(secs => @fresh) AS yield_to_primary,
-                       lease_id, owner_node, owner_instance, owner_role,
-                       CASE WHEN lease_id IS NULL THEN NULL ELSE expires_at END
-                FROM public.techmes_runtime_lease WHERE scope = @scope;
-                """;
+            SELECT owner_instance = @instance AND expires_at > clock_timestamp() AS is_owner,
+                   owner_instance = @instance AND owner_role = 'Secondary' AND primary_successes >= @recovery AND primary_seen > clock_timestamp() - make_interval(secs => @fresh) AS yield_to_primary,
+                   lease_id, owner_node, owner_instance, owner_role,
+                   CASE WHEN lease_id IS NULL THEN NULL ELSE expires_at END
+            FROM public.techmes_runtime_lease WHERE scope = @scope;
+            """;
 
             RuntimeLeadershipSnapshot snapshot;
 
