@@ -12,11 +12,15 @@ public sealed class RuntimeOptions
     public string NodeId { get; set; } = "";
 
     /// <summary>
-    /// true удерживает Runtime в Standby, false разрешает подготовку и переход в Active.
-    /// Изменение appsettings применяется без перезапуска службы.
-    /// Автоматический выбор владельца между компьютерами добавим следующим блоком.
+    /// Тестовый Standby для одиночного Runtime при Redundancy.Enabled = false.
+    /// При включённом резервировании этот флаг игнорируется: mode назначает координатор.
     /// </summary>
     public bool StartInStandby { get; set; }
+
+    /// <summary>
+    /// Параметры автоматического выбора активного Runtime.
+    /// </summary>
+    public RuntimeRedundancyOptions Redundancy { get; set; } = new();
 
     /// <summary>
     /// Существующее имя устройства/сервиса.

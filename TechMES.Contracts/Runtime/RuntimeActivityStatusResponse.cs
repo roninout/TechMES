@@ -13,5 +13,6 @@ public sealed record RuntimeActivityStatusResponse
     public int PendingOperations { get; init; }
     public string? ActivationId { get; init; }
     public string Reason { get; init; } = "";
+    public RuntimeCoordinationStatusResponse? Coordination { get; init; }
     public DateTimeOffset ChangedAtUtc { get; init; }
 }

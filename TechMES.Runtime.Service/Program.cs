@@ -2,8 +2,12 @@ using TechMES.Application.Equipment;
 using TechMES.Application.Messages;
 using TechMES.Application.Param;
 using TechMES.Application.Scada;
+using TechMES.Application.Runtime;
+using TechMES.Calc.Abstractions;
+using TechMES.Contracts.Security;
 using TechMES.Infrastructure.CtApi;
 using TechMES.Infrastructure.CtApi.Gateways;
+using TechMES.Infrastructure.PostgreSql.Runtime;
 using TechMES.Infrastructure.PostgreSql;
 using TechMES.Runtime.Service.Endpoints;
 using TechMES.Runtime.Service.Equipment;
@@ -12,9 +16,7 @@ using TechMES.Runtime.Service.Messages;
 using TechMES.Runtime.Service.Runtime;
 using TechMES.Runtime.Service.Settings;
 using TechMES.Runtime.Service.Workers;
-using TechMES.Calc.Abstractions;
 using TechMES.Runtime.Service.Calc;
-using TechMES.Contracts.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,9 +31,21 @@ builder.Logging.AddDebug();
 builder.Logging.AddSimpleFile(builder.Configuration);
 
 // Настройки и единый источник активности Runtime.
-builder.Services.Configure<RuntimeOptions>(builder.Configuration.GetSection("Runtime"));
+builder.Services.AddOptions<RuntimeOptions>()
+    .Bind(builder.Configuration.GetSection("Runtime"))
+    .Validate(value => !value.Redundancy.Enabled || value.Redundancy.Role is "Primary" or "Secondary", "Runtime:Redundancy:Role must be Primary or Secondary.")
+    .Validate(value => !value.Redundancy.Enabled || !string.IsNullOrWhiteSpace(value.Redundancy.Scope) && value.Redundancy.Scope.Length <= 100, "Runtime:Redundancy:Scope must contain between 1 and 100 characters.")
+    .Validate(value => value.Redundancy.FailureThreshold is >= 1 and <= 10 && value.Redundancy.RecoveryThreshold is >= 1 and <= 10, "Runtime redundancy thresholds must be between 1 and 10.")
+    .Validate(value => !value.Redundancy.Enabled || string.Equals(builder.Configuration["Database:Provider"] ?? "PostgreSql", "PostgreSql", StringComparison.OrdinalIgnoreCase), "Automatic Runtime coordination requires Database:Provider = PostgreSql.")
+    .Validate(value => !value.Redundancy.Enabled || (builder.Configuration.GetValue<int?>("CtApi:HealthCheckPeriodSeconds") ?? 10) is >= 1 and <= 3600, "CtApi Health Period must be between 1 and 3600 seconds for Runtime coordination.")
+    .ValidateOnStart();
+
 builder.Services.AddSingleton<RuntimeActivityState>();
 builder.Services.AddSingleton<IPlantScadaWritePermission>(provider => provider.GetRequiredService<RuntimeActivityState>());
+
+// Координатор получает разрешение, а activation worker готовит рабочие модули.
+builder.Services.AddSingleton<IRuntimeLeadershipStore, PostgreSqlRuntimeLeadershipStore>();
+builder.Services.AddHostedService<RuntimeCoordinationWorker>();
 builder.Services.AddHostedService<RuntimeActivationWorker>();
 
 // Существующие настройки модулей.

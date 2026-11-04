@@ -17,10 +17,17 @@ public sealed class RuntimeActivationWorker(IServiceScopeFactory scopes, Runtime
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var changes = options.OnChange((settings, _) => activity.SetStandbyRequested(settings.StartInStandby));
+        // При включённом HA режим назначает координатор; тестовый флаг файла не участвует.
+        var automatic = options.CurrentValue.Redundancy.Enabled;
+        using var changes = options.OnChange((settings, _) =>
+        {
+            if (!automatic)
+                activity.SetStandbyRequested(settings.StartInStandby);
+        });
         using var stopping = lifetime.ApplicationStopping.Register(() => activity.BeginDraining("Runtime is stopping."));
 
-        activity.SetStandbyRequested(options.CurrentValue.StartInStandby);
+        if (!automatic)
+            activity.SetStandbyRequested(options.CurrentValue.StartInStandby);
 
         // Используем существующий Health Period для повторной подготовки и проверки режима.
         var period = TimeSpan.FromSeconds(Math.Max(5, healthOptions.Value.HealthCheckPeriodSeconds));
@@ -34,7 +41,7 @@ public sealed class RuntimeActivationWorker(IServiceScopeFactory scopes, Runtime
                 if (state.StandbyRequested)
                 {
                     if (state.Mode != RuntimeActivityMode.Standby.ToString())
-                        await EnterStandbyAsync("Runtime is held in Standby by configuration.", stoppingToken);
+                        await EnterStandbyAsync(automatic ? "Runtime is waiting for ownership." : "Runtime is held in Standby by configuration.", stoppingToken);
                 }
                 else if (!state.CanExecuteCommands)
                 {

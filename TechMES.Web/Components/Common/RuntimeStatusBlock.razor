@@ -214,7 +214,10 @@
         var changed = _activity.ChangedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
         var received = _activityReadAt?.ToString("dd.MM.yyyy HH:mm:ss") ?? "Unknown";
 
-        return $"Node: {_activity.NodeId}\nMode: {_activity.Mode}\nRequested: {requested}\nCommands: {commands}\nPending operations: {_activity.PendingOperations}\nInstance: {_activity.InstanceId}\nActivation: {_activity.ActivationId ?? "None"}\nChanged: {changed}\nReceived: {received}\nReason: {_activity.Reason}\n{storage}{healthError}";
+        var coordination = _activity.Coordination;
+        var ownership = coordination?.Enabled == true ? $"\nHA role: {coordination.Role}\nOwner: {coordination.OwnerNodeId ?? "None"}\nOwnership lease: {coordination.LeaseId?.ToString() ?? "None"}\nLease expires: {coordination.ExpiresAtUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") ?? "Unknown"}\nCoordination failures: {coordination.ConsecutiveFailures}\nCoordination: {coordination.Message}" : "\nHA: Disabled";
+
+        return $"Node: {_activity.NodeId}\nMode: {_activity.Mode}\nRequested: {requested}\nCommands: {commands}\nPending operations: {_activity.PendingOperations}\nInstance: {_activity.InstanceId}\nActivation: {_activity.ActivationId ?? "None"}\nChanged: {changed}\nReceived: {received}\nReason: {_activity.Reason}\n{storage}{healthError}{ownership}";
     }
 
     public async ValueTask DisposeAsync()
