@@ -9,6 +9,7 @@ using TechMES.Infrastructure.CtApi;
 using TechMES.Infrastructure.CtApi.Gateways;
 using TechMES.Infrastructure.PostgreSql.Runtime;
 using TechMES.Infrastructure.PostgreSql;
+using TechMES.Infrastructure.PostgreSql.Connections;
 using TechMES.Runtime.Service.Endpoints;
 using TechMES.Runtime.Service.Equipment;
 using TechMES.Runtime.Service.Logging;
@@ -42,6 +43,10 @@ builder.Services.AddOptions<RuntimeOptions>()
 
 builder.Services.AddSingleton<RuntimeActivityState>();
 builder.Services.AddSingleton<IPlantScadaWritePermission>(provider => provider.GetRequiredService<RuntimeActivityState>());
+
+// Диагностика физического кластера доступна независимо от Runtime Active/Standby.
+builder.Services.AddSingleton<IPostgreSqlClusterProbe, PostgreSqlClusterProbe>();
+builder.Services.AddSingleton<PostgreSqlClusterMonitor>();
 
 // Координатор получает разрешение, а activation worker готовит рабочие модули.
 builder.Services.AddSingleton<IRuntimeLeadershipStore, PostgreSqlRuntimeLeadershipStore>();
@@ -131,5 +136,8 @@ app.UseMiddleware<RuntimeActivityMiddleware>();
 // Здесь больше нет блокирующей инициализации PostgreSQL/CtApi перед запуском HTTP.
 app.MapRuntimeEndpoints();
 app.MapUserStateEndpoints();
+
+// Только готовый снимок: HTTP-запрос не открывает соединения к PostgreSQL.
+app.MapGet("/api/database/cluster", (PostgreSqlClusterMonitor cluster) => Results.Ok(cluster.GetHealth())).WithMetadata(new RuntimeControlEndpoint());
 
 app.Run();

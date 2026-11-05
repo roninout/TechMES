@@ -8,9 +8,9 @@ using TechMES.Runtime.Service.Runtime;
 namespace TechMES.Runtime.Service.Workers;
 
 /// <summary>
-/// Один Health Period для независимых проверок CtApi, ODBC и Main DB.
+/// Один Health Period для независимых проверок CtApi, ODBC, Main DB и кластера PostgreSQL.
 /// </summary>
-public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, IEnumerable<MainDatabaseFailover> databases, RuntimeActivityState activity, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
+public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, IEnumerable<MainDatabaseFailover> databases, PostgreSqlClusterMonitor cluster, RuntimeActivityState activity, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -18,6 +18,7 @@ public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<
         var odbc = odbcConnections.SingleOrDefault();
         var database = databases.SingleOrDefault();
         var scadaCycle = Task.CompletedTask;
+        var clusterCycle = Task.CompletedTask;
 
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(seconds));
 
@@ -30,6 +31,11 @@ public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<
                 odbc?.RefreshHealth();
                 database?.RefreshHealth();
 
+                // Проверка кластера работает также в Standby.
+                // Новый таймер не создаём; медленная проверка не задерживает CtApi/ODBC.
+                if (clusterCycle.IsCompleted)
+                    clusterCycle = CheckClusterAsync(stoppingToken);
+
                 if (activity.GetStatus().CanExecuteCommands && scadaCycle.IsCompleted)
                     scadaCycle = CheckScadaAsync(stoppingToken);
             }
@@ -40,7 +46,22 @@ public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<
         }
         finally
         {
-            await scadaCycle;
+            await Task.WhenAll(scadaCycle, clusterCycle);
+        }
+    }
+
+    private async Task CheckClusterAsync(CancellationToken ct)
+    {
+        try
+        {
+            await cluster.RefreshAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("PostgreSQL cluster monitor failed. ErrorType={ErrorType}.", ex.GetType().Name);
         }
     }
 
