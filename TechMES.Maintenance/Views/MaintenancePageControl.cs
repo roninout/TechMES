@@ -235,4 +235,14 @@ public class MaintenancePageControl : UserControl
     {
         ForwardRoutedEvent(sender, e);
     }
+
+    /// <summary>
+    /// Передаёт выбор репозитория главному окну.
+    /// </summary>
+    public void OnChooseRepositoryClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+
+    /// <summary>
+    /// Передаёт обновление из готового пакета главному окну.
+    /// </summary>
+    public void OnUpdateFromPackageClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
 }

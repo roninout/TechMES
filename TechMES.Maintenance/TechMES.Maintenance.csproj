@@ -25,4 +25,12 @@
     <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
   </ItemGroup>
 
+	<!-- Включаем проверенный updater в переносимую Maintenance. -->
+	<ItemGroup>
+		<Content Include="..\scripts\deploy\Update-TechMESServer.ps1"
+				 Link="Tools\Update-TechMESServer.ps1"
+				 CopyToOutputDirectory="PreserveNewest"
+				 CopyToPublishDirectory="PreserveNewest" />
+	</ItemGroup>	
+
 </Project>

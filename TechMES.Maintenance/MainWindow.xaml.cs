@@ -3596,6 +3596,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// </summary>
     private async void OnPrepareServerClick(object sender, RoutedEventArgs e)
     {
+        // Подготовка со сборкой требует исходников и SDK.
+        if (!await CheckSourceDeploymentAsync())
+            return;
+
         AppendServerLog("Prepare server started.");
         AppendDeploymentLog("Prepare server requested from Server tab.");
 
@@ -3624,6 +3628,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
     private async void OnPrepareNewServerClick(object sender, RoutedEventArgs e)
     {
+        // Подготовка со сборкой требует исходников и SDK.
+        if (!await CheckSourceDeploymentAsync())
+            return;
+
         AppendServerLog("Prepare new server started.");
         AppendDeploymentLog("Prepare new server started from Deploy tab.");
 
@@ -3876,8 +3884,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         OnSaveTypedRuntimeWebAppSettingsClick(sender, e);
     }
 
+    /// <summary>
+    /// Проверяет исходники и SDK перед публикацией всех компонентов.
+    /// </summary>
     private async void OnPublishAllClick(object sender, RoutedEventArgs e)
     {
+        if (!await CheckSourceDeploymentAsync())
+            return;
+
         foreach (var service in DeploymentServices)
             await PublishDeploymentServiceAsync(service);
     }
@@ -3911,36 +3925,59 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     }
 
     /// <summary>
-    /// Общий deploy-сценарий для всех сервисов: остановить, опубликовать, установить/обновить и запустить.
-    /// Метод используется вкладкой Deploy и полной подготовкой сервера, чтобы не дублировать порядок операций.
+    /// Выполняет первичную установку из исходников.
+    /// Существующие службы направляет к обновлению из готового пакета.
     /// </summary>
     private async Task DeployAllServicesAsync()
     {
-        AppendDeploymentLog("Deploy all started.");
+        if (!await CheckSourceDeploymentAsync())
+            return;
 
+        // Проверяем весь набор до публикации.
+        // Действующие службы обновляет штатный updater.
         foreach (var service in DeploymentServices)
         {
-            await StopDeploymentServiceAsync(service);
+            var state = await _serviceManager.QueryAsync(service.ServiceName);
 
-            var published = await PublishDeploymentServiceAsync(service);
-            if (!published)
-                continue;
+            // Код 1060 означает, что служба ещё не установлена.
+            // Другую ошибку нельзя считать разрешением на первичную установку.
+            if (state.Success || !state.Details.Contains("1060", StringComparison.Ordinal))
+            {
+                var message = "Службы уже установлены или их состояние не удалось проверить. " +
+                    "Для обновления используйте Update from package. Службы не остановлены.";
 
-            var installed = await InstallDeploymentServiceAsync(service);
-            if (!installed)
-                continue;
-
-            await StartDeploymentServiceAsync(service);
+                AppendDeploymentLog(message);
+                MessageBox.Show(this, message, "Обновление TechMES", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
         }
 
-        AppendDeploymentLog("Deploy all finished.");
+        AppendDeploymentLog("Initial deployment started.");
+
+        // Сначала успешно публикуем все компоненты.
+        // Ошибка сборки прерывает сценарий до установки служб.
+        foreach (var service in DeploymentServices)
+            if (!await PublishDeploymentServiceAsync(service))
+                return;
+
+        foreach (var service in DeploymentServices)
+            if (!await InstallDeploymentServiceAsync(service))
+                return;
+
+        foreach (var service in DeploymentServices)
+            await StartDeploymentServiceAsync(service);
+
+        AppendDeploymentLog("Initial deployment finished.");
     }
 
     /// <summary>
-    /// Публикует сервис из строки DataGrid.
+    /// Проверяет окружение и публикует выбранный компонент.
     /// </summary>
     private async void OnPublishDeployServiceClick(object sender, RoutedEventArgs e)
     {
+        if (!await CheckSourceDeploymentAsync())
+            return;
+
         if (TryGetDeploymentServiceFromButton(sender, out var service))
             await PublishDeploymentServiceAsync(service);
     }
@@ -4578,18 +4615,26 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     }
 
     /// <summary>
-    /// Открывает папку TechMES.Maintenance в проводнике.
+    /// Открывает фактический каталог профиля Maintenance.
+    /// При первом запуске создаёт каталог и сохраняет текущий профиль.
     /// </summary>
     private void OnOpenMaintenanceFolderClick(object sender, RoutedEventArgs e)
     {
-        var folder = Path.Combine(_repositoryRoot.FullName, "TechMES.Maintenance");
-
-        if (Directory.Exists(folder))
+        try
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", folder)
-            {
-                UseShellExecute = true
-            });
+            var folder = Path.GetDirectoryName(_configurationStore.ConfigurationPath)!;
+            Directory.CreateDirectory(folder);
+
+            if (!File.Exists(_configurationStore.ConfigurationPath))
+                _configurationStore.Save(_configuration);
+
+            Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            AppendDiagnostics($"Settings folder failed: {ex.Message}");
+
+            MessageBox.Show(this, ex.Message, "Не удалось открыть папку настроек", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

@@ -23,8 +23,17 @@
             <Grid>
                 <StackPanel>
                     <TextBlock Text="Deploy" Style="{StaticResource SectionTitleText}" />
-                    <TextBlock Text="Публикация и установка TechMES Runtime Service и WEB-приложения на сервер." Style="{StaticResource MutedText}" />
-                    <TextBlock Text="Здесь можно подготовить сервер, собрать проекты, установить или обновить службы и запустить их." Style="{StaticResource MutedText}" />
+
+                    <TextBlock Text="{Binding DeploymentModeText}"
+                               Style="{StaticResource MutedText}" />
+
+                    <ui:Button Content="Update from package..."
+                               Click="OnUpdateFromPackageClick"
+                               HorizontalAlignment="Left"
+                               Margin="0,8,0,0" />
+
+                    <TextBlock Text="Распакуйте TechMES_Update_* и выберите manifest.json. Существующие appsettings*.json и расположение служб сохраняются."
+                               Style="{StaticResource MutedText}" />
                 </StackPanel>
             </Grid>
         </views:MaintenanceCard>
@@ -80,14 +89,10 @@
                             <control:DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
-                                        <ui:Button Content="Publish"
-                                                    Tag="{Binding}"
-                                                    MinWidth="62" Margin="0,2,6,2"
-                                                    Click="OnPublishDeployServiceClick" />
-                                        <ui:Button Content="Install"
-                                                    Tag="{Binding}"
-                                                    MinWidth="62" Margin="0,2,6,2"
-                                                    Click="OnInstallDeployServiceClick" />
+                                        <ui:Button Content="Publish" Tag="{Binding}" MinWidth="62" Margin="0,2,6,2" 
+                                                   Click="OnPublishDeployServiceClick" IsEnabled="{Binding DataContext.CanPublishFromSource, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"/>
+                                        <ui:Button Content="Install" Tag="{Binding}" MinWidth="62" Margin="0,2,6,2"
+                                                    Click="OnInstallDeployServiceClick" IsEnabled="{Binding DataContext.CanPublishFromSource, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </control:DataGridTemplateColumn.CellTemplate>
@@ -103,26 +108,15 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <ui:Button Grid.Column="0"
-                        Content="Prepare new server"
-                        MinWidth="140"
-                        Click="OnPrepareNewServerClick" />
+                    <ui:Button Grid.Column="0" Content="Prepare new server" MinWidth="140" Click="OnPrepareNewServerClick" IsEnabled="{Binding CanPublishFromSource}"/>
 
-                    <StackPanel Grid.Column="1"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Center">
-                        <ui:Button Content="Publish all" Margin="0,0,10,0"
-                            Click="OnPublishAllClick" />
-                        <ui:Button Content="Install/Update all" Margin="0,0,10,0"
-                            Click="OnInstallAllClick" />
-                        <ui:Button Content="Start all"
-                            Click="OnStartAllDeployClick" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                        <ui:Button Content="Publish all" Margin="0,0,10,0" Click="OnPublishAllClick" IsEnabled="{Binding CanPublishFromSource}"/>
+                        <ui:Button Content="Install/Update all" Margin="0,0,10,0" Click="OnInstallAllClick" IsEnabled="{Binding CanInstallFromSource}"/>
+                        <ui:Button Content="Start all" Click="OnStartAllDeployClick" IsEnabled="{Binding CanInstallFromSource}"/>
                     </StackPanel>
 
-                    <ui:Button Grid.Column="2"
-                        Content="Deploy all"
-                        MinWidth="90"
-                        Click="OnDeployAllClick" />
+                    <ui:Button Grid.Column="2" Content="Deploy all" MinWidth="90" Click="OnDeployAllClick" />
                 </Grid>
             </Grid>
 

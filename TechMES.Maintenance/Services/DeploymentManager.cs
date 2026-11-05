@@ -8,19 +8,14 @@ namespace TechMES.Maintenance.Services;
 /// Выполняет серверное развертывание TechMES.
 /// Разделяем deploy-логику и UI, чтобы позже безболезненно добавить HTTPS, firewall и установку PostgreSQL.
 /// </summary>
-public sealed class DeploymentManager(
-    DirectoryInfo repositoryRoot,
-    ProcessRunner processRunner,
-    WindowsServiceManager serviceManager)
+public sealed class DeploymentManager(DirectoryInfo repositoryRoot, ProcessRunner processRunner, WindowsServiceManager serviceManager)
 {
     private static readonly TimeSpan PublishTimeout = TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// Вычисляет папку публикации конкретного сервиса.
     /// </summary>
-    public string GetPublishDirectory(
-        ServiceDefinition service,
-        DeploymentOptions options)
+    public string GetPublishDirectory(ServiceDefinition service, DeploymentOptions options)
     {
         var folderName = service.PublishFolderName;
 
@@ -33,9 +28,7 @@ public sealed class DeploymentManager(
     /// <summary>
     /// Вычисляет полный путь к exe, который должен стать binPath Windows Service.
     /// </summary>
-    public string GetExecutablePath(
-        ServiceDefinition service,
-        DeploymentOptions options)
+    public string GetExecutablePath(ServiceDefinition service, DeploymentOptions options)
     {
         var executableName = service.ExecutableName;
 
@@ -52,10 +45,7 @@ public sealed class DeploymentManager(
     /// Публикует проект сервиса в папку развертывания через dotnet publish.
     /// Команда выполняется без shell, поэтому аргументы не склеиваются строками.
     /// </summary>
-    public async Task<ProcessResult> PublishAsync(
-        ServiceDefinition service,
-        DeploymentOptions options,
-        CancellationToken cancellationToken = default)
+    public async Task<ProcessResult> PublishAsync(ServiceDefinition service, DeploymentOptions options, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(service.ProjectPath))
         {
@@ -67,6 +57,17 @@ public sealed class DeploymentManager(
         }
 
         var projectPath = Path.Combine(repositoryRoot.FullName, service.ProjectPath);
+
+        // Проверяем проект до создания каталога публикации и запуска dotnet.
+        if (!File.Exists(projectPath))
+        {
+            return new ProcessResult
+            {
+                ExitCode = -1,
+                StandardError = $"Project not found: {projectPath}. Use Update from package on a server without sources."
+            };
+        }
+
         var publishDirectory = GetPublishDirectory(service, options);
 
         Directory.CreateDirectory(publishDirectory);
@@ -124,10 +125,7 @@ public sealed class DeploymentManager(
     /// Устанавливает или обновляет Windows Service после публикации.
     /// Если exe еще не существует, возвращает понятную ошибку вместо вызова sc.exe.
     /// </summary>
-    public async Task<ServiceCommandResult> InstallOrUpdateServiceAsync(
-        ServiceDefinition service,
-        DeploymentOptions options,
-        CancellationToken cancellationToken = default)
+    public async Task<ServiceCommandResult> InstallOrUpdateServiceAsync(ServiceDefinition service, DeploymentOptions options, CancellationToken cancellationToken = default)
     {
         var executablePath = GetExecutablePath(service, options);
 
@@ -141,12 +139,6 @@ public sealed class DeploymentManager(
             };
         }
 
-        return await serviceManager.CreateOrUpdateAsync(
-            service.ServiceName,
-            service.DisplayName,
-            executablePath,
-            service.WindowsServiceDescription,
-            options.AutoStart,
-            cancellationToken);
+        return await serviceManager.CreateOrUpdateAsync(service.ServiceName, service.DisplayName, executablePath, service.WindowsServiceDescription, options.AutoStart, cancellationToken);
     }
 }

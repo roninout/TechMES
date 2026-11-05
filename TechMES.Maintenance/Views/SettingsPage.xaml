@@ -51,24 +51,45 @@
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Repository path" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <TextBlock Text="Repository path"
+                                               Style="{StaticResource SettingsFieldLabel}" />
+
                                     <StackPanel Grid.Column="1">
-                                        <ui:TextBox Text="{Binding RepositoryRootPath, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource SettingsTextBox}" />
-                                        <TextBlock Text="Корень рабочей папки, из которой Maintenance берет проекты, appsettings, логи и backup-операции." Style="{StaticResource SettingsHintText}" />
+                                        <ui:TextBox Text="{Binding RepositoryRootPath, Mode=OneWay}"
+                                                    IsReadOnly="True"
+                                                    Style="{StaticResource SettingsTextBox}" />
+
+                                        <ui:Button Content="Choose repository..."
+                                                   Click="OnChooseRepositoryClick"
+                                                   HorizontalAlignment="Left"
+                                                   Margin="0,6,0,0" />
+
+                                        <TextBlock Text="На компьютере разработки выберите TechMES.sln и перезапустите Maintenance. На сервере без исходников путь не требуется для обновления из пакета."
+                                                   Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
+
                                 <Grid Margin="0,8,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
-                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Settings folder" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <TextBlock Text="Settings folder"
+                                               Style="{StaticResource SettingsFieldLabel}" />
+
                                     <StackPanel Grid.Column="1">
                                         <ui:Button Content="Open settings folder"
-                                                MinWidth="160"
-                                                HorizontalAlignment="Left"
-                                                Click="OnOpenMaintenanceFolderClick" />
-                                        <TextBlock Text="Открывает папку TechMES.Maintenance с maintenance.settings.json и служебными файлами Maintenance." Style="{StaticResource SettingsHintText}" />
+                                                   MinWidth="160"
+                                                   HorizontalAlignment="Left"
+                                                   Click="OnOpenMaintenanceFolderClick" />
+
+                                        <TextBlock Text="{Binding MaintenanceSettingsPath}"
+                                                   Style="{StaticResource SettingsHintText}" />
+
+                                        <TextBlock Text="Открывает фактическую папку профиля. На сервере без исходников — ProgramData/TechMES/Maintenance."
+                                                   Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>

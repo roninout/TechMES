@@ -24,12 +24,13 @@ public sealed class MaintenanceConfigurationStore(DirectoryInfo repositoryRoot)
     };
 
     /// <summary>
-    /// Профиль разработчика берётся из репозитория.
-    /// На сервере профиль хранится в ProgramData и переживает замену пакета.
+    /// Возвращает путь профиля для компьютера разработки или сервера.
+    /// Серверный профиль сохраняется независимо от обновлений Maintenance.
     /// </summary>
-    public string ConfigurationPath => File.Exists(Path.Combine(repositoryRoot.FullName, "TechMES.sln"))
-        ? Path.Combine(repositoryRoot.FullName, "TechMES.Maintenance", "maintenance.settings.json")
-        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "TechMES", "Maintenance", "maintenance.settings.json");
+    public string ConfigurationPath =>
+        File.Exists(Path.Combine(repositoryRoot.FullName, "TechMES.sln"))
+            ? Path.Combine(repositoryRoot.FullName, "TechMES.Maintenance", "maintenance.settings.json")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "TechMES", "Maintenance", "maintenance.settings.json");
 
     /// <summary>
     /// Читает конфигурацию Maintenance.
@@ -53,13 +54,13 @@ public sealed class MaintenanceConfigurationStore(DirectoryInfo repositoryRoot)
     }
 
     /// <summary>
-    /// Сохраняет конфигурацию Maintenance.
-    /// На первом этапе UI ее только читает, но метод оставлен для будущей страницы редактирования.
+    /// Сохраняет профиль и создаёт его каталог при первом запуске.
     /// </summary>
     public void Save(MaintenanceConfiguration configuration)
     {
         var json = JsonSerializer.Serialize(configuration, _jsonOptions);
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigurationPath)!);
         File.WriteAllText(ConfigurationPath, json);
+
     }
 }

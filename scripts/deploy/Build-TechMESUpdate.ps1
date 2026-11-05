@@ -86,8 +86,6 @@ $definitions = @(
     @{ Key = 'runtime'; Project = 'TechMES.Runtime.Service'; Folder = 'Runtime.Service'; Service = 'TechMES.Runtime.Service' },
     @{ Key = 'calc'; Project = 'TechMES.Calc.Service'; Folder = 'Calc.Service'; Service = 'TechMES.Calc.Service' },
     @{ Key = 'web'; Project = 'TechMES.Web'; Folder = 'Web'; Service = 'TechMES.Web' },
-
-    # Portable Maintenance runs directly from the package.
     @{ Key = 'maintenance'; Project = 'TechMES.Maintenance'; Folder = 'Maintenance'; Service = '' }
 )
 
