@@ -12,6 +12,9 @@ namespace TechMES.Runtime.Service.Workers;
 /// </summary>
 public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, IEnumerable<MainDatabaseFailover> databases, PostgreSqlClusterMonitor cluster, RuntimeActivityState activity, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
 {
+    /// <summary>
+    /// Запускает независимые проверки по одному существующему таймеру. Монитор PostgreSQL работает также в Standby; при остановке ожидаем завершения текущих циклов.
+    /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var seconds = Math.Max(5, options.Value.HealthCheckPeriodSeconds);
@@ -50,6 +53,9 @@ public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<
         }
     }
 
+    /// <summary>
+    /// Обновляет диагностику PostgreSQL вне разрешения на бизнес-операции. Ошибка проверки не завершает health worker.
+    /// </summary>
     private async Task CheckClusterAsync(CancellationToken ct)
     {
         try
@@ -65,6 +71,9 @@ public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<
         }
     }
 
+    /// <summary>
+    /// Проверяет SCADA только в действующей сессии Active. При утрате активности отменяет запрос и освобождает разрешение.
+    /// </summary>
     private async Task CheckScadaAsync(CancellationToken ct)
     {
         try

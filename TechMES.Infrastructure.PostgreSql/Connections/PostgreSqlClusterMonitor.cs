@@ -6,6 +6,9 @@ namespace TechMES.Infrastructure.PostgreSql.Connections;
 
 public interface IPostgreSqlClusterProbe
 {
+    /// <summary>
+    /// Читает роль и состояние репликации одного сервера с общим ограничением времени.
+    /// </summary>
     Task<PostgreSqlServerState> ProbeAsync(string connectionString, int timeoutSeconds, CancellationToken ct);
 }
 
@@ -15,6 +18,9 @@ public interface IPostgreSqlClusterProbe
 /// </summary>
 public sealed class PostgreSqlClusterProbe : IPostgreSqlClusterProbe
 {
+    /// <summary>
+    /// Проверяет соединение, затем отдельно читает диагностические данные. Недостаток прав на диагностику не превращает доступную БД в Offline.
+    /// </summary>
     public async Task<PostgreSqlServerState> ProbeAsync(string connectionString, int timeoutSeconds, CancellationToken ct)
     {
         var state = new PostgreSqlServerState();
@@ -43,7 +49,7 @@ public sealed class PostgreSqlClusterProbe : IPostgreSqlClusterProbe
             await connection.OpenAsync(timeout.Token);
 
             const string roleSql = """
-                SELECT inet_server_addr()::text, inet_server_port(), pg_is_in_recovery(),
+                SELECT host(inet_server_addr()), inet_server_port(), pg_is_in_recovery(),
                        current_setting('transaction_read_only')::boolean;
                 """;
 
@@ -145,6 +151,9 @@ public sealed class PostgreSqlClusterProbe : IPostgreSqlClusterProbe
         }
     }
 
+    /// <summary>
+    /// Читает необязательное текстовое поле PostgreSQL, сохраняя SQL NULL как null.
+    /// </summary>
     private static string? Text(NpgsqlDataReader reader, int index) => reader.IsDBNull(index) ? null : reader.GetString(index);
 }
 
@@ -160,6 +169,9 @@ public sealed class PostgreSqlClusterMonitor
 
     private PostgreSqlClusterHealthResponse _state;
 
+    /// <summary>
+    /// Запоминает существующие подключения Primary/Secondary и общий Health Period. Соединения в конструкторе не открываются.
+    /// </summary>
     public PostgreSqlClusterMonitor(IConfiguration configuration, IPostgreSqlClusterProbe probe)
     {
         _probe = probe;
@@ -174,6 +186,9 @@ public sealed class PostgreSqlClusterMonitor
         };
     }
 
+    /// <summary>
+    /// Возвращает готовый снимок без SQL. Просроченные сведения помечает Stale.
+    /// </summary>
     public PostgreSqlClusterHealthResponse GetHealth()
     {
         var state = Volatile.Read(ref _state);
@@ -184,6 +199,9 @@ public sealed class PostgreSqlClusterMonitor
         return stale ? state with { Topology = "Stale" } : state;
     }
 
+    /// <summary>
+    /// Параллельно проверяет оба сервера и атомарно публикует общий результат. Повторный цикл пропускается, пока предыдущий ещё выполняется.
+    /// </summary>
     public async Task RefreshAsync(CancellationToken ct)
     {
         if (!await _refresh.WaitAsync(0, ct))
@@ -216,6 +234,9 @@ public sealed class PostgreSqlClusterMonitor
         }
     }
 
+    /// <summary>
+    /// Проверяет настроенный сервер и обновляет его независимые счётчики соединения. Пустое резервное подключение не опрашивается.
+    /// </summary>
     private async Task<PostgreSqlServerState> CheckAsync(int index, PostgreSqlServerState previous, int period, CancellationToken ct)
     {
         if (!previous.Configured)
@@ -233,6 +254,9 @@ public sealed class PostgreSqlClusterMonitor
         };
     }
 
+    /// <summary>
+    /// Описывает наблюдаемую топологию и обнаруженные противоречия. Результат не является разрешением на повышение реплики.
+    /// </summary>
     private static string Describe(PostgreSqlServerState primary, PostgreSqlServerState secondary)
     {
         if (!primary.Configured || !secondary.Configured) return "SingleServer";
