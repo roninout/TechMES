@@ -4,13 +4,14 @@ using TechMES.Infrastructure.CtApi.Odbc;
 using TechMES.Infrastructure.CtApi.Settings;
 using TechMES.Infrastructure.PostgreSql.Connections;
 using TechMES.Runtime.Service.Runtime;
+using TechMES.Runtime.Service.PostgreSql;
 
 namespace TechMES.Runtime.Service.Workers;
 
 /// <summary>
 /// Один Health Period для независимых проверок CtApi, ODBC, Main DB и кластера PostgreSQL.
 /// </summary>
-public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, IEnumerable<MainDatabaseFailover> databases, PostgreSqlClusterMonitor cluster, RuntimeActivityState activity, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
+public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, IEnumerable<MainDatabaseFailover> databases, PostgreSqlClusterMonitor cluster, PostgreSqlLocalMonitor localDatabase, RuntimeActivityState activity, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
 {
     /// <summary>
     /// Запускает независимые проверки по одному существующему таймеру. Монитор PostgreSQL работает также в Standby; при остановке ожидаем завершения текущих циклов.
@@ -60,7 +61,8 @@ public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<
     {
         try
         {
-            await cluster.RefreshAsync(ct);
+            // SQL-кластер и локальная служба проверяются независимо, одним health worker.
+            await Task.WhenAll(cluster.RefreshAsync(ct), localDatabase.RefreshAsync(ct));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

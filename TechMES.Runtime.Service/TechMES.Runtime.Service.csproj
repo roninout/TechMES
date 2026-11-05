@@ -18,4 +18,11 @@
     <ProjectReference Include="..\TechMES.Calc\TechMES.Calc.csproj" />
   </ItemGroup>
 
+	<ItemGroup>
+		<Content Include="..\scripts\deploy\Set-PostgreSQL18ServiceControl.ps1"
+				 Link="Tools\Set-PostgreSQL18ServiceControl.ps1"
+				 CopyToOutputDirectory="PreserveNewest"
+				 CopyToPublishDirectory="PreserveNewest" />
+	</ItemGroup>
+	
 </Project>

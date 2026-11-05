@@ -46,7 +46,7 @@ function Get-RelativeFileName([string]$Root, [string]$Path) {
 
 # Публикует один сервис в новую папку и проверяет код завершения .NET CLI.
 function Publish-Component([string]$Project, [string]$Destination) {
-    & $Dotnet publish $Project -c Release -r win-x64 --self-contained true -o $Destination -m:1 --nologo '-p:UseAppHost=true' '-p:PublishSingleFile=false' '-p:DebugType=None' '-p:DebugSymbols=false'
+    & $Dotnet publish $Project -c Release -r win-x64 --self-contained true -o $Destination -m:1 --nologo '-p:EnableWindowsTargeting=true' '-p:UseAppHost=true' '-p:PublishSingleFile=false' '-p:DebugType=None' '-p:DebugSymbols=false'
 
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet publish завершился с кодом $LASTEXITCODE : $Project"
@@ -85,7 +85,10 @@ New-Item -ItemType Directory -Path $package -Force | Out-Null
 $definitions = @(
     @{ Key = 'runtime'; Project = 'TechMES.Runtime.Service'; Folder = 'Runtime.Service'; Service = 'TechMES.Runtime.Service' },
     @{ Key = 'calc'; Project = 'TechMES.Calc.Service'; Folder = 'Calc.Service'; Service = 'TechMES.Calc.Service' },
-    @{ Key = 'web'; Project = 'TechMES.Web'; Folder = 'Web'; Service = 'TechMES.Web' }
+    @{ Key = 'web'; Project = 'TechMES.Web'; Folder = 'Web'; Service = 'TechMES.Web' },
+
+    # Portable Maintenance runs directly from the package.
+    @{ Key = 'maintenance'; Project = 'TechMES.Maintenance'; Folder = 'Maintenance'; Service = '' }
 )
 
 $components = @()

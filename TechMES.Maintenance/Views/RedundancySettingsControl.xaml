@@ -1,0 +1,147 @@
+﻿<UserControl x:Class="TechMES.Maintenance.Views.RedundancySettingsControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:views="clr-namespace:TechMES.Maintenance.Views">
+    <UserControl.Resources>
+        <Style x:Key="HaLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,6,14,6" />
+        </Style>
+        <Style x:Key="HaBox" TargetType="{x:Type ui:TextBox}"
+               BasedOn="{StaticResource {x:Type ui:TextBox}}">
+            <Setter Property="Margin" Value="0,6,0,6" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Width" Value="500" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="12">
+            <TextBlock Text="Рабочий файл Runtime" Style="{StaticResource MutedText}" />
+            <TextBlock Text="{Binding SettingsPath}" TextWrapping="Wrap" Margin="0,4,0,12" />
+
+            <views:MaintenanceSection Header="Runtime Primary / Secondary" Margin="0,0,0,12">
+                <StackPanel Margin="12">
+                    <CheckBox Content="Автоматическое владение Runtime"
+                              IsChecked="{Binding CoordinationEnabled}"
+                              Margin="0,0,0,10" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="240" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="Node ID" Style="{StaticResource HaLabel}" />
+                        <ui:TextBox Grid.Column="1"
+                                    Text="{Binding NodeId, UpdateSourceTrigger=PropertyChanged}"
+                                    Style="{StaticResource HaBox}" />
+
+                        <TextBlock Grid.Row="1" Text="Preferred role" Style="{StaticResource HaLabel}" />
+                        <ComboBox Grid.Row="1" Grid.Column="1"
+                                  ItemsSource="{Binding Roles}" SelectedItem="{Binding Role}"
+                                  Width="180" HorizontalAlignment="Left" Margin="0,6" />
+
+                        <TextBlock Grid.Row="2" Text="Coordination scope" Style="{StaticResource HaLabel}" />
+                        <ui:TextBox Grid.Row="2" Grid.Column="1"
+                                    Text="{Binding Scope, UpdateSourceTrigger=PropertyChanged}"
+                                    Style="{StaticResource HaBox}" />
+
+                        <TextBlock Grid.Row="3" Text="Failure threshold" Style="{StaticResource HaLabel}" />
+                        <ui:TextBox Grid.Row="3" Grid.Column="1"
+                                    Text="{Binding FailureThreshold, UpdateSourceTrigger=PropertyChanged}"
+                                    Style="{StaticResource HaBox}" Width="180" />
+
+                        <TextBlock Grid.Row="4" Text="Recovery threshold" Style="{StaticResource HaLabel}" />
+                        <ui:TextBox Grid.Row="4" Grid.Column="1"
+                                    Text="{Binding RecoveryThreshold, UpdateSourceTrigger=PropertyChanged}"
+                                    Style="{StaticResource HaBox}" Width="180" />
+
+                        <CheckBox Grid.Row="5" Grid.Column="1"
+                                  Content="Start in Standby при выключенной координации"
+                                  IsChecked="{Binding StartInStandby}" Margin="0,10,0,6" />
+                    </Grid>
+
+                    <TextBlock Text="Node ID уникален для каждого Runtime; Scope одинаковый на двух узлах. Роль задаёт предпочтительный Runtime. Проверки используют существующий CtApi Health Period."
+                               TextWrapping="Wrap" Style="{StaticResource MutedText}" Margin="0,8,0,0" />
+                </StackPanel>
+            </views:MaintenanceSection>
+
+            <views:MaintenanceSection Header="Локальная служба PostgreSQL" Margin="0,0,0,12">
+                <StackPanel Margin="12">
+                    <CheckBox Content="Включить проверку доступа Runtime к локальному PostgreSQL"
+                              IsChecked="{Binding LocalEnabled}" Margin="0,0,0,10" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="240" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="Windows service name" Style="{StaticResource HaLabel}" />
+                        <ui:TextBox Grid.Column="1"
+                                    Text="{Binding ServiceName, UpdateSourceTrigger=PropertyChanged}"
+                                    Style="{StaticResource HaBox}" />
+
+                        <TextBlock Grid.Row="1" Text="PostgreSQL bin directory" Style="{StaticResource HaLabel}" />
+                        <ui:TextBox Grid.Row="1" Grid.Column="1"
+                                    Text="{Binding BinDirectory, UpdateSourceTrigger=PropertyChanged}"
+                                    Style="{StaticResource HaBox}" />
+
+                        <TextBlock Grid.Row="2" Text="PostgreSQL data directory" Style="{StaticResource HaLabel}" />
+                        <ui:TextBox Grid.Row="2" Grid.Column="1"
+                                    Text="{Binding DataDirectory, UpdateSourceTrigger=PropertyChanged}"
+                                    Style="{StaticResource HaBox}" />
+
+                        <TextBlock Grid.Row="3" Text="PostgreSQL port" Style="{StaticResource HaLabel}" />
+                        <ui:TextBox Grid.Row="3" Grid.Column="1"
+                                    Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}"
+                                    Style="{StaticResource HaBox}" Width="180" />
+                    </Grid>
+
+                    <TextBlock Text="Настраивается локальный PostgreSQL на этом компьютере. На текущем этапе Runtime только проверяет права и принадлежность процесса службе. Автоматическое переключение БД подключим следующим блоком."
+                               TextWrapping="Wrap" Style="{StaticResource MutedText}" Margin="0,8,0,0" />
+                </StackPanel>
+            </views:MaintenanceSection>
+
+            <views:MaintenanceSection Header="Проверка доступа от имени Runtime">
+                <StackPanel Margin="12">
+                    <TextBlock Text="Сохраните настройки кнопкой Save и перезапустите Runtime через General → Services. Затем выполните проверку на этом компьютере."
+                               TextWrapping="Wrap" Style="{StaticResource MutedText}" Margin="0,0,0,10" />
+
+                    <ui:Button Content="Проверить доступ Runtime" Click="OnCheckAccessClick"
+                               HorizontalAlignment="Left" Margin="0,0,0,10">
+                        <ui:Button.Style>
+                            <Style TargetType="{x:Type ui:Button}"
+                                   BasedOn="{StaticResource TechMesDefaultButtonStyle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsChecking}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ui:Button.Style>
+                    </ui:Button>
+
+                    <ui:TextBox Text="{Binding Diagnostics, Mode=OneWay}"
+                                IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                MinHeight="190" VerticalScrollBarVisibility="Auto" />
+                </StackPanel>
+            </views:MaintenanceSection>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -17,12 +17,21 @@ param(
     [string]$PgBin = 'D:\PostgreSQL\18\bin',
     [string]$DataDirectory = 'D:\PostgreSQL\18\data',
 
-    [ValidateRange(1, 65535)]
-    [int]$Port = 5432
+	[ValidateRange(1, 65535)]
+	[int]$Port = 5432,
+
+	[switch]$AsJson
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Machine-readable mode is read-only.
+if ($AsJson) {
+    if ($Mode -ne 'Status') {
+        throw 'AsJson is supported only for Status.'
+    }
+}
 
 # Normalizes quoted paths and slash direction for case-insensitive comparison.
 function Get-NormalizedPath([string]$Path) {
@@ -253,6 +262,20 @@ if ([IO.File]::ReadAllText((Join-Path $DataDirectory 'PG_VERSION')).Trim() -ne '
 }
 
 $state = Get-PostgreSqlServiceState
+
+if ($AsJson) {
+    # ASCII-escaped JSON works without a console and preserves Unicode paths.
+    $json = $state | ConvertTo-Json -Depth 4 -Compress
+
+    [regex]::Replace(
+        $json,
+        '[^\x00-\x7F]',
+        { param($value) '\u{0:x4}' -f [int][char]$value.Value }
+    )
+
+    return
+}
+
 $state | Format-List | Out-Host
 
 if ($Mode -eq 'Status') {

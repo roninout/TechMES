@@ -98,6 +98,9 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
         set => SetProperty(ref _ctApiSecondaryStatusTag, value);
     }
 
+    /// <summary>Настройки владения Runtime и доступа к локальной службе PostgreSQL.</summary>
+    public RedundancySettingsViewModel Redundancy { get; } = new();
+
     /// <summary>
     /// Статус последней загрузки или сохранения typed appsettings.
     /// </summary>

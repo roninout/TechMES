@@ -1826,9 +1826,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     {
         try
         {
-            var runtime = ReadJsonObject(GetPreferredAppsettingsPath("runtime", @"TechMES.Runtime.Service\appsettings.json", "Runtime.Service"));
-            var calc = ReadJsonObject(GetPreferredAppsettingsPath("calc", @"TechMES.Calc.Service\appsettings.json", "Calc.Service"));
-            var web = ReadJsonObject(GetPreferredAppsettingsPath("web", @"TechMES.Web\appsettings.json", "Web"));
+            var runtimePath = GetPreferredAppsettingsPath("runtime", @"TechMES.Runtime.Service\appsettings.json", "Runtime.Service");
+            var runtime = ReadJsonObject(runtimePath);
+
+            var calcPath = GetPreferredAppsettingsPath("calc", @"TechMES.Calc.Service\appsettings.json", "Calc.Service");
+            var webPath = GetPreferredAppsettingsPath("web", @"TechMES.Web\appsettings.json", "Web");
+
+            // Отсутствие необязательных Calc/Web не мешает настройке установленного Runtime.
+            var calc = File.Exists(calcPath) ? ReadJsonObject(calcPath) : new JsonObject();
+            var web = File.Exists(webPath) ? ReadJsonObject(webPath) : new JsonObject();
+
+            TypedAppSettings.Redundancy.Load(runtime, runtimePath);
 
             TypedAppSettings.RuntimeUrls = GetString(runtime, "Urls");
             TypedAppSettings.RuntimeDeviceName = GetString(runtime, "Runtime", "DeviceName");
@@ -1932,6 +1940,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// </summary>
     private void SaveTypedRuntimeWebAppSettings()
     {
+        TypedAppSettings.Redundancy.Validate();
+
         if (TypedAppSettings.RuntimeAlarmOdbcRequestTimeoutSeconds <= 0)
             throw new InvalidOperationException("ODBC Max request timeout must be greater than zero.");
 
@@ -2025,6 +2035,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// </summary>
     private void ApplyRuntimeTypedSettings(JsonObject root)
     {
+        TypedAppSettings.Redundancy.Apply(root);
+
         SetValue(root, TypedAppSettings.RuntimeUrls, "Urls");
         SetValue(root, TypedAppSettings.RuntimeDeviceName, "Runtime", "DeviceName");
         SetValue(root, TypedAppSettings.RuntimeUserName, "Runtime", "UserName");
@@ -2151,12 +2163,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     }
 
     /// <summary>
-    /// Возвращает рабочий appsettings: published-файл, если сервис уже опубликован, иначе исходный файл проекта.
-    /// Так Settings меняет один понятный файл и не расходится между source и publish root.
+    /// Сначала использует ImagePath установленной службы, затем PublishRoot и исходный проект.
+    /// Так Settings меняет рабочий файл также при разных дисках C: и D: на серверах.
     /// </summary>
     private string GetPreferredAppsettingsPath(string serviceKey, string sourceRelativePath, string fallbackPublishFolderName)
     {
         var service = GetServiceDefinition(serviceKey);
+        var installedPath = service is null ? null : GetInstalledAppsettingsPath(service.ServiceName);
+
+        if (installedPath is not null)
+            return installedPath;
+
         var publishFolderName = string.IsNullOrWhiteSpace(service?.PublishFolderName)
             ? fallbackPublishFolderName
             : service.PublishFolderName!;

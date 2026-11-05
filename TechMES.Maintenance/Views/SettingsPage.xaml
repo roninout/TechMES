@@ -1158,6 +1158,16 @@
             <TabItem>
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="Server24" Width="20" Height="20" Margin="0,0,8,0" />
+                        <TextBlock Text="Redundancy" />
+                    </StackPanel>
+                </TabItem.Header>
+                <views:RedundancySettingsControl DataContext="{Binding TypedAppSettings.Redundancy}" />
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <ui:SymbolIcon Symbol="Database24" Width="20" Height="20" Margin="0,0,8,0" />
                         <TextBlock Text="Data base" />
                     </StackPanel>

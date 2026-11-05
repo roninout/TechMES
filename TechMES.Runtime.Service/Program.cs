@@ -5,6 +5,7 @@ using TechMES.Application.Scada;
 using TechMES.Application.Runtime;
 using TechMES.Calc.Abstractions;
 using TechMES.Contracts.Security;
+using TechMES.Contracts.Runtime;
 using TechMES.Infrastructure.CtApi;
 using TechMES.Infrastructure.CtApi.Gateways;
 using TechMES.Infrastructure.PostgreSql.Runtime;
@@ -18,6 +19,7 @@ using TechMES.Runtime.Service.Runtime;
 using TechMES.Runtime.Service.Settings;
 using TechMES.Runtime.Service.Workers;
 using TechMES.Runtime.Service.Calc;
+using TechMES.Runtime.Service.PostgreSql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,6 +49,11 @@ builder.Services.AddSingleton<IPlantScadaWritePermission>(provider => provider.G
 // Диагностика физического кластера доступна независимо от Runtime Active/Standby.
 builder.Services.AddSingleton<IPostgreSqlClusterProbe, PostgreSqlClusterProbe>();
 builder.Services.AddSingleton<PostgreSqlClusterMonitor>();
+
+// Проверка локальной службы выполняется независимо от Runtime Active/Standby.
+builder.Services.AddOptions<PostgreSqlControlOptions>().Bind(builder.Configuration.GetSection(PostgreSqlControlOptions.SectionName));
+builder.Services.AddSingleton<IPostgreSqlLocalProbe, PostgreSqlLocalProbe>();
+builder.Services.AddSingleton<PostgreSqlLocalMonitor>();
 
 // Координатор получает разрешение, а activation worker готовит рабочие модули.
 builder.Services.AddSingleton<IRuntimeLeadershipStore, PostgreSqlRuntimeLeadershipStore>();
@@ -139,5 +146,8 @@ app.MapUserStateEndpoints();
 
 // Только готовый снимок: HTTP-запрос не открывает соединения к PostgreSQL.
 app.MapGet("/api/database/cluster", (PostgreSqlClusterMonitor cluster) => Results.Ok(cluster.GetHealth())).WithMetadata(new RuntimeControlEndpoint());
+
+// Локальная диагностика прав и принадлежности процесса службе.
+app.MapPostgreSqlControlEndpoints();
 
 app.Run();
