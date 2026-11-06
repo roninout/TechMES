@@ -245,4 +245,19 @@ public class MaintenancePageControl : UserControl
     /// Передаёт обновление из готового пакета главному окну.
     /// </summary>
     public void OnUpdateFromPackageClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+
+    /// <summary>
+    /// Передаёт выбор ZIP главному окну.
+    /// </summary>
+    public void OnChooseSecondaryArchiveClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+
+    /// <summary>
+    /// Передаёт сохранение профиля Deployment.
+    /// </summary>
+    public void OnSaveSecondaryDeploymentClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+
+    /// <summary>
+    /// Передаёт единый Deploy Secondary.
+    /// </summary>
+    public void OnDeploySecondaryClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
 }

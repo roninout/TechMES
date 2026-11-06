@@ -35,6 +35,11 @@
                     VerticalAlignment="Stretch"
                     HorizontalContentAlignment="Stretch"
                     VerticalContentAlignment="Stretch">
+
+            <TabItem Header="Deployment">
+                <views:SecondaryDeploymentControl />
+            </TabItem>
+
             <TabItem>
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">

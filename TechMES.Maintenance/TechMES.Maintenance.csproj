@@ -31,6 +31,10 @@
 				 Link="Tools\Update-TechMESServer.ps1"
 				 CopyToOutputDirectory="PreserveNewest"
 				 CopyToPublishDirectory="PreserveNewest" />
-	</ItemGroup>	
+	</ItemGroup>
 
+	<ItemGroup>
+		<Content Include="..\scripts\deploy\Deploy-TechMESSecondary.ps1" Link="Tools\Deploy-TechMESSecondary.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+	</ItemGroup>
+	
 </Project>
