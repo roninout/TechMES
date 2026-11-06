@@ -133,8 +133,84 @@ function Remove-CreatedService([string]$Name) {
     if ($LASTEXITCODE -ne 0) { throw "Cannot remove a newly created service: $Name" }
 }
 
-# Applies files, registers missing services, starts selected services and rolls back on failure.
+# Добавляет JSON-настройки в словарь ключей Kestrel, сохраняя порядок слоёв конфигурации.
+function Add-WebConfigurationValues([hashtable]$Values, $Node, [string]$Prefix='') {
+    foreach ($property in $Node.PSObject.Properties) {
+        $key=if ($Prefix) { $Prefix+':'+$property.Name } else { $property.Name }
+        if ($property.Value -is [pscustomobject]) { Add-WebConfigurationValues $Values $property.Value $key }
+        else { $Values[$key]=$property.Value }
+    }
+}
+
+# Читает окружение Windows-службы: системные значения и её собственные переопределения.
+# Пользовательское окружение открытой PowerShell-консоли службе не подставляется.
+function Get-WebServiceEnvironment {
+    $values=@{}
+    foreach ($entry in [Environment]::GetEnvironmentVariables([EnvironmentVariableTarget]::Machine).GetEnumerator()) { $values[$entry.Key]=$entry.Value }
+    $serviceKey='HKLM:\SYSTEM\CurrentControlSet\Services\TechMES.Web'
+    if (Test-Path -LiteralPath $serviceKey) {
+        $service=Get-ItemProperty -LiteralPath $serviceKey -ErrorAction Stop
+        $property=$service.PSObject.Properties['Environment']
+        if ($null -ne $property) {
+            foreach ($entry in @($property.Value)) {
+                $separator=$entry.IndexOf('=')
+                if ($separator -gt 0) { $values[$entry.Substring(0,$separator)]=$entry.Substring($separator+1) }
+            }
+        }
+    }
+    return $values
+}
+
+# Проверяет наличие и читаемость файловых HTTPS-сертификатов до остановки служб.
+# Учитывает appsettings окружения и переменные службы; конфигурацию и сертификаты не изменяет.
+function Assert-WebCertificateFiles([string]$WebRoot) {
+    $environment=Get-WebServiceEnvironment
+    $environmentName='Production'
+    if ($environment['ASPNETCORE_ENVIRONMENT']) { $environmentName=$environment['ASPNETCORE_ENVIRONMENT'] }
+    if ($environment['DOTNET_ENVIRONMENT']) { $environmentName=$environment['DOTNET_ENVIRONMENT'] }
+    if ($environmentName -notmatch '^[A-Za-z0-9_.-]+$' -or $environmentName -in @('.','..')) { throw 'Invalid Web service environment name.' }
+
+    $values=@{}
+    # Параметры с префиксами служат нижним слоем конфигурации хоста.
+    foreach ($prefix in @('ASPNETCORE_','DOTNET_')) {
+        foreach ($entry in $environment.GetEnumerator()) {
+            if ($entry.Key.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { $values[$entry.Key.Substring($prefix.Length).Replace('__',':')]=$entry.Value }
+        }
+    }
+    foreach ($name in @('appsettings.json',('appsettings.'+$environmentName+'.json'))) {
+        $path=Join-Path $WebRoot $name
+        if (!(Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+        try { $settings=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop }
+        catch {
+            # Kestrel допускает JSON с комментариями, который Windows PowerShell 5.1 не читает.
+            # В таком случае проверку запуска и откат по-прежнему выполняет основная транзакция.
+            Write-Warning "Web certificate preflight skipped: cannot parse $path with this PowerShell host. Service startup checks remain enabled."
+            return
+        }
+        Add-WebConfigurationValues $values $settings
+    }
+    # Переменные без префикса перекрывают JSON, как при запуске WebApplication.CreateBuilder.
+    foreach ($entry in $environment.GetEnumerator()) { $values[$entry.Key.Replace('__',':')]=$entry.Value }
+
+    $certificatePrefixes=@('Kestrel:Certificates:Default')
+    foreach ($key in $values.Keys) {
+        if ($key -match '^Kestrel:Endpoints:([^:]+):Url$' -and ([string]$values[$key]).StartsWith('https://',[StringComparison]::OrdinalIgnoreCase)) { $certificatePrefixes+=('Kestrel:Endpoints:'+$Matches[1]+':Certificate') }
+    }
+    foreach ($prefix in $certificatePrefixes) {
+        foreach ($field in @('Path','KeyPath')) {
+            $value=[string]$values[$prefix+':'+$field]
+            if ([string]::IsNullOrWhiteSpace($value)) { continue }
+            $path=if ([IO.Path]::IsPathRooted($value)) { $value } else { Join-Path $WebRoot $value }
+            if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw "Web HTTPS file is missing: $path. Prepare the certificate on this server and check Kestrel settings. No service was stopped." }
+            try { $stream=[IO.File]::OpenRead($path); $stream.Dispose() }
+            catch { throw "Web HTTPS file cannot be read: $path. No service was stopped." }
+        }
+    }
+}
+
+# Проверяет HTTPS, заменяет файлы и запускает службы; при ошибке восстанавливает прежнее состояние.
 function Invoke-UpdateTransaction($Jobs, $Entries, $Configs, [string]$StatusUrl) {
+    foreach ($job in @($Jobs | Where-Object { $_.Key -eq 'web' })) { Assert-WebCertificateFiles $job.Folder }
     try {
         Stop-DeploymentJobs $Jobs
         foreach ($entry in $Entries) {

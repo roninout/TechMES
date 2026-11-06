@@ -10,13 +10,11 @@ namespace TechMES.Maintenance.Services;
 public sealed class LogFileService(DirectoryInfo repositoryRoot)
 {
     /// <summary>
-    /// Ищет log/txt-файлы в заданных папках относительно корня репозитория.
+    /// Ищет журналы с расширением .log в исходных и опубликованных папках.
+    /// Лицензии шрифтов и другие .txt-файлы остаются на диске и не попадают в просмотрщик.
     /// Список ограничен, чтобы случайно не просканировать слишком большой каталог.
     /// </summary>
-    public IReadOnlyList<LogFileViewModel> FindLogs(
-        IEnumerable<string> relativeRoots,
-        string? publishRoot,
-        DateTime? selectedDate)
+    public IReadOnlyList<LogFileViewModel> FindLogs(IEnumerable<string> relativeRoots, string? publishRoot, DateTime? selectedDate)
     {
         var files = new List<FileInfo>();
 
@@ -26,13 +24,12 @@ public sealed class LogFileService(DirectoryInfo repositoryRoot)
                 continue;
 
             files.AddRange(EnumerateFilesSafe(fullRoot, "*.log"));
-            files.AddRange(EnumerateFilesSafe(fullRoot, "*.txt"));
         }
 
         var selectedDay = selectedDate?.Date;
 
         return files
-            .DistinctBy(file => file.FullName)
+            .DistinctBy(file => file.FullName, StringComparer.OrdinalIgnoreCase)
             .Where(file => selectedDay is null || file.LastWriteTime.Date == selectedDay.Value)
             .OrderByDescending(file => file.LastWriteTime)
             .Take(100)
