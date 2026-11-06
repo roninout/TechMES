@@ -24,6 +24,53 @@ function Get-RelativeFileName([string]$Root, [string]$Path) {
     return $Path.Substring($Root.TrimEnd('\','/').Length+1).Replace('\','/')
 }
 
+# Создаёт ZIP с явными разделителями /.
+# Результат не зависит от режима совместимости .NET Framework.
+# При ошибке удаляется только создаваемый незавершённый архив.
+function New-DeploymentArchive([string]$Source, [string]$Destination) {
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $stream=[IO.File]::Open($Destination,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+
+    try {
+        $archive=New-Object IO.Compression.ZipArchive($stream,[IO.Compression.ZipArchiveMode]::Create,$false)
+
+        try {
+            foreach ($file in Get-ChildItem -LiteralPath $Source -Recurse -File -Force) {
+                $relative=Get-RelativeFileName $Source $file.FullName
+                $entry=$archive.CreateEntry($relative,[IO.Compression.CompressionLevel]::Optimal)
+                $sourceStream=[IO.File]::OpenRead($file.FullName)
+
+                try {
+                    $entryStream=$entry.Open()
+
+                    try {
+                        $sourceStream.CopyTo($entryStream)
+                    }
+                    finally {
+                        $entryStream.Dispose()
+                    }
+                }
+                finally {
+                    $sourceStream.Dispose()
+                }
+            }
+        }
+        finally {
+            $archive.Dispose()
+        }
+    }
+    catch {
+        $stream.Dispose()
+        [IO.File]::Delete($Destination)
+        throw
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 $id='TechMES_Update_'+(Get-Date -Format 'yyyyMMdd_HHmmss')+'_'+[Guid]::NewGuid().ToString('N').Substring(0,6)
 $package=Join-Path ([IO.Path]::GetFullPath($OutputRoot)) $id
 New-Item -ItemType Directory -Path $package -Force | Out-Null
@@ -51,10 +98,11 @@ foreach ($component in $definitions) {
     $components += [ordered]@{Key=$component.Key;Folder=$component.Folder;Service=$component.Service;Exe=$exe;Files=$files}
 }
 [ordered]@{Format=1;Id=$id;CreatedAtUtc=[DateTime]::UtcNow.ToString('o');Runtime='win-x64';SelfContained=$true;Components=$components} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $package 'manifest.json') -Encoding UTF8
+# Упаковываем публикацию с одинаковыми разделителями на всех компьютерах.
 if (!$NoArchive) {
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip=$package+'.zip'
-    [IO.Compression.ZipFile]::CreateFromDirectory($package,$zip,[IO.Compression.CompressionLevel]::Optimal,$false)
+    New-DeploymentArchive $package $zip
     Write-Output "ARCHIVE_PATH=$zip"
 }
+
 Write-Output "PACKAGE_ROOT=$package"
