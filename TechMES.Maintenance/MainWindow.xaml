@@ -1,4 +1,4 @@
-<ui:FluentWindow x:Class="TechMES.Maintenance.MainWindow"
+﻿<ui:FluentWindow x:Class="TechMES.Maintenance.MainWindow"
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -57,6 +57,10 @@
                         <ui:SymbolIcon Symbol="Home32" />
                     </ui:NavigationViewItem.Icon>
 
+                </ui:NavigationViewItem>
+
+                <ui:NavigationViewItem Content="Deployment" TargetPageType="{x:Type views:DeploymentPage}">
+                    <ui:NavigationViewItem.Icon><ui:SymbolIcon Symbol="ArchiveArrowBack24" /></ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
 
                 <ui:NavigationViewItem Content="Import/Edit"

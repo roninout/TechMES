@@ -1,4 +1,4 @@
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -3925,50 +3925,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     }
 
     /// <summary>
-    /// Выполняет первичную установку из исходников.
-    /// Существующие службы направляет к обновлению из готового пакета.
+    /// Собирает все проекты и обновляет локальные службы с сохранением настроек и откатом.
     /// </summary>
-    private async Task DeployAllServicesAsync()
-    {
-        if (!await CheckSourceDeploymentAsync())
-            return;
-
-        // Проверяем весь набор до публикации.
-        // Действующие службы обновляет штатный updater.
-        foreach (var service in DeploymentServices)
-        {
-            var state = await _serviceManager.QueryAsync(service.ServiceName);
-
-            // Код 1060 означает, что служба ещё не установлена.
-            // Другую ошибку нельзя считать разрешением на первичную установку.
-            if (state.Success || !state.Details.Contains("1060", StringComparison.Ordinal))
-            {
-                var message = "Службы уже установлены или их состояние не удалось проверить. " +
-                    "Для обновления используйте Update from package. Службы не остановлены.";
-
-                AppendDeploymentLog(message);
-                MessageBox.Show(this, message, "Обновление TechMES", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-        }
-
-        AppendDeploymentLog("Initial deployment started.");
-
-        // Сначала успешно публикуем все компоненты.
-        // Ошибка сборки прерывает сценарий до установки служб.
-        foreach (var service in DeploymentServices)
-            if (!await PublishDeploymentServiceAsync(service))
-                return;
-
-        foreach (var service in DeploymentServices)
-            if (!await InstallDeploymentServiceAsync(service))
-                return;
-
-        foreach (var service in DeploymentServices)
-            await StartDeploymentServiceAsync(service);
-
-        AppendDeploymentLog("Initial deployment finished.");
-    }
+    private Task DeployAllServicesAsync() => DeployAllFromSourceAsync();
 
     /// <summary>
     /// Проверяет окружение и публикует выбранный компонент.

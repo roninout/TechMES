@@ -241,23 +241,25 @@ public class MaintenancePageControl : UserControl
     /// </summary>
     public void OnChooseRepositoryClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
 
-    /// <summary>
-    /// Передаёт обновление из готового пакета главному окну.
-    /// </summary>
-    public void OnUpdateFromPackageClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    /// <summary>Передаёт создание общего архива.</summary>
+    public void OnCreateDeploymentArchiveClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
 
-    /// <summary>
-    /// Передаёт выбор ZIP главному окну.
-    /// </summary>
-    public void OnChooseSecondaryArchiveClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    /// <summary>Передаёт выбор ZIP.</summary>
+    public void OnChooseDeploymentArchiveClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
 
-    /// <summary>
-    /// Передаёт сохранение профиля Deployment.
-    /// </summary>
-    public void OnSaveSecondaryDeploymentClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    /// <summary>Передаёт выбор папки подготовки.</summary>
+    public void OnChooseDeploymentOutputClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
 
-    /// <summary>
-    /// Передаёт единый Deploy Secondary.
-    /// </summary>
-    public void OnDeploySecondaryClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    /// <summary>Передаёт сохранение двух профилей.</summary>
+    public void OnSavePackageDeploymentClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+
+    /// <summary>Передаёт подготовку комплекта.</summary>
+    public void OnPrepareDeploymentPackageClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+
+    /// <summary>Передаёт доставку выбранному серверу.</summary>
+    public void OnSendDeploymentPackageClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+
+    /// <summary>Передаёт открытие папки комплекта.</summary>
+    public void OnOpenDeploymentOutputClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+
 }
