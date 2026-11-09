@@ -137,7 +137,6 @@ public class MaintenancePageControl : UserControl
     public void OnInstallAllClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnStartAllDeployClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnDeployAllClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
-    public void OnPrepareNewServerClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnPublishDeployServiceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnInstallDeployServiceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnSaveTypedSettingsClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
