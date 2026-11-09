@@ -7,21 +7,7 @@ AdoptService performs a clean fast shutdown and starts the existing Windows
 service against the same data directory. It does not promote or clone a cluster.
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-param(
-    [ValidateSet('Status', 'AdoptService')]
-    [string]$Mode = 'Status',
-
-    [ValidatePattern('^[A-Za-z0-9_.-]+$')]
-    [string]$ServiceName = 'postgresql-x64-18',
-
-    [string]$PgBin = 'D:\PostgreSQL\18\bin',
-    [string]$DataDirectory = 'D:\PostgreSQL\18\data',
-
-	[ValidateRange(1, 65535)]
-	[int]$Port = 5432,
-
-	[switch]$AsJson
-)
+param([ValidateSet('Status','AdoptService')][string]$Mode='Status', [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18', [string]$PgBin='D:\PostgreSQL\18\bin', [string]$DataDirectory='D:\PostgreSQL\18\data', [ValidateRange(1,65535)][int]$Port=5432, [switch]$AsJson)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -41,11 +27,7 @@ function Get-NormalizedPath([string]$Path) {
 
 # Extracts -D from a registered service or PostgreSQL command line.
 function Get-CommandDataDirectory([string]$CommandLine) {
-    $match = [regex]::Match(
-        $CommandLine,
-        '(?:^|\s)-D\s+(?:"([^"]+)"|(\S+))',
-        'IgnoreCase'
-    )
+    $match = [regex]::Match($CommandLine, '(?:^|\s)-D\s+(?:"([^"]+)"|(\S+))', 'IgnoreCase')
 
     if (!$match.Success) {
         throw 'Cannot identify the data directory in the command line.'
@@ -90,11 +72,7 @@ function Get-PostgreSqlServiceState {
         throw "Service not found: $ServiceName"
     }
 
-    $binary = [regex]::Match(
-        $service.PathName,
-        '^\s*(?:"([^"]+\.exe)"|(.+?\.exe))(?:\s|$)',
-        'IgnoreCase'
-    )
+    $binary = [regex]::Match($service.PathName, '^\s*(?:"([^"]+\.exe)"|(.+?\.exe))(?:\s|$)', 'IgnoreCase')
 
     if (!$binary.Success) {
         throw 'Cannot identify the service executable.'
@@ -217,10 +195,7 @@ function Set-PostgreSqlServiceControl {
 
     Start-Service -Name $ServiceName -ErrorAction Stop
 
-    (Get-Service -Name $ServiceName).WaitForStatus(
-        [ServiceProcess.ServiceControllerStatus]::Running,
-        [TimeSpan]::FromSeconds(60)
-    )
+    (Get-Service -Name $ServiceName).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(60))
 
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
 
@@ -268,11 +243,7 @@ if ($AsJson) {
     # ASCII-escaped JSON works without a console and preserves Unicode paths.
     $json = $state | ConvertTo-Json -Depth 4 -Compress
 
-    [regex]::Replace(
-        $json,
-        '[^\x00-\x7F]',
-        { param($value) '\u{0:x4}' -f [int][char]$value.Value }
-    )
+    [regex]::Replace($json, '[^\x00-\x7F]', { param($value) '\u{0:x4}' -f [int][char]$value.Value })
 
     return
 }
@@ -288,10 +259,7 @@ if ($state.ManagedByService) {
     return
 }
 
-if (!$PSCmdlet.ShouldProcess(
-    $env:COMPUTERNAME,
-    "Adopt PostgreSQL into service $ServiceName; database connections will be interrupted"
-)) {
+if (!$PSCmdlet.ShouldProcess($env:COMPUTERNAME, "Adopt PostgreSQL into service $ServiceName; database connections will be interrupted")) {
     return
 }
 

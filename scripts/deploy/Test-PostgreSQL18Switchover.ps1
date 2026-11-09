@@ -6,14 +6,95 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 
+# Разделяет административное SQL-подключение и вход пользователя репликации.
+function Get-PgCheckCredentials {
+    $sql=Get-Credential -UserName 'postgres' -Message 'PostgreSQL SQL diagnostics and pg_rewind permissions'
+
+    if ($null -eq $sql) {
+        throw 'SQL credential entry cancelled.'
+    }
+
+    $replicationCredential=Get-Credential -UserName 'techmes_repl' -Message 'PostgreSQL physical replication account'
+
+    if ($null -eq $replicationCredential) {
+        throw 'Replication credential entry cancelled.'
+    }
+
+    return [pscustomobject]@{
+        Sql=$sql
+        Replication=$replicationCredential
+    }
+}
+
+# Читает UTF-8 строго, затем использует системную ANSI-кодировку Windows.
+function ConvertFrom-PgDiagnosticBytes([byte[]]$Bytes) {
+    try {
+        return (New-Object Text.UTF8Encoding($false,$true)).GetString($Bytes).Trim()
+    }
+    catch [Text.DecoderFallbackException] {
+        $locale=Get-WinSystemLocale
+        return [Text.Encoding]::GetEncoding($locale.TextInfo.ANSICodePage).GetString($Bytes).Trim()
+    }
+}
+
+# Сохраняет сведения о процессе и события SCM для выяснения причин остановки службы.
+function Get-PgServiceDiagnostics($State) {
+    $service=Get-CimInstance Win32_Service -Filter ("Name='"+$ServiceName.Replace("'","''")+"'")
+
+    if ($null -eq $service) {
+        throw 'PostgreSQL Windows service was not found during diagnostics.'
+    }
+
+    $server=$null
+    $parent=$null
+
+    if ($State.PostmasterProcessId -gt 0) {
+        $server=Get-CimInstance Win32_Process -Filter ('ProcessId='+$State.PostmasterProcessId)
+
+        if ($null -ne $server -and $server.ParentProcessId -gt 0) {
+            $candidate=Get-CimInstance Win32_Process -Filter ('ProcessId='+$server.ParentProcessId)
+
+            if ($null -ne $candidate -and $null -ne $candidate.CreationDate -and $null -ne $server.CreationDate -and $candidate.CreationDate -le $server.CreationDate) {
+                $parent=$candidate
+            }
+        }
+    }
+
+    $events=@()
+    $eventsReadError=$null
+
+    try {
+        $filter=@{
+            LogName='System'
+            ProviderName='Service Control Manager'
+            StartTime=(Get-Date).AddDays(-7)
+            Id=@(7000,7001,7009,7011,7023,7024,7031,7034,7036,7038)
+        }
+
+        $events=@(Get-WinEvent -FilterHashtable $filter -MaxEvents 2000 -ErrorAction Stop | Where-Object { $_.Properties.Count -gt 0 -and $_.Properties[0].Value -in @($service.Name,$service.DisplayName) } | Select-Object -First 12 -Property TimeCreated,Id,Message)
+    }
+    catch {
+        $eventsReadError=$_.Exception.Message
+    }
+
+    return [pscustomobject]@{
+        CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o')
+        StartMode=$service.StartMode
+        Server=($server | Select-Object ProcessId,ParentProcessId,Name,CreationDate,ExecutablePath)
+        Parent=($parent | Select-Object ProcessId,ParentProcessId,Name,CreationDate,ExecutablePath)
+        Events=$events
+        EventsReadError=$eventsReadError
+    }
+}
+
 # Выполняет диагностический SQL либо IDENTIFY_SYSTEM.
 # Пароль передаётся дочернему процессу без записи в файл.
-function Invoke-PgCheck([string]$Address, [PSCredential]$Credential, [string]$Sql, [switch]$Replication) {
+function Invoke-PgCheck([string]$Address, [PSCredential]$Credential, [string]$Sql, [switch]$PhysicalReplication) {
     $start=New-Object Diagnostics.ProcessStartInfo
     $start.FileName=Join-Path $PgBin 'psql.exe'
     $start.Arguments='-X -q -w -A -t -v ON_ERROR_STOP=1 -f -'
 
-    if ($Replication) {
+    if ($PhysicalReplication) {
         $start.Arguments+=' -d replication=1'
     }
 
@@ -23,7 +104,6 @@ function Invoke-PgCheck([string]$Address, [PSCredential]$Credential, [string]$Sq
     $start.RedirectStandardOutput=$true
     $start.RedirectStandardError=$true
     $start.StandardOutputEncoding=New-Object Text.UTF8Encoding($false)
-    $start.StandardErrorEncoding=New-Object Text.UTF8Encoding($false)
 
     foreach ($name in @('PGHOSTADDR','PGSERVICE','PGSERVICEFILE','PGPASSFILE','PGOPTIONS','PGTARGETSESSIONATTRS')) {
         $start.EnvironmentVariables.Remove($name)
@@ -41,12 +121,13 @@ function Invoke-PgCheck([string]$Address, [PSCredential]$Credential, [string]$Sq
 
     $process=New-Object Diagnostics.Process
     $process.StartInfo=$start
+    $errorBytes=New-Object IO.MemoryStream
 
     try {
         $null=$process.Start()
 
         $stdout=$process.StandardOutput.ReadToEndAsync()
-        $stderr=$process.StandardError.ReadToEndAsync()
+        $stderr=$process.StandardError.BaseStream.CopyToAsync($errorBytes)
 
         $process.StandardInput.WriteLine($Sql)
         $process.StandardInput.Close()
@@ -54,11 +135,14 @@ function Invoke-PgCheck([string]$Address, [PSCredential]$Credential, [string]$Sq
         if (!$process.WaitForExit(20000)) {
             $process.Kill()
             $process.WaitForExit()
+            $null=$stderr.GetAwaiter().GetResult()
+
             throw ('Read-only PostgreSQL check timed out: '+$Address)
         }
 
         $output=$stdout.GetAwaiter().GetResult().Trim()
-        $errorText=$stderr.GetAwaiter().GetResult().Trim()
+        $null=$stderr.GetAwaiter().GetResult()
+        $errorText=ConvertFrom-PgDiagnosticBytes ($errorBytes.ToArray())
 
         if ($process.ExitCode -ne 0) {
             throw ('PostgreSQL check failed on '+$Address+': '+$errorText)
@@ -68,6 +152,7 @@ function Invoke-PgCheck([string]$Address, [PSCredential]$Credential, [string]$Sq
     }
     finally {
         $start.EnvironmentVariables.Remove('PGPASSWORD')
+        $errorBytes.Dispose()
         $process.Dispose()
     }
 }
@@ -172,7 +257,7 @@ COMMIT;
 
 # Проверяет реальный вход по физическому протоколу репликации на соседний сервер.
 function Get-PgReplicationIdentity([string]$Address, [PSCredential]$Credential) {
-    $line=Invoke-PgCheck $Address $Credential 'IDENTIFY_SYSTEM;' -Replication
+    $line=Invoke-PgCheck $Address $Credential 'IDENTIFY_SYSTEM;' -PhysicalReplication
     $fields=$line -split '\|'
 
     if ($fields.Count -ne 4 -or $fields[0] -notmatch '^\d+$' -or $fields[1] -notmatch '^\d+$' -or $fields[2] -notmatch '^[0-9A-F]+/[0-9A-F]+$') {
@@ -303,11 +388,7 @@ New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $localAddress=$localAddresses[0]
 $peerAddress=if ($localAddress -eq '192.168.1.132') { '192.168.1.131' } else { '192.168.1.132' }
 
-$credential=Get-Credential -UserName 'postgres' -Message 'PostgreSQL account on both database nodes (not a Windows account)'
-
-if ($null -eq $credential) {
-    throw 'Credential entry cancelled.'
-}
+$credentials=Get-PgCheckCredentials
 
 $errors=New-Object 'Collections.Generic.List[string]'
 
@@ -318,33 +399,36 @@ $report=[pscustomobject]@{
     LocalAddress=$localAddress
     PeerAddress=$peerAddress
     Port=$Port
+    SqlAccount=$credentials.Sql.UserName
+    ReplicationAccount=$credentials.Replication.UserName
     Local=$null
     Peer=$null
     PeerReplication=$null
     Service=$null
+    ServiceDiagnostics=$null
     PreflightPassed=$false
     Issues=@()
 }
 
 try {
-    $report.Local=Get-PgSnapshot '127.0.0.1' $credential
+    $report.Local=Get-PgSnapshot '127.0.0.1' $credentials.Sql
 }
 catch {
     $errors.Add('Local SQL: '+$_.Exception.Message)
 }
 
 try {
-    $report.Peer=Get-PgSnapshot $peerAddress $credential
+    $report.Peer=Get-PgSnapshot $peerAddress $credentials.Sql
 }
 catch {
     $errors.Add('Peer SQL: '+$_.Exception.Message)
 }
 
 try {
-    $report.PeerReplication=Get-PgReplicationIdentity $peerAddress $credential
+    $report.PeerReplication=Get-PgReplicationIdentity $peerAddress $credentials.Replication
 }
 catch {
-    $errors.Add('Peer replication: '+$_.Exception.Message)
+    $errors.Add('Peer replication ('+$credentials.Replication.UserName+'): '+$_.Exception.Message)
 }
 
 if ($null -ne $report.Local) {
@@ -361,6 +445,17 @@ if ($null -ne $report.Local) {
     }
     catch {
         $errors.Add('Local service: '+$_.Exception.Message)
+    }
+}
+
+if ($null -ne $report.Service) {
+    try {
+        $report.ServiceDiagnostics=Get-PgServiceDiagnostics $report.Service
+    }
+    catch {
+        $report.ServiceDiagnostics=[pscustomobject]@{
+            Error=$_.Exception.Message
+        }
     }
 }
 
