@@ -25,9 +25,11 @@
     <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
   </ItemGroup>
 
-    <!-- Оба локальных инструмента включаются в переносимую Maintenance. -->
-    <ItemGroup>
-        <Content Include="..\scripts\deploy\Update-TechMESServer.ps1" Link="Tools\Update-TechMESServer.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-        <Content Include="..\scripts\deploy\Build-TechMESUpdate.ps1" Link="Tools\Build-TechMESUpdate.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    </ItemGroup>
+	<!-- Инструменты включаются в переносимую Maintenance и доступны без исходников. -->
+	<ItemGroup>
+		<Content Include="..\scripts\deploy\Update-TechMESServer.ps1" Link="Tools\Update-TechMESServer.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="..\scripts\deploy\Build-TechMESUpdate.ps1" Link="Tools\Build-TechMESUpdate.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="..\scripts\deploy\Set-PostgreSQL18ServiceControl.ps1" Link="Tools\Set-PostgreSQL18ServiceControl.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+	</ItemGroup>
+	
 </Project>

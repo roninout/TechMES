@@ -99,7 +99,18 @@ public class MaintenancePageControl : UserControl
     public void OnProbeServiceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnRefreshAllClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenServicesConsoleClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
-    public void OnPrepareServerClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    /// <summary>Перед первоначальной подготовкой проверяет управление локальным PostgreSQL.</summary>
+    public async void OnPrepareServerClick(object sender, RoutedEventArgs e)
+    {
+        if (Window.GetWindow(this) is MainWindow window && await window.CheckPostgreSqlBeforeInitialPreparationAsync())
+            ForwardRoutedEvent(sender, e);
+    }
+    /// <summary>Перед первоначальной подготовкой проверяет управление локальным PostgreSQL.</summary>
+    public async void OnPrepareNewServerClick(object sender, RoutedEventArgs e)
+    {
+        if (Window.GetWindow(this) is MainWindow window && await window.CheckPostgreSqlBeforeInitialPreparationAsync())
+            ForwardRoutedEvent(sender, e);
+    }
     public void OnRefreshServerClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenMaintenanceFolderClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenWebFirewallClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);

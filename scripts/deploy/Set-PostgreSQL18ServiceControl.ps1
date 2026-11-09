@@ -25,6 +25,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 # Machine-readable mode is read-only.
 if ($AsJson) {

@@ -178,6 +178,12 @@
             <views:DeployPage HorizontalAlignment="Stretch"
                               VerticalAlignment="Stretch" />
         </TabItem>
+
+        <!-- Подготовка компьютеров БД не зависит от установленного Runtime. -->
+        <TabItem Header="PostgreSQL">
+            <views:PostgreSqlSetupControl />
+        </TabItem>
+
     </TabControl>
 </views:MaintenancePageControl>
 

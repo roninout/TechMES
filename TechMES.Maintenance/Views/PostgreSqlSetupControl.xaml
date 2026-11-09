@@ -1,0 +1,91 @@
+﻿<UserControl x:Class="TechMES.Maintenance.Views.PostgreSqlSetupControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+             Loaded="OnLoaded">
+
+    <UserControl.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+
+        <Style x:Key="SetupField"
+               TargetType="{x:Type ui:TextBox}"
+               BasedOn="{StaticResource {x:Type ui:TextBox}}">
+            <Setter Property="Margin" Value="0,4,0,10" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="16">
+            <TextBlock Text="Подготовка PostgreSQL"
+                       FontSize="20"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,10" />
+
+            <TextBlock Text="Maintenance запускается от имени администратора. Обязательный шаг первоначальной настройки БД: работающий PostgreSQL должен принадлежать Windows-службе. Эти профили относятся к БД .132/.131, а не к приложениям .118/.132."
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,12" />
+
+            <TextBlock Text="Проверка и AdoptService запускаются локально на сервере БД. С одной Maintenance экспортируйте автономный PS1 для каждого сервера; после запуска скопируйте result.json и загрузите отчёт сюда."
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,12" />
+
+            <TabControl x:Name="ProfilesTabs"
+                        ItemsSource="{Binding Profiles}"
+                        SelectedIndex="0"
+                        HorizontalContentAlignment="Stretch"
+                        SelectionChanged="OnProfileSelected"
+                        Margin="0,0,0,12">
+
+                <TabControl.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Name}" />
+                    </DataTemplate>
+                </TabControl.ItemTemplate>
+
+                <TabControl.ContentTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="12">
+                            <TextBlock Text="Компьютер БД: имя или IPv4" />
+                            <ui:TextBox Text="{Binding ComputerName, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SetupField}" TextChanged="OnProfileEdited" />
+
+                            <TextBlock Text="Windows service name" />
+                            <ui:TextBox Text="{Binding ServiceName, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SetupField}" TextChanged="OnProfileEdited" />
+
+                            <TextBlock Text="PostgreSQL bin directory" />
+                            <ui:TextBox Text="{Binding BinDirectory, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SetupField}" TextChanged="OnProfileEdited" />
+
+                            <TextBlock Text="PostgreSQL data directory" />
+                            <ui:TextBox Text="{Binding DataDirectory, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SetupField}" TextChanged="OnProfileEdited" />
+
+                            <TextBlock Text="PostgreSQL port" />
+                            <ui:TextBox Text="{Binding Port, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Style="{StaticResource SetupField}" TextChanged="OnProfileEdited" />
+                        </StackPanel>
+                    </DataTemplate>
+                </TabControl.ContentTemplate>
+            </TabControl>
+
+            <WrapPanel Margin="0,0,0,12">
+                <ui:Button Content="Сохранить профили" Click="OnSaveClick" Margin="0,0,8,8" />
+                <ui:Button Content="Проверить локально" Click="OnCheckClick" Margin="0,0,8,8" />
+                <ui:Button Content="AdoptService локально" Click="OnPrepareClick" Margin="0,0,8,8" />
+                <ui:Button Content="Экспорт скрипта…" Click="OnExportClick" Margin="0,0,8,8" />
+                <ui:Button Content="Загрузить отчёт…" Click="OnImportClick" Margin="0,0,8,8" />
+            </WrapPanel>
+
+            <TextBlock Text="AdoptService может кратко остановить PostgreSQL и прервать подключения. Проверка не меняет службу. Экспорт скрипта не подтверждает готовность сервера."
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,10" />
+
+            <ui:TextBox x:Name="StatusBox"
+                        IsReadOnly="True"
+                        AcceptsReturn="True"
+                        TextWrapping="Wrap"
+                        MinHeight="180"
+                        VerticalScrollBarVisibility="Auto"
+                        FontFamily="Consolas" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
