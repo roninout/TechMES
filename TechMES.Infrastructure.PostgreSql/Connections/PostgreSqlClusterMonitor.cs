@@ -164,6 +164,7 @@ public sealed class PostgreSqlClusterProbe : IPostgreSqlClusterProbe
 public sealed class PostgreSqlClusterMonitor
 {
     private readonly IPostgreSqlClusterProbe _probe;
+    private readonly MainDatabaseWriteGuard _writeGuard;
     private readonly string[] _connections;
     private readonly SemaphoreSlim _refresh = new(1, 1);
 
@@ -172,9 +173,10 @@ public sealed class PostgreSqlClusterMonitor
     /// <summary>
     /// Запоминает существующие подключения Primary/Secondary и общий Health Period. Соединения в конструкторе не открываются.
     /// </summary>
-    public PostgreSqlClusterMonitor(IConfiguration configuration, IPostgreSqlClusterProbe probe)
+    public PostgreSqlClusterMonitor(IConfiguration configuration, IPostgreSqlClusterProbe probe, MainDatabaseWriteGuard writeGuard)
     {
         _probe = probe;
+        _writeGuard = writeGuard;
         _connections = [(configuration.GetConnectionString("Default") ?? configuration["Database:ConnectionString"])?.Trim() ?? "", configuration["Database:ConnectionStringSecondary"]?.Trim() ?? ""];
 
         _state = new()
@@ -226,7 +228,9 @@ public sealed class PostgreSqlClusterMonitor
                 Secondary = results[1]
             };
 
-            Volatile.Write(ref _state, next with { Topology = Describe(next.Primary, next.Secondary) });
+            next = next with { Topology = Describe(next.Primary, next.Secondary) };
+            _writeGuard.Observe(next);
+            Volatile.Write(ref _state, next);
         }
         finally
         {

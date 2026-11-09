@@ -20,6 +20,7 @@ public sealed class MainDatabaseFailover : IAsyncDisposable
     private readonly Task[] _checks = [Task.CompletedTask, Task.CompletedTask];
     private readonly CancellationTokenSource _stop = new();
     private readonly IMainDatabaseConnector _connector;
+    private readonly MainDatabaseWriteGuard _writeGuard;
     private readonly ILogger<MainDatabaseFailover> _logger;
     private readonly int _healthSeconds;
     private readonly bool _enabled;
@@ -28,12 +29,13 @@ public sealed class MainDatabaseFailover : IAsyncDisposable
     private bool _started;
     private bool _disposed;
 
-    public MainDatabaseFailover(IConfiguration configuration, IMainDatabaseConnector connector, ILogger<MainDatabaseFailover> logger)
+    public MainDatabaseFailover(IConfiguration configuration, IMainDatabaseConnector connector, ILogger<MainDatabaseFailover> logger, MainDatabaseWriteGuard writeGuard)
     {
         _connections = [(configuration.GetConnectionString("Default") ?? configuration["Database:ConnectionString"])?.Trim() ?? "", configuration["Database:ConnectionStringSecondary"]?.Trim() ?? ""];
         _healthSeconds = int.TryParse(configuration["CtApi:HealthCheckPeriodSeconds"], out var seconds) ? Math.Max(5, seconds) : 10;
         _enabled = string.Equals(configuration["Database:Provider"] ?? "PostgreSql", "PostgreSql", StringComparison.OrdinalIgnoreCase);
         _connector = connector;
+        _writeGuard = writeGuard;
         _logger = logger;
     }
 
@@ -64,13 +66,15 @@ public sealed class MainDatabaseFailover : IAsyncDisposable
                 Message = _connections[index].Length == 0 ? "Not configured." : _checkedAtUtc[index] is null ? "Waiting for the first Main DB health check." : _readOnly[index] ? "Database is reachable but read-only; it is not selected for Main DB writes." : _online[index] ? "Main DB connection and read-write check succeeded." : "Main DB connection is unavailable. See Runtime logs."
             };
 
-            var active = ActiveIndex();
+            var safety = _writeGuard.GetStatus();
+            var active = safety.WritesBlocked ? -1 : ActiveIndex();
 
             return new MainDatabaseHealthResponse
             {
                 Enabled = _enabled,
                 HealthPeriodSeconds = _healthSeconds,
                 ActiveRole = active < 0 ? null : Role(active),
+                WriteSafety = safety,
                 Primary = DescribeServer(0),
                 Secondary = DescribeServer(1)
             };
@@ -162,6 +166,7 @@ public sealed class MainDatabaseFailover : IAsyncDisposable
     {
         while (true)
         {
+            _writeGuard.ThrowIfBlocked();
             Task changed;
             Task pending;
 
@@ -195,6 +200,7 @@ public sealed class MainDatabaseFailover : IAsyncDisposable
     public async Task<NpgsqlConnection> OpenAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
+        _writeGuard.ThrowIfBlocked();
 
         lock (_gate)
         {
@@ -237,10 +243,23 @@ public sealed class MainDatabaseFailover : IAsyncDisposable
 
                 Publish(index, version, true, false);
 
+                // Запрет мог появиться во время открытия соединения. Store ещё не получил его.
+                var safety = _writeGuard.GetStatus();
+                if (safety.WritesBlocked)
+                {
+                    await connection.DisposeAsync();
+                    throw new MainDatabaseWriteBlockedException(safety);
+                }
+
                 return connection;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
+                throw;
+            }
+            catch (MainDatabaseWriteBlockedException)
+            {
+                // Не помечаем сервер Offline и не пытаемся обойти общий запрет через Secondary.
                 throw;
             }
             catch (Exception ex) when (!token.IsCancellationRequested)

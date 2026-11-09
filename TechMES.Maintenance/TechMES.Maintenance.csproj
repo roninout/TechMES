@@ -31,6 +31,7 @@
 		<Content Include="..\scripts\deploy\Build-TechMESUpdate.ps1" Link="Tools\Build-TechMESUpdate.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Content Include="..\scripts\deploy\Set-PostgreSQL18ServiceControl.ps1" Link="Tools\Set-PostgreSQL18ServiceControl.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Content Include="..\scripts\deploy\Test-PostgreSQL18Switchover.ps1" Link="Tools\Test-PostgreSQL18Switchover.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="..\scripts\deploy\Switch-PostgreSQL18.ps1" Link="Tools\Switch-PostgreSQL18.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
 	
 </Project>

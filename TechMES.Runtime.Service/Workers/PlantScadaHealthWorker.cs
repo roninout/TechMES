@@ -11,7 +11,7 @@ namespace TechMES.Runtime.Service.Workers;
 /// <summary>
 /// Один Health Period для независимых проверок CtApi, ODBC, Main DB и кластера PostgreSQL.
 /// </summary>
-public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, IEnumerable<MainDatabaseFailover> databases, PostgreSqlClusterMonitor cluster, PostgreSqlLocalMonitor localDatabase, RuntimeActivityState activity, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
+public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<CtApiOptions> options, IEnumerable<AlarmOdbcFailover> odbcConnections, IEnumerable<MainDatabaseFailover> databases, PostgreSqlClusterMonitor cluster, PostgreSqlLocalMonitor localDatabase, MainDatabaseWriteGuard writeGuard, RuntimeActivityState activity, ILogger<PlantScadaHealthWorker> logger) : BackgroundService
 {
     /// <summary>
     /// Запускает независимые проверки по одному существующему таймеру. Монитор PostgreSQL работает также в Standby; при остановке ожидаем завершения текущих циклов.
@@ -61,8 +61,24 @@ public sealed class PlantScadaHealthWorker(IPlantScadaGateway gateway, IOptions<
     {
         try
         {
-            // SQL-кластер и локальная служба проверяются независимо, одним health worker.
-            await Task.WhenAll(cluster.RefreshAsync(ct), localDatabase.RefreshAsync(ct));
+            // Медленная проверка локального SCM не задерживает отмену работы после SQL-конфликта.
+            var localCheck = localDatabase.RefreshAsync(ct);
+            try
+            {
+                await cluster.RefreshAsync(ct);
+                var safety = writeGuard.GetStatus();
+                if (safety.WritesBlocked)
+                {
+                    if (activity.GetStatus().Coordination?.Enabled == true)
+                        activity.RevokeOwnership(safety.Message);
+                    else
+                        activity.BeginDraining(safety.Message);
+                }
+            }
+            finally
+            {
+                await localCheck;
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

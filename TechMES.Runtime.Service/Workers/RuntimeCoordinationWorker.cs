@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using TechMES.Application.Runtime;
 using TechMES.Contracts.Runtime;
 using TechMES.Infrastructure.CtApi.Settings;
+using TechMES.Infrastructure.PostgreSql.Connections;
 using TechMES.Runtime.Service.Runtime;
 using TechMES.Runtime.Service.Settings;
 
@@ -145,6 +146,14 @@ public sealed class RuntimeCoordinationWorker(IRuntimeLeadershipStore store, Run
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
+        }
+        catch (MainDatabaseWriteBlockedException ex)
+        {
+            _successes = 0;
+            _failures++;
+            BeginRelease(ex.Message);
+            SetStatus(settings, ex.Message);
+            logger.LogCritical("Runtime ownership blocked by Main DB protection. Code={Code}.", ex.Safety.Code);
         }
         catch (Exception ex)
         {

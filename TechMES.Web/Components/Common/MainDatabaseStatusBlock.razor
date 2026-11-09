@@ -85,6 +85,9 @@
         if (!state.Enabled || !server.Configured)
             return ("N/A", BadgeStyle.Light, !state.Enabled ? "Main DB provider is disabled." : $"Main DB {server.Role} is not configured.");
 
+        if (state.WriteSafety.WritesBlocked)
+            return ("Blocked", BadgeStyle.Danger, $"{state.WriteSafety.Code}: {state.WriteSafety.Message} Recovery checks: {state.WriteSafety.RecoveryChecks}/{state.WriteSafety.RequiredRecoveryChecks}.");
+
         if (server.CheckedAtUtc is null)
             return ("Unknown", BadgeStyle.Light, server.Message);
 

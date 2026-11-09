@@ -1,4 +1,7 @@
-﻿namespace TechMES.Runtime.Service.Runtime;
+﻿using TechMES.Contracts.Runtime;
+using TechMES.Infrastructure.PostgreSql.Connections;
+
+namespace TechMES.Runtime.Service.Runtime;
 
 /// <summary>
 /// Разрешает служебный endpoint до активации и в Standby.
@@ -10,7 +13,7 @@ public sealed class RuntimeControlEndpoint
 
 public sealed class RuntimeActivityMiddleware(RequestDelegate next)
 {
-    public async Task InvokeAsync(HttpContext context, RuntimeActivityState activity)
+    public async Task InvokeAsync(HttpContext context, RuntimeActivityState activity, MainDatabaseWriteGuard writeGuard)
     {
         var endpoint = context.GetEndpoint();
 
@@ -18,6 +21,13 @@ public sealed class RuntimeActivityMiddleware(RequestDelegate next)
         if (endpoint is null || endpoint.Metadata.GetMetadata<RuntimeControlEndpoint>() is not null)
         {
             await next(context);
+            return;
+        }
+
+        var safety = writeGuard.GetStatus();
+        if (safety.WritesBlocked)
+        {
+            await RejectDatabaseAsync(context, safety);
             return;
         }
 
@@ -43,6 +53,10 @@ public sealed class RuntimeActivityMiddleware(RequestDelegate next)
             {
                 await next(context);
             }
+            catch (MainDatabaseWriteBlockedException ex)
+            {
+                await RejectDatabaseAsync(context, ex.Safety);
+            }
             catch (RuntimeNotActiveException)
             {
                 await RejectAsync(context, activity);
@@ -56,6 +70,20 @@ public sealed class RuntimeActivityMiddleware(RequestDelegate next)
                 context.RequestAborted = originalToken;
             }
         }
+    }
+
+    /// <summary>Возвращает явную причину блокировки кластера; диагностика остаётся доступной.</summary>
+    private static async Task RejectDatabaseAsync(HttpContext context, MainDatabaseWriteSafety safety)
+    {
+        if (context.Response.HasStarted)
+        {
+            context.Abort();
+            return;
+        }
+
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        await context.Response.WriteAsJsonAsync(new { code = "database.write-blocked", message = safety.Message, writeSafety = safety }, CancellationToken.None);
     }
 
     private static async Task RejectAsync(HttpContext context, RuntimeActivityState activity)

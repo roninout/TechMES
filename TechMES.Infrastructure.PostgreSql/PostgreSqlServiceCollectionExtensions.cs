@@ -28,6 +28,7 @@ public static class PostgreSqlServiceCollectionExtensions
     public static IServiceCollection AddPostgreSqlInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.TryAddSingleton<IMainDatabaseConnector, MainDatabaseConnector>();
+        services.TryAddSingleton<MainDatabaseWriteGuard>();
         services.TryAddSingleton<MainDatabaseFailover>();
         services.TryAddSingleton<PostgreSqlDatabaseBootstrapper>();
 
@@ -52,6 +53,7 @@ public static class PostgreSqlServiceCollectionExtensions
     {
         // TryAdd сохраняет один общий маршрут, даже если Messages также использует PostgreSQL.
         services.TryAddSingleton<IMainDatabaseConnector, MainDatabaseConnector>();
+        services.TryAddSingleton<MainDatabaseWriteGuard>();
         services.TryAddSingleton<MainDatabaseFailover>();
         services.TryAddSingleton<PostgreSqlDatabaseBootstrapper>();
 
