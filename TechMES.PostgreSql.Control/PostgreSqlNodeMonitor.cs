@@ -263,10 +263,11 @@ public sealed class PostgreSqlNodeMonitor : IHostedService, IPostgreSqlActionHos
 
 public static class PostgreSqlNodeServices
 {
-    /// <summary>Одинаковая регистрация для Runtime и отдельной Windows-службы.</summary>
+    // Одинаковая регистрация для Runtime и отдельного Agent.
     public static IServiceCollection AddPostgreSqlNode(this IServiceCollection services, IConfiguration configuration, PostgreSqlHostKind hostKind)
     {
         services.AddOptions<PostgreSqlControlOptions>().Bind(configuration.GetSection(PostgreSqlControlOptions.SectionName));
+        services.AddOptions<PostgreSqlNetworkOptions>().Bind(configuration.GetSection(PostgreSqlNetworkOptions.SectionName));
 
         services.TryAddSingleton<IPostgreSqlServicePresence, WindowsPostgreSqlServicePresence>();
         services.TryAddSingleton<IPostgreSqlControllerLease, PostgreSqlControllerLease>();
@@ -281,6 +282,9 @@ public static class PostgreSqlNodeServices
         services.TryAddSingleton<IPostgreSqlSwitchRunner, PostgreSqlSwitchRunner>();
 
         services.AddHostedService<PostgreSqlCommandWorker>();
+
+        services.AddSingleton<PostgreSqlSwitchInbox>();
+        services.AddHostedService<PostgreSqlNetworkHost>();
 
         if (hostKind == PostgreSqlHostKind.Standalone)
             services.AddHostedService<PostgreSqlNodePollingWorker>();

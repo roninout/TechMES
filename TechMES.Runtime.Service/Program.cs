@@ -22,6 +22,9 @@ using TechMES.Runtime.Service.Calc;
 using TechMES.Runtime.Service.PostgreSql;
 using TechMES.PostgreSql.Control;
 
+if (await PostgreSqlSwitchConsole.TryRunAsync(args))
+    return;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.PostgreSqlControl.json"), optional: true, reloadOnChange: false);
@@ -49,20 +52,18 @@ builder.Services.AddOptions<RuntimeOptions>()
 builder.Services.AddSingleton<RuntimeActivityState>();
 builder.Services.AddSingleton<IPlantScadaWritePermission>(provider => provider.GetRequiredService<RuntimeActivityState>());
 
-// Диагностика физического кластера доступна независимо от Runtime Active/Standby.
+// Диагностика кластера работает независимо от Runtime Active/Standby.
 builder.Services.AddSingleton<IPostgreSqlClusterProbe, PostgreSqlClusterProbe>();
 builder.Services.AddSingleton<PostgreSqlClusterMonitor>();
 
-// Общий локальный модуль PostgreSQL работает также в режиме Standby.
+// Общий локальный модуль PostgreSQL.
 builder.Services.AddPostgreSqlNode(builder.Configuration, PostgreSqlHostKind.Runtime);
 builder.Services.AddSingleton<PostgreSqlLocalMonitor>();
 
-// Координатор получает разрешение, а activation worker готовит рабочие модули.
 builder.Services.AddSingleton<IRuntimeLeadershipStore, PostgreSqlRuntimeLeadershipStore>();
 builder.Services.AddHostedService<RuntimeCoordinationWorker>();
 builder.Services.AddHostedService<RuntimeActivationWorker>();
 
-// Существующие настройки модулей.
 builder.Services.Configure<MessagesOptions>(builder.Configuration.GetSection("Messages"));
 builder.Services.Configure<SoeOptions>(builder.Configuration.GetSection("Soe"));
 builder.Services.Configure<ParamWriteOptions>(builder.Configuration.GetSection("ParamWrites"));
@@ -70,7 +71,6 @@ builder.Services.Configure<RoleGroupOptions>(builder.Configuration.GetSection(Ro
 builder.Services.Configure<EquipmentCatalogOptions>(builder.Configuration.GetSection("EquipmentCatalog"));
 builder.Services.Configure<CalcConfigurationOptions>(builder.Configuration.GetSection("CalcConfiguration"));
 
-// Существующий lease Calc внутри активного Runtime.
 builder.Services.AddOptions<CalcServiceMonitorOptions>()
     .Bind(builder.Configuration.GetSection("CalcServiceMonitor"))
     .Validate(options => options.OfflineAfterSeconds is >= 3 and <= 300, "CalcServiceMonitor:OfflineAfterSeconds must be between 3 and 300.")
@@ -91,11 +91,9 @@ builder.Services.AddSingleton<CalcServiceHeartbeatRegistry>();
 
 builder.Services.AddSignalR();
 
-// Фоновые задачи учитывают текущее состояние активности.
 builder.Services.AddHostedService<MessageStorageWatcher>();
 builder.Services.AddHostedService<PlantScadaHealthWorker>();
 
-// Сначала существующий adapter, затем защита поверх него.
 builder.Services.AddCtApiInfrastructure(builder.Configuration);
 builder.Services.AddRuntimeActivityProtection();
 
@@ -137,18 +135,14 @@ var app = builder.Build();
 
 app.UseHttpsRedirection();
 
-// Маршрут должен быть определён до проверки его служебной метки.
 app.UseRouting();
 app.UseMiddleware<RuntimeActivityMiddleware>();
 
-// Рабочие зависимости готовит RuntimeActivationWorker.
 app.MapRuntimeEndpoints();
 app.MapUserStateEndpoints();
 
-// Готовый снимок: HTTP-запрос не открывает соединения к PostgreSQL.
 app.MapGet("/api/database/cluster", (PostgreSqlClusterMonitor cluster) => Results.Ok(cluster.GetHealth())).WithMetadata(new RuntimeControlEndpoint());
 
-// Локальная диагностика прав и принадлежности процесса службе.
 app.MapPostgreSqlControlEndpoints();
 
 app.Run();

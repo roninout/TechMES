@@ -143,10 +143,10 @@ public sealed class PostgreSqlNodeHostTests
         Assert.NotNull(replacement);
     }
 
-    // Runtime использует существующий health worker; отдельный хост получает свой цикл.
+    // Runtime сохраняет существующий health worker; Agent имеет собственный цикл наблюдения.
     [Theory]
-    [InlineData(PostgreSqlHostKind.Runtime, 2)]
-    [InlineData(PostgreSqlHostKind.Standalone, 3)]
+    [InlineData(PostgreSqlHostKind.Runtime, 3)]
+    [InlineData(PostgreSqlHostKind.Standalone, 4)]
     public void RegistrationDoesNotAddSecondRuntimeTimer(PostgreSqlHostKind kind, int expected)
     {
         var services = new ServiceCollection();

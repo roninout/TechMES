@@ -135,7 +135,7 @@ public sealed class PostgreSqlCommandWorker(IOptions<PostgreSqlControlOptions> o
         return Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(request, PostgreSqlCommandStore.Json)));
     }
 
-    /// <summary>Сохраняет Running до Process.Start; ошибка после этого требует разбора без повтора.</summary>
+    // Сохраняет Running до Process.Start; ошибка после этого требует разбора без повтора.
     private async Task ExecuteAsync(string directory, PostgreSqlControlOptions settings)
     {
         var path = Path.Combine(directory, "journal.json");
@@ -151,6 +151,9 @@ public sealed class PostgreSqlCommandWorker(IOptions<PostgreSqlControlOptions> o
         try
         {
             Validate(request, directory, settings);
+
+            PostgreSqlSwitchInbox.AssertCommandAllowed(store.Root, request);
+
             store.ValidateCredentials();
 
             if (request.Fence is { } proof)

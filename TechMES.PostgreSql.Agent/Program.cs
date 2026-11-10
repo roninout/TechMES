@@ -4,6 +4,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TechMES.PostgreSql.Control;
 
+if (await PostgreSqlSwitchConsole.TryRunAsync(args))
+    return;
+
 if (!OperatingSystem.IsWindows())
     throw new PlatformNotSupportedException("Run the PostgreSQL host on Windows.");
 
