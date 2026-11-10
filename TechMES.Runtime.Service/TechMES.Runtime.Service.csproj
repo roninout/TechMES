@@ -1,28 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
-
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\TechMES.Application\TechMES.Application.csproj" />
-    <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
-    <ProjectReference Include="..\TechMES.Infrastructure.CtApi\TechMES.Infrastructure.CtApi.csproj" />
-    <ProjectReference Include="..\TechMES.Infrastructure.PostgreSql\TechMES.Infrastructure.PostgreSql.csproj" />
-    <ProjectReference Include="..\TechMES.Calc\TechMES.Calc.csproj" />
-  </ItemGroup>
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+	</PropertyGroup>
 
 	<ItemGroup>
-		<Content Include="..\scripts\deploy\Set-PostgreSQL18ServiceControl.ps1"
-				 Link="Tools\Set-PostgreSQL18ServiceControl.ps1"
-				 CopyToOutputDirectory="PreserveNewest"
-				 CopyToPublishDirectory="PreserveNewest" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
 	</ItemGroup>
-	
+
+	<ItemGroup>
+		<ProjectReference Include="..\TechMES.Application\TechMES.Application.csproj" />
+		<ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
+		<ProjectReference Include="..\TechMES.Infrastructure.CtApi\TechMES.Infrastructure.CtApi.csproj" />
+		<ProjectReference Include="..\TechMES.Infrastructure.PostgreSql\TechMES.Infrastructure.PostgreSql.csproj" />
+		<ProjectReference Include="..\TechMES.Calc\TechMES.Calc.csproj" />
+		<ProjectReference Include="..\TechMES.PostgreSql.Control\TechMES.PostgreSql.Control.csproj" />
+	</ItemGroup>
 </Project>

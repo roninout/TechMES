@@ -27,6 +27,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TechMES.Calc.Tests", "TechM
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TechMES.PostgreSql.Tests", "TechMES.PostgreSql.Tests\TechMES.PostgreSql.Tests.csproj", "{9B265D29-3B57-4858-B911-E708423044B2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TechMES.PostgreSql.Control", "TechMES.PostgreSql.Control\TechMES.PostgreSql.Control.csproj", "{23422B20-834E-4086-A595-4336CECFE919}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TechMES.PostgreSql.Agent", "TechMES.PostgreSql.Agent\TechMES.PostgreSql.Agent.csproj", "{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -169,6 +173,30 @@ Global
 		{9B265D29-3B57-4858-B911-E708423044B2}.Release|x64.Build.0 = Release|Any CPU
 		{9B265D29-3B57-4858-B911-E708423044B2}.Release|x86.ActiveCfg = Release|Any CPU
 		{9B265D29-3B57-4858-B911-E708423044B2}.Release|x86.Build.0 = Release|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Debug|x64.Build.0 = Debug|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Debug|x86.Build.0 = Debug|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Release|Any CPU.Build.0 = Release|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Release|x64.ActiveCfg = Release|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Release|x64.Build.0 = Release|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Release|x86.ActiveCfg = Release|Any CPU
+		{23422B20-834E-4086-A595-4336CECFE919}.Release|x86.Build.0 = Release|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Debug|x64.Build.0 = Debug|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Debug|x86.Build.0 = Debug|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Release|x64.ActiveCfg = Release|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Release|x64.Build.0 = Release|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Release|x86.ActiveCfg = Release|Any CPU
+		{B2DF6648-AFC9-498A-8DA8-5342A3F7219D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

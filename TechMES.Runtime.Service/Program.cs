@@ -20,8 +20,11 @@ using TechMES.Runtime.Service.Settings;
 using TechMES.Runtime.Service.Workers;
 using TechMES.Runtime.Service.Calc;
 using TechMES.Runtime.Service.PostgreSql;
+using TechMES.PostgreSql.Control;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.PostgreSqlControl.json"), optional: true, reloadOnChange: false);
 
 builder.Host.UseWindowsService(options =>
 {
@@ -50,9 +53,8 @@ builder.Services.AddSingleton<IPlantScadaWritePermission>(provider => provider.G
 builder.Services.AddSingleton<IPostgreSqlClusterProbe, PostgreSqlClusterProbe>();
 builder.Services.AddSingleton<PostgreSqlClusterMonitor>();
 
-// Проверка локальной службы выполняется независимо от Runtime Active/Standby.
-builder.Services.AddOptions<PostgreSqlControlOptions>().Bind(builder.Configuration.GetSection(PostgreSqlControlOptions.SectionName));
-builder.Services.AddSingleton<IPostgreSqlLocalProbe, PostgreSqlLocalProbe>();
+// Общий локальный модуль PostgreSQL работает также в режиме Standby.
+builder.Services.AddPostgreSqlNode(builder.Configuration, PostgreSqlHostKind.Runtime);
 builder.Services.AddSingleton<PostgreSqlLocalMonitor>();
 
 // Координатор получает разрешение, а activation worker готовит рабочие модули.
@@ -93,7 +95,7 @@ builder.Services.AddSignalR();
 builder.Services.AddHostedService<MessageStorageWatcher>();
 builder.Services.AddHostedService<PlantScadaHealthWorker>();
 
-// Сначала регистрируем существующий adapter, затем защиту поверх него.
+// Сначала существующий adapter, затем защита поверх него.
 builder.Services.AddCtApiInfrastructure(builder.Configuration);
 builder.Services.AddRuntimeActivityProtection();
 
@@ -140,11 +142,10 @@ app.UseRouting();
 app.UseMiddleware<RuntimeActivityMiddleware>();
 
 // Рабочие зависимости готовит RuntimeActivationWorker.
-// Здесь больше нет блокирующей инициализации PostgreSQL/CtApi перед запуском HTTP.
 app.MapRuntimeEndpoints();
 app.MapUserStateEndpoints();
 
-// Только готовый снимок: HTTP-запрос не открывает соединения к PostgreSQL.
+// Готовый снимок: HTTP-запрос не открывает соединения к PostgreSQL.
 app.MapGet("/api/database/cluster", (PostgreSqlClusterMonitor cluster) => Results.Ok(cluster.GetHealth())).WithMetadata(new RuntimeControlEndpoint());
 
 // Локальная диагностика прав и принадлежности процесса службе.
