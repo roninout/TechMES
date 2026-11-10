@@ -15,5 +15,6 @@
 		<Content Include="..\scripts\deploy\Install-TechMESPostgreSqlHost.ps1" Link="Tools\Install-TechMESPostgreSqlHost.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Content Include="..\scripts\deploy\Invoke-TechMESPostgreSqlCommand.ps1" Link="Tools\Invoke-TechMESPostgreSqlCommand.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Content Include="..\scripts\deploy\Configure-TechMESPostgreSqlNetwork.ps1" Link="Tools\Configure-TechMESPostgreSqlNetwork.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="..\scripts\deploy\Repair-TechMESPostgreSqlFence.ps1" Link="Tools\Repair-TechMESPostgreSqlFence.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
 </Project>

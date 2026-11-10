@@ -8,17 +8,23 @@ $ErrorActionPreference='Stop'
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Run locally on the Windows database server.' }
 
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+
 try {
     if (!(New-Object Security.Principal.WindowsPrincipal($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Run PowerShell as Administrator.' }
-} finally { $identity.Dispose() }
+}
+finally {
+    $identity.Dispose()
+}
 
 $root=Join-Path $env:ProgramData ('TechMES\PostgreSqlNodes\'+$ServiceName.ToUpperInvariant()+'\Commands')
 
 # Запрещает ссылки в каталоге очереди и всех его существующих родителях.
 function Assert-NoLinks([string]$Path) {
     $current=[IO.Path]::GetFullPath($Path)
+
     while ($current) {
         if ((Test-Path -LiteralPath $current) -and ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Reparse points are not allowed in the command store.' }
+
         $current=Split-Path -Path $current -Parent
     }
 }
@@ -26,41 +32,78 @@ function Assert-NoLinks([string]$Path) {
 # Создаёт закрытый каталог до записи зашифрованного секрета.
 function Initialize-Store {
     Assert-NoLinks $root
+
     $acl=New-Object Security.AccessControl.DirectorySecurity
     $acl.SetAccessRuleProtection($true,$false)
     $admins=New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')
     $acl.SetOwner($admins)
-    foreach ($sid in @('S-1-5-32-544','S-1-5-18')) { $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)),'FullControl','ContainerInherit,ObjectInherit','None','Allow'))) }
+
+    foreach ($sid in @('S-1-5-32-544','S-1-5-18')) {
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)),'FullControl','ContainerInherit,ObjectInherit','None','Allow')))
+    }
+
     $directory=New-Object IO.DirectoryInfo($root)
-    if ($directory.Exists) { Set-Acl -LiteralPath $root -AclObject $acl } else { $directory.Create($acl) }
+
+    if ($directory.Exists) {
+        Set-Acl -LiteralPath $root -AclObject $acl
+    }
+    else {
+        $directory.Create($acl)
+    }
 }
 
 # Сбрасывает данные на диск перед атомарной публикацией файла.
 function Write-Atomic([string]$Path, [byte[]]$Bytes) {
     Assert-NoLinks $Path
+
     $temporary=$Path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
     $stream=[IO.File]::Open($temporary,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+
     try {
         $acl=Get-Acl -LiteralPath $temporary
         $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
         Set-Acl -LiteralPath $temporary -AclObject $acl
+
         $stream.Write($Bytes,0,$Bytes.Length)
         $stream.Flush($true)
-    } finally { $stream.Dispose() }
-    if ([IO.File]::Exists($Path)) { [IO.File]::Replace($temporary,$Path,$null) } else { [IO.File]::Move($temporary,$Path) }
+    }
+    finally {
+        $stream.Dispose()
+    }
+
+    # PowerShell преобразует $null в пустую строку; .NET требует настоящий null.
+    if ([IO.File]::Exists($Path)) {
+        [IO.File]::Replace($temporary,$Path,[System.Management.Automation.Language.NullString]::Value)
+    }
+    else {
+        [IO.File]::Move($temporary,$Path)
+    }
 }
 
 if ($Mode -eq 'Status') {
     Assert-NoLinks $root
-    if (!(Test-Path -LiteralPath $root -PathType Container)) { Write-Host 'No local command queue. Configure the host and its credentials first.'; return }
+
+    if (!(Test-Path -LiteralPath $root -PathType Container)) {
+        Write-Host 'No local command queue. Configure the host and its credentials first.'
+        return
+    }
+
     foreach ($directory in Get-ChildItem -LiteralPath $root -Directory | Where-Object { $_.Name -match '^[0-9a-f]{32}$' } | Sort-Object Name) {
         Assert-NoLinks $directory.FullName
+
         if ($OperationId -and $directory.Name -cne $OperationId) { continue }
+
         $journal=Join-Path $directory.FullName 'journal.json'
         Assert-NoLinks $journal
-        if (Test-Path -LiteralPath $journal) { Get-Content -LiteralPath $journal -Raw }
-        else { Write-Host ('Queued: '+$directory.Name) }
+
+        if (Test-Path -LiteralPath $journal) {
+            Get-Content -LiteralPath $journal -Raw
+        }
+        else {
+            Write-Host ('Queued: '+$directory.Name)
+        }
     }
+
     return
 }
 
@@ -68,6 +111,7 @@ Initialize-Store
 
 if ($Mode -eq 'Credentials') {
     Add-Type -AssemblyName System.Security
+
     $sql=Get-Credential -UserName 'postgres' -Message 'PostgreSQL administration account on both nodes'
     $replication=Get-Credential -UserName 'techmes_repl' -Message 'PostgreSQL replication account'
 
@@ -75,8 +119,15 @@ if ($Mode -eq 'Credentials') {
     if ($sql.UserName -notmatch '^[A-Za-z0-9_.-]+$' -or $replication.UserName -notmatch '^[A-Za-z0-9_.-]+$') { throw 'Unsupported PostgreSQL username.' }
 
     $plain=$null
+
     try {
-        $value=[ordered]@{ sqlUser=$sql.UserName; sqlPassword=$sql.GetNetworkCredential().Password; replicationUser=$replication.UserName; replicationPassword=$replication.GetNetworkCredential().Password }
+        $value=[ordered]@{
+            sqlUser=$sql.UserName
+            sqlPassword=$sql.GetNetworkCredential().Password
+            replicationUser=$replication.UserName
+            replicationPassword=$replication.GetNetworkCredential().Password
+        }
+
         $plain=[Text.Encoding]::UTF8.GetBytes(($value | ConvertTo-Json -Compress))
 
         if ($plain.Length -gt 32000) { throw 'Credential input is too large.' }
@@ -91,7 +142,11 @@ if ($Mode -eq 'Credentials') {
             $acl=New-Object Security.AccessControl.FileSecurity
             $acl.SetAccessRuleProtection($true,$false)
             $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
-            foreach ($sid in @('S-1-5-32-544','S-1-5-18')) { $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)),'FullControl','Allow'))) }
+
+            foreach ($sid in @('S-1-5-32-544','S-1-5-18')) {
+                $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)),'FullControl','Allow')))
+            }
+
             Set-Acl -LiteralPath $credentialPath -AclObject $acl
         }
 
@@ -99,6 +154,7 @@ if ($Mode -eq 'Credentials') {
     }
     finally {
         if ($null -ne $plain) { [Array]::Clear($plain,0,$plain.Length) }
+
         $value=$null
         $sql=$null
         $replication=$null
@@ -151,7 +207,16 @@ if (Test-Path -LiteralPath $directory) { throw 'OperationId already exists. Use 
 $operationAcl=Get-Acl -LiteralPath $root
 (New-Object IO.DirectoryInfo($directory)).Create($operationAcl)
 
-$request=[ordered]@{ id=$OperationId; mode=$Mode; from=$From; to=$To; systemIdentifier=$SystemIdentifier; createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); fence=$proof }
+$request=[ordered]@{
+    id=$OperationId
+    mode=$Mode
+    from=$From
+    to=$To
+    systemIdentifier=$SystemIdentifier
+    createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o')
+    fence=$proof
+}
+
 $bytes=[Text.Encoding]::UTF8.GetBytes(($request | ConvertTo-Json -Depth 12))
 
 if ($bytes.Length -gt 65536) { throw 'The request is too large.' }
