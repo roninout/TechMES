@@ -54,7 +54,7 @@ public sealed class PostgreSqlNetworkHost(IOptions<PostgreSqlNetworkOptions> net
                             https.ServerCertificate = certificate;
                             https.SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13;
                             https.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
-                            https.ClientCertificateValidation = (client, _, _) => PostgreSqlNodeCertificates.Matches(client, settings.CertificateSha256, "1.3.6.1.5.5.7.3.2") || PostgreSqlNodeCertificates.Matches(client, settings.PeerCertificateSha256, "1.3.6.1.5.5.7.3.2");
+                            https.ClientCertificateValidation = (client, _, _) => PostgreSqlNodeCertificates.AcceptClient(client, settings);
                         });
                     });
                 });
@@ -78,6 +78,7 @@ public sealed class PostgreSqlNetworkHost(IOptions<PostgreSqlNetworkOptions> net
                 });
 
                 app.MapGet("/v1/status", () => inbox.Status());
+                app.MapGet("/v1/switches", () => inbox.History());
 
                 app.MapPost("/v1/reserve", async (PostgreSqlSwitchPlan plan, CancellationToken token) =>
                 {

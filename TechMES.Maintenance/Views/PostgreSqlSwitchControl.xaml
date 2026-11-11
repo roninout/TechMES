@@ -1,0 +1,102 @@
+﻿<UserControl x:Class="TechMES.Maintenance.Views.PostgreSqlSwitchControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             Loaded="OnLoaded">
+    <StackPanel Margin="0,24,0,0">
+        <Separator Margin="0,0,0,16" />
+
+        <TextBlock Text="Переключение PostgreSQL"
+                   FontSize="20"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,8" />
+
+        <TextBlock Text="Плановое переключение выполняется существующими контроллерами: Fence → Promote → Rejoin. Maintenance подключается по HTTPS со своим клиентским сертификатом. Фактические роли БД определяют направление переключения."
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,10" />
+
+        <TextBlock x:Name="ConnectionText"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,10" />
+
+        <WrapPanel Margin="0,0,0,10">
+            <ui:Button x:Name="RefreshButton"
+                       Content="Обновить состояние и историю"
+                       Click="OnRefreshClick"
+                       Margin="0,0,8,8" />
+
+            <ui:Button x:Name="SwitchButton"
+                       Content="Переключить Primary → Standby"
+                       Click="OnSwitchClick"
+                       IsEnabled="False"
+                       Margin="0,0,8,8" />
+
+            <ui:Button x:Name="ResumeButton"
+                       Content="Продолжить текущую операцию"
+                       Click="OnResumeClick"
+                       IsEnabled="False"
+                       Margin="0,0,8,8" />
+        </WrapPanel>
+
+        <DataGrid x:Name="NodesGrid"
+                  IsReadOnly="True"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  MinHeight="95"
+                  Margin="0,0,0,12">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Узел" Binding="{Binding Address}" Width="130" />
+                <DataGridTextColumn Header="Фактическая роль" Binding="{Binding Role}" Width="120" />
+                <DataGridTextColumn Header="Хост" Binding="{Binding Host}" Width="100" />
+                <DataGridTextColumn Header="Служба PG" Binding="{Binding Service}" Width="100" />
+                <DataGridTextColumn Header="Контроллер" Binding="{Binding Controller}" Width="110" />
+                <DataGridTextColumn Header="Проверено" Binding="{Binding Checked}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <TextBlock Text="История и этапы операций"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,6" />
+
+        <DataGrid x:Name="HistoryGrid"
+                  IsReadOnly="True"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  MaxHeight="240"
+                  MinHeight="100"
+                  SelectionChanged="OnHistorySelected"
+                  Margin="0,0,0,8">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Создана" Binding="{Binding Created}" Width="125" />
+                <DataGridTextColumn Header="Направление" Binding="{Binding Direction}" Width="190" />
+                <DataGridTextColumn Header="Состояние" Binding="{Binding State}" Width="125" />
+                <DataGridTextColumn Header="Fence" Binding="{Binding Fence}" Width="100" />
+                <DataGridTextColumn Header="Promote" Binding="{Binding Promote}" Width="100" />
+                <DataGridTextColumn Header="Rejoin" Binding="{Binding Rejoin}" Width="100" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <ui:TextBox x:Name="DetailsBox"
+                    IsReadOnly="True"
+                    AcceptsReturn="True"
+                    TextWrapping="Wrap"
+                    MinHeight="100"
+                    MaxHeight="220"
+                    VerticalScrollBarVisibility="Auto"
+                    FontFamily="Consolas"
+                    Margin="0,0,0,10" />
+
+        <TextBlock Text="Ход текущего запуска"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,6" />
+
+        <ui:TextBox x:Name="ProgressBox"
+                    IsReadOnly="True"
+                    AcceptsReturn="True"
+                    TextWrapping="Wrap"
+                    MinHeight="130"
+                    MaxHeight="280"
+                    VerticalScrollBarVisibility="Auto"
+                    FontFamily="Consolas" />
+    </StackPanel>
+</UserControl>

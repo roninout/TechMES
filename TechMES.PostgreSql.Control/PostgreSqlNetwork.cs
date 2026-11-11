@@ -18,12 +18,16 @@ public sealed record PostgreSqlNetworkOptions
     public int Port { get; init; } = 5115;
     public string CertificateSha256 { get; init; } = "";
     public string PeerCertificateSha256 { get; init; } = "";
+    public string MaintenanceCertificateSha256 { get; init; } = "";
 
     // Проверяет адреса пары, отдельный HTTPS-порт и привязку к кластеру.
     public void Validate(PostgreSqlControlOptions control)
     {
         if (!Enabled || NodeAddress is not ("192.168.1.131" or "192.168.1.132") || PeerAddress is not ("192.168.1.131" or "192.168.1.132") || NodeAddress == PeerAddress || Port is < 1024 or > 65535 || Port == control.Port || !Regex.IsMatch(CertificateSha256, "^[0-9A-Fa-f]{64}$") || !Regex.IsMatch(PeerCertificateSha256, "^[0-9A-Fa-f]{64}$") || CertificateSha256.Equals(PeerCertificateSha256, StringComparison.OrdinalIgnoreCase) || !control.CommandsEnabled || !Regex.IsMatch(control.ExpectedSystemIdentifier, "^[0-9]{1,20}$"))
             throw new InvalidOperationException("Invalid PostgreSQL network settings or disabled local commands.");
+
+        if (MaintenanceCertificateSha256.Length != 0 && (!Regex.IsMatch(MaintenanceCertificateSha256, "^[0-9A-Fa-f]{64}$") || MaintenanceCertificateSha256.Equals(CertificateSha256, StringComparison.OrdinalIgnoreCase) || MaintenanceCertificateSha256.Equals(PeerCertificateSha256, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("Maintenance must use a separate client certificate.");
     }
 }
 
@@ -47,10 +51,20 @@ public sealed record PostgreSqlPhaseRequest(PostgreSqlSwitchPlan Plan, JsonEleme
 
 public sealed record PostgreSqlRemoteOperation(string Id, string State, string Message, JsonElement? Result, JsonElement? Fence);
 
-public sealed record PostgreSqlRemoteStatus(string NodeAddress, PostgreSqlLocalHealthResponse Local);
+public sealed record PostgreSqlRemoteStatus(string NodeAddress, PostgreSqlLocalHealthResponse Local, PostgreSqlSwitchPlan? ActivePlan = null);
+
+public sealed record PostgreSqlPhaseSummary(string Mode, string Id, string State, string Message, string? Error, string? Log);
+
+public sealed record PostgreSqlSwitchHistoryEntry(PostgreSqlSwitchPlan Plan, string NodeAddress, bool Completed, PostgreSqlPhaseSummary[] Phases);
 
 public static class PostgreSqlNodeCertificates
 {
+    // Допускает только явно закреплённые сертификаты узлов и отдельной Maintenance.
+    public static bool AcceptClient(X509Certificate2? certificate, PostgreSqlNetworkOptions network)
+    {
+        return Matches(certificate, network.CertificateSha256, "1.3.6.1.5.5.7.3.2") || Matches(certificate, network.PeerCertificateSha256, "1.3.6.1.5.5.7.3.2") || network.MaintenanceCertificateSha256.Length != 0 && Matches(certificate, network.MaintenanceCertificateSha256, "1.3.6.1.5.5.7.3.2");
+    }
+
     // Требует точный pin, срок действия и явно указанный EKU.
     public static bool Matches(X509Certificate2? certificate, string pin, string eku)
     {

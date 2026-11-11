@@ -1,31 +1,29 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UseWPF>true</UseWPF>
+	</PropertyGroup>
 
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <UseWPF>true</UseWPF>
-  </PropertyGroup>
+	<ItemGroup>
+		<None Update="maintenance.settings.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
 
-  <ItemGroup>
-    <None Update="maintenance.settings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="FilterDataGrid" Version="1.2.9" />
+		<PackageReference Include="Npgsql" Version="10.0.3" />
+		<PackageReference Include="WPF-UI" Version="4.3.0" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <!-- Maintenance сам выполняет короткую PostgreSQL-проверку авторизации и версии сервера. -->
-    <PackageReference Include="FilterDataGrid" Version="1.2.9" />
-    <PackageReference Include="Npgsql" Version="10.0.3" />
-    <PackageReference Include="WPF-UI" Version="4.3.0" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
+		<ProjectReference Include="..\TechMES.PostgreSql.Control\TechMES.PostgreSql.Control.csproj" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
-  </ItemGroup>
-
-	<!-- Инструменты включаются в переносимую Maintenance и доступны без исходников. -->
 	<ItemGroup>
 		<Content Include="..\scripts\deploy\Update-TechMESServer.ps1" Link="Tools\Update-TechMESServer.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Content Include="..\scripts\deploy\Build-TechMESUpdate.ps1" Link="Tools\Build-TechMESUpdate.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
@@ -33,5 +31,4 @@
 		<Content Include="..\scripts\deploy\Test-PostgreSQL18Switchover.ps1" Link="Tools\Test-PostgreSQL18Switchover.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Content Include="..\scripts\deploy\Switch-PostgreSQL18.ps1" Link="Tools\Switch-PostgreSQL18.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
-	
 </Project>

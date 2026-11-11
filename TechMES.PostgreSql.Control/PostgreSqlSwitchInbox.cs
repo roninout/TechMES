@@ -27,10 +27,47 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
             new DirectoryInfo(NetworkRoot).SetAccessControl(new DirectoryInfo(store.Root).GetAccessControl());
     }
 
-    // Возвращает наблюдение; само по себе оно не разрешает повышение реплики.
+    // Возвращает наблюдение и существующее резервирование без запуска проверок или команд.
     public PostgreSqlRemoteStatus Status()
     {
-        return new(network.Value.NodeAddress, monitor.GetHealth());
+        return new(network.Value.NodeAddress, monitor.GetHealth(), File.Exists(ActivePath) ? PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(ActivePath) : null);
+    }
+
+    // Возвращает активный план и последние двадцать завершённых планов без изменений на диске.
+    public PostgreSqlSwitchHistoryEntry[] History()
+    {
+        if (!Directory.Exists(NetworkRoot))
+            return [];
+
+        PostgreSqlCommandStore.AssertPrivate(NetworkRoot, true);
+
+        var plans = Directory.GetFiles(NetworkRoot, "completed-*.json").Where(path => System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(path), "^completed-[0-9a-f]{32}\\.json$")).OrderByDescending(File.GetLastWriteTimeUtc).Take(20).Select(PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>).ToList();
+
+        if (File.Exists(ActivePath))
+        {
+            var active = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(ActivePath);
+
+            plans.RemoveAll(plan => plan.Id == active.Id);
+            plans.Insert(0, active);
+        }
+
+        return plans.Select(plan =>
+        {
+            plan.Validate(network.Value, control.Value);
+
+            var modes = network.Value.NodeAddress == plan.From ? new[] { "Fence", "Rejoin" } : new[] { "Promote" };
+            var phases = modes.Select(mode =>
+            {
+                var operation = Read(plan, mode);
+                var result = operation.Result;
+
+                string? Field(string name) => result is { ValueKind: JsonValueKind.Object } value && value.TryGetProperty(name, out var field) && field.ValueKind == JsonValueKind.String && field.GetString() is { } text ? text[..Math.Min(text.Length, 2048)] : null;
+
+                return new PostgreSqlPhaseSummary(mode, operation.Id, operation.State, operation.Message, Field("Error"), Field("Log"));
+            }).ToArray();
+
+            return new PostgreSqlSwitchHistoryEntry(plan, network.Value.NodeAddress, File.Exists(CompletedPath(plan)), phases);
+        }).ToArray();
     }
 
     // Резервирует узел для одного плана до первой мутации.
@@ -134,7 +171,7 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
         }
     }
 
-    // Отдаёт готовый результат и proof; логины и пароли между узлами не передаются.
+    // Отдаёт сохранённый результат; NeedsReview показывает ошибку и остаётся заблокированным.
     public PostgreSqlRemoteOperation Read(PostgreSqlSwitchPlan plan, string mode)
     {
         plan.Validate(network.Value, control.Value);
@@ -152,8 +189,32 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
 
         var journal = PostgreSqlCommandStore.Read<PostgreSqlCommandJournal>(journalPath);
 
+        if (journal.Id != plan.OperationId(mode))
+            throw new IOException("Operation journal identity mismatch.");
+
         if (journal.State != "Succeeded")
-            return new(journal.Id, journal.State, journal.Message, null, null);
+        {
+            JsonElement? failed = null;
+            var message = journal.Message;
+            var resultPath = Path.Combine(directory, "script-result.json");
+
+            if (journal.State == "NeedsReview" && File.Exists(resultPath))
+            {
+                try
+                {
+                    failed = PostgreSqlCommandStore.Read<JsonElement>(resultPath);
+
+                    if (failed.Value.ValueKind == JsonValueKind.Object && failed.Value.TryGetProperty("Error", out var error) && error.ValueKind == JsonValueKind.String && error.GetString() is { Length: > 0 } text)
+                        message += " Script error: " + text[..Math.Min(text.Length, 2048)];
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+                {
+                    message += $" Saved result cannot be read ({ex.GetType().Name}).";
+                }
+            }
+
+            return new(journal.Id, journal.State, message, failed, null);
+        }
 
         var result = PostgreSqlCommandStore.Read<JsonElement>(Path.Combine(directory, "script-result.json"));
         JsonElement? proof = mode == "Fence" ? PostgreSqlCommandStore.Read<JsonElement>(Path.Combine(directory, "fence.json")) : null;

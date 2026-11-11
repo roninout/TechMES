@@ -12,8 +12,13 @@ public interface IPostgreSqlSwitchRemote
     Task<PostgreSqlRemoteOperation> ReadAsync(string address, string mode, PostgreSqlSwitchPlan plan, CancellationToken ct);
 }
 
+public interface IPostgreSqlMaintenanceRemote : IPostgreSqlSwitchRemote
+{
+    Task<PostgreSqlSwitchHistoryEntry[]> HistoryAsync(string address, CancellationToken ct);
+}
+
 // Клиент предъявляет свой сертификат и проверяет pin и IP сервера.
-public sealed class PostgreSqlSwitchRemote : IPostgreSqlSwitchRemote, IDisposable
+public sealed class PostgreSqlSwitchRemote : IPostgreSqlMaintenanceRemote, IDisposable
 {
     private readonly Dictionary<string, HttpClient> _clients = new(StringComparer.Ordinal);
 
@@ -34,7 +39,7 @@ public sealed class PostgreSqlSwitchRemote : IPostgreSqlSwitchRemote, IDisposabl
 
             handler.ClientCertificates.Add(certificate);
 
-            _clients.Add(address, new HttpClient(handler) { BaseAddress = new Uri($"https://{address}:{options.Port}/"), Timeout = TimeSpan.FromSeconds(25), MaxResponseContentBufferSize = 262144 });
+            _clients.Add(address, new HttpClient(handler) { BaseAddress = new Uri($"https://{address}:{options.Port}/"), Timeout = TimeSpan.FromSeconds(25), MaxResponseContentBufferSize = 1048576 });
         }
     }
 
@@ -42,6 +47,12 @@ public sealed class PostgreSqlSwitchRemote : IPostgreSqlSwitchRemote, IDisposabl
     public async Task<PostgreSqlRemoteStatus> StatusAsync(string address, CancellationToken ct)
     {
         return await _clients[address].GetFromJsonAsync<PostgreSqlRemoteStatus>("v1/status", ct) ?? throw new IOException("Empty node status.");
+    }
+
+    // Читает историю с узла, включая этапы и сохранённую причину отказа.
+    public async Task<PostgreSqlSwitchHistoryEntry[]> HistoryAsync(string address, CancellationToken ct)
+    {
+        return await _clients[address].GetFromJsonAsync<PostgreSqlSwitchHistoryEntry[]>("v1/switches", ct) ?? throw new IOException("Empty switch history.");
     }
 
     // Использует фиксированные маршруты управления планом.

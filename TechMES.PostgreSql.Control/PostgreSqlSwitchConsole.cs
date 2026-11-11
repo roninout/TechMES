@@ -132,7 +132,7 @@ public static class PostgreSqlSwitchConsole
             Environment.ExitCode = 1;
 
             Console.Error.WriteLine(ex.Message);
-            Console.Error.WriteLine("An accepted phase continues on its node. Repeat the same command from this host to resume the same plan. Do not delete operation journals.");
+            Console.Error.WriteLine("The switch is not confirmed. Retain the plan and operation journals. NeedsReview requires inspection; repeating the command does not retry that phase. If only the client connection was interrupted, resume the same plan.");
         }
         finally
         {
