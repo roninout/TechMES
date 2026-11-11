@@ -33,19 +33,46 @@ public partial class MainWindow
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Путь к репозиторию", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
 
-    /// <summary>Проверяет исходники и SDK до остановки служб или изменения публикации.</summary>
+    /// <summary>
+    /// Проверяет исходники и доступный SDK общим инструментом сборки.
+    /// Проверка выполняется до остановки служб и изменения публикации.
+    /// </summary>
     private async Task<bool> CheckSourceDeploymentAsync()
     {
-        var error = CanPublishFromSource ? null : "Не найдены TechMES.sln или проекты профиля. Выберите репозиторий в Settings → Server.";
+        var error = CanPublishFromSource
+            ? null
+            : "Не найдены TechMES.sln или проекты профиля. Выберите репозиторий в Settings → Server.";
+
         if (error is null)
         {
-            var result = await new ProcessRunner().RunAsync("dotnet", ["--list-sdks"], TimeSpan.FromSeconds(15));
-            if (result.ExitCode != 0 || !result.StandardOutput.Split('\n').Any(line => line.TrimStart().StartsWith("10.", StringComparison.Ordinal)))
-                error = "Для сборки нужен .NET SDK 10. Для запуска готового серверного скрипта SDK не нужен.";
+            try
+            {
+                var powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe");
+
+                var result = await new ProcessRunner().RunAsync(powershell, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", GetDeploymentTool("Build-TechMESUpdate.ps1"), "-SdkOnly"], TimeSpan.FromSeconds(30));
+
+                if (!string.IsNullOrWhiteSpace(result.StandardOutput))
+                    AppendDeploymentLog(result.StandardOutput.Trim());
+
+                if (!string.IsNullOrWhiteSpace(result.StandardError))
+                    AppendDeploymentLog(result.StandardError.Trim());
+
+                if (result.ExitCode != 0)
+                    error = "Не найден подходящий .NET SDK 10 или новее. Подробности — в Deploy log. SDK нужен только на компьютере сборки.";
+            }
+            catch (Exception ex)
+            {
+                error = "Не удалось проверить инструменты сборки: " + ex.Message;
+            }
         }
-        if (error is null) return true;
+
+        if (error is null)
+            return true;
+
         AppendDeploymentLog(error);
+
         MessageBox.Show(this, error, "Сборка не запущена", MessageBoxButton.OK, MessageBoxImage.Information);
+
         return false;
     }
 
