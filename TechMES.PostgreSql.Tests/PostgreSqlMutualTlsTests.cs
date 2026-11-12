@@ -60,21 +60,35 @@ public sealed class PostgreSqlMutualTlsTests
         await app.StopAsync();
     }
 
-    // Создаёт временные сертификаты с обоими EKU и правильным IP SAN.
+    // Создаёт тестовый сертификат с приватным ключом, доступным Windows Schannel.
     private static X509Certificate2 Certificate(string name)
     {
         using var key = RSA.Create(2048);
 
         var request = new CertificateRequest("CN=" + name, key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
 
-        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1"), new("1.3.6.1.5.5.7.3.2") }, false));
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection
+        {
+            new("1.3.6.1.5.5.7.3.1"),
+            new("1.3.6.1.5.5.7.3.2")
+        }, false));
 
         var names = new SubjectAlternativeNameBuilder();
-
         names.AddIpAddress(IPAddress.Loopback);
 
         request.CertificateExtensions.Add(names.Build());
 
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
+        using var generated = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
+
+        var pfx = generated.Export(X509ContentType.Pkcs12);
+
+        try
+        {
+            return X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.UserKeySet);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pfx);
+        }
     }
 }

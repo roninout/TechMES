@@ -4,22 +4,22 @@ using Npgsql;
 
 namespace TechMES.Infrastructure.PostgreSql.Connections;
 
-// Открывает БД модулей на доступном writer, сохраняя их Database и учётные данные.
+// Открывает БД модулей на доступном writer с поддержкой общих профилей Main DB.
 public sealed class PostgreSqlModuleConnections(IConfiguration configuration, IMainDatabaseConnector connector, MainDatabaseWriteGuard writeGuard, ILogger<PostgreSqlModuleConnections> logger)
 {
-    // Рецепты используют собственную БД и собственный профиль подключения.
-    public Task<NpgsqlConnection> OpenRecipesAsync(CancellationToken ct) => OpenAsync("Recipes", configuration["Recipes:ConnectionString"], configuration["Recipes:ConnectionStringSecondary"], ct);
+    // Database включает общие подключения Main DB для рецептов.
+    public Task<NpgsqlConnection> OpenRecipesAsync(CancellationToken ct) => OpenAsync("Recipes", configuration["Recipes:ConnectionString"], configuration["Recipes:ConnectionStringSecondary"], configuration["Recipes:Database"], ct);
 
-    // WEB читает EventPicker с writer.
-    public Task<NpgsqlConnection> OpenEventLogAsync(CancellationToken ct) => OpenAsync("EventPicker", First(configuration.GetConnectionString("EventPicker"), configuration["EventDatabase:ConnectionString"]), configuration["EventDatabase:ConnectionStringSecondary"], ct);
+    // Database включает общие подключения Main DB для EventPicker.
+    public Task<NpgsqlConnection> OpenEventLogAsync(CancellationToken ct) => OpenAsync("EventPicker", First(configuration.GetConnectionString("EventPicker"), configuration["EventDatabase:ConnectionString"]), configuration["EventDatabase:ConnectionStringSecondary"], configuration["EventDatabase:Database"], ct);
 
-    // Повторяет только открытие и проверку соединения, до исполнения SQL хранилища.
-    private async Task<NpgsqlConnection> OpenAsync(string module, string? primary, string? secondary, CancellationToken ct)
+    // Повторяет только открытие и проверку соединения до исполнения SQL хранилища.
+    private async Task<NpgsqlConnection> OpenAsync(string module, string? primary, string? secondary, string? database, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         writeGuard.ThrowIfBlocked();
 
-        var candidates = Candidates(module, primary, secondary);
+        var candidates = Candidates(module, primary, secondary, database);
         var seconds = Math.Clamp(configuration.GetValue("CtApi:HealthCheckPeriodSeconds", 10), 5, 300);
 
         Exception? failure = null;
@@ -59,9 +59,24 @@ public sealed class PostgreSqlModuleConnections(IConfiguration configuration, IM
         throw new InvalidOperationException($"No configured {module} database is available for writing.", failure);
     }
 
-    // Явная настройка резерва имеет приоритет перед определением peer из Main DB.
-    private string[] Candidates(string module, string? primary, string? secondary)
+    // Database включает общие профили; прежние настройки поддерживаются до миграции.
+    private string[] Candidates(string module, string? primary, string? secondary, string? database)
     {
+        if (database is not null)
+        {
+            var mainPrimary = First(configuration.GetConnectionString("Default"), configuration["Database:ConnectionString"]);
+
+            if (string.IsNullOrWhiteSpace(mainPrimary))
+                throw new InvalidOperationException("Main DB connection is not configured.");
+
+            var mainSecondary = configuration["Database:ConnectionStringSecondary"];
+
+            primary = PostgreSqlModuleDatabaseSettings.ConnectionString(mainPrimary, database);
+            secondary = string.IsNullOrWhiteSpace(mainSecondary)
+                ? null
+                : PostgreSqlModuleDatabaseSettings.ConnectionString(mainSecondary, database);
+        }
+
         if (string.IsNullOrWhiteSpace(primary))
             throw new InvalidOperationException($"{module} database connection is not configured.");
 
@@ -85,7 +100,7 @@ public sealed class PostgreSqlModuleConnections(IConfiguration configuration, IM
             if (!string.Equals(firstDatabase, secondDatabase, StringComparison.Ordinal))
                 throw new InvalidOperationException($"{module} Primary and Secondary must select the same database name.");
         }
-        else
+        else if (database is null)
         {
             var mainPrimary = First(configuration.GetConnectionString("Default"), configuration["Database:ConnectionString"]);
             var mainSecondary = configuration["Database:ConnectionStringSecondary"];
@@ -112,7 +127,7 @@ public sealed class PostgreSqlModuleConnections(IConfiguration configuration, IM
             }
         }
 
-        // Для уже заданного списка хостов драйвер выбирает только read-write узел.
+        // Для списка хостов драйвер выбирает только read-write узел.
         foreach (var item in new[] { first, second })
         {
             if (item?.Host?.Contains(',') == true)
@@ -127,9 +142,9 @@ public sealed class PostgreSqlModuleConnections(IConfiguration configuration, IM
             : [first.ConnectionString, second.ConnectionString];
     }
 
-    // Сравнивает одиночные endpoint; не угадывает соответствие DNS-имени и IP.
+    // Не угадывает соответствие DNS-имени и IP.
     private static bool SameEndpoint(NpgsqlConnectionStringBuilder a, NpgsqlConnectionStringBuilder b) => a.Host is { Length: > 0 } ah && b.Host is { Length: > 0 } bh && !ah.Contains(',') && !bh.Contains(',') && a.Port == b.Port && string.Equals(ah.Trim(), bh.Trim(), StringComparison.OrdinalIgnoreCase);
 
-    // Пустой устаревший alias не перекрывает заполненную штатную настройку.
+    // Пустой alias не перекрывает заполненную штатную настройку.
     private static string? First(string? a, string? b) => !string.IsNullOrWhiteSpace(a) ? a : b;
 }

@@ -1,4 +1,4 @@
-using TechMES.Contracts.Security;
+﻿using TechMES.Contracts.Security;
 
 namespace TechMES.Maintenance.ViewModels;
 
@@ -8,7 +8,7 @@ namespace TechMES.Maintenance.ViewModels;
 /// должен менять через форму: адреса, CtApi/PostgreSQL, write-флаги, WEB Runtime endpoint и файловые логи.
 /// Полный JSON остается доступен на соседней вкладке Raw appsettings JSON.
 /// </summary>
-public sealed class TypedAppSettingsViewModel : ObservableObject
+public sealed partial class TypedAppSettingsViewModel : ObservableObject
 {
     private string _status = "";
     private string _runtimeUrls = "";
@@ -28,7 +28,6 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     private bool _ctApiAllowWrites;
     private string _ctApiHealthCheckTag = "";
     private string _runtimeDatabaseConnectionString = "";
-    private string _runtimeEventDatabaseConnectionString = "";
     private string _runtimeAlarmOdbcConnectionString = "";
     private string _runtimeAlarmOdbcConnectionStringSecondary = "";
     private int _runtimeAlarmOdbcRequestTimeoutSeconds = 120;
@@ -266,11 +265,7 @@ public sealed class TypedAppSettingsViewModel : ObservableObject
     /// <summary>
     /// Строка подключения к базе событий PostgreSQL.
     /// </summary>
-    public string RuntimeEventDatabaseConnectionString
-    {
-        get => _runtimeEventDatabaseConnectionString;
-        set => SetProperty(ref _runtimeEventDatabaseConnectionString, value);
-    }
+    public string RuntimeEventDatabaseConnectionString => ModuleDiagnosticConnectionString(RuntimeEventDatabase);
 
     /// <summary>
     /// Строка подключения ODBC для чтения активных аварий из CiAdvancedAlarm.

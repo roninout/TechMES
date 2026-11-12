@@ -1864,9 +1864,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             // Main DB получает отдельную резервную строку.
             TypedAppSettings.RuntimeDatabaseConnectionString = GetString(runtime, "Database", "ConnectionString");
             TypedAppSettings.RuntimeDatabaseConnectionStringSecondary = GetString(runtime, "Database", "ConnectionStringSecondary");
-
-            // Event DB сохраняет собственную независимую настройку.
-            TypedAppSettings.RuntimeEventDatabaseConnectionString = GetString(runtime, "EventDatabase", "ConnectionString");
+            LoadPostgreSqlModuleDatabases(runtime);
 
             TypedAppSettings.RuntimeAlarmOdbcConnectionString = GetString(runtime, "CtApi", "AlarmOdbcConnectionString");
             TypedAppSettings.RuntimeAlarmOdbcConnectionStringSecondary = GetString(runtime, "CtApi", "AlarmOdbcConnectionStringSecondary");
@@ -2062,7 +2060,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
         SetValue(root, TypedAppSettings.RuntimeDatabaseConnectionString, "Database", "ConnectionString");
         SetValue(root, TypedAppSettings.RuntimeDatabaseConnectionStringSecondary, "Database", "ConnectionStringSecondary");
-        SetValue(root, TypedAppSettings.RuntimeEventDatabaseConnectionString, "EventDatabase", "ConnectionString");
+        ApplyPostgreSqlModuleDatabases(root);
 
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcConnectionString, "CtApi", "AlarmOdbcConnectionString");
         SetValue(root, TypedAppSettings.RuntimeAlarmOdbcConnectionStringSecondary, "CtApi", "AlarmOdbcConnectionStringSecondary");
@@ -2309,6 +2307,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
         await AddPostgresTcpCheckAsync("Event PostgreSQL", TypedAppSettings.RuntimeEventDatabaseConnectionString);
         await AddPostgresAuthCheckAsync("Main PostgreSQL", TypedAppSettings.RuntimeDatabaseConnectionString);
         await AddPostgresAuthCheckAsync("Event PostgreSQL", TypedAppSettings.RuntimeEventDatabaseConnectionString);
+        await AddPostgresTcpCheckAsync("Recipes PostgreSQL", TypedAppSettings.RuntimeRecipeDatabaseConnectionString);
+        await AddPostgresAuthCheckAsync("Recipes PostgreSQL", TypedAppSettings.RuntimeRecipeDatabaseConnectionString);
 
         AddCtApiConfigurationChecks();
 
@@ -2688,7 +2688,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             "Event DB",
             "Connection string",
             eventDbConfigured ? "OK" : "Error",
-            eventDbConfigured ? eventDbEndpoint : "Runtime EventDatabase:ConnectionString is empty.");
+            eventDbConfigured ? eventDbEndpoint : "Main DB connection or EventDatabase:Database is empty.");
 
         AddDiagnosticsRow(
             OperatorActionDiagnostics,
@@ -2697,7 +2697,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             eventDbConfigured ? "OK" : "Error",
             eventDbConfigured
                 ? "Runtime exposes /api/event-log/operator-actions and reads existing EventPicker/PostgreSQL tables."
-                : "Operation actions cannot be loaded without Event DB connection string.");
+                : "Operation actions require Main DB connection settings and EventDatabase:Database.");
 
         AddDiagnosticsRow(
             OperatorActionDiagnostics,
