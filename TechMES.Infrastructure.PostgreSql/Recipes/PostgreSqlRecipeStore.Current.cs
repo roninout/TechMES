@@ -17,8 +17,7 @@ public sealed partial class PostgreSqlRecipeStore
         if (expected.Id <= 0 || expected.RecipeId <= 0 || expected.BaseRecipeId <= 0 || string.IsNullOrWhiteSpace(expected.Page) || request.ExpectedBaseRecipeId != expected.BaseRecipeId)
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Select a Unit with a valid recipe family." };
 
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
 
         // Согласуемся с редакторами; справочники и снимок кандидата сохраняем неизменными до commit.

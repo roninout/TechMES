@@ -1,20 +1,22 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using TechMES.Application.Recipes;
+using TechMES.Infrastructure.PostgreSql.Connections;
 using TechMES.Infrastructure.PostgreSql.Recipes;
 
 namespace TechMES.Infrastructure.PostgreSql;
 
-/// <summary>
-/// Подключает чтение рецептов независимо от остальных PostgreSQL-модулей.
-/// </summary>
 public static class RecipeServiceCollectionExtensions
 {
-    /// <summary>
-    /// Соединение с БД создаётся только при обращении к странице Recipes.
-    /// </summary>
+    // Регистрирует Recipes и необходимые ему зависимости подключения.
     public static IServiceCollection AddRecipeInfrastructure(this IServiceCollection services)
     {
+        services.TryAddSingleton<IMainDatabaseConnector, MainDatabaseConnector>();
+        services.TryAddSingleton<MainDatabaseWriteGuard>();
+        services.TryAddSingleton<PostgreSqlModuleConnections>();
+
         services.AddScoped<IRecipeStore, PostgreSqlRecipeStore>();
+
         return services;
     }
 }

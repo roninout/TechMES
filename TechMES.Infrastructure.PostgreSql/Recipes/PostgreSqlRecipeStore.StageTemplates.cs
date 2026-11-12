@@ -14,8 +14,7 @@ public sealed partial class PostgreSqlRecipeStore
     /// </summary>
     public async Task<RecipeStageTemplateCatalogDto?> GetStageTemplatesAsync(int recipeId, CancellationToken ct = default)
     {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
 
         var link = await FindTemplateParameterLinkAsync(connection, null, ct);
 
@@ -64,8 +63,7 @@ public sealed partial class PostgreSqlRecipeStore
         if (!request.AutoAssignTagPrefix && !IsValidStagePrefix(prefix))
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Enter a PLC tag prefix without spaces or control characters." };
 
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
 
         await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct);
 

@@ -16,8 +16,7 @@ public sealed partial class PostgreSqlRecipeStore
         if (values.Select(item => (item.StageId, item.ColumnId)).Distinct().Count() != values.Count)
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Duplicate recipe cells." };
 
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
 
         // Тот же порядок блокировок, что у редактора: параметры, стадии, рецепт.

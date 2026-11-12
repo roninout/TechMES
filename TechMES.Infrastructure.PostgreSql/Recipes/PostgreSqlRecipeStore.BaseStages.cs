@@ -17,8 +17,7 @@ public sealed partial class PostgreSqlRecipeStore
     /// <summary>Читает шаблоны выбранного семейства вместе с сохранёнными позициями карточек.</summary>
     public async Task<List<RecipeBaseStageDto>> GetBaseStagesAsync(int familyId, CancellationToken ct = default)
     {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
 
         var link = await FindTemplateParameterLinkAsync(connection, null, ct);
 
@@ -69,8 +68,7 @@ public sealed partial class PostgreSqlRecipeStore
 
         if (preview.Errors.Count > 0) return (preview, RecipeChangeStatus.Invalid, 0);
 
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
 
         await using var transaction = await connection.BeginTransactionAsync(save ? System.Data.IsolationLevel.ReadCommitted : System.Data.IsolationLevel.RepeatableRead, ct);
         var link = await FindTemplateParameterLinkAsync(connection, transaction, ct);

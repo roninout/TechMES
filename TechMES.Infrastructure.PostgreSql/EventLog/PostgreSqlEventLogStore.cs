@@ -4,6 +4,7 @@ using Npgsql;
 using NpgsqlTypes;
 using TechMES.Application.EventLog;
 using TechMES.Contracts.EventLog;
+using TechMES.Infrastructure.PostgreSql.Connections;
 
 namespace TechMES.Infrastructure.PostgreSql.EventLog;
 
@@ -15,22 +16,12 @@ namespace TechMES.Infrastructure.PostgreSql.EventLog;
 /// </summary>
 public sealed class PostgreSqlEventLogStore : IEventLogStore
 {
-    /// <summary>
-    /// Connection string к EventPicker PostgreSQL базе.
-    /// </summary>
-    private readonly string _connectionString;
+    private readonly PostgreSqlModuleConnections _databases;
 
-    /// <summary>
-    /// Создает хранилище EventLog и читает строку подключения из Runtime.Service appsettings.
-    /// </summary>
-    public PostgreSqlEventLogStore(IConfiguration configuration)
+    // Подключает EventPicker к общему выбору доступного writer.
+    public PostgreSqlEventLogStore(PostgreSqlModuleConnections databases)
     {
-        _connectionString =
-            configuration.GetConnectionString("EventPicker")
-            ?? configuration["EventDatabase:ConnectionString"]
-            ?? throw new InvalidOperationException(
-                "EventPicker PostgreSQL connection string is not configured. " +
-                "Set ConnectionStrings:EventPicker or EventDatabase:ConnectionString in Runtime.Service appsettings.json.");
+        _databases = databases;
     }
 
     /// <summary>
@@ -54,10 +45,7 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
     /// Читает действия операторов за локальный календарный день.
     /// Фильтр применяется к Equip и Tag, чтобы можно было быстро найти события оборудования.
     /// </summary>
-    public async Task<IReadOnlyList<OperatorActionDto>> GetOperatorActionsAsync(
-        DateTime date,
-        string? equipmentFilter,
-        CancellationToken ct = default)
+    public async Task<IReadOnlyList<OperatorActionDto>> GetOperatorActionsAsync(DateTime date, string? equipmentFilter, CancellationToken ct = default)
     {
         var (fromUtc, toUtc) = BuildLocalDayRangeUtc(date);
         var filter = NormalizeFilter(equipmentFilter);
@@ -118,10 +106,7 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
     /// Читает историю тревог за локальный календарный день.
     /// Фильтр применяется к equipment.
     /// </summary>
-    public async Task<IReadOnlyList<AlarmHistoryDto>> GetAlarmHistoryAsync(
-        DateTime date,
-        string? equipmentFilter,
-        CancellationToken ct = default)
+    public async Task<IReadOnlyList<AlarmHistoryDto>> GetAlarmHistoryAsync(DateTime date, string? equipmentFilter, CancellationToken ct = default)
     {
         var (fromUtc, toUtc) = BuildLocalDayRangeUtc(date);
         var filter = NormalizeFilter(equipmentFilter);
@@ -175,23 +160,16 @@ public sealed class PostgreSqlEventLogStore : IEventLogStore
         return result;
     }
 
-    /// <summary>
-    /// Открывает новое Npgsql-соединение. Каждый метод сам владеет своим connection lifetime.
-    /// </summary>
-    private async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
+    // Возвращает открытое соединение с доступной EventPicker БД.
+    private Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
     {
-        var conn = new NpgsqlConnection(_connectionString);
-        await conn.OpenAsync(ct);
-        return conn;
+        return _databases.OpenEventLogAsync(ct);
     }
 
     /// <summary>
     /// Добавляет параметры UTC-диапазона в SQL-команду.
     /// </summary>
-    private static void AddTimestampRange(
-        NpgsqlCommand cmd,
-        DateTimeOffset fromUtc,
-        DateTimeOffset toUtc)
+    private static void AddTimestampRange(NpgsqlCommand cmd, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
         cmd.Parameters.Add("from_utc", NpgsqlDbType.TimestampTz).Value = fromUtc;
         cmd.Parameters.Add("to_utc", NpgsqlDbType.TimestampTz).Value = toUtc;

@@ -24,8 +24,7 @@ public sealed partial class PostgreSqlRecipeStore
     /// <summary>Читает каталог и признаки использования параметров в шаблонах и рецептах.</summary>
     public async Task<RecipeBaseParameterCatalogDto> GetBaseParametersAsync(CancellationToken ct = default)
     {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
 
         var link = await FindTemplateParameterLinkAsync(connection, null, ct);
 
@@ -85,8 +84,7 @@ public sealed partial class PostgreSqlRecipeStore
         var changes = request.Changes.Select(change => change with { Value = change.Value with { Name = (change.Value.Name ?? "").Trim(), Tag = (change.Value.Tag ?? "").Trim(), Description = change.Value.Description ?? "" } }).OrderBy(change => change.Value.Id).ToList();
         var ids = changes.Where(change => change.Value.Id > 0).Select(change => change.Value.Id).ToArray();
 
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
 
         await using var transaction = await connection.BeginTransactionAsync(save ? System.Data.IsolationLevel.ReadCommitted : System.Data.IsolationLevel.RepeatableRead, ct);
         var link = await FindTemplateParameterLinkAsync(connection, transaction, ct);

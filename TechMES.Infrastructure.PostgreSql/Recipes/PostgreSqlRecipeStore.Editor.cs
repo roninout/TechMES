@@ -30,8 +30,7 @@ public sealed partial class PostgreSqlRecipeStore
         if (draft.Stages.Any(item => item.Id == 0) || draft.Stages.Select(item => item.Id).Distinct().Count() != draft.Stages.Count || draft.Columns.Select(item => item.Id).Distinct().Count() != draft.Columns.Count)
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Duplicate or invalid draft identities." };
 
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
 
         var link = await FindTemplateParameterLinkAsync(connection, transaction, ct);

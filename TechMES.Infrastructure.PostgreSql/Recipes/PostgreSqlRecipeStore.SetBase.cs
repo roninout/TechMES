@@ -15,8 +15,7 @@ public sealed partial class PostgreSqlRecipeStore
         if (request.SourceRecipeId <= 0 || request.ExpectedBaseRecipeId is not int familyId || familyId <= 0 || request.SourceRecipeId == familyId || !ValidEditorShape(request.ExpectedSnapshot) || request.ExpectedSnapshot!.Recipe.Id != request.SourceRecipeId || request.ExpectedPages is null || request.ExpectedPages.Count == 0 || request.ExpectedPages.Any(page => page is null || page.Id <= 0 || page.BaseRecipeId != familyId) || request.ExpectedPages.Select(page => page.Id).Distinct().Count() != request.ExpectedPages.Count)
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Invalid base recipe assignment. Press Refresh." };
 
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
 
         // Согласуем операцию с редакторами и защищаем привязки от внешних изменений.

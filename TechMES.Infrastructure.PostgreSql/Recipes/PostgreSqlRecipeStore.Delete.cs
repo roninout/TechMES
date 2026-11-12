@@ -11,8 +11,7 @@ public sealed partial class PostgreSqlRecipeStore
         if (request.SourceRecipeId <= 0 || !ValidEditorShape(request.ExpectedSnapshot) || request.ExpectedSnapshot!.Recipe.Id != request.SourceRecipeId)
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Refresh the recipe before deleting it." };
 
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
 
         // Удаление выполняется редко. На время проверки запрещаем менять Current,

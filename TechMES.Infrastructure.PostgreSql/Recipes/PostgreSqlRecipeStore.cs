@@ -2,6 +2,7 @@
 using Npgsql;
 using TechMES.Application.Recipes;
 using TechMES.Contracts.Recipes;
+using TechMES.Infrastructure.PostgreSql.Connections;
 
 namespace TechMES.Infrastructure.PostgreSql.Recipes;
 
@@ -12,17 +13,19 @@ namespace TechMES.Infrastructure.PostgreSql.Recipes;
 public sealed partial class PostgreSqlRecipeStore : IRecipeStore
 {
     private readonly IConfiguration _configuration;
+    private readonly PostgreSqlModuleConnections _databases;
 
-    public PostgreSqlRecipeStore(IConfiguration configuration)
+    // Получает общий механизм открытия, сохраняя настройки SQL-команд Recipes.
+    public PostgreSqlRecipeStore(IConfiguration configuration, PostgreSqlModuleConnections databases)
     {
         _configuration = configuration;
+        _databases = databases;
     }
 
     /// <summary>Получает привязки Unit, служебные теги и список рецептов.</summary>
     public async Task<RecipeCatalogDto> GetCatalogAsync(CancellationToken ct = default)
     {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
 
         const string sql = """
     SELECT "id", "page", "recipeId", "baseRecipeId", "currentStageTag", "modeTag"
@@ -63,8 +66,7 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
     /// <summary>Читает рецепт со стадиями и параметрами.</summary>
     public async Task<RecipeSnapshotDto?> GetAsync(int recipeId, CancellationToken ct = default)
     {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
 
         return await ReadRecipeSnapshotAsync(connection, null, recipeId, ct);
     }
@@ -166,8 +168,7 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
         if (request.Value is not double value || !double.IsFinite(value) || request.ExpectedValue is not double expected || !double.IsFinite(expected))
             return new() { Status = RecipeParameterSaveStatus.InvalidValue, Error = "A finite numeric value is required." };
 
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
 
         await using var transaction = await connection.BeginTransactionAsync(ct);
 
@@ -258,8 +259,7 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
         if (name.Length == 0 || request.SourceRecipeId <= 0 || !Enum.IsDefined(request.Operation))
             return new() { Status = RecipeChangeStatus.Invalid, Error = "Select a recipe and enter a valid name." };
 
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
 
         await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct);
 
@@ -398,8 +398,7 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
         if (request.Operation == RecipeStageChangeOperation.MoveTo && request.TargetIndex is null)
             return new() { Status = RecipeChangeStatus.Invalid, Error = "A target position is required." };
 
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
+        await using var connection = await OpenConnectionAsync(ct);
 
         await using var transaction = await connection.BeginTransactionAsync(ct);
 
@@ -514,18 +513,10 @@ public sealed partial class PostgreSqlRecipeStore : IRecipeStore
         return new() { Status = RecipeChangeStatus.Saved, SelectedStageId = selectedStageId };
     }
 
-    /// <summary>
-    /// Создаёт соединение с отдельной БД рецептов.
-    /// Строка подключения основной БД TechMES не подменяется.
-    /// </summary>
-    private NpgsqlConnection CreateConnection()
+    // Возвращает уже открытое соединение с доступной БД рецептов для записи.
+    private Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
     {
-        var connectionString = _configuration["Recipes:ConnectionString"];
-
-        if (string.IsNullOrWhiteSpace(connectionString))
-            throw new InvalidOperationException("Recipes:ConnectionString is not configured.");
-
-        return new NpgsqlConnection(connectionString);
+        return _databases.OpenRecipesAsync(ct);
     }
 
     /// <summary>
