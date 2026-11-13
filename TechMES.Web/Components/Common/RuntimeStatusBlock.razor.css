@@ -1,65 +1,226 @@
-.runtime-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+/* Цвета берутся из текущей темы WEB. */
+.runtime-diagnostics {
+    position: relative;
+    width: 100%;
     min-width: 0;
-    max-width: 100%;
+    color: var(--rz-text-color);
+    font-size: 12px;
 }
 
-    .runtime-status ::deep .server-status-column,
-    .runtime-details {
-        display: grid;
-        grid-template-rows: 20px 20px;
-        row-gap: 4px;
-        align-items: center;
-        min-width: 0;
-    }
-
-/* Режим и число операций занимают существующую колонку из двух строк. */
-.runtime-details {
-    flex: 0 0 112px;
-    width: 112px;
-}
-
-.runtime-badges {
+.diagnostics-summary {
     display: flex;
     align-items: center;
-    min-width: 0;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    padding-bottom: 7px;
+}
+
+.summary-item,
+.checked-time,
+.dependency-heading,
+.node-label,
+.node-commands,
+.state-pill,
+summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     white-space: nowrap;
 }
 
-.runtime-status ::deep .rz-badge {
+.runtime-diagnostics ::deep .rzi {
+    font-size: 17px;
+}
+
+.checked-time {
+    margin-left: auto;
+    color: var(--rz-text-secondary-color);
+    font-size: 11px;
+}
+
+.diagnostic-refresh {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--rz-border-color);
+    border-radius: 5px;
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-color);
+    cursor: pointer;
+}
+
+    .diagnostic-refresh:disabled {
+        opacity: .5;
+        cursor: wait;
+    }
+
+    .diagnostic-refresh:focus-visible,
+    summary:focus-visible {
+        outline: 2px solid var(--rz-primary);
+        outline-offset: 2px;
+    }
+
+/* На узком экране сохраняем строки и разрешаем горизонтальную прокрутку. */
+.diagnostics-body {
+    display: flex;
+    align-items: end;
+    gap: 20px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.dependency-table {
+    display: grid;
+    grid-template-columns: auto repeat(3, max-content);
+    gap: 5px 7px;
+    flex: 0 0 auto;
+}
+
+.dependency-heading {
+    color: var(--rz-text-secondary-color);
+    font-size: 11px;
+}
+
+.dependency-table ::deep .server-status-column,
+.server-roles {
+    display: grid;
+    grid-template-rows: 24px 24px;
+    align-items: center;
+    gap: 4px;
+}
+
+.server-roles {
+    color: var(--rz-text-secondary-color);
+    font-size: 11px;
+}
+
+.dependency-table ::deep .rz-badge {
     white-space: nowrap;
     font-size: 10px;
     line-height: 20px;
     padding: 0 5px;
 }
 
-.runtime-badges ::deep .rz-badge {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.runtime-nodes {
+    display: grid;
+    gap: 4px;
+    flex: 1 0 460px;
 }
 
-.runtime-storage {
+.runtime-node {
+    display: grid;
+    grid-template-columns: 90px minmax(120px, 1fr) 105px 110px 52px;
+    gap: 8px;
+    align-items: center;
+    min-height: 24px;
+}
+
+.node-label {
+    color: var(--rz-text-secondary-color);
+}
+
+.node-address {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-weight: 600;
+}
+
+.state-pill {
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    padding: 1px 5px;
+    line-height: 19px;
     font-size: 11px;
-    color: gray;
 }
 
-.runtime-status ::deep .status-refresh {
-    flex: 0 0 28px;
-    width: 28px;
-    min-width: 28px;
-    height: 28px;
-    padding: 0;
-}
-
-.server-roles {
-    font-size: 10px;
-    color: gray;
+.node-commands,
+.node-operations {
+    font-size: 11px;
+    color: var(--rz-text-secondary-color);
     white-space: nowrap;
+}
+
+.tone-success {
+    color: var(--rz-success);
+}
+
+.tone-info {
+    color: var(--rz-info);
+}
+
+.tone-warning {
+    color: var(--rz-warning);
+}
+
+.tone-danger {
+    color: var(--rz-danger);
+}
+
+.tone-muted {
+    color: var(--rz-text-secondary-color);
+}
+
+/* Подробности открываются над Footer, сохраняя размер рабочей области. */
+.diagnostics-details {
+    position: static;
+}
+
+summary {
+    cursor: pointer;
+    list-style: none;
+    color: var(--rz-text-secondary-color);
+}
+
+    summary::-webkit-details-marker {
+        display: none;
+    }
+
+.details-panel {
+    box-sizing: border-box;
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 12px);
+    width: min(680px, calc(100vw - 32px));
+    max-height: 65vh;
+    overflow: auto;
+    z-index: 100;
+    padding: 16px;
+    border: 1px solid var(--rz-border-color);
+    border-radius: 8px;
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-color);
+    box-shadow: 0 8px 28px #0004;
+}
+
+    .details-panel article {
+        border-top: 1px solid var(--rz-border-color);
+        padding-top: 10px;
+        margin-top: 10px;
+    }
+
+    .details-panel pre {
+        font: 11px/1.6 monospace;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        margin: 5px 0;
+    }
+
+.health-details {
+    border-top: 1px solid var(--rz-border-color);
+    margin-top: 10px;
+    padding-top: 8px;
+}
+
+@media (max-width: 850px) {
+    .checked-time {
+        margin-left: 0;
+    }
+
+    .diagnostics-summary {
+        gap: 6px 12px;
+    }
 }

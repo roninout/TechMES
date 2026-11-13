@@ -1,6 +1,6 @@
 .page-content {
     box-sizing: border-box;
-    height: calc(100vh - 105px);
+    height: 100%;
     min-height: 0;
     overflow: hidden;
     padding: 20px 24px 18px;
@@ -8,9 +8,9 @@
 
 /* После удаления Footer рабочая область занимает его прежнюю высоту.
    Базовые размеры Header и Footer этим правилом не изменяются. */
-.page-content.footer-hidden {
-    height: calc(100vh - 59px);
-}
+    .page-content.footer-hidden {
+        height: 100%;
+    }
 
 .app-header {
     border-bottom: 1px solid var(--rz-border-color);
@@ -194,6 +194,28 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
+}
+
+/* Диагностика занимает свободную ширину Footer.
+   Высоту рабочей области определяет grid-разметка Layout. */
+.footer-runtime {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.app-footer-bar {
+    align-items: flex-end;
+    padding: 8px 16px;
+    gap: 16px;
+}
+
+@media (max-width: 900px) {
+    .app-footer-bar {
+        flex-direction: row;
+        align-items: flex-end;
+        padding: 8px;
+        gap: 8px;
+    }
 }
 
 @media (max-width: 900px) {

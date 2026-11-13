@@ -7,7 +7,7 @@
 @inject CurrentUserRoles UserRoles
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 
-<RadzenLayout>
+<RadzenLayout Style="grid-template-rows: auto minmax(0, 1fr) auto;">
     <RadzenHeader class="app-header">
         <div class="app-header-bar">
             <div class="app-brand">
@@ -74,11 +74,13 @@
        это освобождает место для основной рабочей области. *@
     @if (_isFooterVisible)
     {
-        <RadzenFooter class="app-footer">
+        <RadzenFooter class="app-footer" Style="padding: 0;">
             <div class="app-footer-bar">
                 <EquipmentFooterCountsBlock />
 
-                <div class="footer-spacer"></div>
+                <div class="footer-runtime">
+                    <RuntimeStatusBlock />
+                </div>
 
                 <RuntimeStatusBlock />
             </div>

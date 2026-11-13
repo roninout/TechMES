@@ -21,17 +21,15 @@ public sealed class RuntimeEndpointSelector(IHttpClientFactory clients, IOptions
             : new[] { primary, ParseAddress(secondary) }.Distinct().ToArray();
     }
 
-    // Проверяет оба Runtime перед запросом; старое состояние активности не кэшируется.
+    /// <summary>
+    /// Выбирает единственный готовый Runtime по свежим прямым ответам обоих узлов.
+    /// </summary>
     public async Task<Uri> SelectAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
-        var endpoints = GetEndpoints();
-        var active = await Task.WhenAll(endpoints.Select(endpoint => IsActiveAsync(endpoint, ct)));
-
-        ct.ThrowIfCancellationRequested();
-
-        var selected = endpoints.Where((_, index) => active[index]).ToArray();
+        var states = await ReadStatusesAsync(ct);
+        var selected = states.Where(state => state.IsActive).Select(state => state.Endpoint).ToArray();
 
         return selected.Length switch
         {
@@ -41,8 +39,26 @@ public sealed class RuntimeEndpointSelector(IHttpClientFactory clients, IOptions
         };
     }
 
-    // Проверяет активность Runtime; отмена вызывающей стороны сохраняется.
-    private async Task<bool> IsActiveAsync(Uri endpoint, CancellationToken ct)
+    /// <summary>
+    /// Читает оба узла напрямую, включая Standby.
+    /// Общий маршрутизатор рабочих запросов при этом обходится.
+    /// </summary>
+    public async Task<RuntimeEndpointStatus[]> ReadStatusesAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var states = await Task.WhenAll(GetEndpoints().Select(endpoint => ReadStatusAsync(endpoint, ct)));
+
+        ct.ThrowIfCancellationRequested();
+
+        return states;
+    }
+
+    /// <summary>
+    /// Возвращает состояние конкретного адреса или свежую ошибку связи.
+    /// Отмена вызывающей стороны передаётся без преобразования в Offline.
+    /// </summary>
+    private async Task<RuntimeEndpointStatus> ReadStatusAsync(Uri endpoint, CancellationToken ct)
     {
         using var client = clients.CreateClient(ProbeClient);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -53,20 +69,19 @@ public sealed class RuntimeEndpointSelector(IHttpClientFactory clients, IOptions
         {
             var state = await client.GetFromJsonAsync<RuntimeActivityStatusResponse>(new Uri(endpoint, "api/runtime/status"), timeout.Token);
 
-            return state is { CanExecuteCommands: true }
-                && string.Equals(state.Mode, "Active", StringComparison.OrdinalIgnoreCase);
+            return new(endpoint, state, DateTimeOffset.UtcNow, state is null ? "Empty Runtime status response." : "");
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            return false;
+            return new(endpoint, null, DateTimeOffset.UtcNow, "Runtime status timeout (3 s).");
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
-            return false;
+            return new(endpoint, null, DateTimeOffset.UtcNow, ex.Message);
         }
         catch (JsonException)
         {
-            return false;
+            return new(endpoint, null, DateTimeOffset.UtcNow, "Invalid Runtime status response.");
         }
     }
 

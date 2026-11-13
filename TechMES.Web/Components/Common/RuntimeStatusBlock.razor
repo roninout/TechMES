@@ -1,242 +1,125 @@
-﻿@using TechMES.Contracts.Runtime
-@inject RuntimeStatusApiClient RuntimeStatusApi
+﻿@inject RuntimeStatusApiClient RuntimeStatusApi
+@inject RuntimeEndpointSelector RuntimeEndpoints
 @implements IAsyncDisposable
 
-<div class="runtime-status">
-    <div class="server-status-column server-roles" aria-hidden="true">
-        <span>Primary</span>
-        <span>Secondary</span>
+<section class="runtime-diagnostics" aria-label="Диагностика серверов TechMES">
+    <div class="diagnostics-summary">
+        <span class="summary-item" title="Компьютер, на котором выполняется этот экземпляр WEB">
+            <RadzenIcon Icon="desktop_windows" aria-hidden="true" />
+            <strong>WEB</strong> @Environment.MachineName
+        </span>
+
+        <span class="summary-item @RoutingTone" aria-live="polite" title="Готовый Runtime по последнему опросу. Перед каждым рабочим запросом адрес проверяется заново.">
+            <RadzenIcon Icon="@RoutingIcon" aria-hidden="true" />
+            @RoutingText
+        </span>
+
+        <span class="checked-time" title="Время последнего прямого опроса Runtime">
+            <RadzenIcon Icon="schedule" aria-hidden="true" />
+            @CheckedText
+        </span>
+
+        <details class="diagnostics-details">
+            <summary>
+                <RadzenIcon Icon="info_outline" aria-hidden="true" />
+                Подробнее
+            </summary>
+
+            <div class="details-panel">
+                <strong>Runtime — состояние каждого узла</strong>
+
+                @if (!string.IsNullOrEmpty(_activityError))
+                {
+                    <p class="tone-danger">@_activityError</p>
+                }
+
+                @foreach (var state in _states)
+                {
+                    <article>
+                        <strong>@state.Endpoint.Authority</strong>
+                        <pre>@BuildRuntimeHint(state)</pre>
+                    </article>
+                }
+
+                @if (_states.Length == 1)
+                {
+                    <p>Второй отдельный адрес Runtime отсутствует.</p>
+                }
+
+                <div class="health-details">
+                    Messages storage: @(CurrentHealth?.MessageStorageProvider ?? "Unknown")
+                    · Health: @(_healthReadAt?.ToLocalTime().ToString("HH:mm:ss") ?? "—")
+                </div>
+
+                @if (!string.IsNullOrEmpty(_healthError))
+                {
+                    <div class="tone-warning">Health: @_healthError</div>
+                }
+            </div>
+        </details>
+
+        <button type="button" class="diagnostic-refresh" disabled="@_isLoading" @onclick="RefreshAsync" title="Обновить Runtime и health" aria-label="Обновить диагностику Runtime">
+            <RadzenIcon Icon="refresh" aria-hidden="true" />
+        </button>
     </div>
 
-    <ScadaServerStatusBlock />
-    <OdbcServerStatusBlock />
-    <MainDatabaseStatusBlock />
+    <div class="diagnostics-body">
+        <div class="dependency-table" aria-label="Зависимости: строки Primary и Secondary относятся к профилям подключения">
+            <span class="dependency-heading">Профиль</span>
+            <span class="dependency-heading">
+                <RadzenIcon Icon="settings_ethernet" aria-hidden="true" />
+                SCADA
+            </span>
+            <span class="dependency-heading">
+                <RadzenIcon Icon="dns" aria-hidden="true" />
+                ODBC
+            </span>
+            <span class="dependency-heading">
+                <RadzenIcon Icon="storage" aria-hidden="true" />
+                Main DB
+            </span>
 
-    <div class="runtime-details" title="@BuildRuntimeHint()">
-        <div class="runtime-badges" role="status" aria-live="polite">
-            <RadzenBadge Text="@GetRuntimeText()" BadgeStyle="@GetRuntimeStyle()" />
+            <div class="server-status-column server-roles">
+                <span>Primary</span>
+                <span>Secondary</span>
+            </div>
+
+            <ScadaServerStatusBlock />
+            <OdbcServerStatusBlock />
+            <MainDatabaseStatusBlock />
         </div>
 
-        <span class="runtime-storage">@GetRuntimeDetails()</span>
-    </div>
-
-    <RadzenButton class="status-refresh" Icon="refresh" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Disabled="@_isLoading" Click="@RefreshAsync" title="Refresh Runtime status" />
-</div>
-
-@code {
-    private readonly CancellationTokenSource _stop = new();
-    private readonly PeriodicTimer _activityTimer = new(TimeSpan.FromSeconds(5));
-    private readonly PeriodicTimer _healthTimer = new(TimeSpan.FromSeconds(30));
-
-    private RuntimeActivityStatusResponse? _activity;
-    private RuntimeHealthResponse? _health;
-    private DateTimeOffset? _activityReadAt;
-    private bool _isLoading;
-    private bool _isHealthLoading;
-    private bool _disposed;
-    private string _activityError = "";
-    private string _healthError = "";
-    private Task? _activityLoop;
-    private Task? _healthLoop;
-
-    protected override async Task OnInitializedAsync()
-    {
-        // Общая проверка хранилища не задерживает получение режима Runtime.
-        _healthLoop = RunHealthLoopAsync(_stop.Token);
-
-        await RefreshActivityAsync();
-
-        if (!_disposed)
-            _activityLoop = RunActivityLoopAsync(_stop.Token);
-    }
-
-    /// <summary>
-    /// Кнопка обновляет обе части диагностики.
-    /// Проверка хранилища не блокирует отдельный периодический опрос режима.
-    /// </summary>
-    private async Task RefreshAsync()
-    {
-        await Task.WhenAll(RefreshActivityAsync(), RefreshHealthAsync());
-    }
-
-    /// <summary>
-    /// Endpoint возвращает только состояние процесса из памяти Runtime.
-    /// Active/Standby не определяются по доступности PostgreSQL.
-    /// </summary>
-    private async Task RefreshActivityAsync()
-    {
-        if (_disposed || _isLoading)
-            return;
-
-        _isLoading = true;
-
-        try
-        {
-            var activity = await RuntimeStatusApi.GetActivityStatusAsync(_stop.Token);
-
-            if (_disposed)
-                return;
-
-            _activity = activity;
-            _activityReadAt = DateTimeOffset.Now;
-            _activityError = "";
-        }
-        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
-        {
-        }
-        catch (Exception ex)
-        {
-            // Старый зелёный статус не сохраняем после потери связи с Runtime.
-            _activity = null;
-            _activityError = ex.Message;
-        }
-        finally
-        {
-            _isLoading = false;
-
-            if (!_disposed)
-                StateHasChanged();
-        }
-    }
-
-    /// <summary>
-    /// Сохраняет прежнюю проверку /api/health раз в 30 секунд.
-    /// Она используется для информации о хранилище, отдельно от режима Runtime.
-    /// </summary>
-    private async Task RefreshHealthAsync()
-    {
-        if (_disposed || _isHealthLoading)
-            return;
-
-        _isHealthLoading = true;
-
-        try
-        {
-            var health = await RuntimeStatusApi.GetHealthAsync(_stop.Token);
-
-            if (_disposed)
-                return;
-
-            _health = health;
-            _healthError = health.Error ?? "";
-        }
-        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
-        {
-        }
-        catch (Exception ex)
-        {
-            _health = null;
-            _healthError = ex.Message;
-        }
-        finally
-        {
-            _isHealthLoading = false;
-
-            if (!_disposed)
-                StateHasChanged();
-        }
-    }
-
-    /// <summary>
-    /// Обновляет режим Runtime независимо от длительности проверки хранилища.
-    /// </summary>
-    private async Task RunActivityLoopAsync(CancellationToken ct)
-    {
-        try
-        {
-            while (await _activityTimer.WaitForNextTickAsync(ct))
-                await InvokeAsync(RefreshActivityAsync);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-        }
-    }
-
-    private async Task RunHealthLoopAsync(CancellationToken ct)
-    {
-        try
-        {
-            do
+        <div class="runtime-nodes" aria-label="Режимы обоих Runtime">
+            @for (var index = 0; index < 2; index++)
             {
-                await InvokeAsync(RefreshHealthAsync);
+                var state = _states.ElementAtOrDefault(index);
+                var unconfigured = index == 1 && _states.Length == 1;
+
+                <div class="runtime-node" title="@(state is null ? unconfigured ? "Второй адрес пустой или совпадает с первым." : "Ожидание данных Runtime." : BuildRuntimeHint(state))">
+                    <span class="node-label">
+                        <RadzenIcon Icon="dns" aria-hidden="true" />
+                        Runtime @(index + 1)
+                    </span>
+
+                    <span class="node-address">
+                        @(state?.Endpoint.Authority ?? (unconfigured ? "нет отдельного адреса" : "—"))
+                    </span>
+
+                    <span class="state-pill @(unconfigured ? "tone-muted" : NodeTone(state))" aria-live="polite">
+                        <RadzenIcon Icon="@(unconfigured ? "remove_circle_outline" : NodeIcon(state))" aria-hidden="true" />
+                        @(unconfigured ? "Disabled" : NodeText(state))
+                    </span>
+
+                    <span class="node-commands" title="Разрешение рабочих команд данным Runtime">
+                        <RadzenIcon Icon="@(IsReady(state) ? "verified_user" : "lock_outline")" aria-hidden="true" />
+                        @(state?.Activity is null || !IsFresh(state) ? "Команды: ?" : state.Activity.CanExecuteCommands ? "Команды: да" : "Команды: нет")
+                    </span>
+
+                    <span class="node-operations" title="Число выполняющихся операций">
+                        Ops: @(IsFresh(state) ? state?.Activity?.PendingOperations.ToString() ?? "—" : "—")
+                    </span>
+                </div>
             }
-            while (await _healthTimer.WaitForNextTickAsync(ct));
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-        }
-    }
-
-    private string GetRuntimeText()
-    {
-        if (_activity is not null)
-            return $"Runtime: {_activity.Mode}";
-
-        return _activityError.Length > 0 ? "Runtime: Offline" : "Runtime: Checking...";
-    }
-
-    private BadgeStyle GetRuntimeStyle()
-    {
-        if (_activity is null)
-            return _activityError.Length > 0 ? BadgeStyle.Danger : BadgeStyle.Light;
-
-        return _activity.Mode switch
-        {
-            "Active" => _activity.CanExecuteCommands ? BadgeStyle.Success : BadgeStyle.Warning,
-            "Standby" => BadgeStyle.Info,
-            "Starting" or "Draining" => BadgeStyle.Warning,
-            "Faulted" => BadgeStyle.Danger,
-            _ => BadgeStyle.Light
-        };
-    }
-
-    private string GetRuntimeDetails()
-    {
-        var operations = _activity is null ? "?" : _activity.PendingOperations.ToString();
-        var storage = _health?.MessageStorageProvider ?? "Unknown";
-
-        return $"Ops: {operations} · {storage}";
-    }
-
-    /// <summary>
-    /// Подробности доступны наведением на обе строки существующей колонки Runtime.
-    /// </summary>
-    private string BuildRuntimeHint()
-    {
-        var storage = $"Storage: {_health?.MessageStorageProvider ?? "Unknown"}";
-        var healthError = _healthError.Length == 0 ? "" : $"\nHealth error: {_healthError}";
-
-        if (_activity is null)
-            return $"{(_activityError.Length > 0 ? _activityError : "Waiting for Runtime status.")}\n{storage}{healthError}";
-
-        var commands = _activity.CanExecuteCommands ? "Allowed" : "Blocked";
-        var requested = _activity.StandbyRequested ? "Standby" : "Active";
-        var changed = _activity.ChangedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
-        var received = _activityReadAt?.ToString("dd.MM.yyyy HH:mm:ss") ?? "Unknown";
-
-        var coordination = _activity.Coordination;
-        var ownership = coordination?.Enabled == true ? $"\nHA role: {coordination.Role}\nOwner: {coordination.OwnerNodeId ?? "None"}\nOwnership lease: {coordination.LeaseId?.ToString() ?? "None"}\nLease expires: {coordination.ExpiresAtUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") ?? "Unknown"}\nCoordination failures: {coordination.ConsecutiveFailures}\nCoordination: {coordination.Message}" : "\nHA: Disabled";
-
-        return $"Node: {_activity.NodeId}\nMode: {_activity.Mode}\nRequested: {requested}\nCommands: {commands}\nPending operations: {_activity.PendingOperations}\nInstance: {_activity.InstanceId}\nActivation: {_activity.ActivationId ?? "None"}\nChanged: {changed}\nReceived: {received}\nReason: {_activity.Reason}\n{storage}{healthError}{ownership}";
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed)
-            return;
-
-        _disposed = true;
-        _stop.Cancel();
-        _activityTimer.Dispose();
-        _healthTimer.Dispose();
-
-        try
-        {
-            await Task.WhenAll(_activityLoop ?? Task.CompletedTask, _healthLoop ?? Task.CompletedTask);
-        }
-        finally
-        {
-            _stop.Dispose();
-        }
-    }
-}
+        </div>
+    </div>
+</section>
