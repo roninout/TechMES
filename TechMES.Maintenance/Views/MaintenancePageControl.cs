@@ -98,6 +98,8 @@ public class MaintenancePageControl : UserControl
     public void OnRestartServiceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnProbeServiceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnRefreshAllClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    /// <summary>Передаёт установку Host общему обработчику окна.</summary>
+    public void OnInstallHostServiceClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenServicesConsoleClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     /// <summary>Перед первоначальной подготовкой проверяет управление локальным PostgreSQL.</summary>
     public async void OnPrepareServerClick(object sender, RoutedEventArgs e)

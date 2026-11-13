@@ -42,9 +42,11 @@ public sealed class ServerDeploymentProfile
     public bool UpdateRuntime { get; set; } = true;
     public bool UpdateCalc { get; set; } = true;
     public bool UpdateWeb { get; set; } = true;
+    /// <summary>Host обновляется отдельным выбором, чтобы старые профили не устанавливали новую службу неожиданно.</summary>
+    public bool UpdateHost { get; set; }
     public bool UpdateMaintenance { get; set; }
 
-    [JsonIgnore] public string[] Components => new[] { UpdateRuntime ? "runtime" : null, UpdateCalc ? "calc" : null, UpdateWeb ? "web" : null, UpdateMaintenance ? "maintenance" : null }.OfType<string>().ToArray();
+    [JsonIgnore] public string[] Components => new[] { UpdateRuntime ? "runtime" : null, UpdateCalc ? "calc" : null, UpdateWeb ? "web" : null, UpdateHost ? "host" : null, UpdateMaintenance ? "maintenance" : null }.OfType<string>().ToArray();
 
     /// <summary>Проверяет локальный путь, адрес проверки и выбранные компоненты.</summary>
     public void Validate()

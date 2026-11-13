@@ -89,6 +89,25 @@ function Wait-RuntimeReady([string]$Url) {
 }
 
 
+# Confirms the local API belongs to the Host service process, without depending on its configured port.
+function Wait-HostReady {
+    $deadline=[DateTime]::UtcNow.AddSeconds(30)
+    do {
+        $service=Get-CimInstance Win32_Service -Filter "Name='TechMES.Host'"
+        if ($service -and $service.State -eq 'Running' -and $service.ProcessId -gt 0) {
+            $ports=@(Get-NetTCPConnection -State Listen -OwningProcess $service.ProcessId -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -eq '127.0.0.1' } | Select-Object -ExpandProperty LocalPort -Unique)
+            foreach ($port in $ports) {
+                try {
+                    $health=Invoke-RestMethod -Uri ("http://127.0.0.1:"+$port+"/api/health") -TimeoutSec 2
+                    if ($health.service -ceq 'TechMES.Host' -and $health.status -ceq 'OK') { Write-Output 'Host ready: Observer'; return }
+                } catch {}
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw 'TechMes Host local health failed. Check its service configuration and Windows event log.'
+}
+
 # Expands a ZIP into a fresh directory after checking every entry and its manifest.
 function Expand-DeploymentArchive([string]$Archive, [string]$Destination, [string]$ManifestHash) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -122,7 +141,7 @@ function Restore-Files($Entries) {
 
 # Stops only installed service components; Maintenance is updated only while closed.
 function Stop-DeploymentJobs($Jobs) {
-    foreach ($key in @('web','calc','runtime')) {
+    foreach ($key in @('host','web','calc','runtime')) {
         foreach ($job in @($Jobs | Where-Object { $_.Key -eq $key -and ($_.Existed -or $_.Created) })) { Stop-Component $job.Name }
     }
 }
@@ -221,13 +240,15 @@ function Invoke-UpdateTransaction($Jobs, $Entries, $Configs, [string]$StatusUrl)
             if ((Get-FileHash -LiteralPath $entry.Target -Algorithm SHA256).Hash -ine $entry.Hash) { throw "Installed file hash mismatch: $($entry.Target)" }
         }
         foreach ($job in @($Jobs | Where-Object { $_.Name -and !$_.Existed })) {
-            New-Service -Name $job.Name -BinaryPathName ('"'+$job.Executable+'"') -DisplayName $job.Name -StartupType Automatic -ErrorAction Stop | Out-Null
+            $displayName=if ($job.Key -eq 'host') { 'TechMes Host' } else { $job.Name }
+            New-Service -Name $job.Name -BinaryPathName ('"'+$job.Executable+'"') -DisplayName $displayName -StartupType Automatic -ErrorAction Stop | Out-Null
             $job.Created=$true
         }
-        foreach ($key in @('runtime','calc','web')) {
+        foreach ($key in @('runtime','calc','web','host')) {
             foreach ($job in @($Jobs | Where-Object { $_.Key -eq $key })) { Start-Component $job.Name }
         }
         if (@($Jobs | Where-Object { $_.Key -eq 'runtime' }).Count -gt 0) { Wait-RuntimeReady $StatusUrl }
+        if (@($Jobs | Where-Object { $_.Key -eq 'host' }).Count -gt 0) { Wait-HostReady }
         foreach ($job in @($Jobs | Where-Object { $_.Name })) {
             if ([string](Get-Service -Name $job.Name).Status -ne 'Running') { throw "Unexpected service state: $($job.Name)" }
         }
@@ -242,7 +263,7 @@ function Invoke-UpdateTransaction($Jobs, $Entries, $Configs, [string]$StatusUrl)
             foreach ($job in @($Jobs | Where-Object { $_.Created })) {
                 Remove-CreatedService $job.Name
             }
-            foreach ($key in @('runtime','calc','web')) {
+            foreach ($key in @('runtime','calc','web','host')) {
                 foreach ($job in @($Jobs | Where-Object { $_.Key -eq $key -and $_.WasRunning })) { Start-Component $job.Name }
             }
             foreach ($job in @($Jobs | Where-Object { $_.Existed -and $_.Name })) {
@@ -264,6 +285,7 @@ function Invoke-LocalDeployment($Profile, [string]$PayloadRoot, $Caller) {
         runtime=@{Service='TechMES.Runtime.Service';Exe='TechMES.Runtime.Service.exe';Folder='Runtime.Service'}
         calc=@{Service='TechMES.Calc.Service';Exe='TechMES.Calc.Service.exe';Folder='Calc.Service'}
         web=@{Service='TechMES.Web';Exe='TechMES.Web.exe';Folder='Web'}
+        host=@{Service='TechMES.Host';Exe='TechMES.Host.exe';Folder='Host'}
         maintenance=@{Service='';Exe='TechMES.Maintenance.exe';Folder='Maintenance'}
     }
     $install=[IO.Path]::GetFullPath($Profile.InstallRoot).TrimEnd('\')

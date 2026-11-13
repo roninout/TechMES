@@ -1735,6 +1735,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// </summary>
     private void InitializeServiceRows()
     {
+        HostServiceDefinition.Ensure(_configuration);
         ServiceStatuses.Clear();
 
         foreach (var service in _configuration.Services)

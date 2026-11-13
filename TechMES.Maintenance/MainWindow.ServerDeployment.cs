@@ -156,7 +156,10 @@ public partial class MainWindow
             AppendDeploymentLog("Deploy all started. Сначала собираем проекты в отдельную папку.");
             var output = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "TechMES", "Builds");
             var result = await BuildDeploymentPackageAsync(output, false);
-            foreach (var service in _configuration.Services)
+            // Новую службу Host впервые устанавливаем отдельной кнопкой; Deploy all обновляет уже установленную.
+            var components = new List<string> { "runtime", "calc", "web" };
+            if ((await _serviceManager.QueryAsync(HostServiceDefinition.ServiceName)).Success) components.Add("host");
+            foreach (var service in _configuration.Services.Where(service => components.Contains(service.Key)))
             {
                 var target = _deploymentManager.GetPublishDirectory(service, _configuration.Deployment);
                 if (File.Exists(Path.Combine(target, "appsettings.json"))) continue;
@@ -167,7 +170,7 @@ public partial class MainWindow
                 foreach (var settings in Directory.GetFiles(source, "appsettings*.json"))
                     if (!File.Exists(Path.Combine(target, Path.GetFileName(settings)))) File.Copy(settings, Path.Combine(target, Path.GetFileName(settings)));
             }
-            var json = JsonSerializer.Serialize(new { Name = "Development", ComputerName = Environment.MachineName, InstallRoot = _configuration.Deployment.PublishRoot, RuntimeStatusUrl = GetRuntimeDiagnosticsBaseUrl().TrimEnd('/') + "/api/runtime/status", Components = new[] { "runtime", "calc", "web" }, ManifestSha256 = DeploymentPackageService.HashFile(Path.Combine(result.PackageRoot, "manifest.json")), ArchiveName = "" });
+            var json = JsonSerializer.Serialize(new { Name = "Development", ComputerName = Environment.MachineName, InstallRoot = _configuration.Deployment.PublishRoot, RuntimeStatusUrl = GetRuntimeDiagnosticsBaseUrl().TrimEnd('/') + "/api/runtime/status", Components = components.ToArray(), ManifestSha256 = DeploymentPackageService.HashFile(Path.Combine(result.PackageRoot, "manifest.json")), ArchiveName = "" });
             var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
             var exitCode = await RunDeploymentToolAsync("Update-TechMESServer.ps1", ["-PackageRoot", result.PackageRoot, "-ProfileBase64", encoded], AppendDeploymentLog);
             if (exitCode != 0) throw new InvalidOperationException("Deploy all не завершён. Проверьте журнал установщика и результат отката.");

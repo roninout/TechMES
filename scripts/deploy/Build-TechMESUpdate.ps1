@@ -1,6 +1,6 @@
 ﻿#requires -Version 5.1
 [CmdletBinding()]
-param([string]$RepositoryRoot='', [string]$OutputRoot='', [string]$Dotnet='', [string]$Configuration='Release', [switch]$NoArchive, [switch]$ServicesOnly, [switch]$SdkOnly)
+param([string]$RepositoryRoot='', [string]$OutputRoot='', [string]$Dotnet='', [string]$Configuration='Release', [switch]$NoArchive, [switch]$ServicesOnly, [switch]$SdkOnly, [switch]$HostOnly)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -156,10 +156,14 @@ New-Item -ItemType Directory -Path $package -Force | Out-Null
 $definitions=@(
     @{Key='runtime';Project='TechMES.Runtime.Service';Folder='Runtime.Service';Service='TechMES.Runtime.Service'},
     @{Key='calc';Project='TechMES.Calc.Service';Folder='Calc.Service';Service='TechMES.Calc.Service'},
-    @{Key='web';Project='TechMES.Web';Folder='Web';Service='TechMES.Web'}
+    @{Key='web';Project='TechMES.Web';Folder='Web';Service='TechMES.Web'},
+    @{Key='host';Project='TechMES.Host';Folder='Host';Service='TechMES.Host'}
 )
 
-if (!$ServicesOnly) {
+if ($HostOnly) {
+    $definitions=@($definitions | Where-Object { $_.Key -eq 'host' })
+}
+elseif (!$ServicesOnly) {
     $definitions+=@{Key='maintenance';Project='TechMES.Maintenance';Folder='Maintenance';Service=''}
 }
 

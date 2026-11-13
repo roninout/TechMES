@@ -70,13 +70,11 @@
         </div>
     </RadzenBody>
 
-    @* Единственный экземпляр диагностики. При скрытии Footer компонент удаляется, освобождая рабочую область и останавливая принадлежащий ему опрос состояния. *@
+    @* Footer содержит только диагностику серверов. При скрытии компонент удаляется и останавливает свой опрос состояния. *@
     @if (_isFooterVisible)
     {
         <RadzenFooter class="app-footer" Style="padding: 0;">
             <div class="app-footer-bar">
-                <EquipmentFooterCountsBlock />
-
                 <div class="footer-runtime">
                     <RuntimeStatusBlock />
                 </div>

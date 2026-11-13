@@ -48,6 +48,16 @@
                                Style="{StaticResource SectionTitleText}" />
                             <TextBlock Text="Статусы читаются из Windows Service Control Manager через sc.exe. Если службы еще не установлены, это нормально."
                                Style="{StaticResource MutedText}" />
+                            <WrapPanel Margin="0,10,0,0">
+                                <ui:Button Content="Установить и запустить TechMes Host"
+                                           IsEnabled="{Binding CanInstallHostService}"
+                                           Click="OnInstallHostServiceClick" Margin="0,0,12,6" />
+                                <TextBlock Text="{Binding HostServiceInstallStatus}" TextWrapping="Wrap" MaxWidth="650"
+                                           VerticalAlignment="Center" Style="{StaticResource MutedText}" />
+                            </WrapPanel>
+                            <ui:TextBox Text="{Binding HostServiceInstallRoot, UpdateSourceTrigger=PropertyChanged}"
+                                        IsEnabled="{Binding CanInstallHostService}" MaxWidth="650" HorizontalAlignment="Left" MinWidth="300" Margin="0,4,0,4" />
+                            <TextBlock Text="{Binding HostServiceInstallPath}" TextWrapping="Wrap" Style="{StaticResource MutedText}" />
                         </StackPanel>
                     </Grid>
                 </views:MaintenanceCard>
@@ -153,7 +163,7 @@
 
                 </views:MaintenanceCard>
                     
-                <views:MaintenanceSection Grid.Row="3"
+                <views:MaintenanceSection Grid.Row="2"
                           Header="Diagnostics"
                           Margin="0,8,0,0">
                     <ui:TextBox Text="{Binding DiagnosticsText}"
