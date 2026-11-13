@@ -28,8 +28,12 @@ summary {
     white-space: nowrap;
 }
 
+/* Фиксированная ширина сохраняет выравнивание иконок в строках диагностики. */
 .runtime-diagnostics ::deep .rzi {
+    flex: 0 0 18px;
+    width: 18px;
     font-size: 17px;
+    line-height: 18px;
 }
 
 .checked-time {

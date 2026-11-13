@@ -193,8 +193,8 @@ public partial class RuntimeStatusBlock
     /// <summary>Цвет фактического состояния узла.</summary>
     private static string NodeTone(RuntimeEndpointStatus? state) => !IsFresh(state) ? "tone-muted" : state!.Activity is null || state.Activity.Mode == "Faulted" ? "tone-danger" : state.IsActive ? "tone-success" : state.Activity.Mode == "Standby" ? "tone-info" : "tone-warning";
 
-    /// <summary>Иконка фактического состояния узла.</summary>
-    private static string NodeIcon(RuntimeEndpointStatus? state) => !IsFresh(state) ? "schedule" : state!.Activity is null ? "cloud_off" : state.IsActive ? "check_circle" : state.Activity.Mode == "Standby" ? "pause_circle_outline" : state.Activity.Mode == "Faulted" ? "error_outline" : "sync";
+    /// <summary>Иконка состояния из набора Material Symbols, используемого темой WEB.</summary>
+    private static string NodeIcon(RuntimeEndpointStatus? state) => !IsFresh(state) ? "schedule" : state!.Activity is null ? "cloud_off" : state.IsActive ? "check_circle" : state.Activity.Mode == "Standby" ? "pause_circle" : state.Activity.Mode == "Faulted" ? "error" : "sync";
 
     /// <summary>
     /// Показывает причины, владельца и сроки lease без строк подключения.

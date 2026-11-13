@@ -21,7 +21,7 @@
 
         <details class="diagnostics-details">
             <summary>
-                <RadzenIcon Icon="info_outline" aria-hidden="true" />
+                <RadzenIcon Icon="info" aria-hidden="true" />
                 Подробнее
             </summary>
 
@@ -66,14 +66,17 @@
     <div class="diagnostics-body">
         <div class="dependency-table" aria-label="Зависимости: строки Primary и Secondary относятся к профилям подключения">
             <span class="dependency-heading">Профиль</span>
+
             <span class="dependency-heading">
                 <RadzenIcon Icon="settings_ethernet" aria-hidden="true" />
                 SCADA
             </span>
+
             <span class="dependency-heading">
                 <RadzenIcon Icon="dns" aria-hidden="true" />
                 ODBC
             </span>
+
             <span class="dependency-heading">
                 <RadzenIcon Icon="storage" aria-hidden="true" />
                 Main DB
@@ -106,12 +109,12 @@
                     </span>
 
                     <span class="state-pill @(unconfigured ? "tone-muted" : NodeTone(state))" aria-live="polite">
-                        <RadzenIcon Icon="@(unconfigured ? "remove_circle_outline" : NodeIcon(state))" aria-hidden="true" />
+                        <RadzenIcon Icon="@(unconfigured ? "remove_circle" : NodeIcon(state))" aria-hidden="true" />
                         @(unconfigured ? "Disabled" : NodeText(state))
                     </span>
 
                     <span class="node-commands" title="Разрешение рабочих команд данным Runtime">
-                        <RadzenIcon Icon="@(IsReady(state) ? "verified_user" : "lock_outline")" aria-hidden="true" />
+                        <RadzenIcon Icon="@(IsReady(state) ? "verified_user" : "lock")" aria-hidden="true" />
                         @(state?.Activity is null || !IsFresh(state) ? "Команды: ?" : state.Activity.CanExecuteCommands ? "Команды: да" : "Команды: нет")
                     </span>
 

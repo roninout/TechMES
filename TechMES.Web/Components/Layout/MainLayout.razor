@@ -70,8 +70,7 @@
         </div>
     </RadzenBody>
 
-    @* При скрытии Footer компонент удаляется целиком, а не маскируется через visibility:
-       это освобождает место для основной рабочей области. *@
+    @* Единственный экземпляр диагностики. При скрытии Footer компонент удаляется, освобождая рабочую область и останавливая принадлежащий ему опрос состояния. *@
     @if (_isFooterVisible)
     {
         <RadzenFooter class="app-footer" Style="padding: 0;">
@@ -81,8 +80,6 @@
                 <div class="footer-runtime">
                     <RuntimeStatusBlock />
                 </div>
-
-                <RuntimeStatusBlock />
             </div>
         </RadzenFooter>
     }

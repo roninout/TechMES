@@ -156,6 +156,7 @@
         outline-offset: 2px;
     }
 
+/* Footer содержит счётчики и один экземпляр диагностики Runtime. */
 .app-footer {
     border-top: 1px solid var(--rz-border-color);
     background: var(--rz-base-background-color);
@@ -163,14 +164,16 @@
 
 .app-footer-bar {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    align-items: flex-end;
+    gap: 16px;
     min-height: 46px;
-    padding: 0 20px;
+    padding: 8px 16px;
 }
 
-.footer-spacer {
+/* Диагностика занимает оставшуюся ширину; её таблица прокручивается внутри. */
+.footer-runtime {
     flex: 1 1 auto;
+    min-width: 0;
 }
 
 /* Кнопка вмещает все назначенные роли без выбора «старшей». */
@@ -196,28 +199,6 @@
     gap: 5px;
 }
 
-/* Диагностика занимает свободную ширину Footer.
-   Высоту рабочей области определяет grid-разметка Layout. */
-.footer-runtime {
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
-.app-footer-bar {
-    align-items: flex-end;
-    padding: 8px 16px;
-    gap: 16px;
-}
-
-@media (max-width: 900px) {
-    .app-footer-bar {
-        flex-direction: row;
-        align-items: flex-end;
-        padding: 8px;
-        gap: 8px;
-    }
-}
-
 @media (max-width: 900px) {
     .app-header-bar {
         align-items: flex-start;
@@ -239,13 +220,15 @@
         width: 100%;
     }
 
+    /* Счётчики располагаются над диагностикой без сжатия её колонок. */
     .app-footer-bar {
-        align-items: flex-start;
+        align-items: stretch;
         flex-direction: column;
-        padding: 10px 16px;
+        padding: 8px;
+        gap: 8px;
     }
 
-    .footer-spacer {
-        display: none;
+    .footer-runtime {
+        width: 100%;
     }
 }
