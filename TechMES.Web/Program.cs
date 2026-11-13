@@ -81,6 +81,9 @@ builder.Services.AddScoped<MenuNavigation>();
 // WEB не знает, где физически БД или CtApi — он вызывает Runtime Service по HTTP.
 builder.Services.AddRuntimeServiceRouting();
 
+// Каждая открытая страница Messages владеет отдельным live-соединением.
+builder.Services.AddTransient<RuntimeMessagesConnection>();
+
 // Клиент, который инкапсулирует HTTP-запросы к /api/messages.
 builder.Services.AddScoped<MessageApiClient>();
 

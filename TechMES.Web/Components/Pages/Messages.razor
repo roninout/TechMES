@@ -1,7 +1,7 @@
 @page "/messages"
 @inject MessageApiClient MessageApi
-@inject Microsoft.Extensions.Options.IOptions<RuntimeServiceOptions> RuntimeOptions
 @inject Microsoft.Extensions.Options.IOptions<MessagesUiOptions> MessagesOptions
+@inject RuntimeMessagesConnection MessagesLive
 @inject DialogService DialogService
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
@@ -360,11 +360,6 @@
     private string _editText = string.Empty;
 
     /// <summary>
-    /// SignalR connection к MessagesHub Runtime.Service.
-    /// </summary>
-    private HubConnection? _hubConnection;
-
-    /// <summary>
     /// Таймер отложенной отметки "viewed" для выбранного сообщения.
     /// </summary>
     private CancellationTokenSource? _viewDelayCts;
@@ -375,131 +370,21 @@
     private string _lastRealtimeEventText = "Live event: none";
 
     /// <summary>
-    /// Загружает сообщения и подключается к live-событиям Runtime.Service.
+    /// Загружает начальный HTTP-снимок.
+    /// Live-соединение запускается после интерактивного рендера.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        // Первичная загрузка всё равно остаётся HTTP-запросом.
-        // SignalR не отдаёт список сообщений, он только сообщает: "данные изменились".
         await LoadAsync();
-
-        // После первичной загрузки подключаемся к live-событиям Runtime.Service.
-        await StartMessagesHubAsync();
     }
 
     /// <summary>
-    /// Создает SignalR connection к Runtime.Service и подписывается на MessagesChanged.
+    /// Запускает соединение, которое следует за фактическим Active Runtime.
     /// </summary>
-    private async Task StartMessagesHubAsync()
+    private Task StartMessagesHubAsync()
     {
-        try
-        {
-            var options = RuntimeOptions.Value;
-
-            var baseUri = new Uri(options.BaseUrl);
-
-            // На всякий случай убираем начальный "/",
-            // чтобы путь корректно склеивался с BaseUrl.
-            var hubPath = options.MessagesHubPath.TrimStart('/');
-
-            var hubUri = new Uri(baseUri, hubPath);
-
-            _hubConnection = new HubConnectionBuilder()
-                .WithUrl(hubUri)
-                .WithAutomaticReconnect()
-                .Build();
-
-            // Runtime.Service отправляет событие "MessagesChanged".
-            // WEB получает это событие и перечитывает сообщения через обычный HTTP API.
-            _hubConnection.On<MessageChangedNotification>(
-                "MessagesChanged",
-                notification =>
-                {
-                    _ = InvokeAsync(async () =>
-                    {
-                        try
-                        {
-                            await OnMessagesChangedAsync(notification);
-
-                            // Важно:
-                            // SignalR callback — это внешний callback,
-                            // поэтому после изменения состояния компонента нужно явно обновить UI.
-                            StateHasChanged();
-                        }
-                        catch (Exception ex)
-                        {
-                            SetStatus(AlertStyle.Warning, "Live event received, but refresh failed: " + ex.Message);
-                            StateHasChanged();
-                        }
-                    });
-                });
-
-            _hubConnection.Reconnecting += error =>
-            {
-                _ = InvokeAsync(() =>
-                {
-                    _isRealtimeConnected = false;
-                    SetStatus(AlertStyle.Warning, "Live connection is reconnecting...");
-                    StateHasChanged();
-                });
-
-                return Task.CompletedTask;
-            };
-
-            _hubConnection.Reconnected += connectionId =>
-            {
-                _ = InvokeAsync(async () =>
-                {
-                    _isRealtimeConnected = true;
-                    ClearStatus();
-
-                    // После reconnect перечитываем данные,
-                    // потому что во время обрыва могли быть изменения.
-                    if (!_isEditMode)
-                    {
-                        await LoadAsync();
-                    }
-                    else
-                    {
-                        _pendingRealtimeChanges = true;
-                    }
-
-                    StateHasChanged();
-                });
-
-                return Task.CompletedTask;
-            };
-
-            _hubConnection.Closed += error =>
-            {
-                _ = InvokeAsync(() =>
-                {
-                    _isRealtimeConnected = false;
-                    SetStatus(AlertStyle.Warning, "Live connection is closed. Use Refresh button.");
-                    StateHasChanged();
-                });
-
-                return Task.CompletedTask;
-            };
-
-            await _hubConnection.StartAsync();
-
-            _isRealtimeConnected = true;
-            ClearStatus();
-            _lastRealtimeEventText = $"Live connected: {hubUri}";
-
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            // Если SignalR не подключился, страница всё равно остаётся рабочей:
-            // HTTP-запросы и кнопка Refresh продолжают работать.
-            _isRealtimeConnected = false;
-            SetStatus(AlertStyle.Warning, "Cannot connect to live updates: " + ex.Message);
-            _lastRealtimeEventText = "Live connection failed";
-
-            StateHasChanged();
-        }
+        MessagesLive.Start(OnLiveMessageAsync, OnLiveStatusAsync);
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -546,9 +431,10 @@
     }
 
     /// <summary>
-    /// Загружает сообщения через HTTP API. SignalR только сообщает, что данные изменились.
+    /// Загружает сообщения через HTTP.
+    /// При восстановлении live-канала ошибка передаётся вызывающему коду для повторной попытки.
     /// </summary>
-    private async Task LoadAsync()
+    private async Task LoadAsync(bool throwOnFailure = false)
     {
         _isLoading = true;
 
@@ -556,7 +442,7 @@
 
         try
         {
-            var response = await MessageApi.GetMessagesAsync(_includeInactive);
+            var response = await MessageApi.GetMessagesAsync(_includeInactive, _pageStop.Token);
 
             _messages = response.Messages.ToList();
             _activeMessageCount = response.ActiveMessageCount;
@@ -566,9 +452,18 @@
             _pendingRealtimeChanges = false;
             ClearStatus();
         }
+        catch (OperationCanceledException) when (_pageStop.IsCancellationRequested)
+        {
+            if (throwOnFailure)
+                throw;
+        }
         catch (Exception ex)
         {
-            SetStatus(AlertStyle.Danger, "Cannot load messages from Runtime Service: " + ex.Message);
+            if (!_disposed)
+                SetStatus(AlertStyle.Danger, "Cannot load messages from Runtime Service: " + ex.Message);
+
+            if (throwOnFailure)
+                throw;
         }
         finally
         {
@@ -964,16 +859,21 @@
     }
 
     /// <summary>
-    /// Останавливает SignalR connection и delayed viewed timer при уходе со страницы.
+    /// При уходе со страницы отменяет чтение, delayed viewed timer и live-соединение.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        _pageStop.Cancel();
         _viewDelayCts?.Cancel();
         _viewDelayCts?.Dispose();
 
-        if (_hubConnection is not null)
-        {
-            await _hubConnection.DisposeAsync();
-        }
+        await MessagesLive.DisposeAsync();
+
+        _pageStop.Dispose();
     }
 }
