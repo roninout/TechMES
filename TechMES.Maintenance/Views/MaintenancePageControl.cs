@@ -114,6 +114,10 @@ public class MaintenancePageControl : UserControl
     public void OnRefreshServerClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenMaintenanceFolderClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenWebFirewallClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    /// <summary>
+    /// Передаёт настройку ограниченного Runtime firewall главному окну.
+    /// </summary>
+    public void OnOpenRuntimeFirewallClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenFirewallAdvancedClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnCreateHttpsCertificateClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenCertificateManagerClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);

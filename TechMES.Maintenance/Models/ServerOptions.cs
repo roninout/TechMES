@@ -33,6 +33,12 @@ public sealed class ServerOptions
     public string HttpsFirewallRuleName { get; set; } = "TechMES WEB HTTPS 7163";
 
     /// <summary>
+    /// IP-адреса компьютеров с WEB, которым разрешён сетевой доступ к Runtime API.
+    /// Пустой список не открывает доступ. Сохраняется в профиле Maintenance.
+    /// </summary>
+    public string RuntimeFirewallRemoteAddresses { get; set; } = "";
+
+    /// <summary>
     /// Папка, куда Maintenance кладет PFX-сертификат для Kestrel и CER-файл для установки доверия на клиентах.
     /// </summary>
     public string CertificateDirectory { get; set; } = @"C:\TechMES\certs";

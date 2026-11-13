@@ -271,20 +271,36 @@
                                         <TextBlock Text="Создает или обновляет входящее правило Windows Firewall для HTTPS-порта WEB." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
-                                <Grid Margin="0,8,0,0">
+
+                                <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Firewall console" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <TextBlock Text="Runtime WEB addresses" Style="{StaticResource SettingsFieldLabel}" />
+
                                     <StackPanel Grid.Column="1">
-                                        <ui:Button Content="Open firewall console"
-                                                Width="160"
-                                                HorizontalAlignment="Left"
-                                                Click="OnOpenFirewallAdvancedClick" />
-                                        <TextBlock Text="Открывает Windows Defender Firewall with Advanced Security для ручной проверки правил." Style="{StaticResource SettingsHintText}" />
+                                        <ui:TextBox Text="{Binding ServerRuntimeFirewallRemoteAddresses, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="IP-адреса компьютеров с WEB через запятую. Только этим адресам разрешается подключение к Runtime API." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="Runtime API firewall" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <StackPanel Grid.Column="1">
+                                        <ui:Button Content="Open Runtime firewall" Width="190" HorizontalAlignment="Left" Appearance="Primary" Click="OnOpenRuntimeFirewallClick" />
+                                        <TextBlock Text="Создаёт или обновляет постоянное правило. TCP-порт берётся из Runtime URLs; после изменения URL сначала сохраните настройки." Style="{StaticResource SettingsHintText}" />
+                                        <TextBlock Text="{Binding ServerRuntimeFirewallStatus}" Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+
                             </StackPanel>
                         </views:MaintenanceSection>
                         <views:MaintenanceSection Header="Runtime and WEB endpoints" Margin="0,0,0,12">

@@ -64,6 +64,7 @@
     "RuntimePort": 5101,
     "FirewallRuleName": "TechMES WEB 5163",
     "HttpsFirewallRuleName": "TechMES WEB HTTPS 7163",
+    "RuntimeFirewallRemoteAddresses": "192.168.1.118,192.168.1.132",
     "CertificateDirectory": "C:\\TechMES\\certs",
     "CertificateFileName": "techmes-web.pfx",
     "PublicCertificateFileName": "techmes-web.cer",
