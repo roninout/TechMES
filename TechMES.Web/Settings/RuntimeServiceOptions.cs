@@ -1,26 +1,27 @@
 namespace TechMES.Web.Settings;
 
 /// <summary>
-/// Настройки подключения WEB-приложения к Runtime Service.
-///
-/// Blazor Web не работает с CtApi и БД напрямую.
-/// Он отправляет HTTP-запросы в Runtime Service по BaseUrl.
-/// Для live-обновлений он также подключается к SignalR Hub.
+/// Настройки HTTP-подключений WEB к Runtime Service.
 /// </summary>
 public sealed class RuntimeServiceOptions
 {
     /// <summary>
-    /// Базовый адрес Runtime.Service.
+    /// Первый адрес Runtime.Service.
     /// </summary>
     public string BaseUrl { get; set; } = "http://localhost:5101/";
 
     /// <summary>
-    /// Таймаут обычных HTTP-запросов.
+    /// Второй адрес Runtime.Service. Пустое значение отключает второй адрес.
+    /// </summary>
+    public string SecondaryBaseUrl { get; set; } = "";
+
+    /// <summary>
+    /// Общий таймаут HTTP-запроса, включая выбор активного Runtime.
     /// </summary>
     public int TimeoutSeconds { get; set; } = 30;
 
     /// <summary>
-    /// Относительный путь SignalR Hub для Messages.
+    /// Путь SignalR Hub. Переключение SignalR реализуем в пункте 19.
     /// </summary>
     public string MessagesHubPath { get; set; } = "hubs/messages";
 }

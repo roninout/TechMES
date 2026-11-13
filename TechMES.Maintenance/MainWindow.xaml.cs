@@ -1905,6 +1905,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
             TypedAppSettings.WebUrls = GetString(web, "Urls");
             TypedAppSettings.WebRuntimeBaseUrl = GetString(web, "RuntimeService", "BaseUrl");
+            TypedAppSettings.WebRuntimeSecondaryBaseUrl = GetString(web, "RuntimeService", "SecondaryBaseUrl");
             TypedAppSettings.WebRuntimeTimeoutSeconds = GetInt(web, 30, "RuntimeService", "TimeoutSeconds");
             TypedAppSettings.WebMessagesHubPath = GetString(web, "RuntimeService", "MessagesHubPath");
             TypedAppSettings.WebDeviceName = GetString(web, "App", "DeviceName");
@@ -2123,13 +2124,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     }
 
     /// <summary>
-    /// Переносит typed WEB-поля в JSON-объект appsettings.
-    /// Kestrel Certificate не трогаем здесь: им управляют Server-tab кнопки Prepare server / Apply HTTPS.
+    /// Сохраняет настройки WEB, включая оба адреса Runtime.
+    /// Сертификатом Kestrel управляют существующие действия Server.
     /// </summary>
     private void ApplyWebTypedSettings(JsonObject root)
     {
         SetValue(root, TypedAppSettings.WebUrls, "Urls");
         SetValue(root, TypedAppSettings.WebRuntimeBaseUrl, "RuntimeService", "BaseUrl");
+        SetValue(root, TypedAppSettings.WebRuntimeSecondaryBaseUrl, "RuntimeService", "SecondaryBaseUrl");
         SetValue(root, TypedAppSettings.WebRuntimeTimeoutSeconds, "RuntimeService", "TimeoutSeconds");
         SetValue(root, TypedAppSettings.WebMessagesHubPath, "RuntimeService", "MessagesHubPath");
         SetValue(root, TypedAppSettings.WebDeviceName, "App", "DeviceName");

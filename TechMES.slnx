@@ -13,5 +13,6 @@
   <Project Path="TechMES.PostgreSql.Control/TechMES.PostgreSql.Control.csproj" Id="adf23800-c152-4b78-9403-4e797f55a8c8" />
   <Project Path="TechMES.PostgreSql.Tests/TechMES.PostgreSql.Tests.csproj" />
   <Project Path="TechMES.Runtime.Service/TechMES.Runtime.Service.csproj" />
+  <Project Path="TechMES.Web.Tests/TechMES.Web.Tests.csproj" Id="633e574b-1c57-4f37-a941-5e6b3d4351f3" />
   <Project Path="TechMES.Web/TechMES.Web.csproj" />
 </Solution>

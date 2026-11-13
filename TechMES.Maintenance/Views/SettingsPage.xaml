@@ -333,17 +333,35 @@
                                         <TextBlock Text="Значение ASPNETCORE_URLS для TechMES WEB; здесь должны быть HTTP и HTTPS listener-ы." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
+                                
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Runtime base URL" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <TextBlock Text="Runtime primary URL" Style="{StaticResource SettingsFieldLabel}" />
+
                                     <StackPanel Grid.Column="1">
                                         <ui:TextBox Text="{Binding TypedAppSettings.WebRuntimeBaseUrl, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
                                         <TextBlock Text="Базовый URL, по которому WEB обращается к HTTP API Runtime Service." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="Runtime secondary URL" Style="{StaticResource SettingsFieldLabel}" />
+
+                                    <StackPanel Grid.Column="1">
+                                        <ui:TextBox Text="{Binding TypedAppSettings.WebRuntimeSecondaryBaseUrl, UpdateSourceTrigger=PropertyChanged}" Width="360" HorizontalAlignment="Left" Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock Text="Второй HTTP API Runtime. WEB выбирает Active; пустое поле оставляет один адрес." Style="{StaticResource SettingsHintText}" />
+                                    </StackPanel>
+                                </Grid>
+                                
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />

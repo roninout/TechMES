@@ -79,15 +79,7 @@ builder.Services.AddScoped<MenuNavigation>();
 
 // Именованный HttpClient для Runtime Service.
 // WEB не знает, где физически БД или CtApi — он вызывает Runtime Service по HTTP.
-builder.Services.AddHttpClient("RuntimeService", (sp, client) =>
-{
-    var options = sp
-        .GetRequiredService<Microsoft.Extensions.Options.IOptions<RuntimeServiceOptions>>()
-        .Value;
-
-    client.BaseAddress = new Uri(options.BaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
-});
+builder.Services.AddRuntimeServiceRouting();
 
 // Клиент, который инкапсулирует HTTP-запросы к /api/messages.
 builder.Services.AddScoped<MessageApiClient>();
