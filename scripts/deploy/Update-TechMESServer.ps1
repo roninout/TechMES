@@ -257,7 +257,7 @@ function Invoke-UpdateTransaction($Jobs, $Entries, $Configs, [string]$StatusUrl)
         }
         # Applies SCM metadata to both a newly installed and an existing Host service.
         foreach ($job in @($Jobs | Where-Object { $_.Key -eq 'host' })) {
-            Set-Service -Name $job.Name -Description 'TechMES host availability controller. Observer mode; shared IP management is disabled.' -ErrorAction Stop
+            Set-Service -Name $job.Name -Description 'TechMES host availability controller. WEB monitoring and planned shared IPv4 ownership.' -ErrorAction Stop
         }
     } catch {
         $original=$_.Exception.Message

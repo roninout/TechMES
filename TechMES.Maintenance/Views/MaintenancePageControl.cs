@@ -105,6 +105,10 @@ public class MaintenancePageControl : UserControl
     public void OnCreateHostCertificateClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnSaveHostSetupClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenHostFirewallClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnHostOwnerStatusClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnHostOwnerInitializeClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnHostOwnerTransferClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
+    public void OnHostOwnerResumeClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnCheckPeerHostClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     public void OnOpenServicesConsoleClick(object sender, RoutedEventArgs e) => ForwardRoutedEvent(sender, e);
     /// <summary>Перед первоначальной подготовкой проверяет управление локальным PostgreSQL.</summary>

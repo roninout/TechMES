@@ -3,38 +3,65 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:views="clr-namespace:TechMES.Maintenance.Views">
+
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="16" DataContext="{Binding HostSetup}" IsEnabled="{Binding CanOperate}">
-            <TextBlock Text="TechMes Host — подготовка общего адреса" FontSize="20" Margin="0,0,0,8" />
-            <TextBlock Text="Этот этап проверяет сеть и связь Host по mTLS. Общий IP не назначается, DHCP и маршруты не изменяются." TextWrapping="Wrap" Margin="0,0,0,12" />
+            <TextBlock Text="TechMes Host — общий адрес WEB" FontSize="20" Margin="0,0,0,8" />
+            <TextBlock Text="Подготовьте сеть и mTLS на обоих узлах. Первоначальное назначение и передача IP выполняются отдельными кнопками ниже."
+                       TextWrapping="Wrap" Margin="0,0,0,12" />
+
             <WrapPanel Margin="0,0,0,12">
                 <ui:Button Content="Загрузить" Click="OnLoadHostSetupClick" Margin="0,0,8,8" />
                 <ui:Button Content="Проверить сеть" Click="OnCheckHostSetupClick" Margin="0,0,8,8" />
                 <ui:Button Content="Создать сертификат узла" Click="OnCreateHostCertificateClick" Margin="0,0,8,8" />
             </WrapPanel>
+
             <TextBlock Text="Локальный интерфейс — выбирается отдельно на каждом компьютере" />
-            <ComboBox ItemsSource="{Binding Adapters}" DisplayMemberPath="Display" SelectedValuePath="Id" SelectedValue="{Binding Shared.InterfaceId, Mode=TwoWay}" Margin="0,4,0,10" />
+            <ComboBox ItemsSource="{Binding Adapters}" DisplayMemberPath="Display" SelectedValuePath="Id"
+                      SelectedValue="{Binding Shared.InterfaceId, Mode=TwoWay}" Margin="0,4,0,10" />
+
             <TextBlock Text="Собственный IPv4 этого компьютера" />
             <ui:TextBox Text="{Binding Shared.NodeAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+
             <TextBlock Text="IPv4 второго компьютера" />
             <ui:TextBox Text="{Binding Shared.PeerAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+
             <TextBlock Text="Выделенный общий IPv4" />
             <ui:TextBox Text="{Binding Shared.VirtualAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+
             <TextBlock Text="Префикс подсети, например 24" />
             <ui:TextBox Text="{Binding PrefixLengthText, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
-            <CheckBox Content="Включить защищённый endpoint Host (только диагностика)" IsChecked="{Binding Control.Enabled}" Margin="0,4,0,10" />
+
+            <CheckBox Content="Включить защищённый endpoint Host" IsChecked="{Binding Control.Enabled}" Margin="0,4,0,10" />
+
             <TextBlock Text="Порт HTTPS Host — одинаковый на обоих узлах" />
             <ui:TextBox Text="{Binding ControlPortText, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+
             <TextBlock Text="SHA256 собственного сертификата узла" />
             <ui:TextBox Text="{Binding Control.CertificateSha256, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+
             <TextBlock Text="SHA256 сертификата второго узла — скопируйте с другого компьютера" />
             <ui:TextBox Text="{Binding Control.PeerCertificateSha256, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+
             <WrapPanel>
                 <ui:Button Content="Сохранить и перезапустить Host" Click="OnSaveHostSetupClick" Margin="0,0,8,8" />
                 <ui:Button Content="Открыть firewall Host" Click="OnOpenHostFirewallClick" Margin="0,0,8,8" />
                 <ui:Button Content="Проверить второй Host" Click="OnCheckPeerHostClick" Margin="0,0,8,8" />
             </WrapPanel>
-            <ui:TextBox Text="{Binding Report, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" MinHeight="200" Margin="0,8,0,0" />
+
+            <TextBlock Text="Управление общим IP — по сохранённому профилю" FontSize="18" Margin="0,16,0,8" />
+            <TextBlock Text="Координатор — узел с меньшим IPv4. Передача удаляет IP у прежнего владельца перед назначением новому. Потеря связи не запускает захват IP. Во время передачи открытые WEB-сессии могут прерваться."
+                       TextWrapping="Wrap" Margin="0,0,0,8" />
+
+            <WrapPanel>
+                <ui:Button Content="Состояние IP" Click="OnHostOwnerStatusClick" Margin="0,0,8,8" />
+                <ui:Button Content="Первое назначение этому ПК" Click="OnHostOwnerInitializeClick" Margin="0,0,8,8" />
+                <ui:Button Content="Передать IP другому ПК" Click="OnHostOwnerTransferClick" Margin="0,0,8,8" />
+                <ui:Button Content="Продолжить операцию" Click="OnHostOwnerResumeClick" Margin="0,0,8,8" />
+            </WrapPanel>
+
+            <ui:TextBox Text="{Binding Report, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                        FontFamily="Consolas" MinHeight="200" Margin="0,8,0,0" />
         </StackPanel>
     </ScrollViewer>
 </views:MaintenancePageControl>
