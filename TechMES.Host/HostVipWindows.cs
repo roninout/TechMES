@@ -23,8 +23,16 @@ public sealed class HostVipWindows(HostSharedAddressSettings settings) : IHostVi
 
         var common = $$"""
         $ErrorActionPreference='Stop'
-        $nic=@(Get-NetAdapter -IncludeHidden | Where-Object {$_.InterfaceGuid -eq [guid]'{{id:D}}'})
-        if($nic.Count -ne 1) {throw 'Interface not found'}
+        $targetGuid=[guid]'{{id:D}}'
+        $adapters=@(Get-NetAdapter -IncludeHidden)
+        $nic=@($adapters | Where-Object {
+            $candidate=[guid]::Empty
+            [guid]::TryParse([string]$_.InterfaceGuid,[ref]$candidate) -and $candidate -eq $targetGuid
+        })
+        if($nic.Count -ne 1) {
+            $available=($adapters | ForEach-Object {"$($_.Name)=$($_.InterfaceGuid)"}) -join '; '
+            throw "Interface GUID $targetGuid was not found uniquely. Available: $available"
+        }
         $index=$nic[0].ifIndex
         $persistent=@(Get-NetIPAddress -AddressFamily IPv4 -PolicyStore PersistentStore | Where-Object {$_.IPAddress -eq '{{vip}}'})
         if($persistent.Count) {throw 'VIP exists in PersistentStore; manual review required'}
@@ -44,6 +52,12 @@ public sealed class HostVipWindows(HostSharedAddressSettings settings) : IHostVi
         """);
     }
 
+    /// <summary>Печатает ошибки обычным UTF-8 текстом, без служебного CLIXML и progress.</summary>
+    public static string WrapScript(string script) =>
+        "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $ProgressPreference='SilentlyContinue'; try {\n"
+        + script
+        + "\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }";
+
     /// <summary>Проверяет завершение DAD после назначения и отсутствие VIP после удаления.</summary>
     public async Task SetAsync(bool assigned)
     {
@@ -57,10 +71,12 @@ public sealed class HostVipWindows(HostSharedAddressSettings settings) : IHostVi
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
         };
 
-        foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-EncodedCommand", Convert.ToBase64String(Encoding.Unicode.GetBytes(script)) })
+        foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-OutputFormat", "Text", "-EncodedCommand", Convert.ToBase64String(Encoding.Unicode.GetBytes(WrapScript(script))) })
             start.ArgumentList.Add(argument);
 
         using var process = Process.Start(start)
