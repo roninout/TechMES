@@ -37,7 +37,7 @@
       "ProjectPath": "TechMES.Host\\TechMES.Host.csproj",
       "PublishFolderName": "Host",
       "ExecutableName": "TechMES.Host.exe",
-      "WindowsServiceDescription": "TechMES host availability controller. Observer mode; shared IP management is disabled.",
+      "WindowsServiceDescription": "TechMES host availability controller. WEB monitoring and planned shared IPv4 ownership.",
       "HealthUrl": "http://127.0.0.1:5116/api/health"
     }
   ],
