@@ -19,6 +19,11 @@
 		<PackageReference Include="WPF-UI" Version="4.3.0" />
 	</ItemGroup>
 
+    <ItemGroup>
+        <!-- Общая с Host проверка закреплённых сертификатов. -->
+        <Compile Include="..\TechMES.Host\HostNodeCertificates.cs" Link="Services\HostNodeCertificates.cs" />
+    </ItemGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
         <ProjectReference Include="..\TechMES.Infrastructure.PostgreSql\TechMES.Infrastructure.PostgreSql.csproj" />

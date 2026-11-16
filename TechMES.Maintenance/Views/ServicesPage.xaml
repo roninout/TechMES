@@ -189,6 +189,10 @@
                               VerticalAlignment="Stretch" />
         </TabItem>
 
+        <TabItem Header="Host">
+            <views:HostSetupPage />
+        </TabItem>
+
         <!-- Подготовка компьютеров БД не зависит от установленного Runtime. -->
         <TabItem Header="PostgreSQL">
             <views:PostgreSqlSetupControl />
