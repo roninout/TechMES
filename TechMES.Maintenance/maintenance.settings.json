@@ -29,6 +29,16 @@
       "ExecutableName": "TechMES.Web.exe",
       "WindowsServiceDescription": "TechMES Blazor WEB interface.",
       "HealthUrl": "https://localhost:7163/api/health"
+    },
+    {
+      "Key": "host",
+      "DisplayName": "TechMes Host",
+      "ServiceName": "TechMES.Host",
+      "ProjectPath": "TechMES.Host\\TechMES.Host.csproj",
+      "PublishFolderName": "Host",
+      "ExecutableName": "TechMES.Host.exe",
+      "WindowsServiceDescription": "TechMES host availability controller. Observer mode; shared IP management is disabled.",
+      "HealthUrl": "http://127.0.0.1:5116/api/health"
     }
   ],
   "SettingsFiles": [
