@@ -255,6 +255,10 @@ function Invoke-UpdateTransaction($Jobs, $Entries, $Configs, [string]$StatusUrl)
         foreach ($config in $Configs) {
             if ((Get-FileHash -LiteralPath $config.Path -Algorithm SHA256).Hash -ine $config.Hash) { throw "Configuration changed: $($config.Path)" }
         }
+        # Applies SCM metadata to both a newly installed and an existing Host service.
+        foreach ($job in @($Jobs | Where-Object { $_.Key -eq 'host' })) {
+            Set-Service -Name $job.Name -Description 'TechMES host availability controller. Observer mode; shared IP management is disabled.' -ErrorAction Stop
+        }
     } catch {
         $original=$_.Exception.Message
         Write-Warning "Update failed; restoring files and service states: $original"

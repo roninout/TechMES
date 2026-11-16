@@ -110,7 +110,8 @@ public partial class MainWindow
             var settingsPath = Path.Combine(profile.InstallRoot, "Host", "appsettings.json");
             if (!File.Exists(settingsPath))
             {
-                var webUrl = GetServiceDefinition("web")?.HealthUrl ?? "http://127.0.0.1:5163/api/health";
+                // Локальная проверка Host использует HTTP-порт WEB из профиля Server.
+                var webUrl = $"http://127.0.0.1:{_configuration.Server.WebPort}/api/health";
                 if (!Uri.TryCreate(webUrl, UriKind.Absolute, out var url) || !url.IsLoopback || url.Scheme is not ("http" or "https") || url.UserInfo.Length > 0)
                     throw new InvalidOperationException("Сначала задайте локальный WEB Health URL в настройках Maintenance.");
                 Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
@@ -154,6 +155,12 @@ public partial class MainWindow
     /// <summary>Ожидает локальный HTTP Host; готовность WEB не является условием установки контроллера.</summary>
     private async Task FinishHostInstallationAsync(ServiceDefinition definition)
     {
+        // Применяем описание и для уже установленной службы без изменения её учётной записи или пути.
+        var description = definition.WindowsServiceDescription;
+        if (string.IsNullOrWhiteSpace(description)) description = HostServiceDefinition.Create().WindowsServiceDescription!;
+        var metadata = await new ProcessRunner().RunAsync("sc.exe", ["description", definition.ServiceName, description], TimeSpan.FromSeconds(10));
+        if (metadata.ExitCode != 0) throw new InvalidOperationException("Не удалось записать описание Host: " + metadata.CombinedOutput);
+
         var health = "Not checked";
         for (var attempt = 0; attempt < 10; attempt++)
         {
