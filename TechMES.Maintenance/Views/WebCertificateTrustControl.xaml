@@ -1,0 +1,49 @@
+﻿<UserControl x:Class="TechMES.Maintenance.Views.WebCertificateTrustControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+
+    <StackPanel Margin="0,12,0,0">
+        <Separator Margin="0,0,0,12" />
+
+        <TextBlock Text="Доверие к WEB-сертификатам на этом ПК"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,8" />
+
+        <TextBlock Text="Для двух WEB-узлов выберите публичные CER обоих узлов, полученные через Export CER. Сверьте SHA256 с исходным узлом и проверьте имя WEB в SAN. Установку нужно выполнить на каждом клиентском ПК; после перевыпуска сертификата — повторить для нового CER."
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,10" />
+
+        <WrapPanel>
+            <ui:Button Content="Выбрать CER…"
+                       Click="OnChooseClick"
+                       Margin="0,0,8,8" />
+
+            <ui:Button x:Name="RefreshButton"
+                       Content="Проверить состояние"
+                       Click="OnRefreshClick"
+                       IsEnabled="False"
+                       Margin="0,0,8,8" />
+
+            <ui:Button x:Name="InstallButton"
+                       Content="Установить доверие для всех пользователей"
+                       Click="OnInstallClick"
+                       IsEnabled="False"
+                       Margin="0,0,8,8" />
+        </WrapPanel>
+
+        <TextBlock Text="Хранилище: LocalMachine\Root. Для установки запустите Maintenance от администратора. Проверка наличия в хранилище не заменяет HTTPS-проверку работающего WEB."
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,8" />
+
+        <TextBox x:Name="DetailsBox"
+                 IsReadOnly="True"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 FontFamily="Consolas"
+                 MinHeight="140"
+                 MaxHeight="420"
+                 VerticalScrollBarVisibility="Auto" />
+    </StackPanel>
+</UserControl>

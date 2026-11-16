@@ -21,5 +21,6 @@
 		<Compile Include="..\TechMES.Maintenance\Models\ServerOptions.cs" Link="ServerOptions.cs" />
         <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
         <Compile Include="..\TechMES.Maintenance\Services\HostSetupScripts.cs" Link="HostSetupScripts.cs" />
+		<Compile Include="..\TechMES.Maintenance\Services\WebCertificateTrust.cs" Link="WebCertificateTrust.cs" />
 	</ItemGroup>
 </Project>
