@@ -1,0 +1,80 @@
+/* Панель использует цвета текущей темы WEB и располагается над Footer. */
+.host-diagnostics {
+    position: static;
+}
+
+summary {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    cursor: pointer;
+    list-style: none;
+}
+
+    summary::-webkit-details-marker {
+        display: none;
+    }
+
+    summary:focus-visible,
+    button:focus-visible {
+        outline: 2px solid var(--rz-primary);
+        outline-offset: 2px;
+    }
+
+    summary ::deep .rz-badge {
+        white-space: nowrap;
+        font-size: 10px;
+        line-height: 20px;
+        padding: 0 5px;
+    }
+
+.host-details-panel {
+    box-sizing: border-box;
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 12px);
+    width: min(680px, calc(100vw - 32px));
+    max-height: 65vh;
+    overflow: auto;
+    z-index: 101;
+    padding: 16px;
+    border: 1px solid var(--rz-border-color);
+    border-radius: 8px;
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-color);
+    box-shadow: 0 8px 28px #0004;
+}
+
+.host-details-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--rz-border-color);
+    border-radius: 5px;
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-color);
+    cursor: pointer;
+}
+
+    button:disabled {
+        opacity: .5;
+        cursor: wait;
+    }
+
+pre {
+    font: 11px/1.6 monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 8px 0 0;
+}

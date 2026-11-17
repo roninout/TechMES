@@ -14,6 +14,8 @@
             @RoutingText
         </span>
 
+        <HostStatusBlock />
+
         <span class="checked-time" title="Время последнего прямого опроса Runtime">
             <RadzenIcon Icon="schedule" aria-hidden="true" />
             @CheckedText
@@ -100,8 +102,7 @@
 
                 <div class="runtime-node" title="@(state is null ? unconfigured ? "Второй адрес пустой или совпадает с первым." : "Ожидание данных Runtime." : BuildRuntimeHint(state))">
                     <span class="node-label">
-                        <RadzenIcon Icon="dns" aria-hidden="true" />
-                        Runtime @(index + 1)
+                        <RadzenBadge Text="@($"Runtime {index + 1}")" BadgeStyle="BadgeStyle.Base" Style="font-size: 10px; line-height: 20px; padding: 0 5px; white-space: nowrap;" />
                     </span>
 
                     <span class="node-address">

@@ -1,0 +1,192 @@
+﻿@using System.Text
+@using TechMES.Contracts.Host
+@inject IConfiguration Configuration
+@implements IAsyncDisposable
+
+<details class="host-diagnostics">
+    <summary title="Локальный Host текущего WEB. Нажмите для подробностей.">
+        <RadzenBadge Text="@HostText" BadgeStyle="@HostStyle" />
+
+        @if (CurrentState is { } state)
+        {
+            <RadzenBadge Text="@VipText(state)" BadgeStyle="@VipStyle(state)" />
+
+            @if (state.Ownership is { } owner)
+            {
+                <RadzenBadge Text="@($"Epoch: {owner.Grant.Epoch}")" BadgeStyle="BadgeStyle.Base" />
+
+                @if (owner.Node == owner.Coordinator && owner.WebFailover is { } automatic)
+                {
+                    <RadzenBadge Text="@($"Auto: {automatic.State}")" BadgeStyle="@(automatic.State == "Blocked" ? BadgeStyle.Warning : automatic.Enabled ? BadgeStyle.Info : BadgeStyle.Base)" />
+                }
+            }
+        }
+    </summary>
+
+    <div class="host-details-panel">
+        <div class="host-details-heading">
+            <strong>Host — @Environment.MachineName</strong>
+            <button type="button" disabled="@_loading" @onclick="RefreshAsync" title="Обновить Host" aria-label="Обновить диагностику Host">
+                <RadzenIcon Icon="refresh" aria-hidden="true" />
+            </button>
+        </div>
+
+        <pre>@DetailsText</pre>
+    </div>
+</details>
+
+@code {
+    private readonly HostDiagnosticsClient _client = new();
+    private readonly CancellationTokenSource _stop = new();
+    private readonly PeriodicTimer _timer = new(TimeSpan.FromSeconds(5));
+
+    private HostDiagnosticsState? _state;
+    private DateTimeOffset? _checkedAt;
+    private string _error = "";
+    private Task? _loop;
+    private bool _loading;
+    private bool _disposed;
+
+    /// <summary>Устаревший ответ не считается подтверждением доступности Host.</summary>
+    private HostDiagnosticsState? CurrentState => _checkedAt is { } time && DateTimeOffset.UtcNow - time < TimeSpan.FromSeconds(15) ? _state : null;
+
+    private string HostText => CurrentState is not null ? "Host: Online" : _error.Length > 0 ? "Host: Недоступен" : _checkedAt is null ? "Host: Проверка" : "Host: Нет свежих данных";
+    private BadgeStyle HostStyle => CurrentState is not null ? BadgeStyle.Success : _error.Length > 0 ? BadgeStyle.Danger : BadgeStyle.Light;
+
+    /// <summary>Опрос Host выполняется независимо от опроса Runtime и его рабочих запросов.</summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+
+        if (!_disposed)
+            _loop = RunAsync(_stop.Token);
+    }
+
+    /// <summary>Не сохраняет зелёное состояние после ошибки или таймаута.</summary>
+    private async Task RefreshAsync()
+    {
+        if (_disposed || _loading)
+            return;
+
+        _loading = true;
+
+        try
+        {
+            var port = Configuration.GetValue("HostDiagnostics:Port", 5116);
+            var state = await _client.ReadAsync(port, _stop.Token);
+
+            if (!_disposed)
+            {
+                _state = state;
+                _error = "";
+            }
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            _state = null;
+            _error = ex is OperationCanceledException ? "Host не ответил за 3 секунды." : ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+            _checkedAt = DateTimeOffset.UtcNow;
+
+            if (!_disposed)
+                StateHasChanged();
+        }
+    }
+
+    /// <summary>Поддерживает текущий пятисекундный период панели диагностики.</summary>
+    private async Task RunAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (await _timer.WaitForNextTickAsync(ct))
+                await InvokeAsync(RefreshAsync);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+    }
+
+    /// <summary>Различает подтверждённый VIP, резерв, ожидание и противоречивое назначение.</summary>
+    private static string VipText(HostDiagnosticsState state) => state.Ownership is not { } owner ? "VIP: Отключён" : HasVipError(owner) ? "VIP: Ошибка" : owner.Grant.Assigned ? owner.AddressReady ? "VIP: Владелец" : "VIP: Ожидание" : "VIP: Резерв";
+
+    private static BadgeStyle VipStyle(HostDiagnosticsState state) => state.Ownership is not { } owner ? BadgeStyle.Base : HasVipError(owner) ? BadgeStyle.Danger : owner.Grant.Assigned ? owner.AddressReady ? BadgeStyle.Success : BadgeStyle.Warning : BadgeStyle.Info;
+
+    private static bool HasVipError(HostOwnerStatus owner) => !owner.NetworkReady || owner.Errors.Length > 0 || (owner.AddressPresent && !owner.Grant.Assigned) || (owner.AddressReady && !owner.AddressPresent);
+
+    /// <summary>Журнал и автоматика ведомого узла не выдаются за состояние координатора.</summary>
+    private string DetailsText
+    {
+        get
+        {
+            var text = new StringBuilder();
+            text.AppendLine($"Проверено: {_checkedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") ?? "—"}");
+
+            if (CurrentState is not { } state)
+                return text.AppendLine(_error.Length > 0 ? _error : "Ожидание свежего ответа Host.").Append("Недоступность HTTP-диагностики не определяет состояние Windows-службы.").ToString();
+
+            text.AppendLine($"Компьютер: {state.Computer}");
+            text.AppendLine($"Режим Host: {state.Mode}");
+            text.AppendLine($"WEB готов: {(state.WebReady ? "да" : "нет")}");
+
+            if (state.Ownership is not { } owner)
+                return text.Append("Управление общим IP отключено.").ToString();
+
+            text.AppendLine($"Узел: {owner.Node}");
+            text.AppendLine($"Координатор: {owner.Coordinator}");
+            text.AppendLine($"Сеть готова: {(owner.NetworkReady ? "да" : "нет")}");
+            text.AppendLine($"Общий IP присутствует: {(owner.AddressPresent ? "да" : "нет")}");
+            text.AppendLine($"Общий IP готов: {(owner.AddressReady ? "да" : "нет")}");
+            text.AppendLine($"Разрешение выдано: {(owner.Grant.Assigned ? "да" : "нет")}; epoch: {owner.Grant.Epoch}");
+
+            if (owner.Node == owner.Coordinator)
+            {
+                text.AppendLine($"Владелец по журналу: {owner.Journal.Owner}");
+                text.AppendLine($"Фаза: {owner.Journal.Phase}; epoch журнала: {owner.Journal.Epoch}");
+
+                if (owner.WebFailover is { } automatic)
+                {
+                    text.AppendLine($"Автоматика: {automatic.State}; включена: {(automatic.Enabled ? "да" : "нет")}");
+                    text.AppendLine($"Отказы владельца: {automatic.OwnerFailures}; готовность резерва: {automatic.TargetSuccesses}");
+                    text.AppendLine(automatic.Details);
+                }
+            }
+            else
+            {
+                text.AppendLine("Журнал передачи и автоматика находятся на координаторе; его состояние здесь не опрашивается.");
+            }
+
+            foreach (var error in owner.Errors)
+                text.AppendLine($"Ошибка: {error}");
+
+            return text.ToString();
+        }
+    }
+
+    /// <summary>Закрытие панели отменяет запрос и завершает её HTTP-клиент.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        _stop.Cancel();
+        _timer.Dispose();
+
+        try
+        {
+            if (_loop is not null)
+                await _loop;
+        }
+        finally
+        {
+            _client.Dispose();
+            _stop.Dispose();
+        }
+    }
+}
