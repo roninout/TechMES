@@ -149,7 +149,7 @@
                                     <TextBlock Text="Auto start services" Style="{StaticResource SettingsFieldLabel}" />
                                     <StackPanel Grid.Column="1">
                                         <ui:ToggleSwitch IsChecked="{Binding DeploymentAutoStart}" OnContent="Enabled" OffContent="Disabled" VerticalAlignment="Center" />
-                                        <TextBlock Text="Автоматически запускает службы после установки или обновления." Style="{StaticResource SettingsHintText}" />
+                                        <TextBlock Text="При установке службы задаёт отложенный автоматический запуск после загрузки Windows. При выключении — ручной запуск." Style="{StaticResource SettingsHintText}" />
                                     </StackPanel>
                                 </Grid>
                                 <Grid Margin="0,8,0,0">

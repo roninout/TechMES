@@ -14,9 +14,7 @@ public sealed class WindowsServiceManager(ProcessRunner processRunner)
     /// Читает статус сервиса.
     /// Если сервис не установлен, возвращает мягкий статус Not installed, а не исключение.
     /// </summary>
-    public async Task<ServiceCommandResult> QueryAsync(
-        string serviceName,
-        CancellationToken cancellationToken = default)
+    public async Task<ServiceCommandResult> QueryAsync(string serviceName, CancellationToken cancellationToken = default)
     {
         var result = await processRunner.RunAsync(
             "sc.exe",
@@ -46,27 +44,19 @@ public sealed class WindowsServiceManager(ProcessRunner processRunner)
     /// Отправляет команду запуска сервиса.
     /// Для реального запуска обычно нужны права администратора.
     /// </summary>
-    public Task<ServiceCommandResult> StartAsync(
-        string serviceName,
-        CancellationToken cancellationToken = default) =>
-        ExecuteServiceCommandAsync("start", serviceName, cancellationToken);
+    public Task<ServiceCommandResult> StartAsync(string serviceName, CancellationToken cancellationToken = default) => ExecuteServiceCommandAsync("start", serviceName, cancellationToken);
 
     /// <summary>
     /// Отправляет команду остановки сервиса.
     /// Для остановки службы обычно нужны права администратора.
     /// </summary>
-    public Task<ServiceCommandResult> StopAsync(
-        string serviceName,
-        CancellationToken cancellationToken = default) =>
-        ExecuteServiceCommandAsync("stop", serviceName, cancellationToken);
+    public Task<ServiceCommandResult> StopAsync(string serviceName, CancellationToken cancellationToken = default) => ExecuteServiceCommandAsync("stop", serviceName, cancellationToken);
 
     /// <summary>
     /// Перезапускает сервис через stop, небольшую паузу и start.
     /// Это простой вариант для первого этапа; позже можно добавить ожидание конкретных состояний.
     /// </summary>
-    public async Task<ServiceCommandResult> RestartAsync(
-        string serviceName,
-        CancellationToken cancellationToken = default)
+    public async Task<ServiceCommandResult> RestartAsync(string serviceName, CancellationToken cancellationToken = default)
     {
         var stop = await StopAsync(serviceName, cancellationToken);
         await Task.Delay(1000, cancellationToken);
@@ -81,40 +71,25 @@ public sealed class WindowsServiceManager(ProcessRunner processRunner)
     }
 
     /// <summary>
-    /// Создает Windows Service, если его еще нет, или обновляет binPath/start у существующего сервиса.
-    /// Этот метод используется вкладкой Deploy после dotnet publish.
+    /// Создаёт Windows Service или обновляет параметры существующей службы.
+    /// При autoStart используется отложенный автоматический запуск.
     /// </summary>
-    public async Task<ServiceCommandResult> CreateOrUpdateAsync(
-        string serviceName,
-        string displayName,
-        string executablePath,
-        string? description,
-        bool autoStart,
-        CancellationToken cancellationToken = default)
+    public async Task<ServiceCommandResult> CreateOrUpdateAsync(string serviceName, string displayName, string executablePath, string? description, bool autoStart, CancellationToken cancellationToken = default)
     {
         var query = await QueryAsync(serviceName, cancellationToken);
-        var startMode = autoStart ? "auto" : "demand";
+
+        // Отложенный автозапуск снижает конкуренцию с системными службами при загрузке Windows.
+        // Это режим следующей загрузки, а не команда немедленного запуска.
+        var startMode = autoStart ? "delayed-auto" : "demand";
         var quotedExecutablePath = $"\"{executablePath}\"";
 
         var commandResult = query.Status == "Not installed"
-            ? await processRunner.RunAsync(
-                "sc.exe",
-                ["create", serviceName, "binPath=", quotedExecutablePath, "start=", startMode, "DisplayName=", displayName],
-                CommandTimeout,
-                cancellationToken)
-            : await processRunner.RunAsync(
-                "sc.exe",
-                ["config", serviceName, "binPath=", quotedExecutablePath, "start=", startMode, "DisplayName=", displayName],
-                CommandTimeout,
-                cancellationToken);
+            ? await processRunner.RunAsync("sc.exe", ["create", serviceName, "binPath=", quotedExecutablePath, "start=", startMode, "DisplayName=", displayName], CommandTimeout, cancellationToken)
+            : await processRunner.RunAsync("sc.exe", ["config", serviceName, "binPath=", quotedExecutablePath, "start=", startMode, "DisplayName=", displayName], CommandTimeout, cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(description))
         {
-            await processRunner.RunAsync(
-                "sc.exe",
-                ["description", serviceName, description],
-                CommandTimeout,
-                cancellationToken);
+            await processRunner.RunAsync("sc.exe", ["description", serviceName, description], CommandTimeout, cancellationToken);
         }
 
         var updatedStatus = await QueryAsync(serviceName, cancellationToken);
@@ -130,17 +105,9 @@ public sealed class WindowsServiceManager(ProcessRunner processRunner)
     /// <summary>
     /// Выполняет sc.exe с указанной командой и возвращает нормализованный результат.
     /// </summary>
-    private async Task<ServiceCommandResult> ExecuteServiceCommandAsync(
-        string command,
-        string serviceName,
-        CancellationToken cancellationToken)
+    private async Task<ServiceCommandResult> ExecuteServiceCommandAsync(string command, string serviceName, CancellationToken cancellationToken)
     {
-        var result = await processRunner.RunAsync(
-            "sc.exe",
-            [command, serviceName],
-            CommandTimeout,
-            cancellationToken);
-
+        var result = await processRunner.RunAsync("sc.exe", [command, serviceName], CommandTimeout, cancellationToken);
         var query = await QueryAsync(serviceName, cancellationToken);
 
         return new ServiceCommandResult
@@ -164,8 +131,7 @@ public sealed class WindowsServiceManager(ProcessRunner processRunner)
         if (string.IsNullOrWhiteSpace(stateLine))
             return "Unknown";
 
-        var tokens = stateLine
-            .Split([' ', '\t', ':'], StringSplitOptions.RemoveEmptyEntries);
+        var tokens = stateLine.Split([' ', '\t', ':'], StringSplitOptions.RemoveEmptyEntries);
 
         return tokens.LastOrDefault() ?? "Unknown";
     }

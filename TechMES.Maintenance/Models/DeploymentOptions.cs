@@ -31,7 +31,7 @@ public sealed class DeploymentOptions
     public bool SelfContained { get; set; }
 
     /// <summary>
-    /// Устанавливать Windows Services с автоматическим запуском.
+    /// Устанавливать Windows Services с отложенным автоматическим запуском; иначе — ручной запуск.
     /// </summary>
     public bool AutoStart { get; set; } = true;
 }

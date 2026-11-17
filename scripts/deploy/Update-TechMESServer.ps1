@@ -239,11 +239,20 @@ function Invoke-UpdateTransaction($Jobs, $Entries, $Configs, [string]$StatusUrl)
             Copy-Item -LiteralPath $entry.Source -Destination $entry.Target -Force
             if ((Get-FileHash -LiteralPath $entry.Target -Algorithm SHA256).Hash -ine $entry.Hash) { throw "Installed file hash mismatch: $($entry.Target)" }
         }
-        foreach ($job in @($Jobs | Where-Object { $_.Name -and !$_.Existed })) {
-            $displayName=if ($job.Key -eq 'host') { 'TechMes Host' } else { $job.Name }
-            New-Service -Name $job.Name -BinaryPathName ('"'+$job.Executable+'"') -DisplayName $displayName -StartupType Automatic -ErrorAction Stop | Out-Null
-            $job.Created=$true
-        }
+		foreach ($job in @($Jobs | Where-Object { $_.Name -and !$_.Existed })) {
+			$displayName=if ($job.Key -eq 'host') { 'TechMes Host' } else { $job.Name }
+
+			New-Service -Name $job.Name -BinaryPathName ('"'+$job.Executable+'"') -DisplayName $displayName -StartupType Automatic -ErrorAction Stop | Out-Null
+			$job.Created=$true
+
+			# Новые службы запускаются после обычных автоматических служб Windows.
+			# Режим запуска уже установленных служб сохраняется при обновлении.
+			& "$env:SystemRoot\System32\sc.exe" config $job.Name start= delayed-auto | Out-Host
+
+			if ($LASTEXITCODE -ne 0) {
+				throw "Cannot configure delayed auto-start: $($job.Name), exit code $LASTEXITCODE"
+			}
+		}
         foreach ($key in @('runtime','calc','web','host')) {
             foreach ($job in @($Jobs | Where-Object { $_.Key -eq $key })) { Start-Component $job.Name }
         }
