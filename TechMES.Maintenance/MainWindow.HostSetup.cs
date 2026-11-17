@@ -17,9 +17,17 @@ namespace TechMES.Maintenance;
 public partial class MainWindow
 {
     public HostSetupViewModel HostSetup { get; } = new();
+
     private string? _hostSetupOperationPath;
     private string HostSetupPath => _hostSetupOperationPath ?? Path.Combine(HostServiceInstallRoot, "Host", "appsettings.json");
-    private static readonly JsonSerializerOptions HostJson = new(JsonSerializerDefaults.Web) { WriteIndented = true, PropertyNameCaseInsensitive = true };
+
+    /// <summary>Общий JSON Host: читаемый Unicode в отчётах Maintenance.</summary>
+    private static readonly JsonSerializerOptions HostJson = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(System.Text.Unicode.UnicodeRanges.All)
+    };
 
     /// <summary>Общий обработчик исключений; блокирует параллельное локальное развёртывание.</summary>
     private async Task RunHostSetupAsync(Func<Task> action)
