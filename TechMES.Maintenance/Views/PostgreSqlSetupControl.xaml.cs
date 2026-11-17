@@ -137,14 +137,21 @@ public partial class PostgreSqlSetupControl : UserControl
     private void OnProfileSelected(object sender, SelectionChangedEventArgs e)
     {
         if (ReferenceEquals(e.Source, ProfilesTabs))
+        {
             ShowReceipt();
+            if (HostStatusBox is not null)
+                HostStatusBox.Text = "Проверка контроллера для выбранного профиля ещё не выполнена.";
+        }
     }
 
     /// <summary>Изменённые поля требуют новой проверки, а не наследуют прежний статус готовности.</summary>
     private void OnProfileEdited(object sender, TextChangedEventArgs e)
     {
         if (!_loadFailed && StatusBox is not null && sender is TextBox { IsKeyboardFocusWithin: true })
+        {
             StatusBox.Text = "Параметры изменены. Сохраните профиль и выполните проверку для этих значений.";
+            HostStatusBox.Text = "Параметры изменены. Требуется новая проверка контроллера.";
+        }
     }
 
     /// <summary>Сохраняет один PS1 со встроенными профилем и инструментом для выбранной БД.</summary>

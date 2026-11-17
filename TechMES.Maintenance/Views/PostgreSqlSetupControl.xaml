@@ -63,6 +63,27 @@
 
                             <TextBlock Text="PostgreSQL port" />
                             <ui:TextBox Text="{Binding Port, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Style="{StaticResource SetupField}" TextChanged="OnProfileEdited" />
+
+                            <Separator Margin="0,6,0,12" />
+                            <TextBlock Text="Контроллер PostgreSQL" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            <TextBlock Text="Режим: Auto, Runtime или Standalone. Auto использует установленный Runtime; при его отсутствии выбирает Agent." TextWrapping="Wrap" />
+                            <ComboBox SelectedValue="{Binding HostMode, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Content" SelectionChanged="OnHostModeChanged" Margin="0,4,0,10">
+                                <ComboBoxItem Content="Auto" />
+                                <ComboBoxItem Content="Runtime" />
+                                <ComboBoxItem Content="Standalone" />
+                            </ComboBox>
+
+                            <TextBlock Text="Каталог установки Agent на выбранном сервере. Для существующей службы можно оставить пустым." TextWrapping="Wrap" />
+                            <ui:TextBox Text="{Binding AgentDirectory, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SetupField}" TextChanged="OnProfileEdited" />
+
+                            <TextBlock Text="Распакованный пакет Agent на этом компьютере: каталог с manifest.json и PostgreSql.Agent. Для Runtime не требуется." TextWrapping="Wrap" />
+                            <DockPanel>
+                                <ui:Button Content="Выбрать…" Click="OnChooseAgentPackageClick" DockPanel.Dock="Right" Margin="8,4,0,10" />
+                                <ui:TextBox Text="{Binding AgentPackageDirectory, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SetupField}" TextChanged="OnProfileEdited" />
+                            </DockPanel>
+
+                            <TextBlock Text="Период проверки контроллера, секунд (5–3600). У Runtime может действовать общий период диагностики." TextWrapping="Wrap" />
+                            <ui:TextBox Text="{Binding HostHealthPeriodSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Style="{StaticResource SetupField}" TextChanged="OnProfileEdited" />
                         </StackPanel>
                     </DataTemplate>
                 </TabControl.ContentTemplate>
@@ -87,6 +108,18 @@
                         MinHeight="180"
                         VerticalScrollBarVisibility="Auto"
                         FontFamily="Consolas" />
+
+            <TextBlock Text="Подготовка контроллера PostgreSQL" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,8" />
+            <TextBlock Text="Проверка читает состояние. Подготовка настраивает Runtime либо устанавливает/обновляет отдельный Agent и перезапускает выбранную службу. Роли PostgreSQL не переключаются. Действующие параметры защищённого доступа сохраняются." TextWrapping="Wrap" Margin="0,0,0,10" />
+
+            <WrapPanel Margin="0,0,0,12">
+                <ui:Button Content="Проверить контроллер локально" Click="OnCheckHostClick" Margin="0,0,8,8" />
+                <ui:Button Content="Подготовить контроллер локально" Click="OnPrepareHostClick" Margin="0,0,8,8" />
+                <ui:Button Content="Экспорт комплекта контроллера…" Click="OnExportHostClick" Margin="0,0,8,8" />
+                <ui:Button Content="Загрузить отчёт контроллера…" Click="OnImportHostClick" Margin="0,0,8,8" />
+            </WrapPanel>
+
+            <ui:TextBox x:Name="HostStatusBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="160" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" />
 
             <views:PostgreSqlSwitchControl />
         </StackPanel>

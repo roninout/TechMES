@@ -14,6 +14,26 @@ public sealed class PostgreSqlSetupProfile
     public string DataDirectory { get; set; } = @"D:\PostgreSQL\18\data";
     public int Port { get; set; } = 5432;
 
+    public string HostMode { get; set; } = "Auto";
+    public string AgentDirectory { get; set; } = "";
+    public string AgentPackageDirectory { get; set; } = "";
+    public int HostHealthPeriodSeconds { get; set; } = 10;
+
+    /// <summary>Параметры контроллера проверяются отдельно от существующей подготовки PostgreSQL.</summary>
+    public void ValidateHost()
+    {
+        Validate();
+
+        if (HostMode is not ("Auto" or "Runtime" or "Standalone") || HostHealthPeriodSeconds is < 5 or > 3600)
+            throw new InvalidDataException("Режим контроллера: Auto, Runtime или Standalone; период проверки: 5–3600 секунд.");
+
+        if (!string.IsNullOrEmpty(AgentDirectory))
+        {
+            var path = new PostgreSqlSetupProfile { BinDirectory = AgentDirectory, DataDirectory = DataDirectory };
+            path.Validate();
+        }
+    }
+
     /// <summary>Проверяет значения до экспорта или запуска локального инструмента.</summary>
     public void Validate()
     {

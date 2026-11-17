@@ -22,5 +22,8 @@
         <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
         <Compile Include="..\TechMES.Maintenance\Services\HostSetupScripts.cs" Link="HostSetupScripts.cs" />
 		<Compile Include="..\TechMES.Maintenance\Services\WebCertificateTrust.cs" Link="WebCertificateTrust.cs" />
+		<Compile Include="..\TechMES.Maintenance\Models\PostgreSqlSetupProfile.cs" Link="PostgreSqlSetupProfile.cs" />
+		<Compile Include="..\TechMES.Maintenance\Services\PostgreSqlSetupService.cs" Link="PostgreSqlSetupService.cs" />
+		<Compile Include="..\TechMES.Maintenance\Services\PostgreSqlHostSetupService.cs" Link="PostgreSqlHostSetupService.cs" />
 	</ItemGroup>
 </Project>

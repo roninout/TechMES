@@ -1,5 +1,6 @@
 ﻿using Microsoft.Win32;
 using System.Windows;
+using System.IO;
 using TechMES.Maintenance.Models;
 using TechMES.Maintenance.Services;
 
@@ -9,6 +10,55 @@ public partial class MainWindow
 {
     /// <summary>Использует опубликованный инструмент Maintenance либо тот же файл из исходников.</summary>
     public string GetPostgreSqlSetupTool() => GetDeploymentTool("Set-PostgreSQL18ServiceControl.ps1");
+
+    /// <summary>Использует тот же каталог опубликованных инструментов для проверки и экспорта контроллера.</summary>
+    public string PostgreSqlHostToolsDirectory => Path.GetDirectoryName(GetDeploymentTool("Prepare-TechMESPostgreSqlController.ps1"))!;
+
+    /// <summary>Большой пакет копируется вне UI-потока, пока deployment и закрытие окна заблокированы.</summary>
+    public async Task<string> ExportPostgreSqlHostSetupAsync(PostgreSqlSetupProfile profile, string outputDirectory)
+    {
+        if (_deploymentOperationRunning)
+            throw new InvalidOperationException("Дождитесь завершения текущей операции Maintenance.");
+
+        var tools = PostgreSqlHostToolsDirectory;
+        _deploymentOperationRunning = true;
+        IsEnabled = false;
+
+        try
+        {
+            return await Task.Run(() => new PostgreSqlHostSetupService().Export(profile, outputDirectory, tools));
+        }
+        finally
+        {
+            _deploymentOperationRunning = false;
+            IsEnabled = true;
+        }
+    }
+
+    /// <summary>Сериализует подготовку контроллера с deployment; PostgreSQL эта операция не перезапускает.</summary>
+    public async Task<PostgreSqlHostSetupReport> RunPostgreSqlHostSetupAsync(PostgreSqlSetupProfile profile, bool prepare)
+    {
+        if (_deploymentOperationRunning)
+            throw new InvalidOperationException("Дождитесь завершения текущей операции Maintenance.");
+
+        profile.ValidateHost();
+
+        if (!PostgreSqlSetupService.IsLocal(profile))
+            throw new InvalidOperationException("Этот профиль относится к " + profile.ComputerName + ". Экспортируйте комплект и запустите его на сервере БД.");
+
+        _deploymentOperationRunning = true;
+        IsEnabled = false;
+
+        try
+        {
+            return await new PostgreSqlHostSetupService().RunLocalAsync(profile, PostgreSqlHostToolsDirectory, prepare);
+        }
+        finally
+        {
+            _deploymentOperationRunning = false;
+            IsEnabled = true;
+        }
+    }
 
     /// <summary>Сериализует подготовку БД с deployment и оставляет автономную консоль работать до завершения.</summary>
     public async Task<PostgreSqlSetupReport?> RunPostgreSqlSetupAsync(PostgreSqlSetupProfile profile, bool prepare)

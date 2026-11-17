@@ -74,7 +74,7 @@ public sealed class PostgreSqlSetupService(string? storageDirectory = null)
     }
 
     /// <summary>Выдаёт отпечаток всех параметров, чтобы старый отчёт не подтверждал изменённый профиль.</summary>
-    public static string Fingerprint(PostgreSqlSetupProfile profile) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(profile, Json))));
+    public static string Fingerprint(PostgreSqlSetupProfile profile) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { profile.Name, profile.ComputerName, profile.ServiceName, profile.BinDirectory, profile.DataDirectory, profile.Port }, Json))));
 
     /// <summary>Сопоставляет профиль с именем текущего компьютера либо его IPv4 без DNS и удалённых подключений.</summary>
     public static bool IsLocal(PostgreSqlSetupProfile profile)
