@@ -18,8 +18,13 @@ settings.Validate();
 
 var shared = builder.Configuration.GetSection("HostSharedAddress").Get<HostSharedAddressSettings>() ?? new();
 var control = builder.Configuration.GetSection("HostControl").Get<HostControlSettings>() ?? new();
+var webFailover = builder.Configuration.GetSection("HostWebFailover").Get<HostWebFailoverSettings>() ?? new();
 
 control.Validate(settings.Port);
+webFailover.Validate();
+
+if (webFailover.Enabled && !control.Enabled)
+    throw new InvalidOperationException("Для автоматической передачи WEB нужен включённый HostControl.");
 
 var nodeCertificate = control.Enabled
     ? HostNodeCertificates.LoadLocal(control.CertificateSha256, shared.NodeAddress)
@@ -71,7 +76,7 @@ if (control.Enabled)
         pair,
         shared.InterfaceId);
 
-    builder.Services.AddSingleton(sp => owner = new HostOwnerEngine(shared, pair, store, new HostVipWindows(shared), new HostOwnerTransport(shared, control), () => sp.GetRequiredService<HostMonitor>().IsWebReady));
+    builder.Services.AddSingleton(sp => owner = new HostOwnerEngine(shared, pair, store, new HostVipWindows(shared), new HostOwnerTransport(shared, control), () => sp.GetRequiredService<HostMonitor>().IsWebReady, webFailover));
     builder.Services.AddHostedService<HostOwnerWorker>();
 }
 
@@ -110,7 +115,7 @@ app.MapGet("/api/health", () => Results.Ok(new
 {
     Service = "TechMES.Host",
     Status = "OK",
-    Mode = owner is null ? "Observer" : "Planned",
+    Mode = owner is null ? "Observer" : webFailover.Enabled ? "AutoWeb" : "Planned",
     SharedAddressEnabled = owner is not null
 }));
 
@@ -123,7 +128,7 @@ app.MapGet("/api/host/status", (HostMonitor monitor) => Results.Ok(new
     StartedAtUtc = startedAtUtc,
     ProcessId = Environment.ProcessId,
     Version = typeof(HostMonitor).Assembly.GetName().Version?.ToString(),
-    Mode = owner is null ? "Observer" : "Planned",
+    Mode = owner is null ? "Observer" : webFailover.Enabled ? "AutoWeb" : "Planned",
     SharedAddressEnabled = owner is not null,
     WebReady = monitor.IsWebReady,
     WebHealthUrl = settings.WebHealthUrl,
@@ -139,7 +144,7 @@ app.MapGet("/api/health/ready", (HostMonitor monitor) => Results.Json(
 app.MapGet("/api/host/network", () => Results.Ok(HostNetworkInspector.Read()));
 
 app.MapPost("/api/host/network/check", (HostSharedAddressSettings request) =>
-    Results.Ok(HostNetworkPolicy.Check(request, HostNetworkInspector.Read())));
+    Results.Ok(owner is null ? HostNetworkPolicy.Check(request, HostNetworkInspector.Read()) : owner.CheckNetwork(request)));
 
 app.MapGet("/api/host/shared-address/status", () =>
 {

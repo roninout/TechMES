@@ -15,7 +15,7 @@ public interface IHostOwnerPeer
 }
 
 /// <summary>Плановая передача: durable revoke → отсутствие IP → durable grant. Автовыборов координатора нет.</summary>
-public sealed class HostOwnerEngine(HostSharedAddressSettings settings, string pair, HostOwnerStore store, IHostVip vip, IHostOwnerPeer peer, Func<bool> webReady)
+public sealed partial class HostOwnerEngine(HostSharedAddressSettings settings, string pair, HostOwnerStore store, IHostVip vip, IHostOwnerPeer peer, Func<bool> webReady, HostWebFailoverSettings? webFailover = null)
 {
     private readonly SemaphoreSlim _operation = new(1, 1);
     private readonly SemaphoreSlim _node = new(1, 1);
@@ -30,11 +30,10 @@ public sealed class HostOwnerEngine(HostSharedAddressSettings settings, string p
         var state = store.Current;
         var journal = state.Journal;
 
-        bool Known(string address) =>
-            address == settings.NodeAddress || address == settings.PeerAddress;
+        bool Known(string address) => address == settings.NodeAddress || address == settings.PeerAddress;
 
         var invalidEmpty = journal.Phase == "Empty"
-            && (journal.Epoch != 0 || journal.Owner != "" || journal.Target != "" || journal.Operation != Guid.Empty);
+            && (journal.Epoch != 0 || journal.Owner != "" || journal.Target != "" || journal.Operation != Guid.Empty || journal.AutomaticWebFailover);
 
         var invalidOperation = journal.Phase != "Empty"
             && (journal.Epoch <= 0 || journal.Operation == Guid.Empty || !Known(journal.Target) || journal.Owner != "" && !Known(journal.Owner));
@@ -72,11 +71,32 @@ public sealed class HostOwnerEngine(HostSharedAddressSettings settings, string p
         var addressReady = network.Adapters.SelectMany(adapter => adapter.Addresses)
             .Count(address => address.Address == settings.VirtualAddress && address.IsPreferred) == 1 && !misplaced;
 
-        return new(pair, settings.NodeAddress, HostOwnerIdentity.Coordinator(settings), webReady(), errors.Length == 0, errors, present, addressReady, state.Grant, state.Journal);
+        return new(pair, settings.NodeAddress, HostOwnerIdentity.Coordinator(settings), webReady(), errors.Length == 0, errors, present, addressReady, state.Grant, state.Journal, WebFailoverStatus);
+    }
+
+    /// <summary>Разрешает повторное сохранение неизменённой сети при уже управляемом VIP.</summary>
+    public HostNetworkCheck CheckNetwork(HostSharedAddressSettings request)
+    {
+        var network = vip.Read();
+
+        var unchanged = request.NodeAddress == settings.NodeAddress
+            && request.PeerAddress == settings.PeerAddress
+            && request.VirtualAddress == settings.VirtualAddress
+            && request.PrefixLength == settings.PrefixLength
+            && Guid.TryParse(request.InterfaceId, out var requested)
+            && Guid.TryParse(settings.InterfaceId, out var current)
+            && requested == current;
+
+        if (!unchanged || !store.Current.Grant.Managed)
+            return HostNetworkPolicy.Check(request, network);
+
+        var status = Status();
+
+        return new(request, network, status.Errors, ["Учитывается общий IP под управлением Host. Сетевой профиль не изменён."]);
     }
 
     /// <summary>Начинает операцию с проверкой версии; потерянный ответ не создаёт новую передачу.</summary>
-    public async Task<HostOwnerStatus> ChangeAsync(HostOwnerRequest request, bool initialize)
+    public async Task<HostOwnerStatus> ChangeAsync(HostOwnerRequest request, bool initialize, bool requireOwnerWebFailure = false)
     {
         if (!IsCoordinator || _stopping)
             throw new InvalidOperationException("Операцию принимает работающий координатор пары.");
@@ -107,10 +127,11 @@ public sealed class HostOwnerEngine(HostSharedAddressSettings settings, string p
             if (request.ExpectedEpoch != journal.Epoch || initialize != (journal.Phase == "Empty"))
                 throw new InvalidOperationException("Состояние изменилось. Обновите диагностику; первоначальное назначение доступно только пустой паре.");
 
-            var local = Status();
             var remote = await peer.StatusAsync();
 
             ValidatePeer(remote);
+
+            var local = Status();
 
             if (!local.NetworkReady || !remote.NetworkReady)
                 throw new InvalidOperationException("Сетевая проверка не пройдена: " + string.Join("; ", local.Errors.Concat(remote.Errors)));
@@ -120,13 +141,22 @@ public sealed class HostOwnerEngine(HostSharedAddressSettings settings, string p
             if (!target.WebReady)
                 throw new InvalidOperationException("WEB целевого узла не готов.");
 
+            // Повторная проверка внутри блокировки операции: наблюдение могло устареть.
+            if (requireOwnerWebFailure)
+            {
+                var previous = journal.Owner == settings.NodeAddress ? local : remote;
+
+                if (initialize || journal.Phase != "Stable" || journal.Owner == request.Target || previous.WebReady || !previous.Grant.Managed || !previous.Grant.Assigned || previous.Grant.Epoch != journal.Epoch || target.Grant.Assigned || target.AddressPresent)
+                    throw new InvalidOperationException("Условия автоматической передачи WEB изменились. Требуется новое наблюдение.");
+            }
+
             if (initialize && (local.Grant.Epoch != 0 || remote.Grant.Epoch != 0 || local.Grant.Managed || remote.Grant.Managed || local.AddressPresent || remote.AddressPresent))
                 throw new InvalidOperationException("Пара уже использовалась либо IP существует. Автоматическая повторная инициализация запрещена.");
 
             if (!initialize && journal.Owner == request.Target)
                 return local;
 
-            store.SaveJournal(new(checked(journal.Epoch + 1), journal.Owner, request.Target, "Releasing", request.Operation));
+            store.SaveJournal(new(checked(journal.Epoch + 1), journal.Owner, request.Target, "Releasing", request.Operation, requireOwnerWebFailure));
 
             await ContinueAsync();
 

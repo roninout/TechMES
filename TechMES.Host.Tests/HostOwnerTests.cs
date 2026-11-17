@@ -2,7 +2,7 @@
 
 namespace TechMES.Host.Tests;
 
-public sealed class HostOwnerTests
+public sealed partial class HostOwnerTests
 {
     [Theory]
     [InlineData(false)]
@@ -320,8 +320,12 @@ public sealed class HostOwnerTests
         public HostOwnerEngine OwnerA { get; private set; } = null!;
         public HostOwnerEngine OwnerB { get; private set; } = null!;
 
-        public Pair()
+        public HostWebFailoverSettings WebFailover { get; } = new();
+
+        public Pair(bool automatic = false)
         {
+            WebFailover.Enabled = automatic;
+
             A = new("A", "10.20.30.11", "10.20.30.12", Events);
             B = new("B", "10.20.30.12", "10.20.30.11", Events);
 
@@ -338,8 +342,8 @@ public sealed class HostOwnerTests
             StoreA = new(FolderA, pair, A.Settings.InterfaceId, false);
             StoreB = new(Path.Combine(_root, "B"), pair, B.Settings.InterfaceId, false);
 
-            OwnerA = new(A.Settings, pair, StoreA, A, ToB, () => A.Ready);
-            OwnerB = new(B.Settings, pair, StoreB, B, ToA, () => B.Ready);
+            OwnerA = new(A.Settings, pair, StoreA, A, ToB, () => A.Ready, WebFailover);
+            OwnerB = new(B.Settings, pair, StoreB, B, ToA, () => B.Ready, WebFailover);
 
             ToA.Owner = OwnerA;
             ToB.Owner = OwnerB;
@@ -364,6 +368,7 @@ public sealed class HostOwnerTests
         public bool Offline { get; set; }
         public bool LoseReply { get; set; }
         public Task? Delay { get; set; }
+        public Action? AfterRead { get; set; }
 
         public async Task<HostOwnerStatus> StatusAsync()
         {
@@ -373,7 +378,11 @@ public sealed class HostOwnerTests
             if (Delay is not null)
                 await Delay;
 
-            return Owner.Status();
+            var state = Owner.Status();
+
+            AfterRead?.Invoke();
+
+            return state;
         }
 
         public async Task ApplyAsync(HostApplyGrant command)
@@ -407,11 +416,12 @@ public sealed class HostOwnerTests
         public bool Ready { get; set; } = true;
         public bool Dhcp { get; set; }
         public bool FailRemove { get; set; }
+        public int VipPrefixLength { get; set; } = 24;
 
         public HostNetworkSnapshot Read() => new(
             name,
             DateTimeOffset.UtcNow,
-            [new(Settings.InterfaceId, "Ethernet", true, Dhcp, Present && !HideVip ? [new(node, 24), new(Settings.VirtualAddress, 24)] : [new(node, 24)], "")],
+            [new(Settings.InterfaceId, "Ethernet", true, Dhcp, Present && !HideVip ? [new(node, 24), new(Settings.VirtualAddress, VipPrefixLength)] : [new(node, 24)], "")],
             "");
 
         public Task SetAsync(bool assigned)

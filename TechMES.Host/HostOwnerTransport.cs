@@ -35,12 +35,24 @@ public sealed class HostOwnerWorker(HostOwnerEngine owner, ILogger<HostOwnerWork
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var previous = "";
+        var previousWebFailover = "";
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 await owner.ReconcileAsync();
+                await owner.CheckWebFailoverAsync();
+
+                var automatic = owner.WebFailoverStatus;
+                var summary = automatic.State + ": " + automatic.Details;
+
+                if (summary != previousWebFailover)
+                {
+                    logger.LogInformation("Host WEB failover: {State}. {Details}", automatic.State, automatic.Details);
+                    previousWebFailover = summary;
+                }
+
                 previous = "";
             }
             catch (Exception ex)

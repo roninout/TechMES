@@ -43,6 +43,18 @@
             <TextBlock Text="SHA256 сертификата второго узла — скопируйте с другого компьютера" />
             <ui:TextBox Text="{Binding Control.PeerCertificateSha256, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
 
+            <TextBlock Text="Автоматическая передача при отказе WEB" FontSize="18" Margin="0,12,0,8" />
+
+            <CheckBox Content="Включить автоматическую передачу IP при отказе WEB владельца" IsChecked="{Binding WebFailover.Enabled}" Margin="0,0,0,8" />
+
+            <TextBlock Text="Работает у координатора при доступных обоих Host. Недоступность Host блокирует новую передачу. После восстановления WEB обратная передача автоматически не выполняется." TextWrapping="Wrap" Margin="0,0,0,8" />
+
+            <TextBlock Text="Последовательных наблюдений отказа WEB владельца" />
+            <ui:TextBox Text="{Binding FailureThresholdText, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+
+            <TextBlock Text="Последовательных наблюдений готовности WEB резерва" />
+            <ui:TextBox Text="{Binding RecoveryThresholdText, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+
             <WrapPanel>
                 <ui:Button Content="Сохранить и перезапустить Host" Click="OnSaveHostSetupClick" Margin="0,0,8,8" />
                 <ui:Button Content="Открыть firewall Host" Click="OnOpenHostFirewallClick" Margin="0,0,8,8" />

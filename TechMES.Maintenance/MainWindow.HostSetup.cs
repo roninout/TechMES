@@ -47,13 +47,23 @@ public partial class MainWindow
     private async void OnLoadHostSetupClick(object sender, RoutedEventArgs e) => await RunHostSetupAsync(async () =>
     {
         var root = ReadHostSetup();
+
         HostSetup.HealthPort = root["HostService"]?["Port"]?.GetValue<int>() ?? 5116;
+
         var shared = root["HostSharedAddress"]?.Deserialize<HostSharedAddressSettings>(HostJson) ?? new();
+
         HostSetup.Control = root["HostControl"]?.Deserialize<HostControlSettings>(HostJson) ?? new();
+        HostSetup.WebFailover = root["HostWebFailover"]?.Deserialize<HostWebFailoverSettings>(HostJson) ?? new();
+
         using var client = LocalHostSetupClient();
+
         var network = await client.GetFromJsonAsync<HostNetworkSnapshot>("api/host/network", HostJson) ?? throw new InvalidDataException("Пустой ответ Host.");
+
         HostSetup.Adapters.Clear();
-        foreach (var adapter in network.Adapters) HostSetup.Adapters.Add(adapter);
+
+        foreach (var adapter in network.Adapters)
+            HostSetup.Adapters.Add(adapter);
+
         HostSetup.Shared = shared;
         HostSetup.Report = JsonSerializer.Serialize(network, HostJson);
     });
@@ -90,33 +100,61 @@ public partial class MainWindow
         HostSetup.Report = "Создан сертификат узла. Скопируйте его SHA256 в поле второго узла на другом компьютере: " + pin;
     });
 
-    /// <summary>Сохраняет только два раздела Host и восстанавливает исходный файл при неудачном запуске.</summary>
+    /// <summary>Сохраняет сеть, mTLS и автоматику WEB; восстанавливает исходный файл при неудачном запуске.</summary>
     private async void OnSaveHostSetupClick(object sender, RoutedEventArgs e) => await RunHostSetupAsync(async () =>
     {
         RequireHostAdministrator();
+
         var check = await CheckHostSetupAsync();
-        if (!check.LocalChecksPassed) throw new InvalidOperationException(string.Join(Environment.NewLine, check.Errors));
+
+        if (!check.LocalChecksPassed)
+            throw new InvalidOperationException(string.Join(Environment.NewLine, check.Errors));
+
         HostSetup.Control.Validate(HostSetup.HealthPort);
-        if (HostSetup.Control.Enabled) { using var certificate = HostNodeCertificates.LoadLocal(HostSetup.Control.CertificateSha256, HostSetup.Shared.NodeAddress); }
+        HostSetup.WebFailover.Validate();
+
+        if (HostSetup.WebFailover.Enabled && !HostSetup.Control.Enabled)
+            throw new InvalidOperationException("Для автоматической передачи WEB включите защищённый endpoint Host.");
+
+        if (HostSetup.Control.Enabled)
+        {
+            using var certificate = HostNodeCertificates.LoadLocal(HostSetup.Control.CertificateSha256, HostSetup.Shared.NodeAddress);
+        }
+
         var original = File.ReadAllBytes(HostSetupPath);
         var root = ReadHostSetup();
+
         root["HostSharedAddress"] = JsonSerializer.SerializeToNode(HostSetup.Shared);
         root["HostControl"] = JsonSerializer.SerializeToNode(HostSetup.Control);
+        root["HostWebFailover"] = JsonSerializer.SerializeToNode(HostSetup.WebFailover);
+
         var backup = HostSetupPath + "." + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "." + Guid.NewGuid().ToString("N")[..6] + ".bak";
+
         File.WriteAllBytes(backup, original);
+
         try
         {
             File.WriteAllText(HostSetupPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
+
             await RestartAndCheckHostAsync();
         }
         catch (Exception failure)
         {
             File.WriteAllBytes(HostSetupPath, original);
-            try { await RestartAndCheckHostAsync(); }
-            catch (Exception rollback) { throw new InvalidOperationException("Host не запустился; конфигурация восстановлена, но запуск после отката тоже не подтверждён: " + rollback.Message, failure); }
+
+            try
+            {
+                await RestartAndCheckHostAsync();
+            }
+            catch (Exception rollback)
+            {
+                throw new InvalidOperationException("Host не запустился; конфигурация восстановлена, но запуск после отката тоже не подтверждён: " + rollback.Message, failure);
+            }
+
             throw new InvalidOperationException("Host не запустился с новым профилем; прежняя конфигурация восстановлена. " + failure.Message, failure);
         }
-        HostSetup.Report = "Профиль сохранён, Host отвечает. Общий IP не назначен. Резервная копия: " + backup;
+
+        HostSetup.Report = "Профиль сохранён, новый процесс Host подтверждён. Проверьте состояние IP. Резервная копия: " + backup;
     });
 
     /// <summary>Подтверждает ответ именно нового процесса службы после перезапуска.</summary>
