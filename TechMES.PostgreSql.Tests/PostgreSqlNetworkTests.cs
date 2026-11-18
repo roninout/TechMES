@@ -76,6 +76,28 @@ public sealed class PostgreSqlNetworkTests
         Assert.DoesNotContain(remote.Calls, item => item.StartsWith("Promote:"));
     }
 
+    // Потеря связи после запроса Fence оставляет исход операции неизвестным.
+    [Fact]
+    public async Task LostFenceResponseDoesNotPromoteStandby()
+    {
+        var remote = new Remote { LoseFenceResponse = true };
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => new PostgreSqlSwitchCoordinator(remote).RunAsync(Plan, _ => { }, CancellationToken.None));
+
+        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61" }, remote.Calls);
+    }
+
+    // Ответ Succeeded не заменяет подтверждение изоляции.
+    [Fact]
+    public async Task FenceWithoutProofDoesNotPromoteStandby()
+    {
+        var remote = new Remote { MissingFenceProof = true };
+
+        await Assert.ThrowsAsync<IOException>(() => new PostgreSqlSwitchCoordinator(remote).RunAsync(Plan, _ => { }, CancellationToken.None));
+
+        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61" }, remote.Calls);
+    }
+
     // Повтор Submit возвращает тот же request.json.
     [Fact]
     public async Task InboxSubmissionIsIdempotent()
@@ -246,6 +268,8 @@ public sealed class PostgreSqlNetworkTests
         public string? Failed;
         public bool FailReservation;
         public bool WrongProof;
+        public bool LoseFenceResponse;
+        public bool MissingFenceProof;
 
         public Task<PostgreSqlRemoteStatus> StatusAsync(string address, CancellationToken ct)
         {
@@ -266,10 +290,13 @@ public sealed class PostgreSqlNetworkTests
         {
             Calls.Add(mode + ":" + address);
 
+            if (mode == "Fence" && LoseFenceResponse)
+                throw new HttpRequestException("Connection lost while waiting for Fence.");
+
             if (mode != "Fence")
                 Assert.NotNull(phase.Fence);
 
-            JsonElement? proof = mode == "Fence" ? JsonSerializer.SerializeToElement(new { State = "Fenced", From = Plan.From, To = Plan.To, Sid = WrongProof ? "123" : Plan.SystemIdentifier }) : null;
+            JsonElement? proof = mode == "Fence" && !MissingFenceProof ? JsonSerializer.SerializeToElement(new { State = "Fenced", From = Plan.From, To = Plan.To, Sid = WrongProof ? "123" : Plan.SystemIdentifier }) : null;
 
             return Task.FromResult(new PostgreSqlRemoteOperation(Plan.OperationId(mode), mode == Failed ? "NeedsReview" : "Succeeded", "Test", null, proof));
         }

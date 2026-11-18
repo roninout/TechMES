@@ -29,7 +29,10 @@ public sealed record PostgreSqlServerState
     public string? SenderHost { get; init; }
     public string? SlotName { get; init; }
     public DateTimeOffset? LastMessageReceivedAtUtc { get; init; }
+    public long? ReplayBacklogBytes { get; init; }
     public int? StreamingReplicaCount { get; init; }
+    public string? StreamingSyncStates { get; init; }
+    public long? MaxStreamingReplayLagBytes { get; init; }
     public int ConsecutiveSuccesses { get; init; }
     public int ConsecutiveFailures { get; init; }
     public DateTimeOffset? CheckedAtUtc { get; init; }

@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
+using TechMES.Contracts.Runtime;
 using TechMES.Web.Clients;
 using TechMES.Web.Settings;
 
@@ -156,6 +157,30 @@ public sealed class RuntimeRoutingTests
         using var response = await client.GetAsync("api/recipes/catalog");
 
         Assert.Equal(1, probes);
+    }
+
+    // Недоступность диагностики на старом Runtime не скрывает снимок резервного узла.
+    [Fact]
+    public async Task DiagnosticsKeepsStandbyWhenFirstRuntimeHasNoDiagnosticsEndpoint()
+    {
+        using var services = Services(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/runtime/diagnostics", request.RequestUri!.AbsolutePath);
+
+            if (request.RequestUri.Host == "a")
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+            var snapshot = new RuntimeDiagnosticsResponse(new("Standby", "Running", null, null), new() { Enabled = true });
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(snapshot) });
+        }, request => throw new InvalidOperationException("Diagnostics must use the direct client."));
+
+        var results = await services.GetRequiredService<RuntimeEndpointSelector>().ReadDiagnosticsAsync();
+
+        Assert.Equal(2, results.Length);
+        Assert.Null(results[0].Snapshot);
+        Assert.Equal("Standby", results[1].Snapshot?.Calc.Status);
+        Assert.True(results[1].Snapshot?.PostgreSql.Enabled ?? false);
     }
 
     // Произвольный внешний адрес не получает запрос через Runtime-клиент.

@@ -14,3 +14,5 @@ public sealed record RuntimeEndpointStatus(Uri Endpoint, RuntimeActivityStatusRe
     public bool IsActive => Activity is { CanExecuteCommands: true }
         && string.Equals(Activity.Mode, "Active", StringComparison.OrdinalIgnoreCase);
 }
+
+public sealed record RuntimeEndpointDiagnostics(Uri Endpoint, RuntimeDiagnosticsResponse? Snapshot, string Error);

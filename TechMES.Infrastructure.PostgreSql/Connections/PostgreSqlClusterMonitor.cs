@@ -89,9 +89,13 @@ public sealed class PostgreSqlClusterProbe : IPostgreSqlClusterProbe
             if (state.ActualRole == "Standby")
             {
                 const string sql = """
-                    SELECT pg_last_wal_receive_lsn()::text, pg_last_wal_replay_lsn()::text,
-                           pg_is_wal_replay_paused(), status, sender_host, slot_name, last_msg_receipt_time
-                    FROM (SELECT 1) AS one LEFT JOIN pg_catalog.pg_stat_wal_receiver ON true;
+                    WITH wal AS MATERIALIZED (
+                        SELECT pg_last_wal_receive_lsn() AS received, pg_last_wal_replay_lsn() AS replayed
+                    )
+                    SELECT received::text, replayed::text, pg_is_wal_replay_paused(),
+                           status, sender_host, slot_name, last_msg_receipt_time,
+                           CASE WHEN received >= replayed THEN pg_wal_lsn_diff(received, replayed)::bigint END AS replay_backlog_bytes
+                    FROM wal LEFT JOIN pg_catalog.pg_stat_wal_receiver ON true;
                     """;
 
                 await using var command = new NpgsqlCommand(sql, connection);
@@ -107,14 +111,23 @@ public sealed class PostgreSqlClusterProbe : IPostgreSqlClusterProbe
                     ReceiverStatus = Text(reader, 3),
                     SenderHost = Text(reader, 4),
                     SlotName = Text(reader, 5),
-                    LastMessageReceivedAtUtc = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTimeOffset>(6)
+                    LastMessageReceivedAtUtc = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTimeOffset>(6),
+                    ReplayBacklogBytes = reader.IsDBNull(7) ? null : reader.GetInt64(7)
                 };
             }
             else
             {
                 const string sql = """
-                    SELECT pg_current_wal_flush_lsn()::text,
-                           (SELECT count(*)::integer FROM pg_catalog.pg_stat_replication WHERE state = 'streaming');
+                    WITH wal AS MATERIALIZED (SELECT pg_current_wal_flush_lsn() AS flushed)
+                    SELECT wal.flushed::text, stats.replica_count, stats.sync_states, stats.replay_lag_bytes
+                    FROM wal CROSS JOIN LATERAL (
+                        SELECT count(*)::integer AS replica_count,
+                               string_agg(DISTINCT sync_state, ', ' ORDER BY sync_state) AS sync_states,
+                               max(GREATEST(0, pg_wal_lsn_diff(wal.flushed, replay_lsn)))
+                                   FILTER (WHERE replay_lsn IS NOT NULL)::bigint AS replay_lag_bytes
+                        FROM pg_catalog.pg_stat_replication
+                        WHERE state = 'streaming'
+                    ) AS stats;
                     """;
 
                 await using var command = new NpgsqlCommand(sql, connection);
@@ -125,7 +138,9 @@ public sealed class PostgreSqlClusterProbe : IPostgreSqlClusterProbe
                 state = state with
                 {
                     CurrentWalLsn = Text(reader, 0),
-                    StreamingReplicaCount = reader.GetInt32(1)
+                    StreamingReplicaCount = reader.GetInt32(1),
+                    StreamingSyncStates = Text(reader, 2),
+                    MaxStreamingReplayLagBytes = reader.IsDBNull(3) ? null : reader.GetInt64(3)
                 };
             }
 

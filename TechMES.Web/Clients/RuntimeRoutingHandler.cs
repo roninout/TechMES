@@ -54,11 +54,26 @@ public sealed class RuntimeEndpointSelector(IHttpClientFactory clients, IOptions
         return states;
     }
 
-    /// <summary>
-    /// Возвращает состояние конкретного адреса или свежую ошибку связи.
-    /// Отмена вызывающей стороны передаётся без преобразования в Offline.
-    /// </summary>
+    /// <summary>Читает Calc и снимок PostgreSQL напрямую, в том числе у Standby.</summary>
+    public Task<RuntimeEndpointDiagnostics[]> ReadDiagnosticsAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        return Task.WhenAll(GetEndpoints().Select(async endpoint =>
+        {
+            var (value, error) = await ReadProbeAsync<RuntimeDiagnosticsResponse>(endpoint, "api/runtime/diagnostics", ct);
+            return new RuntimeEndpointDiagnostics(endpoint, value, error);
+        }));
+    }
+
     private async Task<RuntimeEndpointStatus> ReadStatusAsync(Uri endpoint, CancellationToken ct)
+    {
+        var (value, error) = await ReadProbeAsync<RuntimeActivityStatusResponse>(endpoint, "api/runtime/status", ct);
+        return new(endpoint, value, DateTimeOffset.UtcNow, error);
+    }
+
+    /// <summary>Ошибки одного endpoint остаются в его снимке. Отмена опроса распространяется вызывающей стороне.</summary>
+    private async Task<(T? Value, string Error)> ReadProbeAsync<T>(Uri endpoint, string path, CancellationToken ct) where T : class
     {
         using var client = clients.CreateClient(ProbeClient);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -67,21 +82,20 @@ public sealed class RuntimeEndpointSelector(IHttpClientFactory clients, IOptions
 
         try
         {
-            var state = await client.GetFromJsonAsync<RuntimeActivityStatusResponse>(new Uri(endpoint, "api/runtime/status"), timeout.Token);
-
-            return new(endpoint, state, DateTimeOffset.UtcNow, state is null ? "Empty Runtime status response." : "");
+            var value = await client.GetFromJsonAsync<T>(new Uri(endpoint, path), timeout.Token);
+            return (value, value is null ? "Empty Runtime response." : "");
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            return new(endpoint, null, DateTimeOffset.UtcNow, "Runtime status timeout (3 s).");
+            return (null, "Runtime probe timeout (3 s).");
         }
         catch (HttpRequestException ex)
         {
-            return new(endpoint, null, DateTimeOffset.UtcNow, ex.Message);
+            return (null, ex.Message);
         }
         catch (JsonException)
         {
-            return new(endpoint, null, DateTimeOffset.UtcNow, "Invalid Runtime status response.");
+            return (null, "Invalid Runtime response.");
         }
     }
 

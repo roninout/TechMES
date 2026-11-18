@@ -2,6 +2,10 @@
 @inject RuntimeEndpointSelector RuntimeEndpoints
 @implements IAsyncDisposable
 
+@{
+    var replication = SelectReplicationSnapshot();
+}
+
 <section class="runtime-diagnostics" aria-label="Диагностика серверов TechMES">
     <div class="diagnostics-summary">
         <span class="summary-item" title="Компьютер, на котором выполняется этот экземпляр WEB">
@@ -35,11 +39,13 @@
                     <p class="tone-danger">@_activityError</p>
                 }
 
-                @foreach (var state in _states)
+                @for (var index = 0; index < _states.Length; index++)
                 {
+                    var state = _states[index];
                     <article>
                         <strong>@state.Endpoint.Authority</strong>
                         <pre>@BuildRuntimeHint(state)</pre>
+                        <pre>@(DescribeCalc(index).Hint)</pre>
                     </article>
                 }
 
@@ -47,6 +53,22 @@
                 {
                     <p>Второй отдельный адрес Runtime отсутствует.</p>
                 }
+
+                <div class="health-details">
+                    <strong>Репликация PostgreSQL</strong>
+                    @if (replication is { } snapshot)
+                    {
+                        <p>Снимок Runtime @snapshot.Endpoint.Authority · @(snapshot.Snapshot!.PostgreSql.Topology)</p>
+                        @for (var index = 0; index < 2; index++)
+                        {
+                            <pre>@(DescribeReplication(replication, index).Hint)</pre>
+                        }
+                    }
+                    else
+                    {
+                        <p>Данные о репликации пока недоступны.</p>
+                    }
+                </div>
 
                 <div class="health-details">
                     Messages storage: @(CurrentHealth?.MessageStorageProvider ?? "Unknown")
@@ -60,18 +82,23 @@
             </div>
         </details>
 
-        <button type="button" class="diagnostic-refresh" disabled="@_isLoading" @onclick="RefreshAsync" title="Обновить Runtime и health" aria-label="Обновить диагностику Runtime">
+        <button type="button" class="diagnostic-refresh" disabled="@_isLoading" @onclick="RefreshAsync" title="Обновить диагностику" aria-label="Обновить диагностику">
             <RadzenIcon Icon="refresh" aria-hidden="true" />
         </button>
     </div>
 
     <div class="diagnostics-body">
-        <div class="dependency-table" aria-label="Зависимости: строки Primary и Secondary относятся к профилям подключения">
+        <div class="dependency-table" aria-label="Диагностика: Calc по адресам Runtime, остальные колонки по профилям подключения">
             <span class="dependency-heading">Профиль</span>
 
             <span class="dependency-heading">
                 <RadzenIcon Icon="settings_ethernet" aria-hidden="true" />
                 SCADA
+            </span>
+
+            <span class="dependency-heading" title="Calc 1 и Calc 2 относятся к адресам Runtime 1 и Runtime 2">
+                <RadzenIcon Icon="calculate" aria-hidden="true" />
+                Calc
             </span>
 
             <span class="dependency-heading">
@@ -84,14 +111,33 @@
                 Main DB
             </span>
 
+            <span class="dependency-heading" title="Репликация по профилям Main DB">
+                <RadzenIcon Icon="sync" aria-hidden="true" />
+                PostgreSQL
+            </span>
+
             <div class="server-status-column server-roles">
                 <span>Primary</span>
                 <span>Secondary</span>
             </div>
 
             <ScadaServerStatusBlock />
+            <div class="server-status-column" aria-label="Локальная служба Calc на каждом Runtime">
+                @for (var index = 0; index < 2; index++)
+                {
+                    var calc = DescribeCalc(index);
+                    <RadzenBadge Text="@($"Calc {index + 1}: {calc.Text}")" BadgeStyle="@calc.Style" title="@calc.Hint" />
+                }
+            </div>
             <OdbcServerStatusBlock />
             <MainDatabaseStatusBlock />
+            <div class="server-status-column" aria-label="Репликация PostgreSQL по профилям Main DB">
+                @for (var index = 0; index < 2; index++)
+                {
+                    var wal = DescribeReplication(replication, index);
+                    <RadzenBadge Text="@($"WAL: {wal.Text}")" BadgeStyle="@wal.Style" title="@wal.Hint" />
+                }
+            </div>
         </div>
 
         <div class="runtime-nodes" aria-label="Режимы обоих Runtime">

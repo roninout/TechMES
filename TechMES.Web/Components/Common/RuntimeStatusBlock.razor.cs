@@ -1,3 +1,4 @@
+using Radzen;
 using TechMES.Contracts.Runtime;
 using TechMES.Web.Clients;
 
@@ -14,6 +15,7 @@ public partial class RuntimeStatusBlock
     private readonly PeriodicTimer _healthTimer = new(TimeSpan.FromSeconds(30));
 
     private RuntimeEndpointStatus[] _states = [];
+    private RuntimeEndpointDiagnostics[] _diagnostics = [];
     private RuntimeHealthResponse? _health;
     private DateTimeOffset? _healthReadAt;
 
@@ -89,12 +91,16 @@ public partial class RuntimeStatusBlock
 
         try
         {
-            var states = await RuntimeEndpoints.ReadStatusesAsync(_stop.Token);
+            var states = RuntimeEndpoints.ReadStatusesAsync(_stop.Token);
+            var diagnostics = RuntimeEndpoints.ReadDiagnosticsAsync(_stop.Token);
+
+            await Task.WhenAll(states, diagnostics);
 
             if (_disposed)
                 return;
 
-            _states = states;
+            _states = await states;
+            _diagnostics = await diagnostics;
             _activityError = "";
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)
@@ -103,6 +109,7 @@ public partial class RuntimeStatusBlock
         catch (Exception ex)
         {
             _states = [];
+            _diagnostics = [];
             _activityError = ex.Message;
         }
         finally
@@ -209,6 +216,92 @@ public partial class RuntimeStatusBlock
         var coordination = activity.Coordination;
 
         return $"Node: {activity.NodeId}\nMode: {activity.Mode}\nКоманды: {(activity.CanExecuteCommands ? "разрешены" : "запрещены")}\nОперации: {activity.PendingOperations}\nПричина: {activity.Reason}\nРежим изменён: {activity.ChangedAtUtc.ToLocalTime():dd.MM.yyyy HH:mm:ss}\n{checkedAt}\nHA: {(coordination?.Enabled == true ? coordination.Role : "Disabled")}\nВладелец: {coordination?.OwnerNodeId ?? "—"}\nLease до: {coordination?.ExpiresAtUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") ?? "—"}\nОшибки координации: {coordination?.ConsecutiveFailures.ToString() ?? "—"}\nКоординация: {coordination?.Message ?? "—"}\nInstance: {activity.InstanceId}\nActivation: {activity.ActivationId ?? "—"}";
+    }
+
+    /// <summary>Состояние Calc берётся с соответствующего Runtime, включая резервный.</summary>
+    private (string Text, BadgeStyle Style, string Hint) DescribeCalc(int index)
+    {
+        if (index == 1 && _states.Length == 1)
+            return ("N/A", BadgeStyle.Light, "Второй отдельный адрес Runtime отсутствует.");
+
+        var item = _diagnostics.ElementAtOrDefault(index);
+
+        if (!IsFresh(_states.ElementAtOrDefault(index)) || item?.Snapshot?.Calc is not { } calc)
+            return ("Unknown", BadgeStyle.Light, $"Runtime {index + 1}: {item?.Error ?? "Ожидание снимка Calc."}");
+
+        var style = calc.Status switch
+        {
+            "Online" => BadgeStyle.Success,
+            "Standby" => BadgeStyle.Info,
+            "Offline" => BadgeStyle.Danger,
+            "Blocked" or "Waiting" or "Changing" or "Paused" => BadgeStyle.Warning,
+            _ => BadgeStyle.Light
+        };
+
+        return (calc.Status, style, $"Calc на {item.Endpoint.Authority}: {calc.Status}\nСлужба Windows: {calc.WindowsServiceStatus ?? "—"}\nВладелец lease: {calc.LeaseOwner ?? "—"}\nHeartbeat: {calc.LastHeartbeatAtUtc?.ToLocalTime():dd.MM.yyyy HH:mm:ss}");
+    }
+
+    /// <summary>Выбирает один целый снимок, чтобы строки описывали одну и ту же проверку пары БД.</summary>
+    private RuntimeEndpointDiagnostics? SelectReplicationSnapshot()
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        return _diagnostics.Where(item => item.Snapshot?.PostgreSql is not null)
+            .OrderByDescending(item => item.Snapshot!.PostgreSql.Enabled)
+            .ThenByDescending(item =>
+            {
+                var cluster = item.Snapshot!.PostgreSql;
+                return (IsReplicationFresh(cluster, cluster.Primary, now) ? 1 : 0) + (IsReplicationFresh(cluster, cluster.Secondary, now) ? 1 : 0);
+            })
+            .ThenByDescending(item => item.Endpoint == ActiveNode?.Endpoint)
+            .FirstOrDefault();
+    }
+
+    private static bool IsReplicationFresh(PostgreSqlClusterHealthResponse cluster, PostgreSqlServerState node, DateTimeOffset now) =>
+        node.Configured && node.CheckedAtUtc is { } at && at <= now.AddSeconds(5) && now - at <= TimeSpan.FromSeconds(Math.Max(5, cluster.HealthPeriodSeconds) * 3d);
+
+    /// <summary>Отдельно показывает фактическую роль, состояние потока и очередь применения WAL.</summary>
+    private static (string Text, BadgeStyle Style, string Hint) DescribeReplication(RuntimeEndpointDiagnostics? item, int index)
+    {
+        if (item?.Snapshot?.PostgreSql is not { } cluster)
+            return ("Unknown", BadgeStyle.Light, "Ожидание снимка PostgreSQL.");
+
+        var node = index == 0 ? cluster.Primary : cluster.Secondary;
+        var hint = $"{node.Role} DB: {node.ServerAddress ?? "—"} · {node.ActualRole ?? "—"}\nТопология: {cluster.Topology} · проверено {node.CheckedAtUtc?.ToLocalTime():dd.MM.yyyy HH:mm:ss}\n{node.Message}";
+
+        if (!cluster.Enabled || !node.Configured)
+            return ("N/A", BadgeStyle.Light, hint);
+
+        if (!IsReplicationFresh(cluster, node, DateTimeOffset.UtcNow))
+            return ("Stale", BadgeStyle.Warning, hint);
+
+        if (cluster.Topology is "TwoPrimaries" or "TwoStandbys" or "ClusterMismatch" or "DuplicateEndpoint")
+            return ("Conflict", BadgeStyle.Danger, hint);
+
+        if (!node.Connected)
+            return ("Offline", BadgeStyle.Danger, hint);
+
+        if (!node.MonitoringOk)
+            return ("Unknown", BadgeStyle.Warning, hint);
+
+        if (node.ActualRole == "Primary")
+        {
+            var lag = node.MaxStreamingReplayLagBytes is { } lagBytes ? $"{lagBytes:N0} B" : "—";
+            hint += $"\nFlush LSN: {node.CurrentWalLsn ?? "—"}\nРеплик в streaming: {node.StreamingReplicaCount?.ToString() ?? "—"}\nРежимы sync_state: {node.StreamingSyncStates ?? "—"}\nМакс. отставание replay по streaming-репликам: {lag}";
+            return node.StreamingReplicaCount is > 0
+                ? (node.StreamingSyncStates ?? "Source", BadgeStyle.Info, hint)
+                : ("No replica", BadgeStyle.Warning, hint);
+        }
+
+        var backlog = node.ReplayBacklogBytes is { } bytes ? $"{bytes:N0} B" : "—";
+        hint += $"\nReceiver: {node.ReceiverStatus ?? "—"} · источник: {node.SenderHost ?? "—"}\nReceive LSN: {node.ReceivedWalLsn ?? "—"} · Replay LSN: {node.ReplayedWalLsn ?? "—"}\nПолучено, но ещё не применено: {backlog}\nПоследнее сообщение: {node.LastMessageReceivedAtUtc?.ToLocalTime():dd.MM.yyyy HH:mm:ss}";
+
+        if (node.ReplayPaused == true)
+            return ("Paused", BadgeStyle.Warning, hint);
+
+        return node.ReceiverStatus == "streaming"
+            ? ("Streaming", BadgeStyle.Success, hint)
+            : ("No stream", BadgeStyle.Warning, hint);
     }
 
     /// <summary>
