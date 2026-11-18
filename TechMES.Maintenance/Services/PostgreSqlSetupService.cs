@@ -22,13 +22,16 @@ public sealed class PostgreSqlSetupService(string? storageDirectory = null)
     /// <summary>Загружает профили; повреждённый файл не подменяется молча настройками по умолчанию.</summary>
     public List<PostgreSqlSetupProfile> LoadProfiles()
     {
-        var profiles = File.Exists(ProfilesPath)
-            ? JsonSerializer.Deserialize<List<PostgreSqlSetupProfile>>(File.ReadAllText(ProfilesPath), Json) ?? throw new InvalidDataException("Пустой файл профилей PostgreSQL.")
-            : [new(), new() { Name = "Secondary DB", ComputerName = "192.168.1.131" }];
+        if (!File.Exists(ProfilesPath))
+            return CreateDefaultProfiles();
+
+        var profiles = JsonSerializer.Deserialize<List<PostgreSqlSetupProfile>>(File.ReadAllText(ProfilesPath), Json) ?? throw new InvalidDataException("Пустой файл профилей PostgreSQL.");
 
         ValidateProfiles(profiles);
         return profiles;
     }
+
+    internal static List<PostgreSqlSetupProfile> CreateDefaultProfiles() => [new(), new() { Name = "Secondary DB" }];
 
     /// <summary>Проверяет два независимых профиля без обращения к БД или SCM.</summary>
     private static void ValidateProfiles(IReadOnlyList<PostgreSqlSetupProfile> profiles)

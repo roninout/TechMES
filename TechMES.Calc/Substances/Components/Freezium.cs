@@ -38,7 +38,6 @@ namespace TechMES.Calc.Substances.Components
             //- 35    2.79
             //- 40    2.78
             //http://stron.com.ua/frizium-formiat-kaliya/freezium
-            //\\192.168.1.3\Project\DOC_ACAD\Ukraine\КНХ\HPPO\Расчеты HPPO.xlsx
 
             double a0 = 0.0;
             double a1 = 0.0;

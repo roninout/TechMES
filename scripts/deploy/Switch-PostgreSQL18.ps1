@@ -1,9 +1,26 @@
 #requires -Version 5.1
 [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
-param([ValidateSet('Status','Fence','Promote','Rejoin')][string]$Mode='Status', [ValidateSet('192.168.1.132','192.168.1.131')][string]$From='192.168.1.132', [ValidateSet('192.168.1.132','192.168.1.131')][string]$To='192.168.1.131', [string]$FenceFile='', [string]$PgBin='D:\PostgreSQL\18\bin', [string]$DataDirectory='D:\PostgreSQL\18\data', [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18', [ValidateRange(1,65535)][int]$Port=5432, [switch]$CredentialInput, [ValidatePattern('^$|^[0-9a-f]{32}$')][string]$OperationId='', [ValidatePattern('^$|^[0-9]{1,20}$')][string]$ExpectedSystemIdentifier='', [string]$ResultFile='')
+param(
+    [ValidateSet('Status','Fence','Promote','Rejoin')][string]$Mode='Status',
+    [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$From,
+    [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$To,
+    [string]$FenceFile='',
+    [Parameter(Mandatory=$true)][string]$PgBin,
+    [Parameter(Mandatory=$true)][string]$DataDirectory,
+    [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18',
+    [ValidateRange(1,65535)][int]$Port=5432,
+    [switch]$CredentialInput,
+    [ValidatePattern('^$|^[0-9a-f]{32}$')][string]$OperationId='',
+    [ValidatePattern('^$|^[0-9]{1,20}$')][string]$ExpectedSystemIdentifier='',
+    [string]$ResultFile=''
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+
+$localSystemSid=[Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::LocalSystemSid,$null)
+
+$administratorsSid=[Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid,$null)
 $ProgressPreference='SilentlyContinue'
 
 # Нормализует локальный путь для сравнения и проверки границ каталога.
@@ -240,7 +257,7 @@ function Write-Json([string]$Path, $Value) {
 
     try {
         $acl=Get-Acl -LiteralPath $temporary
-        $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+        $acl.SetOwner(($administratorsSid))
         Set-Acl -LiteralPath $temporary -AclObject $acl
 
         $bytes=(New-Object Text.UTF8Encoding($true)).GetBytes(($Value | ConvertTo-Json -Depth 12))
@@ -370,7 +387,7 @@ function Write-StandbyConfiguration([string]$Stage, $Proof) {
 
     $service=Get-CimInstance Win32_Service -Filter "Name='$ServiceName'"
     $account=if ($service.StartName -eq 'LocalSystem') {
-        New-Object Security.Principal.SecurityIdentifier('S-1-5-18')
+        $localSystemSid
     }
     else {
         (New-Object Security.Principal.NTAccount($service.StartName)).Translate([Security.Principal.SecurityIdentifier])
@@ -379,11 +396,11 @@ function Write-StandbyConfiguration([string]$Stage, $Proof) {
     $acl=New-Object Security.AccessControl.FileSecurity
     $acl.SetAccessRuleProtection($true,$false)
 
-    foreach ($sid in @('S-1-5-32-544','S-1-5-18')) {
+    foreach ($sid in @($administratorsSid.Value,$localSystemSid.Value)) {
         $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)),'FullControl','Allow')))
     }
 
-    if ($account.Value -notin @('S-1-5-18','S-1-5-32-544')) {
+    if ($account.Value -notin @($localSystemSid.Value,$administratorsSid.Value)) {
         $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($account,'Read','Allow')))
     }
 
@@ -742,7 +759,7 @@ $local=@($From,$To | Where-Object { $_ -in $addresses })
 if ($local.Count -ne 1) { throw 'Run locally on exactly one selected database node.' }
 
 $script:LocalAddress=$local[0]
-$script:Slot=if ($From -eq '192.168.1.132') { 'techmes_primary' } else { 'techmes_secondary' }
+$script:Slot=if ([StringComparer]::Ordinal.Compare($From,$To) -gt 0) { 'techmes_primary' } else { 'techmes_secondary' }
 $script:WindowsPowerShell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $script:ServiceTool=Join-Path $PSScriptRoot 'Set-PostgreSQL18ServiceControl.ps1'
 

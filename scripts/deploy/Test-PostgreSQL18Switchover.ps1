@@ -1,6 +1,13 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([string]$PgBin='D:\PostgreSQL\18\bin', [string]$ServiceName='postgresql-x64-18', [ValidateRange(1,65535)][int]$Port=5432, [string]$OutputDirectory='')
+param(
+    [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$From,
+    [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$To,
+    [Parameter(Mandatory=$true)][string]$PgBin,
+    [string]$ServiceName='postgresql-x64-18',
+    [ValidateRange(1,65535)][int]$Port=5432,
+    [string]$OutputDirectory=''
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -281,10 +288,10 @@ function Get-PgPreflightIssues($Report) {
         return $issues.ToArray()
     }
 
-    $expectedLocalRecovery=$Report.LocalAddress -eq '192.168.1.131'
+    $expectedLocalRecovery=$Report.LocalAddress -eq $To
 
     if ($Report.Local.inRecovery -ne $expectedLocalRecovery -or $Report.Peer.inRecovery -eq $expectedLocalRecovery) {
-        $issues.Add('Expected .132 Primary and .131 Standby; inspect actual roles first.')
+        $issues.Add("Expected $From Primary and $To Standby; inspect actual roles first.")
     }
 
     if ($Report.Local.systemIdentifier -ne $Report.Peer.systemIdentifier) {
@@ -332,7 +339,7 @@ function Get-PgPreflightIssues($Report) {
         $issues.Add('The current Primary defaults to read-only transactions.')
     }
 
-    if (@($standby.receiver | Where-Object { $_.status -eq 'streaming' -and $_.senderHost -eq '192.168.1.132' -and $_.senderPort -eq $Report.Port }).Count -ne 1 -or $standby.wal.replayPaused -ne $false) {
+    if (@($standby.receiver | Where-Object { $_.status -eq 'streaming' -and $_.senderHost -eq $From -and $_.senderPort -eq $Report.Port }).Count -ne 1 -or $standby.wal.replayPaused -ne $false) {
         $issues.Add('Standby is not replaying the expected Primary stream.')
     }
 
@@ -363,10 +370,10 @@ finally {
 }
 
 $addresses=@(Get-NetIPAddress -AddressFamily IPv4 | Select-Object -ExpandProperty IPAddress)
-$localAddresses=@('192.168.1.132','192.168.1.131' | Where-Object { $_ -in $addresses })
+$localAddresses=@($From,$To | Where-Object { $_ -in $addresses })
 
-if ($localAddresses.Count -ne 1) {
-    throw 'Run this script locally on exactly one of the database nodes: .132 or .131.'
+if ($From -eq $To -or $localAddresses.Count -ne 1) {
+    throw 'Run this script locally on exactly one of the specified database nodes.'
 }
 
 if (!(Test-Path -LiteralPath (Join-Path $PgBin 'psql.exe') -PathType Leaf)) {
@@ -386,7 +393,7 @@ if (!$OutputDirectory) {
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
 $localAddress=$localAddresses[0]
-$peerAddress=if ($localAddress -eq '192.168.1.132') { '192.168.1.131' } else { '192.168.1.132' }
+$peerAddress=if ($localAddress -eq $From) { $To } else { $From }
 
 $credentials=Get-PgCheckCredentials
 

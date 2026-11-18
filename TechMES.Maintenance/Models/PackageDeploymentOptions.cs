@@ -9,8 +9,8 @@ public sealed class PackageDeploymentOptions
 {
     public string ArchivePath { get; set; } = "";
     public string OutputFolder { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "TechMESDeployments");
-    public ServerDeploymentProfile Primary { get; set; } = new() { Name = "Primary", ComputerName = "192.168.1.118", InstallRoot = @"C:\TechMES", ShareRoot = @"\\192.168.1.118\C$\TechMESUpdates", UpdateMaintenance = true };
-    public ServerDeploymentProfile Secondary { get; set; } = new() { Name = "Secondary", ComputerName = "192.168.1.132", InstallRoot = @"D:\TechMES", ShareRoot = @"\\192.168.1.132\TechMESUpdates" };
+    public ServerDeploymentProfile Primary { get; set; } = new() { Name = "Primary", UpdateMaintenance = true };
+    public ServerDeploymentProfile Secondary { get; set; } = new() { Name = "Secondary" };
 
     [JsonIgnore] public string LoadError { get; set; } = "";
     [JsonIgnore] public ServerDeploymentProfile[] Profiles => [Primary, Secondary];
@@ -36,7 +36,7 @@ public sealed class ServerDeploymentProfile
 {
     public string Name { get; set; } = "";
     public string ComputerName { get; set; } = "";
-    public string InstallRoot { get; set; } = @"D:\TechMES";
+    public string InstallRoot { get; set; } = "";
     public string ShareRoot { get; set; } = "";
     public string RuntimeStatusUrl { get; set; } = "http://127.0.0.1:5101/api/runtime/status";
     public bool UpdateRuntime { get; set; } = true;

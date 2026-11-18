@@ -1,23 +1,33 @@
 #requires -Version 5.1
 [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
-param([ValidatePattern('^[0-9a-f]{32}$')][string]$OperationId='ce5c2ed5c610fb69d9ec7180c514d71b')
+param(
+    [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$OperationId,
+    [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$From,
+    [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$To,
+    [Parameter(Mandatory=$true)][ValidatePattern('^[0-9]{1,20}$')][string]$SystemIdentifier,
+    [Parameter(Mandatory=$true)][string]$PgBin,
+    [Parameter(Mandatory=$true)][string]$DataDirectory,
+    [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18',
+    [ValidateRange(1,65535)][int]$Port=5432
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 
+$localSystemSid=[Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::LocalSystemSid,$null)
+
+$administratorsSid=[Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid,$null)
+
 # Это восстановление записи Fence после конкретной ошибки File.Replace, без повторной остановки БД.
-$serviceName='postgresql-x64-18'
 $hostService='TechMES.PostgreSql.Agent'
-$pgBin='D:\PostgreSQL\18\bin'
-$dataDirectory='D:\PostgreSQL\18\data'
-$sid='7703468038317098096'
-$from='192.168.1.131'
-$to='192.168.1.132'
-$nodeRoot=Join-Path $env:ProgramData 'TechMES\PostgreSqlNodes\POSTGRESQL-X64-18'
+$pgBin=[IO.Path]::GetFullPath($PgBin).TrimEnd('\','/')
+$dataDirectory=[IO.Path]::GetFullPath($DataDirectory).TrimEnd('\','/')
+$sid=$SystemIdentifier
+$nodeRoot=Join-Path $env:ProgramData ('TechMES\PostgreSqlNodes\'+$serviceName.ToUpperInvariant())
 $commandsRoot=Join-Path $nodeRoot 'Commands'
 $directory=Join-Path $commandsRoot $OperationId
 $networkRoot=Join-Path $commandsRoot 'Network'
-$activePath=Join-Path $env:ProgramData 'TechMES\PostgreSqlSetup\Switches\postgresql-x64-18-active-fence.json'
+$activePath=Join-Path $env:ProgramData ('TechMES\PostgreSqlSetup\Switches\'+$serviceName+'-active-fence.json')
 $backupRoot=Join-Path $directory 'fence-repair'
 $serviceTool=Join-Path $PSScriptRoot 'Set-PostgreSQL18ServiceControl.ps1'
 $powerShell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -34,12 +44,12 @@ function Assert-PrivatePath([string]$Path, [switch]$AllowRead) {
 
     $acl=Get-Acl -LiteralPath $Path
 
-    if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin @('S-1-5-18','S-1-5-32-544')) { throw ('Unexpected owner: '+$Path) }
+    if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin @($localSystemSid.Value,$administratorsSid.Value)) { throw ('Unexpected owner: '+$Path) }
 
     $writeRights=[Security.AccessControl.FileSystemRights]::Write -bor [Security.AccessControl.FileSystemRights]::Delete -bor [Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor [Security.AccessControl.FileSystemRights]::ChangePermissions -bor [Security.AccessControl.FileSystemRights]::TakeOwnership
 
     foreach ($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
-        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin @('S-1-5-18','S-1-5-32-544') -and (!$AllowRead -or ($rule.FileSystemRights -band $writeRights))) { throw ('Unexpected access rule: '+$Path) }
+        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin @($localSystemSid.Value,$administratorsSid.Value) -and (!$AllowRead -or ($rule.FileSystemRights -band $writeRights))) { throw ('Unexpected access rule: '+$Path) }
     }
 }
 
@@ -61,7 +71,7 @@ function Write-Json([string]$Path, $Value) {
 
     try {
         $acl=Get-Acl -LiteralPath $temporary
-        $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+        $acl.SetOwner(($administratorsSid))
         Set-Acl -LiteralPath $temporary -AclObject $acl
 
         $bytes=(New-Object Text.UTF8Encoding($true)).GetBytes(($Value | ConvertTo-Json -Depth 12))
@@ -82,7 +92,7 @@ function Write-Json([string]$Path, $Value) {
 
 # Повторно подтверждает остановку, запрет автозапуска и checkpoint исходного Primary.
 function Assert-OfflineFence($Proof) {
-    $raw=& $powerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $serviceTool -Mode Status -AsJson -ServiceName $serviceName -PgBin $pgBin -DataDirectory $dataDirectory -Port 5432
+    $raw=& $powerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $serviceTool -Mode Status -AsJson -ServiceName $serviceName -PgBin $pgBin -DataDirectory $dataDirectory -Port $Port
 
     if ($LASTEXITCODE -ne 0) { throw 'The service ownership check failed.' }
 
@@ -135,13 +145,13 @@ function Assert-Evidence($Request, $Journal, $Result, $Active, $Proof, $Plan) {
     if ($expected -cne $OperationId) { throw 'The operation does not belong to the reserved plan.' }
 
     foreach ($item in @($Active,$Proof)) {
-        if ($item.Format -ne 1 -or $item.Id -notmatch '^[0-9a-f]{32}$' -or $item.From -cne $from -or $item.To -cne $to -or $item.Sid -cne $sid -or $item.ServiceName -cne $serviceName -or $item.PgBin -ine $pgBin -or $item.DataDirectory -ine $dataDirectory -or $item.Port -ne 5432 -or $item.StartMode -notin @('Auto','Manual') -or $item.Timeline -lt 1) { throw 'The saved fence profile differs.' }
+        if ($item.Format -ne 1 -or $item.Id -notmatch '^[0-9a-f]{32}$' -or $item.From -cne $from -or $item.To -cne $to -or $item.Sid -cne $sid -or $item.ServiceName -cne $serviceName -or $item.PgBin -ine $pgBin -or $item.DataDirectory -ine $dataDirectory -or $item.Port -ne $Port -or $item.StartMode -notin @('Auto','Manual') -or $item.Timeline -lt 1) { throw 'The saved fence profile differs.' }
     }
 
     if ($Active.State -cne 'Fencing' -or $Active.Lsn -ne '' -or $Proof.State -cne 'Fenced' -or $Proof.Lsn -notmatch '^[0-9A-F]+/[0-9A-F]+$' -or $Proof.Id -cne $Active.Id -or $Proof.Timeline -ne $Active.Timeline -or $Proof.StartMode -cne $Active.StartMode -or (($Proof.Configs | ConvertTo-Json -Compress) -cne ($Active.Configs | ConvertTo-Json -Compress))) { throw 'The intended Fenced update does not match the original Fencing record.' }
 }
 
-if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Run on the Windows database server .131.' }
+if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Run on the Windows database source node.' }
 
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 
@@ -154,7 +164,7 @@ finally {
 
 $addresses=@(Get-NetIPAddress -AddressFamily IPv4 | Select-Object -ExpandProperty IPAddress)
 
-if ($from -notin $addresses -or $to -in $addresses) { throw 'This recovery is only for the source node 192.168.1.131.' }
+if ($from -notin $addresses -or $to -in $addresses) { throw 'Run the recovery on the specified source node.' }
 if (!(Test-Path -LiteralPath $serviceTool -PathType Leaf)) { throw 'Place this script beside Set-PostgreSQL18ServiceControl.ps1.' }
 
 Assert-PrivatePath $commandsRoot
@@ -197,7 +207,7 @@ try {
 
     if ($journal.state -ne 'NeedsReview') { throw 'The operation must be NeedsReview, not Running or Queued.' }
 
-    if (Get-Service -Name 'TechMES.Runtime.Service' -ErrorAction SilentlyContinue) { throw 'This recovery expects the standalone Agent on .131, without an installed Runtime service.' }
+    if (Get-Service -Name 'TechMES.Runtime.Service' -ErrorAction SilentlyContinue) { throw 'This recovery expects the standalone Agent, without an installed Runtime service.' }
 
     $hostState=Get-Service -Name $hostService
 
@@ -262,7 +272,7 @@ try {
             Copy-Item -LiteralPath $sources[$name] -Destination $backupPath
 
             $acl=Get-Acl -LiteralPath $backupPath
-            $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+            $acl.SetOwner(($administratorsSid))
 
             Set-Acl -LiteralPath $backupPath -AclObject $acl
         }

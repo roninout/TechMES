@@ -74,24 +74,23 @@
     "RuntimePort": 5101,
     "FirewallRuleName": "TechMES WEB 5163",
     "HttpsFirewallRuleName": "TechMES WEB HTTPS 7163",
-    "RuntimeFirewallRemoteAddresses": "192.168.1.118,192.168.1.132",
-    "CertificateDirectory": "C:\\TechMES\\certs",
+    "RuntimeFirewallRemoteAddresses": "",
     "CertificateFileName": "techmes-web.pfx",
     "PublicCertificateFileName": "techmes-web.cer",
-    "CertificatePassword": "TechMES-local-dev",
+    "CertificatePassword": "",
     "CertificateSubject": "TechMES WEB",
     "EnableHttpsRedirection": false
   },
   "Cleanup": {
-    "BackupRoot": "C:\\TechMES\\TechMES.Maintenance\\backups",
+    "BackupRoot": "",
     "LogRetentionDays": 1,
     "AppSettingsBackupRetentionDays": 30,
     "BackupRetentionDays": 60
   },
   "TargetMachine": {
     "DisplayName": "Local TechMES server",
-    "HostName": "techmes.com",
-    "IpAddress": "192.168.1.118",
+    "HostName": "",
+    "IpAddress": "",
     "Notes": ""
   },
   "Security": {
@@ -101,13 +100,13 @@
     "RequireScadaAudit": true
   },
   "ImportEdit": {
-    "ExcelImportFilePath": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Import.xlsx",
-    "ExcelExportFilePath": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\EXPORT\\TechMES_Info_Export.xlsx",
-    "OrdersPdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction",
-    "InstructionPdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction",
-    "SchemePdfSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Scheme",
-    "SupplierLogoSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction\\Supplier_logo",
-    "InstructionImageSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Instruction\\Images",
-    "SchemeImageSourceRoot": "C:\\Users\\Kovalchuk_a\\OneDrive\\Desktop\\SRD_DOCS\\Scheme\\Images"
+    "ExcelImportFilePath": "",
+    "ExcelExportFilePath": "",
+    "OrdersPdfSourceRoot": "",
+    "InstructionPdfSourceRoot": "",
+    "SchemePdfSourceRoot": "",
+    "SupplierLogoSourceRoot": "",
+    "InstructionImageSourceRoot": "",
+    "SchemeImageSourceRoot": ""
   }
 }

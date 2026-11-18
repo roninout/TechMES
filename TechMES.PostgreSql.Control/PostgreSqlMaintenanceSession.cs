@@ -9,18 +9,23 @@ public sealed record PostgreSqlMaintenanceConnection
 {
     public string SystemIdentifier { get; init; } = "";
     public string ClientCertificateSha256 { get; init; } = "";
-    public string Node131CertificateSha256 { get; init; } = "";
-    public string Node132CertificateSha256 { get; init; } = "";
+    public string NodeAddress { get; init; } = "";
+    public string CertificateSha256 { get; init; } = "";
+    public string PeerAddress { get; init; } = "";
+    public string PeerCertificateSha256 { get; init; } = "";
     public int Port { get; init; } = 5115;
 
     public static string SettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "TechMES", "PostgreSqlMaintenance", "client.json");
     public PostgreSqlControlOptions Control => new() { CommandsEnabled = true, ExpectedSystemIdentifier = SystemIdentifier };
-    public PostgreSqlNetworkOptions Network => new() { Enabled = true, NodeAddress = "192.168.1.131", PeerAddress = "192.168.1.132", Port = Port, CertificateSha256 = Node131CertificateSha256, PeerCertificateSha256 = Node132CertificateSha256, MaintenanceCertificateSha256 = ClientCertificateSha256 };
+    public PostgreSqlNetworkOptions Network => new() { Enabled = true, NodeAddress = NodeAddress, PeerAddress = PeerAddress, Port = Port, CertificateSha256 = CertificateSha256, PeerCertificateSha256 = PeerCertificateSha256, MaintenanceCertificateSha256 = ClientCertificateSha256 };
 
     // Читает закреплённые адреса и сертификаты; строк подключения и SQL-паролей здесь нет.
     public static PostgreSqlMaintenanceConnection Load()
     {
         var connection = PostgreSqlCommandStore.Read<PostgreSqlMaintenanceConnection>(SettingsPath);
+
+        if (string.IsNullOrWhiteSpace(connection.NodeAddress) || string.IsNullOrWhiteSpace(connection.PeerAddress))
+            throw new InvalidOperationException("Specify NodeAddress and PeerAddress in client.json using Configure-TechMESPostgreSqlMaintenance.ps1 -Mode Prepare.");
 
         connection.Network.Validate(connection.Control);
 

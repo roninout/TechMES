@@ -64,6 +64,9 @@ public sealed class HttpsCertificateManager(ServerNetworkService networkService)
     /// </summary>
     public HttpsCertificateInfo CreateOrReplaceCertificate(ServerOptions options, string? hostAlias = null)
     {
+        if (string.IsNullOrWhiteSpace(options.CertificatePassword))
+            throw new InvalidOperationException("Укажите пароль PFX перед созданием сертификата.");
+
         Directory.CreateDirectory(options.CertificateDirectory);
 
         using var rsa = RSA.Create(2048);

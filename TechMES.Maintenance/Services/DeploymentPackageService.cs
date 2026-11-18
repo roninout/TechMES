@@ -164,7 +164,7 @@ public sealed class DeploymentPackageService
     {
         ValidatePrepared(options, prepared);
         if (string.IsNullOrWhiteSpace(profile.ShareRoot) || !profile.ShareRoot.StartsWith(@"\\", StringComparison.Ordinal) || profile.ShareRoot.Split('\\', StringSplitOptions.RemoveEmptyEntries).Length < 2)
-            throw new InvalidDataException("Укажите сетевую папку, например \\\\192.168.1.132\\TechMESUpdates.");
+            throw new InvalidDataException("Укажите сетевую папку, например \\\\server\\TechMESUpdates.");
         var target = Path.Combine(profile.ShareRoot, Path.GetFileName(prepared.Directory));
         Directory.CreateDirectory(target);
         foreach (var name in new[] { Path.GetFileName(prepared.ArchivePath), "Deploy-" + profile.Name + ".ps1" })

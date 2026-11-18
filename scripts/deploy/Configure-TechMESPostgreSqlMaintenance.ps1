@@ -1,9 +1,26 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([ValidateSet('Prepare','Trust')][string]$Mode='Prepare', [string]$MaintenanceAddress='192.168.1.118', [string]$CertificatePath='', [ValidatePattern('^$|^[0-9A-Fa-f]{64}$')][string]$ExpectedMaintenanceSha256='', [ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$Node131Sha256='B6D245E6B30C1B821E9E67B3788D0DC054211ACDF8EC403EC100DAFCA677E341', [ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$Node132Sha256='FEAC30D8179603A5042B717B1BE332825586D8C288D6151C1F89ACF13615EF31', [ValidatePattern('^[0-9]{1,20}$')][string]$SystemIdentifier='7703468038317098096', [ValidateRange(1024,65535)][int]$Port=5115, [ValidateSet('','TechMES.Runtime.Service','TechMES.PostgreSql.Agent')][string]$HostService='', [switch]$RestoreNetwork, [ValidateSet('','192.168.1.131','192.168.1.132')][string]$NodeAddress='')
+param(
+    [ValidateSet('Prepare','Trust')][string]$Mode='Prepare',
+    [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$MaintenanceAddress,
+    [string]$CertificatePath='',
+    [ValidatePattern('^$|^[0-9A-Fa-f]{64}$')][string]$ExpectedMaintenanceSha256='',
+    [ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$NodeSha256,
+    [ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$PeerSha256,
+    [Parameter(Mandatory=$true)][ValidatePattern('^[0-9]{1,20}$')][string]$SystemIdentifier,
+    [ValidateRange(1024,65535)][int]$Port=5115,
+    [ValidateSet('','TechMES.Runtime.Service','TechMES.PostgreSql.Agent')][string]$HostService='',
+    [switch]$RestoreNetwork,
+    [ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$NodeAddress='',
+    [ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$PeerAddress=''
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+
+$localSystemSid=[Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::LocalSystemSid,$null)
+
+$administratorsSid=[Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid,$null)
 
 # This file uses ASCII only for Windows PowerShell 5.1.
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
@@ -72,7 +89,7 @@ function Set-PrivateAcl([string]$Path, [bool]$Directory) {
     }
 
     $security.SetAccessRuleProtection($true,$false)
-    $security.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+    $security.SetOwner(($administratorsSid))
 
     $inheritance=if ($Directory) {
         'ContainerInherit,ObjectInherit'
@@ -81,7 +98,7 @@ function Set-PrivateAcl([string]$Path, [bool]$Directory) {
         'None'
     }
 
-    foreach ($account in @('S-1-5-18','S-1-5-32-544')) {
+    foreach ($account in @($localSystemSid.Value,$administratorsSid.Value)) {
         $sid=New-Object Security.Principal.SecurityIdentifier($account)
 
         $security.AddAccessRule(
@@ -98,12 +115,12 @@ function Assert-PrivateFile([string]$Path) {
 
     $acl=Get-Acl -LiteralPath $Path
 
-    if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin @('S-1-5-18','S-1-5-32-544')) {
+    if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin @($localSystemSid.Value,$administratorsSid.Value)) {
         throw "Unexpected owner: $Path"
     }
 
     foreach ($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
-        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin @('S-1-5-18','S-1-5-32-544')) {
+        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin @($localSystemSid.Value,$administratorsSid.Value)) {
             throw "Unexpected Allow rule: $Path"
         }
     }
@@ -230,21 +247,17 @@ function Assert-NoPendingCommands([string]$CommandsRoot) {
     }
 }
 
-$address=$null
-
-if (![Net.IPAddress]::TryParse($MaintenanceAddress,[ref]$address) -or $address.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork -or [Net.IPAddress]::IsLoopback($address)) {
-    throw 'Specify the IPv4 address of the Maintenance computer.'
-}
-
 $addresses=@(Get-NetIPAddress -AddressFamily IPv4 | Select-Object -ExpandProperty IPAddress)
+
+if ($Mode -eq 'Prepare' -or $RestoreNetwork) {
+    if (!$NodeAddress -or !$PeerAddress -or $NodeAddress -eq $PeerAddress -or !$NodeSha256 -or !$PeerSha256 -or $NodeSha256 -ieq $PeerSha256) {
+        throw 'Specify two different node IPv4 addresses and their verified SHA-256 certificate pins.'
+    }
+}
 
 if ($Mode -eq 'Prepare') {
     if ($MaintenanceAddress -notin $addresses) {
         throw 'Run Prepare on the Maintenance computer.'
-    }
-
-    if ($Node131Sha256 -ieq $Node132Sha256) {
-        throw 'The database server certificate pins must be different.'
     }
 
     $root=Join-Path $env:ProgramData 'TechMES\PostgreSqlMaintenance'
@@ -292,8 +305,10 @@ if ($Mode -eq 'Prepare') {
     $connection=[ordered]@{
         SystemIdentifier=$SystemIdentifier
         ClientCertificateSha256=$pin
-        Node131CertificateSha256=$Node131Sha256.ToUpperInvariant()
-        Node132CertificateSha256=$Node132Sha256.ToUpperInvariant()
+        NodeAddress=$NodeAddress
+        PeerAddress=$PeerAddress
+        CertificateSha256=$NodeSha256.ToUpperInvariant()
+        PeerCertificateSha256=$PeerSha256.ToUpperInvariant()
         Port=$Port
     }
 
@@ -361,38 +376,13 @@ if ($null -eq $networkProperty -or $null -eq $networkProperty.Value) {
         throw 'RestoreNetwork requires the local database NodeAddress.'
     }
 
-    $peerAddress=if ($NodeAddress -eq '192.168.1.131') {
-        '192.168.1.132'
-    }
-    else {
-        '192.168.1.131'
-    }
-
-    $localPin=if ($NodeAddress -eq '192.168.1.131') {
-        $Node131Sha256
-    }
-    else {
-        $Node132Sha256
-    }
-
-    $peerPin=if ($NodeAddress -eq '192.168.1.131') {
-        $Node132Sha256
-    }
-    else {
-        $Node131Sha256
-    }
-
-    if ($localPin -ieq $peerPin) {
-        throw 'Local and peer certificate pins must differ.'
-    }
-
     $network=[pscustomobject]@{
         Enabled=$true
         NodeAddress=$NodeAddress
-        PeerAddress=$peerAddress
+        PeerAddress=$PeerAddress
         Port=$Port
-        CertificateSha256=$localPin.ToUpperInvariant()
-        PeerCertificateSha256=$peerPin.ToUpperInvariant()
+        CertificateSha256=$NodeSha256.ToUpperInvariant()
+        PeerCertificateSha256=$PeerSha256.ToUpperInvariant()
     }
 
     $restored=$true
@@ -407,11 +397,14 @@ foreach ($name in @('Enabled','NodeAddress','PeerAddress','Port','CertificateSha
     }
 }
 
-if (!$network.Enabled -or $network.NodeAddress -notin $addresses -or $network.NodeAddress -notin @('192.168.1.131','192.168.1.132') -or $network.PeerAddress -notin @('192.168.1.131','192.168.1.132') -or $network.NodeAddress -eq $network.PeerAddress -or $network.Port -lt 1024 -or $network.Port -gt 65535 -or $network.Port -eq $control.Port -or $network.CertificateSha256 -notmatch '^[0-9A-Fa-f]{64}$' -or $network.PeerCertificateSha256 -notmatch '^[0-9A-Fa-f]{64}$' -or $network.CertificateSha256 -ieq $network.PeerCertificateSha256) {
+$peerIp=$network.PeerAddress -as [Net.IPAddress]
+$peerIpValid=$null -ne $peerIp -and $peerIp.AddressFamily -eq 'InterNetwork' -and $peerIp.ToString() -ceq $network.PeerAddress -and $peerIp.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($peerIp)
+
+if (!$network.Enabled -or $network.NodeAddress -notin $addresses -or !$peerIpValid -or $network.NodeAddress -eq $network.PeerAddress -or $network.Port -lt 1024 -or $network.Port -gt 65535 -or $network.Port -eq $control.Port -or $network.CertificateSha256 -notmatch '^[0-9A-Fa-f]{64}$' -or $network.PeerCertificateSha256 -notmatch '^[0-9A-Fa-f]{64}$' -or $network.CertificateSha256 -ieq $network.PeerCertificateSha256) {
     throw "Invalid database network profile: $settingsPath"
 }
 
-if ($NodeAddress -and $network.NodeAddress -ne $NodeAddress) {
+if (($NodeAddress -and $network.NodeAddress -ne $NodeAddress) -or ($PeerAddress -and $network.PeerAddress -ne $PeerAddress)) {
     throw 'The selected host profile belongs to another node.'
 }
 

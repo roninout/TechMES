@@ -1,6 +1,6 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([ValidateSet('Auto','Runtime','Standalone')][string]$Mode='Auto', [string]$AgentDirectory='D:\TechMES\PostgreSql.Agent', [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18', [string]$PgBin='D:\PostgreSQL\18\bin', [string]$DataDirectory='D:\PostgreSQL\18\data', [ValidateRange(1,65535)][int]$Port=5432, [ValidateRange(5,3600)][int]$HealthPeriodSeconds=10)
+param([ValidateSet('Auto','Runtime','Standalone')][string]$Mode='Auto', [string]$AgentDirectory=(Join-Path $env:ProgramFiles 'TechMES\PostgreSql.Agent'), [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18', [Parameter(Mandatory=$true)][string]$PgBin, [Parameter(Mandatory=$true)][string]$DataDirectory, [ValidateRange(1,65535)][int]$Port=5432, [ValidateRange(5,3600)][int]$HealthPeriodSeconds=10)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'

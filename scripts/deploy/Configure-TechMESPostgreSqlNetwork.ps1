@@ -1,6 +1,13 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([ValidateSet('Prepare','Connect')][string]$Mode='Prepare', [Parameter(Mandatory=$true)][ValidateSet('192.168.1.131','192.168.1.132')][string]$NodeAddress, [string]$PeerCertificatePath='', [ValidatePattern('^$|^[0-9A-Fa-f]{64}$')][string]$ExpectedPeerSha256='', [ValidateRange(1024,65535)][int]$Port=5115)
+param(
+    [ValidateSet('Prepare','Connect')][string]$Mode='Prepare',
+    [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$NodeAddress,
+    [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$PeerAddress,
+    [string]$PeerCertificatePath='',
+    [ValidatePattern('^$|^[0-9A-Fa-f]{64}$')][string]$ExpectedPeerSha256='',
+    [ValidateRange(1024,65535)][int]$Port=5115
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -12,7 +19,7 @@ try {
 
 if ($NodeAddress -notin @(Get-NetIPAddress -AddressFamily IPv4 | Select-Object -ExpandProperty IPAddress)) { throw 'NodeAddress does not belong to this computer.' }
 
-$peerAddress=if ($NodeAddress -eq '192.168.1.131') { '192.168.1.132' } else { '192.168.1.131' }
+if ($NodeAddress -eq $PeerAddress) { throw 'NodeAddress and PeerAddress must differ.' }
 $runtime=Get-CimInstance Win32_Service -Filter "Name='TechMES.Runtime.Service'"
 $agent=Get-CimInstance Win32_Service -Filter "Name='TechMES.PostgreSql.Agent'"
 $service=if ($null -ne $runtime) { $runtime } elseif ($null -ne $agent) { $agent } else { throw 'Install Runtime or PostgreSql.Agent first.' }

@@ -1,4 +1,6 @@
-﻿using System.Net.Security;
+﻿using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -20,10 +22,19 @@ public sealed record PostgreSqlNetworkOptions
     public string PeerCertificateSha256 { get; init; } = "";
     public string MaintenanceCertificateSha256 { get; init; } = "";
 
+    // Принимает два различных адреса в канонической записи IPv4.
+    internal bool HasValidPair => IsNodeAddress(NodeAddress) && IsNodeAddress(PeerAddress) && NodeAddress != PeerAddress;
+
+    internal static bool IsNodeAddress(string value)
+    {
+        return IPAddress.TryParse(value, out var address) && address.AddressFamily == AddressFamily.InterNetwork
+            && address.ToString() == value && address.GetAddressBytes()[0] is > 0 and < 224 && !IPAddress.IsLoopback(address);
+    }
+
     // Проверяет адреса пары, отдельный HTTPS-порт и привязку к кластеру.
     public void Validate(PostgreSqlControlOptions control)
     {
-        if (!Enabled || NodeAddress is not ("192.168.1.131" or "192.168.1.132") || PeerAddress is not ("192.168.1.131" or "192.168.1.132") || NodeAddress == PeerAddress || Port is < 1024 or > 65535 || Port == control.Port || !Regex.IsMatch(CertificateSha256, "^[0-9A-Fa-f]{64}$") || !Regex.IsMatch(PeerCertificateSha256, "^[0-9A-Fa-f]{64}$") || CertificateSha256.Equals(PeerCertificateSha256, StringComparison.OrdinalIgnoreCase) || !control.CommandsEnabled || !Regex.IsMatch(control.ExpectedSystemIdentifier, "^[0-9]{1,20}$"))
+        if (!Enabled || !HasValidPair || Port is < 1024 or > 65535 || Port == control.Port || !Regex.IsMatch(CertificateSha256, "^[0-9A-Fa-f]{64}$") || !Regex.IsMatch(PeerCertificateSha256, "^[0-9A-Fa-f]{64}$") || CertificateSha256.Equals(PeerCertificateSha256, StringComparison.OrdinalIgnoreCase) || !control.CommandsEnabled || !Regex.IsMatch(control.ExpectedSystemIdentifier, "^[0-9]{1,20}$"))
             throw new InvalidOperationException("Invalid PostgreSQL network settings or disabled local commands.");
 
         if (MaintenanceCertificateSha256.Length != 0 && (!Regex.IsMatch(MaintenanceCertificateSha256, "^[0-9A-Fa-f]{64}$") || MaintenanceCertificateSha256.Equals(CertificateSha256, StringComparison.OrdinalIgnoreCase) || MaintenanceCertificateSha256.Equals(PeerCertificateSha256, StringComparison.OrdinalIgnoreCase)))
@@ -36,7 +47,7 @@ public sealed record PostgreSqlSwitchPlan(string Id, string From, string To, str
     // Привязывает план к одной настроенной паре и одному кластеру.
     public void Validate(PostgreSqlNetworkOptions network, PostgreSqlControlOptions control)
     {
-        if (!Regex.IsMatch(Id, "^[0-9a-f]{32}$") || From == To || !new[] { network.NodeAddress, network.PeerAddress }.Contains(From) || !new[] { network.NodeAddress, network.PeerAddress }.Contains(To) || SystemIdentifier != control.ExpectedSystemIdentifier)
+        if (!Regex.IsMatch(Id, "^[0-9a-f]{32}$") || From == To || !(From == network.NodeAddress && To == network.PeerAddress || From == network.PeerAddress && To == network.NodeAddress) || SystemIdentifier != control.ExpectedSystemIdentifier)
             throw new InvalidOperationException("The switch plan does not match this node and cluster.");
     }
 

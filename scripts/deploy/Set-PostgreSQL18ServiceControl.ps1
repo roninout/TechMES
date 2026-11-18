@@ -7,7 +7,7 @@ AdoptService performs a clean fast shutdown and starts the existing Windows
 service against the same data directory. It does not promote or clone a cluster.
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-param([ValidateSet('Status','AdoptService')][string]$Mode='Status', [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18', [string]$PgBin='D:\PostgreSQL\18\bin', [string]$DataDirectory='D:\PostgreSQL\18\data', [ValidateRange(1,65535)][int]$Port=5432, [switch]$AsJson)
+param([ValidateSet('Status','AdoptService')][string]$Mode='Status', [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18', [Parameter(Mandatory=$true)][string]$PgBin, [Parameter(Mandatory=$true)][string]$DataDirectory, [ValidateRange(1,65535)][int]$Port=5432, [switch]$AsJson)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

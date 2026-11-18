@@ -8,10 +8,10 @@ namespace TechMES.Maintenance.Models;
 public sealed class PostgreSqlSetupProfile
 {
     public string Name { get; set; } = "Primary DB";
-    public string ComputerName { get; set; } = "192.168.1.132";
+    public string ComputerName { get; set; } = "";
     public string ServiceName { get; set; } = "postgresql-x64-18";
-    public string BinDirectory { get; set; } = @"D:\PostgreSQL\18\bin";
-    public string DataDirectory { get; set; } = @"D:\PostgreSQL\18\data";
+    public string BinDirectory { get; set; } = "";
+    public string DataDirectory { get; set; } = "";
     public int Port { get; set; } = 5432;
 
     public string HostMode { get; set; } = "Auto";

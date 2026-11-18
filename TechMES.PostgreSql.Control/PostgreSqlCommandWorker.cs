@@ -9,7 +9,7 @@ using TechMES.Contracts.Runtime;
 namespace TechMES.PostgreSql.Control;
 
 /// <summary>Один исполнитель в Runtime и Agent; незавершённый запуск не повторяется автоматически.</summary>
-public sealed class PostgreSqlCommandWorker(IOptions<PostgreSqlControlOptions> options, IPostgreSqlActionHost host, PostgreSqlCommandStore store, IPostgreSqlSwitchRunner runner, ILogger<PostgreSqlCommandWorker> logger) : BackgroundService
+public sealed class PostgreSqlCommandWorker(IOptions<PostgreSqlControlOptions> options, IOptions<PostgreSqlNetworkOptions> network, IPostgreSqlActionHost host, PostgreSqlCommandStore store, IPostgreSqlSwitchRunner runner, ILogger<PostgreSqlCommandWorker> logger) : BackgroundService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -112,13 +112,17 @@ public sealed class PostgreSqlCommandWorker(IOptions<PostgreSqlControlOptions> o
     }
 
     /// <summary>Проверяет идентификатор, направление, срок запроса и отсутствие произвольных команд.</summary>
-    private static void Validate(PostgreSqlCommand request, string directory, PostgreSqlControlOptions settings)
+    private void Validate(PostgreSqlCommand request, string directory, PostgreSqlControlOptions settings)
     {
         if (request.Id != Path.GetFileName(directory) || request.Mode is not ("Fence" or "Promote" or "Rejoin") || request.SystemIdentifier != settings.ExpectedSystemIdentifier)
             throw new InvalidOperationException("Invalid command identity, mode or PostgreSQL cluster.");
 
-        if (request.From == request.To || request.From is not ("192.168.1.131" or "192.168.1.132") || request.To is not ("192.168.1.131" or "192.168.1.132"))
-            throw new InvalidOperationException("Invalid switch direction.");
+        var pair = network.Value;
+        var local = request.Mode == "Promote" ? request.To : request.From;
+        var peer = request.Mode == "Promote" ? request.From : request.To;
+
+        if (!pair.HasValidPair || local != pair.NodeAddress || peer != pair.PeerAddress)
+            throw new InvalidOperationException("The command does not match the configured local node and peer.");
 
         var age = DateTimeOffset.UtcNow - request.CreatedAtUtc;
 

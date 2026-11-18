@@ -11,7 +11,7 @@ namespace TechMES.PostgreSql.Tests;
 
 public sealed class PostgreSqlMaintenanceTests
 {
-    private static readonly PostgreSqlSwitchPlan Plan = new("123456781234123412341234567890ab", "192.168.1.131", "192.168.1.132", "7703468038317098096", DateTimeOffset.UtcNow);
+    private static readonly PostgreSqlSwitchPlan Plan = new("123456781234123412341234567890ab", "10.77.12.61", "10.77.12.62", "7703468038317098096", DateTimeOffset.UtcNow);
 
     // План сохраняется до первого запроса; новое окно продолжает именно его.
     [Fact]

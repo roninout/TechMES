@@ -8,8 +8,8 @@ public sealed record PostgreSqlControlOptions
     public bool Enabled { get; init; }
     public bool AutoDetect { get; init; } = true;
     public string ServiceName { get; init; } = "postgresql-x64-18";
-    public string BinDirectory { get; init; } = @"D:\PostgreSQL\18\bin";
-    public string DataDirectory { get; init; } = @"D:\PostgreSQL\18\data";
+    public string BinDirectory { get; init; } = "";
+    public string DataDirectory { get; init; } = "";
     public int Port { get; init; } = 5432;
     public int HealthPeriodSeconds { get; init; } = 10;
     public bool CommandsEnabled { get; init; }

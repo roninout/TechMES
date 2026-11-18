@@ -28,7 +28,7 @@ public partial class PostgreSqlSetupControl : UserControl
         }
         catch (Exception ex)
         {
-            Profiles = [new(), new() { Name = "Secondary DB", ComputerName = "192.168.1.131" }];
+            Profiles = PostgreSqlSetupService.CreateDefaultProfiles();
             _loadFailed = true;
             ActionStatus.Text = "Ошибка профилей. Проверьте значения и сохраните их. " + ex.Message;
         }

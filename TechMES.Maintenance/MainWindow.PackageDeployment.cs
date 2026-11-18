@@ -24,7 +24,10 @@ public partial class MainWindow
     {
         try
         {
-            var options = File.Exists(PackageDeploymentProfilePath) ? JsonSerializer.Deserialize<PackageDeploymentOptions>(File.ReadAllText(PackageDeploymentProfilePath), DeploymentPackageService.JsonOptions) ?? throw new InvalidDataException("Пустой профиль.") : new();
+            if (!File.Exists(PackageDeploymentProfilePath))
+                return new();
+
+            var options = JsonSerializer.Deserialize<PackageDeploymentOptions>(File.ReadAllText(PackageDeploymentProfilePath), DeploymentPackageService.JsonOptions) ?? throw new InvalidDataException("Пустой профиль.");
             options.Validate(false);
             return options;
         }

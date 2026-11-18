@@ -13,7 +13,7 @@ public sealed class RedundancySettingsViewModel : ObservableObject
     private string _nodeId = Environment.MachineName, _role = "Primary", _scope = "TechMES.Runtime";
     private bool _coordinationEnabled, _startInStandby, _localEnabled, _isChecking;
     private int _failureThreshold = 3, _recoveryThreshold = 3, _port = 5432;
-    private string _serviceName = "postgresql-x64-18", _binDirectory = @"D:\PostgreSQL\18\bin", _dataDirectory = @"D:\PostgreSQL\18\data";
+    private string _serviceName = "postgresql-x64-18", _binDirectory = "", _dataDirectory = "";
     private string _settingsPath = "", _diagnostics = "Проверка ещё не выполнялась.";
 
     public IReadOnlyList<string> Roles { get; } = ["Primary", "Secondary"];
@@ -48,8 +48,8 @@ public sealed class RedundancySettingsViewModel : ObservableObject
 
         LocalEnabled = Read(root, false, PostgreSqlControlOptions.SectionName, "Enabled");
         ServiceName = Read(root, "postgresql-x64-18", PostgreSqlControlOptions.SectionName, "ServiceName");
-        BinDirectory = Read(root, @"D:\PostgreSQL\18\bin", PostgreSqlControlOptions.SectionName, "BinDirectory");
-        DataDirectory = Read(root, @"D:\PostgreSQL\18\data", PostgreSqlControlOptions.SectionName, "DataDirectory");
+        BinDirectory = Read(root, "", PostgreSqlControlOptions.SectionName, "BinDirectory");
+        DataDirectory = Read(root, "", PostgreSqlControlOptions.SectionName, "DataDirectory");
         Port = Read(root, 5432, PostgreSqlControlOptions.SectionName, "Port");
 
         Diagnostics = "Настройки загружены. После изменения сохраните их и перезапустите Runtime.";

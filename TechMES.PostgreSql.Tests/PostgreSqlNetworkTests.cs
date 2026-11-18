@@ -12,7 +12,7 @@ namespace TechMES.PostgreSql.Tests;
 
 public sealed class PostgreSqlNetworkTests
 {
-    private static readonly PostgreSqlSwitchPlan Plan = new("123456781234123412341234567890ab", "192.168.1.131", "192.168.1.132", "7703468038317098096", DateTimeOffset.UtcNow);
+    private static readonly PostgreSqlSwitchPlan Plan = new("123456781234123412341234567890ab", "10.77.12.61", "10.77.12.62", "7703468038317098096", DateTimeOffset.UtcNow);
 
     // Id сохраняется при повторе и различается у фаз.
     [Fact]
@@ -31,7 +31,7 @@ public sealed class PostgreSqlNetworkTests
 
         await new PostgreSqlSwitchCoordinator(remote).RunAsync(Plan, _ => { }, CancellationToken.None);
 
-        Assert.Equal(new[] { "reserve:192.168.1.131", "reserve:192.168.1.132", "Fence:192.168.1.131", "Promote:192.168.1.132", "Rejoin:192.168.1.131", "complete:192.168.1.131", "complete:192.168.1.132" }, remote.Calls);
+        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61", "Promote:10.77.12.62", "Rejoin:10.77.12.61", "complete:10.77.12.61", "complete:10.77.12.62" }, remote.Calls);
     }
 
     // Неопределённый результат прекращает переход к следующему этапу.

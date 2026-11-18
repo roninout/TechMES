@@ -71,6 +71,8 @@ public sealed class PostgreSqlCommandTests
     [InlineData("Expired")]
     [InlineData("Cluster")]
     [InlineData("Direction")]
+    [InlineData("UnknownPeer")]
+    [InlineData("WrongNode")]
     [InlineData("Proof")]
     public async Task InvalidRequestDoesNotStartTheScript(string invalid)
     {
@@ -85,6 +87,8 @@ public sealed class PostgreSqlCommandTests
             "Expired" => request with { CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-11) },
             "Cluster" => request with { SystemIdentifier = "123" },
             "Direction" => request with { To = request.From },
+            "UnknownPeer" => request with { To = "10.77.12.63" },
+            "WrongNode" => request with { From = request.To, To = request.From },
             _ => request with { Mode = "Promote" }
         };
 
@@ -214,6 +218,8 @@ public sealed class PostgreSqlCommandTests
 
     private sealed class Scenario : IDisposable, IPostgreSqlActionHost
     {
+        private const string NodeAddress = "10.77.12.61";
+        private const string PeerAddress = "10.77.12.62";
         private readonly string _root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
 
         public PostgreSqlControlOptions Settings { get; } = new() { CommandsEnabled = true, ExpectedSystemIdentifier = "7703468038317098096" };
@@ -233,7 +239,9 @@ public sealed class PostgreSqlCommandTests
         // Создаёт новый исполнитель, сохраняя прежний каталог.
         public PostgreSqlCommandWorker Worker(bool enabled = true)
         {
-            return new(Options.Create(Settings with { CommandsEnabled = enabled }), this, Store, Runner, NullLogger<PostgreSqlCommandWorker>.Instance);
+            var network = new PostgreSqlNetworkOptions { NodeAddress = NodeAddress, PeerAddress = PeerAddress };
+
+            return new(Options.Create(Settings with { CommandsEnabled = enabled }), Options.Create(network), this, Store, Runner, NullLogger<PostgreSqlCommandWorker>.Instance);
         }
 
         // Исключает из теста настоящий SCM; проверки очереди остаются реальными.
@@ -250,7 +258,10 @@ public sealed class PostgreSqlCommandTests
 
             Directory.CreateDirectory(directory);
 
-            PostgreSqlCommandStore.Write(Path.Combine(directory, "request.json"), new PostgreSqlCommand(id, mode, "192.168.1.131", "192.168.1.132", Settings.ExpectedSystemIdentifier, DateTimeOffset.UtcNow, null));
+            var from = mode == "Promote" ? PeerAddress : NodeAddress;
+            var to = mode == "Promote" ? NodeAddress : PeerAddress;
+
+            PostgreSqlCommandStore.Write(Path.Combine(directory, "request.json"), new PostgreSqlCommand(id, mode, from, to, Settings.ExpectedSystemIdentifier, DateTimeOffset.UtcNow, null));
 
             return directory;
         }

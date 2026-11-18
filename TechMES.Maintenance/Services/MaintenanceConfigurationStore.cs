@@ -7,7 +7,7 @@ namespace TechMES.Maintenance.Services;
 
 /// <summary>
 /// Загружает настройки обслуживающего приложения.
-/// Файл хранится рядом с проектом Maintenance, чтобы его можно было редактировать как часть solution.
+/// Локальный профиль разработки хранится рядом с шаблоном настроек.
 /// </summary>
 public sealed class MaintenanceConfigurationStore(DirectoryInfo repositoryRoot)
 {
@@ -29,7 +29,7 @@ public sealed class MaintenanceConfigurationStore(DirectoryInfo repositoryRoot)
     /// </summary>
     public string ConfigurationPath =>
         File.Exists(Path.Combine(repositoryRoot.FullName, "TechMES.sln"))
-            ? Path.Combine(repositoryRoot.FullName, "TechMES.Maintenance", "maintenance.settings.json")
+            ? Path.Combine(repositoryRoot.FullName, "TechMES.Maintenance", "maintenance.settings.local.json")
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "TechMES", "Maintenance", "maintenance.settings.json");
 
     /// <summary>
@@ -38,12 +38,16 @@ public sealed class MaintenanceConfigurationStore(DirectoryInfo repositoryRoot)
     /// </summary>
     public MaintenanceConfiguration Load()
     {
-        if (!File.Exists(ConfigurationPath))
+        var path = ConfigurationPath;
+        if (!File.Exists(path) && File.Exists(Path.Combine(repositoryRoot.FullName, "TechMES.sln")))
+            path = Path.Combine(repositoryRoot.FullName, "TechMES.Maintenance", "maintenance.settings.json");
+
+        if (!File.Exists(path))
             return MaintenanceConfiguration.CreateDefault();
 
         try
         {
-            var json = File.ReadAllText(ConfigurationPath);
+            var json = File.ReadAllText(path);
             return JsonSerializer.Deserialize<MaintenanceConfiguration>(json, _jsonOptions)
                 ?? MaintenanceConfiguration.CreateDefault();
         }

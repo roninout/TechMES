@@ -124,14 +124,16 @@ public sealed class PostgreSqlCommandStore
 
         FileSystemSecurity security = directory ? new DirectoryInfo(path).GetAccessControl() : new FileInfo(path).GetAccessControl();
 
-        if (security.GetOwner(typeof(SecurityIdentifier))?.Value is not ("S-1-5-18" or "S-1-5-32-544"))
+        var allowed = new[] { new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null) };
+
+        if (security.GetOwner(typeof(SecurityIdentifier)) is not SecurityIdentifier owner || !allowed.Contains(owner))
             throw new UnauthorizedAccessException("The command store owner is not SYSTEM or Administrators.");
 
         var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier));
 
         foreach (FileSystemAccessRule rule in rules)
         {
-            if (rule.AccessControlType == AccessControlType.Allow && rule.IdentityReference.Value is not ("S-1-5-18" or "S-1-5-32-544"))
+            if (rule.AccessControlType == AccessControlType.Allow && (rule.IdentityReference is not SecurityIdentifier sid || !allowed.Contains(sid)))
                 throw new UnauthorizedAccessException("The command store ACL is not private.");
         }
     }

@@ -41,7 +41,7 @@ public sealed class ServerOptions
     /// <summary>
     /// Папка, куда Maintenance кладет PFX-сертификат для Kestrel и CER-файл для установки доверия на клиентах.
     /// </summary>
-    public string CertificateDirectory { get; set; } = @"C:\TechMES\certs";
+    public string CertificateDirectory { get; set; } = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "TechMES", "certs");
 
     /// <summary>
     /// Имя PFX-файла с закрытым ключом. Этот файл подключается в TechMES.Web/appsettings.json.
@@ -54,9 +54,9 @@ public sealed class ServerOptions
     public string PublicCertificateFileName { get; set; } = "techmes-web.cer";
 
     /// <summary>
-    /// Пароль PFX. На текущем этапе секреты храним открыто, как и остальные серверные настройки проекта.
+    /// Пароль PFX для этого сервера.
     /// </summary>
-    public string CertificatePassword { get; set; } = "TechMES-local-dev";
+    public string CertificatePassword { get; set; } = "";
 
     /// <summary>
     /// Отображаемое имя self-signed сертификата.

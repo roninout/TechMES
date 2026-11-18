@@ -1,9 +1,27 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][ValidateSet('TechMES.Runtime.Service','TechMES.PostgreSql.Agent')][string]$HostService, [Parameter(Mandatory=$true)][ValidateSet('192.168.1.131','192.168.1.132')][string]$NodeAddress, [Parameter(Mandatory=$true)][ValidateSet('192.168.1.131','192.168.1.132')][string]$PeerAddress, [Parameter(Mandatory=$true)][ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$NodeSha256, [Parameter(Mandatory=$true)][ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$PeerSha256, [Parameter(Mandatory=$true)][ValidatePattern('^[0-9]{1,20}$')][string]$SystemIdentifier, [Parameter(Mandatory=$true)][string]$MaintenanceAddress, [Parameter(Mandatory=$true)][string]$MaintenanceCertificatePath, [Parameter(Mandatory=$true)][ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$MaintenanceSha256, [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18', [ValidateRange(1,65535)][int]$PgPort=5432, [ValidateRange(1024,65535)][int]$HttpsPort=5115, [ValidateRange(15,300)][int]$ReadyTimeoutSeconds=60)
+param(
+    [Parameter(Mandatory=$true)][ValidateSet('TechMES.Runtime.Service','TechMES.PostgreSql.Agent')][string]$HostService,
+    [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$NodeAddress,
+    [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$PeerAddress,
+    [Parameter(Mandatory=$true)][ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$NodeSha256,
+    [Parameter(Mandatory=$true)][ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$PeerSha256,
+    [Parameter(Mandatory=$true)][ValidatePattern('^[0-9]{1,20}$')][string]$SystemIdentifier,
+    [Parameter(Mandatory=$true)][string]$MaintenanceAddress,
+    [Parameter(Mandatory=$true)][string]$MaintenanceCertificatePath,
+    [Parameter(Mandatory=$true)][ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$MaintenanceSha256,
+    [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18',
+    [ValidateRange(1,65535)][int]$PgPort=5432,
+    [ValidateRange(1024,65535)][int]$HttpsPort=5115,
+    [ValidateRange(15,300)][int]$ReadyTimeoutSeconds=60
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+
+$localSystemSid=[Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::LocalSystemSid,$null)
+
+$administratorsSid=[Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid,$null)
 $ProgressPreference='SilentlyContinue'
 
 # Normalizes local paths and rejects links before reading or replacing files.
@@ -170,12 +188,12 @@ function Assert-Credentials([string]$Path) {
 
     $acl=Get-Acl -LiteralPath $Path
 
-    if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin @('S-1-5-18','S-1-5-32-544')) {
+    if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin @($localSystemSid.Value,$administratorsSid.Value)) {
         throw 'Unexpected credentials owner.'
     }
 
     foreach ($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
-        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin @('S-1-5-18','S-1-5-32-544')) {
+        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin @($localSystemSid.Value,$administratorsSid.Value)) {
             throw 'Credentials ACL is not private.'
         }
     }

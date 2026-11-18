@@ -1,9 +1,21 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([ValidateSet('Credentials','Status','Fence','Promote','Rejoin')][string]$Mode='Status', [ValidateSet('192.168.1.132','192.168.1.131')][string]$From='192.168.1.131', [ValidateSet('192.168.1.132','192.168.1.131')][string]$To='192.168.1.132', [string]$FenceFile='', [ValidatePattern('^[0-9]{1,20}$')][string]$SystemIdentifier='7703468038317098096', [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18', [ValidatePattern('^$|^[0-9a-f]{32}$')][string]$OperationId='')
+param(
+    [ValidateSet('Credentials','Status','Fence','Promote','Rejoin')][string]$Mode='Status',
+    [ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$From='',
+    [ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$To='',
+    [string]$FenceFile='',
+    [ValidatePattern('^[0-9]{1,20}$')][string]$SystemIdentifier='',
+    [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18',
+    [ValidatePattern('^$|^[0-9a-f]{32}$')][string]$OperationId=''
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+
+$localSystemSid=[Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::LocalSystemSid,$null)
+
+$administratorsSid=[Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid,$null)
 
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Run locally on the Windows database server.' }
 
@@ -35,10 +47,10 @@ function Initialize-Store {
 
     $acl=New-Object Security.AccessControl.DirectorySecurity
     $acl.SetAccessRuleProtection($true,$false)
-    $admins=New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')
+    $admins=$administratorsSid
     $acl.SetOwner($admins)
 
-    foreach ($sid in @('S-1-5-32-544','S-1-5-18')) {
+    foreach ($sid in @($administratorsSid.Value,$localSystemSid.Value)) {
         $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)),'FullControl','ContainerInherit,ObjectInherit','None','Allow')))
     }
 
@@ -61,7 +73,7 @@ function Write-Atomic([string]$Path, [byte[]]$Bytes) {
 
     try {
         $acl=Get-Acl -LiteralPath $temporary
-        $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+        $acl.SetOwner(($administratorsSid))
         Set-Acl -LiteralPath $temporary -AclObject $acl
 
         $stream.Write($Bytes,0,$Bytes.Length)
@@ -141,9 +153,9 @@ if ($Mode -eq 'Credentials') {
         if (Test-Path -LiteralPath $credentialPath) {
             $acl=New-Object Security.AccessControl.FileSecurity
             $acl.SetAccessRuleProtection($true,$false)
-            $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+            $acl.SetOwner(($administratorsSid))
 
-            foreach ($sid in @('S-1-5-32-544','S-1-5-18')) {
+            foreach ($sid in @($administratorsSid.Value,$localSystemSid.Value)) {
                 $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)),'FullControl','Allow')))
             }
 
@@ -164,7 +176,7 @@ if ($Mode -eq 'Credentials') {
     return
 }
 
-if ($From -eq $To) { throw 'From and To must be different database nodes.' }
+if (!$From -or !$To -or $From -eq $To -or !$SystemIdentifier) { throw 'Specify distinct From and To IPv4 addresses and SystemIdentifier.' }
 
 $statusPath=Join-Path (Split-Path -Path $root -Parent) 'status.json'
 Assert-NoLinks $statusPath
