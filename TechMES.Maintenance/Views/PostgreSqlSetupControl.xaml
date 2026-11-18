@@ -14,111 +14,126 @@
             <Setter Property="Margin" Value="0,4,0,10" />
         </Style>
 
-        <Style x:Key="Section" TargetType="Expander">
+        <Style x:Key="TabIcon" TargetType="{x:Type ui:SymbolIcon}">
+            <Setter Property="Width" Value="20" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+
+        <Style x:Key="AgentCard" TargetType="Border">
+            <Setter Property="Padding" Value="12" />
             <Setter Property="Margin" Value="0,0,0,10" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
         </Style>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="16">
-            <TextBlock Text="PostgreSQL" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,10" />
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-            <ListBox x:Name="ServerCards" ItemsSource="{Binding Cards}" SelectedIndex="0" SelectionChanged="OnProfileSelected" Margin="0,0,0,10">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <UniformGrid Columns="2" />
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="VerticalContentAlignment" Value="Top" />
-                    </Style>
-                </ListBox.ItemContainerStyle>
-
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Margin="10,7">
-                            <TextBlock Text="{Binding Profile.Name}" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding Address}" Margin="0,2,0,5" />
-                            <TextBlock Text="{Binding Summary}" />
-                            <TextBlock Text="{Binding Source}" Opacity="0.75" Margin="0,4,0,0" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-
-            <StackPanel x:Name="ActionsPanel">
-                <WrapPanel Margin="0,0,0,6">
-                    <ui:Button Content="Обновить состояние" Click="OnRefreshCardsClick" Margin="0,0,8,8" />
-                    <ui:Button Content="Подготовить…" Click="OnOpenPreparationClick" Margin="0,0,8,8" />
-                </WrapPanel>
-
-                <Expander Header="Подробности и отчёт" Style="{StaticResource Section}">
-                    <StackPanel Margin="12,8">
-                        <TextBlock x:Name="HostDetails" Margin="0,0,0,8" />
-                        <ui:Button Content="Загрузить отчёт контроллера…" Click="OnImportHostClick" />
+        <ListBox x:Name="ServerCards" ItemsSource="{Binding Cards}" SelectedIndex="0" SelectionChanged="OnProfileSelected"
+                 Margin="0,0,0,10" Background="Transparent" BorderThickness="0" Padding="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Columns="2" />
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                    <Setter Property="Margin" Value="2" />
+                    <Setter Property="Padding" Value="12,8" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <Border x:Name="Frame" Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="2" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Frame" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="Frame" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+                                        <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource SystemAccentColorPrimaryBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Profile.Name}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Address}" Margin="0,2,0,5" />
+                        <TextBlock Text="{Binding Summary}" />
+                        <TextBlock Text="{Binding Source}" Style="{StaticResource MutedText}" Margin="0,4,0,0" />
                     </StackPanel>
-                </Expander>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
 
-                <Expander x:Name="PreparationSection" Header="Подготовка контроллера" Style="{StaticResource Section}">
-                    <StackPanel Margin="12,8">
-                        <TextBlock x:Name="TargetText" FontWeight="SemiBold" Margin="0,0,0,6" />
-                        <TextBlock x:Name="PreparationHint" Margin="0,0,0,8" />
-
-                        <WrapPanel Margin="0,0,0,4">
-                            <ui:Button x:Name="CheckHostButton" Click="OnCheckHostClick" Margin="0,0,8,8" />
-                            <ui:Button x:Name="PrepareHostButton" Click="OnPrepareHostClick" Margin="0,0,8,8" />
+        <TabControl x:Name="ActionsPanel" Grid.Row="1" SelectionChanged="OnActionTabSelected"
+                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="Info24" Style="{StaticResource TabIcon}" />
+                        <TextBlock Text="Info" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="12">
+                        <WrapPanel Margin="0,0,0,8">
+                            <ui:Button Content="Обновить состояние" Click="OnRefreshCardsClick" Margin="0,0,8,8" />
+                            <ui:Button Content="Загрузить отчёт контроллера…" Click="OnImportHostClick" Margin="0,0,8,8" />
                         </WrapPanel>
 
-                        <Expander x:Name="AgentSection" Header="Установка или обновление Agent" Style="{StaticResource Section}">
-                            <StackPanel x:Name="AgentFields" Margin="12,8" DataContext="{Binding SelectedItem.Profile, ElementName=ServerCards}">
-                                <TextBlock Text="Каталог установки на сервере (при первом запуске)" />
-                                <ui:TextBox Text="{Binding AgentDirectory, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SetupField}" />
-
-                                <TextBlock Text="Готовый пакет Agent на компьютере Maintenance" />
-                                <ui:TextBox x:Name="AgentPackagePath" Text="{Binding AgentPackageDirectory}" IsReadOnly="True" Style="{StaticResource SetupField}" />
-                                <TextBlock x:Name="AgentModeHint" Text="При подготовке установки профиль будет сохранён в режиме Standalone." Margin="0,0,0,8" />
-
-                                <WrapPanel>
-                                    <ui:Button x:Name="BuildAgentButton" Content="Собрать Agent…" Click="OnBuildAgentClick" Margin="0,0,8,8" />
-                                    <ui:Button Content="Выбрать готовый пакет…" Click="OnChooseAgentPackageClick" Margin="0,0,8,8" />
-                                    <ui:Button x:Name="InstallAgentButton" Click="OnInstallAgentClick" Margin="0,0,8,8" />
-                                </WrapPanel>
-                            </StackPanel>
-                        </Expander>
-
-                        <StackPanel x:Name="TransferPanel" Visibility="Collapsed">
-                            <ui:TextBox x:Name="TransferInstructions" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" Margin="0,0,0,8" />
-
-                            <WrapPanel>
-                                <ui:Button Content="Открыть папку" Click="OnOpenHostFolderClick" Margin="0,0,8,8" />
-                                <ui:Button Content="Загрузить результат…" Click="OnImportHostClick" Margin="0,0,8,8" />
-                            </WrapPanel>
-                        </StackPanel>
+                        <TextBlock x:Name="HostDetails" />
                     </StackPanel>
-                </Expander>
+                </ScrollViewer>
+            </TabItem>
 
-                <TextBlock x:Name="ActionStatus" Margin="0,0,0,10" />
-
-                <Expander Header="Профиль и служба PostgreSQL" Style="{StaticResource Section}">
-                    <StackPanel x:Name="ProfileEditor" Margin="12,8" DataContext="{Binding SelectedItem.Profile, ElementName=ServerCards}">
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="Person24" Style="{StaticResource TabIcon}" />
+                        <TextBlock Text="Profile" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="ProfileEditor" DataContext="{Binding SelectedItem.Profile, ElementName=ServerCards}" Margin="12">
                         <TextBlock Text="Компьютер БД (имя или IPv4)" />
-                        <ui:TextBox Text="{Binding ComputerName, UpdateSourceTrigger=PropertyChanged, NotifyOnSourceUpdated=True}" Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
+                        <ui:TextBox Text="{Binding ComputerName, UpdateSourceTrigger=PropertyChanged, NotifyOnSourceUpdated=True}"
+                                    Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
 
                         <TextBlock Text="Имя Windows-службы PostgreSQL" />
-                        <ui:TextBox Text="{Binding ServiceName, UpdateSourceTrigger=PropertyChanged, NotifyOnSourceUpdated=True}" Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
+                        <ui:TextBox Text="{Binding ServiceName, UpdateSourceTrigger=PropertyChanged, NotifyOnSourceUpdated=True}"
+                                    Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
 
                         <TextBlock Text="Каталог bin" />
-                        <ui:TextBox Text="{Binding BinDirectory, UpdateSourceTrigger=PropertyChanged, NotifyOnSourceUpdated=True}" Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
+                        <ui:TextBox Text="{Binding BinDirectory, UpdateSourceTrigger=PropertyChanged, NotifyOnSourceUpdated=True}"
+                                    Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
 
                         <TextBlock Text="Каталог data" />
-                        <ui:TextBox Text="{Binding DataDirectory, UpdateSourceTrigger=PropertyChanged, NotifyOnSourceUpdated=True}" Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
+                        <ui:TextBox Text="{Binding DataDirectory, UpdateSourceTrigger=PropertyChanged, NotifyOnSourceUpdated=True}"
+                                    Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
 
                         <TextBlock Text="Порт PostgreSQL" />
-                        <ui:TextBox Text="{Binding Port, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnSourceUpdated=True}" Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
+                        <ui:TextBox Text="{Binding Port, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnSourceUpdated=True}"
+                                    Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
 
                         <TextBlock Text="Тип контроллера (Auto выбирает на сервере)" />
                         <ComboBox x:Name="HostModeField"
@@ -130,30 +145,108 @@
                         </ComboBox>
 
                         <TextBlock Text="Интервал проверки Agent, секунд" />
-                        <ui:TextBox Text="{Binding HostHealthPeriodSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnSourceUpdated=True}" Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
-                        <ui:Button Content="Сохранить профили" Click="OnSaveClick" Margin="0,0,0,10" />
+                        <ui:TextBox Text="{Binding HostHealthPeriodSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnSourceUpdated=True}"
+                                    Style="{StaticResource SetupField}" SourceUpdated="OnProfileEdited" />
 
-                        <Expander Header="Проверка службы и AdoptService" Style="{StaticResource Section}">
-                            <StackPanel Margin="12,8">
-                                <TextBlock Text="AdoptService может перезапустить PostgreSQL и прервать подключения." Margin="0,0,0,8" />
+                        <ui:Button Content="Сохранить профили" Click="OnSaveClick" Margin="0,0,0,10" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="Server24" Style="{StaticResource TabIcon}" />
+                        <TextBlock Text="Service" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="12">
+                        <TextBlock Text="AdoptService может перезапустить PostgreSQL и прервать подключения." Margin="0,0,0,8" />
+
+                        <WrapPanel>
+                            <ui:Button x:Name="CheckDatabaseButton" Content="Проверить локальную службу" Click="OnCheckClick" Margin="0,0,8,8" />
+                            <ui:Button x:Name="AdoptDatabaseButton" Content="AdoptService локально" Click="OnPrepareClick" Margin="0,0,8,8" />
+                            <ui:Button Content="Экспорт скрипта службы…" Click="OnExportClick" Margin="0,0,8,8" />
+                            <ui:Button Content="Загрузить отчёт службы…" Click="OnImportClick" Margin="0,0,8,8" />
+                        </WrapPanel>
+
+                        <ui:TextBox x:Name="StatusBox" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True"
+                                    MaxHeight="230" VerticalScrollBarVisibility="Auto" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="WindowWrench24" Style="{StaticResource TabIcon}" />
+                        <TextBlock Text="Preparing the controller" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="12">
+                        <TextBlock x:Name="TargetText" FontWeight="SemiBold" Margin="0,0,0,6" />
+                        <TextBlock x:Name="PreparationHint" Margin="0,0,0,8" />
+
+                        <WrapPanel Margin="0,0,0,4">
+                            <ui:Button x:Name="CheckHostButton" Click="OnCheckHostClick" Margin="0,0,8,8" />
+                            <ui:Button x:Name="PrepareHostButton" Click="OnPrepareHostClick" Margin="0,0,8,8" />
+                        </WrapPanel>
+
+                        <Border x:Name="AgentSection" Style="{StaticResource AgentCard}">
+                            <StackPanel x:Name="AgentFields" DataContext="{Binding SelectedItem.Profile, ElementName=ServerCards}">
+                                <TextBlock Text="Установка или обновление Agent" Style="{StaticResource SectionTitleText}" />
+
+                                <TextBlock Text="Каталог установки на сервере (при первом запуске)" />
+                                <ui:TextBox Text="{Binding AgentDirectory, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SetupField}" />
+
+                                <TextBlock Text="Готовый пакет Agent на компьютере Maintenance" />
+                                <ui:TextBox x:Name="AgentPackagePath" Text="{Binding AgentPackageDirectory}" IsReadOnly="True" Style="{StaticResource SetupField}" />
+
+                                <TextBlock x:Name="AgentModeHint" Text="При подготовке установки профиль будет сохранён в режиме Standalone." Margin="0,0,0,8" />
 
                                 <WrapPanel>
-                                    <ui:Button x:Name="CheckDatabaseButton" Content="Проверить локальную службу" Click="OnCheckClick" Margin="0,0,8,8" />
-                                    <ui:Button x:Name="AdoptDatabaseButton" Content="AdoptService локально" Click="OnPrepareClick" Margin="0,0,8,8" />
-                                    <ui:Button Content="Экспорт скрипта службы…" Click="OnExportClick" Margin="0,0,8,8" />
-                                    <ui:Button Content="Загрузить отчёт службы…" Click="OnImportClick" Margin="0,0,8,8" />
+                                    <ui:Button x:Name="BuildAgentButton" Content="Собрать Agent…" Click="OnBuildAgentClick" Margin="0,0,8,8" />
+                                    <ui:Button Content="Выбрать готовый пакет…" Click="OnChooseAgentPackageClick" Margin="0,0,8,8" />
+                                    <ui:Button x:Name="InstallAgentButton" Click="OnInstallAgentClick" Margin="0,0,8,8" />
                                 </WrapPanel>
-
-                                <ui:TextBox x:Name="StatusBox" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="230" VerticalScrollBarVisibility="Auto" />
                             </StackPanel>
-                        </Expander>
-                    </StackPanel>
-                </Expander>
-            </StackPanel>
+                        </Border>
 
-            <Expander Header="Переключение и история" Style="{StaticResource Section}" Expanded="OnOpenSwitchHistory">
-                <ContentControl x:Name="SwitchContent" />
-            </Expander>
-        </StackPanel>
-    </ScrollViewer>
+                        <StackPanel x:Name="TransferPanel" Visibility="Collapsed">
+                            <ui:TextBox x:Name="TransferInstructions" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" Margin="0,0,0,8" />
+
+                            <WrapPanel>
+                                <ui:Button Content="Открыть папку" Click="OnOpenHostFolderClick" Margin="0,0,8,8" />
+                                <ui:Button Content="Загрузить результат…" Click="OnImportHostClick" Margin="0,0,8,8" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem x:Name="SwitchingTab">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="ArrowSwap24" Style="{StaticResource TabIcon}" />
+                        <TextBlock Text="Switching" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ContentControl x:Name="SwitchContent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+            </TabItem>
+
+            <TabItem x:Name="HistoryTab">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="History24" Style="{StaticResource TabIcon}" />
+                        <TextBlock Text="History" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ContentControl x:Name="HistoryContent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+            </TabItem>
+        </TabControl>
+
+        <TextBlock x:Name="ActionStatus" Grid.Row="2" Margin="2,8,2,0" Style="{StaticResource MutedText}" />
+    </Grid>
 </UserControl>

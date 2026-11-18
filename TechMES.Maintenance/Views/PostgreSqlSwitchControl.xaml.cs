@@ -28,6 +28,14 @@ public partial class PostgreSqlSwitchControl : UserControl
         Unloaded += OnUnloaded;
     }
 
+    /// <summary>Выбирает содержимое вкладки, сохраняя снимок, историю и журнал текущего переключения.</summary>
+    public void ShowHistory(bool showHistory)
+    {
+        SwitchingPanel.Visibility = showHistory ? Visibility.Collapsed : Visibility.Visible;
+        HistoryPanel.Visibility = showHistory ? Visibility.Visible : Visibility.Collapsed;
+        RefreshButton.Content = showHistory ? "Обновить историю" : "Обновить состояние";
+    }
+
     // При открытии панели возобновляет чтение и сразу получает состояние.
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {

@@ -152,8 +152,6 @@ public partial class PostgreSqlSetupControl
         }
     }
 
-    private void OnOpenPreparationClick(object sender, RoutedEventArgs e) => PreparationSection.IsExpanded = true;
-
     private async void OnCheckHostClick(object sender, RoutedEventArgs e) => await RunControllerActionAsync(ControllerAction.Check);
 
     private async void OnPrepareHostClick(object sender, RoutedEventArgs e) => await RunControllerActionAsync(ControllerAction.Configure);
@@ -371,10 +369,29 @@ public partial class PostgreSqlSetupControl
         HostDetails.Text = DescribeDetails(card);
     }
 
-    private void OnOpenSwitchHistory(object sender, RoutedEventArgs e)
+    private PostgreSqlSwitchControl? _switchControl;
+
+    /// <summary>Обе вкладки используют одну панель и один экземпляр состояния переключения.</summary>
+    private void OnActionTabSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (ReferenceEquals(e.Source, sender))
-            SwitchContent.Content ??= new PostgreSqlSwitchControl();
+        if (!ReferenceEquals(e.Source, ActionsPanel) || SwitchContent is null || HistoryContent is null)
+            return;
+
+        var history = ReferenceEquals(ActionsPanel.SelectedItem, HistoryTab);
+        var host = history ? HistoryContent : ReferenceEquals(ActionsPanel.SelectedItem, SwitchingTab) ? SwitchContent : null;
+
+        if (host is null)
+            return;
+
+        _switchControl ??= new PostgreSqlSwitchControl();
+        _switchControl.ShowHistory(history);
+
+        if (ReferenceEquals(host.Content, _switchControl))
+            return;
+
+        SwitchContent.Content = null;
+        HistoryContent.Content = null;
+        host.Content = _switchControl;
     }
 
     private static string EffectiveHost(ServerCard card)
@@ -424,7 +441,7 @@ public partial class PostgreSqlSetupControl
             lines.Add($"Отчёт от {FormatTime(report.CheckedAtUtc)}\n{ReportOutcome(report)}\nКомпьютер: {report.Computer}\nКонтроллер: {DescribeStatus(report.Local)}\nСлужба: {report.HostService} · {report.HostServiceState} · PID {report.HostProcessId}\nНастройки: {report.SettingsPath}\n{report.Message}\nЖурнал: {report.LogPath}");
 
         if ((card.Live ?? card.Report?.Local)?.Service is { PostmasterProcessId: > 0, ManagedByService: false })
-            lines.Add("Работающий PostgreSQL не принадлежит указанной Windows-службе. Проверьте «Профиль и служба PostgreSQL → Проверка службы и AdoptService».");
+            lines.Add("Работающий PostgreSQL не принадлежит указанной Windows-службе. Проверьте состояние службы на вкладке Service.");
 
         return lines.Count > 0 ? string.Join("\n\n", lines) : "Обновите состояние или загрузите отчёт с сервера.";
     }

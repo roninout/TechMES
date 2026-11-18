@@ -126,8 +126,6 @@ public partial class PostgreSqlSetupControl : UserControl
         if (!ReferenceEquals(e.Source, ServerCards) || ServerCards.SelectedItem is not ServerCard)
             return;
 
-        PreparationSection.IsExpanded = false;
-
         if (!_loadFailed)
             ActionStatus.Text = "";
 
