@@ -1,6 +1,7 @@
 ﻿using Microsoft.Win32;
 using System.Windows;
 using System.IO;
+using System.Collections.Concurrent;
 using TechMES.Maintenance.Models;
 using TechMES.Maintenance.Services;
 
@@ -14,8 +15,8 @@ public partial class MainWindow
     /// <summary>Использует тот же каталог опубликованных инструментов для проверки и экспорта контроллера.</summary>
     public string PostgreSqlHostToolsDirectory => Path.GetDirectoryName(GetDeploymentTool("Prepare-TechMESPostgreSqlController.ps1"))!;
 
-    /// <summary>Большой пакет копируется вне UI-потока, пока deployment и закрытие окна заблокированы.</summary>
-    public async Task<string> ExportPostgreSqlHostSetupAsync(PostgreSqlSetupProfile profile, string outputDirectory)
+    /// <summary>Копирует комплект вне UI-потока и сериализует операцию с deployment.</summary>
+    public async Task<string> ExportPostgreSqlHostSetupAsync(PostgreSqlSetupProfile profile, string outputDirectory, bool includePackage = true)
     {
         if (_deploymentOperationRunning)
             throw new InvalidOperationException("Дождитесь завершения текущей операции Maintenance.");
@@ -26,7 +27,7 @@ public partial class MainWindow
 
         try
         {
-            return await Task.Run(() => new PostgreSqlHostSetupService().Export(profile, outputDirectory, tools));
+            return await Task.Run(() => new PostgreSqlHostSetupService().Export(profile, outputDirectory, tools, includePackage));
         }
         finally
         {
@@ -35,8 +36,8 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Сериализует подготовку контроллера с deployment; PostgreSQL эта операция не перезапускает.</summary>
-    public async Task<PostgreSqlHostSetupReport> RunPostgreSqlHostSetupAsync(PostgreSqlSetupProfile profile, bool prepare)
+    /// <summary>Запускает проверку или подготовку контроллера на текущем компьютере.</summary>
+    public async Task<PostgreSqlHostSetupReport> RunPostgreSqlHostSetupAsync(PostgreSqlSetupProfile profile, bool prepare, bool includePackage = true)
     {
         if (_deploymentOperationRunning)
             throw new InvalidOperationException("Дождитесь завершения текущей операции Maintenance.");
@@ -51,7 +52,42 @@ public partial class MainWindow
 
         try
         {
-            return await new PostgreSqlHostSetupService().RunLocalAsync(profile, PostgreSqlHostToolsDirectory, prepare);
+            return await new PostgreSqlHostSetupService().RunLocalAsync(profile, PostgreSqlHostToolsDirectory, prepare, includePackage);
+        }
+        finally
+        {
+            _deploymentOperationRunning = false;
+            IsEnabled = true;
+        }
+    }
+
+    public bool CanBuildPostgreSqlAgent => File.Exists(Path.Combine(_repositoryRoot.FullName, "TechMES.PostgreSql.Agent", "TechMES.PostgreSql.Agent.csproj"));
+
+    /// <summary>Запускает штатную сборку Agent и возвращает путь готового пакета.</summary>
+    public async Task<string> BuildPostgreSqlAgentAsync(string outputDirectory)
+    {
+        if (_deploymentOperationRunning)
+            throw new InvalidOperationException("Дождитесь завершения текущей операции Maintenance.");
+
+        if (!CanBuildPostgreSqlAgent)
+            throw new InvalidOperationException("Для сборки Agent выберите репозиторий TechMES в Settings → Server.");
+
+        _deploymentOperationRunning = true;
+        IsEnabled = false;
+
+        try
+        {
+            const string packageMarker = "PACKAGE_ROOT=";
+            var output = new ConcurrentQueue<string>();
+            var arguments = new[] { "-RepositoryRoot", _repositoryRoot.FullName, "-OutputRoot", outputDirectory, "-NoArchive" };
+
+            var exitCode = await RunDeploymentToolAsync("Build-TechMESPostgreSqlAgent.ps1", arguments, output.Enqueue);
+            var package = output.LastOrDefault(line => line.StartsWith(packageMarker, StringComparison.Ordinal));
+
+            if (exitCode != 0 || package is null)
+                throw new InvalidOperationException("Сборка Agent не завершена.\n" + string.Join("\n", output.TakeLast(10)));
+
+            return package[packageMarker.Length..];
         }
         finally
         {

@@ -162,15 +162,19 @@ public sealed class PostgreSqlHostSetupService
     /// <summary>Сравнивает пути Windows независимо от регистра и вида разделителя.</summary>
     private static bool SamePath(string? left, string right) => string.Equals(left?.Replace('/', '\\').TrimEnd('\\'), right.Replace('/', '\\').TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Запускает автономную консоль с UAC; операция установки не прерывается внешним таймаутом.</summary>
-    public async Task<PostgreSqlHostSetupReport> RunLocalAsync(PostgreSqlSetupProfile profile, string toolsDirectory, bool prepare)
+    /// <summary>Запускает автономную консоль с UAC и ждёт её результата.</summary>
+    public async Task<PostgreSqlHostSetupReport> RunLocalAsync(PostgreSqlSetupProfile profile, string toolsDirectory, bool prepare, bool includePackage = true)
     {
         if (!PostgreSqlSetupService.IsLocal(profile))
             throw new InvalidOperationException("Выбран другой компьютер. Экспортируйте комплект и запустите его на сервере БД.");
 
-        var directory = await Task.Run(() => Export(profile, Path.Combine(PostgreSqlSetupService.Root, "ControllerRuns"), toolsDirectory, prepare));
+        var directory = await Task.Run(() => Export(profile, Path.Combine(PostgreSqlSetupService.Root, "ControllerRuns"), toolsDirectory, prepare && includePackage));
         var id = Guid.NewGuid();
-        var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe")) { UseShellExecute = true, Verb = "runas" };
+        var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe"))
+        {
+            UseShellExecute = true,
+            Verb = "runas"
+        };
 
         foreach (var argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(directory, "Prepare-Controller.ps1"), "-Mode", prepare ? "Prepare" : "Check", "-RunId", id.ToString(), "-NoPause" })
             start.ArgumentList.Add(argument);

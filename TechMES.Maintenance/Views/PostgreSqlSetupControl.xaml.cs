@@ -1,6 +1,7 @@
 ﻿using Microsoft.Win32;
 using System.IO;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Controls;
 using TechMES.Maintenance.Models;
 using TechMES.Maintenance.Services;
@@ -15,8 +16,8 @@ public partial class PostgreSqlSetupControl : UserControl
     private bool _loaded;
 
     public List<PostgreSqlSetupProfile> Profiles { get; }
+    public IReadOnlyList<ServerCard> Cards { get; }
 
-    /// <summary>Загружает отдельные профили подготовки, не меняя appsettings Runtime.</summary>
     public PostgreSqlSetupControl()
     {
         InitializeComponent();
@@ -29,59 +30,44 @@ public partial class PostgreSqlSetupControl : UserControl
         {
             Profiles = [new(), new() { Name = "Secondary DB", ComputerName = "192.168.1.131" }];
             _loadFailed = true;
-            StatusBox.Text = "Ошибка профиля: " + ex.Message + "\nПроверьте значения и явно сохраните профили.";
+            ActionStatus.Text = "Ошибка профилей. Проверьте значения и сохраните их. " + ex.Message;
         }
 
+        Cards = Profiles.Select(profile => new ServerCard(profile)).ToArray();
         DataContext = this;
     }
 
-    /// <summary>При первом открытии показывает отчёт либо выполняет свежую проверку локального профиля.</summary>
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (_loaded || _loadFailed)
+        if (_loaded)
             return;
 
         _loaded = true;
+        ServerCards.SelectedItem = Cards.FirstOrDefault(card => PostgreSqlSetupService.IsLocal(card.Profile)) ?? Cards[0];
+        ShowReceipt();
+        UpdateSelectedCard();
 
-        try
-        {
-            var local = Profiles.FirstOrDefault(PostgreSqlSetupService.IsLocal);
-
-            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
-            var admin = new System.Security.Principal.WindowsPrincipal(identity).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
-
-            if (local is not null && admin)
-            {
-                ProfilesTabs.SelectedItem = local;
-                await RunAsync(false);
-            }
-            else
-            {
-                ShowReceipt();
-            }
-        }
-        catch (Exception ex)
-        {
-            ShowError(ex);
-        }
+        if (!_loadFailed)
+            await RefreshCardsAsync();
     }
 
-    /// <summary>Возвращает выбранный профиль с уже обновлёнными привязками полей.</summary>
-    private PostgreSqlSetupProfile SelectedProfile() => ProfilesTabs.SelectedItem as PostgreSqlSetupProfile ?? throw new InvalidOperationException("Выберите профиль PostgreSQL.");
+    private ServerCard SelectedCard() => ServerCards.SelectedItem as ServerCard
+        ?? throw new InvalidOperationException("Выберите сервер PostgreSQL.");
 
-    /// <summary>Не использует дефолтные значения повреждённого файла без явного сохранения оператором.</summary>
+    private PostgreSqlSetupProfile SelectedProfile() => SelectedCard().Profile;
+
+    /// <summary>Проверяет введённые поля перед операцией с выбранным профилем.</summary>
     private void SaveForOperation()
     {
         if (_loadFailed)
             throw new InvalidDataException("Сначала проверьте значения и нажмите «Сохранить профили».");
 
-        if (Validation.GetHasError(ProfilesTabs) || HasValidationError(ProfilesTabs))
+        if (HasValidationError(ProfileEditor) || HasValidationError(AgentFields))
             throw new InvalidDataException("Исправьте ошибки ввода полей PostgreSQL.");
 
         _service.SaveProfiles(Profiles);
     }
 
-    /// <summary>Проверяет ошибки привязок внутри текущего визуального содержимого вкладки.</summary>
     private static bool HasValidationError(DependencyObject parent)
     {
         if (Validation.GetHasError(parent))
@@ -96,16 +82,16 @@ public partial class PostgreSqlSetupControl : UserControl
         return false;
     }
 
-    /// <summary>Явно сохраняет профиль, сохраняя прежний файл как .bak.</summary>
     private void OnSaveClick(object sender, RoutedEventArgs e)
     {
         try
         {
-            if (HasValidationError(ProfilesTabs))
+            if (HasValidationError(ProfileEditor) || HasValidationError(AgentFields))
                 throw new InvalidDataException("Исправьте ошибки ввода.");
 
             _service.SaveProfiles(Profiles);
             _loadFailed = false;
+            ActionStatus.Text = "Профили сохранены.";
             ShowReceipt();
         }
         catch (Exception ex)
@@ -114,15 +100,17 @@ public partial class PostgreSqlSetupControl : UserControl
         }
     }
 
-    /// <summary>Отображает дату сохранённой проверки без объявления удалённого состояния текущим.</summary>
+    /// <summary>Показывает сохранённый результат проверки службы PostgreSQL.</summary>
     private void ShowReceipt()
     {
-        if (_loadFailed || ProfilesTabs.SelectedItem is not PostgreSqlSetupProfile profile)
+        if (_loadFailed || ServerCards.SelectedItem is not ServerCard card)
             return;
 
         try
         {
+            var profile = card.Profile;
             var path = _service.ReceiptPath(profile);
+
             StatusBox.Text = File.Exists(path)
                 ? Describe(_service.ReadReport(profile, path))
                 : "Подготовка не подтверждена для текущего профиля.\nВыполните локальную проверку или экспортируйте скрипт на сервер БД и загрузите его result.json.";
@@ -133,25 +121,28 @@ public partial class PostgreSqlSetupControl : UserControl
         }
     }
 
-    /// <summary>При выборе другого компьютера показывает только относящийся к нему отчёт.</summary>
     private void OnProfileSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (ReferenceEquals(e.Source, ProfilesTabs))
-        {
-            ShowReceipt();
-            if (HostStatusBox is not null)
-                HostStatusBox.Text = "Проверка контроллера для выбранного профиля ещё не выполнена.";
-        }
+        if (!ReferenceEquals(e.Source, ServerCards) || ServerCards.SelectedItem is not ServerCard)
+            return;
+
+        PreparationSection.IsExpanded = false;
+
+        if (!_loadFailed)
+            ActionStatus.Text = "";
+
+        ShowReceipt();
+        UpdateSelectedCard();
     }
 
-    /// <summary>Изменённые поля требуют новой проверки, а не наследуют прежний статус готовности.</summary>
-    private void OnProfileEdited(object sender, TextChangedEventArgs e)
+    private void OnProfileEdited(object sender, DataTransferEventArgs e)
     {
-        if (!_loadFailed && StatusBox is not null && sender is TextBox { IsKeyboardFocusWithin: true })
-        {
-            StatusBox.Text = "Параметры изменены. Сохраните профиль и выполните проверку для этих значений.";
-            HostStatusBox.Text = "Параметры изменены. Требуется новая проверка контроллера.";
-        }
+        if (ServerCards.SelectedItem is not ServerCard card)
+            return;
+
+        card.Clear();
+        StatusBox.Text = "Профиль изменён. Выполните новую проверку службы.";
+        UpdateSelectedCard();
     }
 
     /// <summary>Сохраняет один PS1 со встроенными профилем и инструментом для выбранной БД.</summary>
