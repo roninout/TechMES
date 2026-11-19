@@ -221,7 +221,19 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
     {
         progress($"{mode}: request on {address}");
 
-        var operation = await remote.SubmitAsync(address, mode, new(plan, proof), ct);
+        PostgreSqlRemoteOperation operation;
+        try
+        {
+            operation = await remote.SubmitAsync(address, mode, new(plan, proof), ct);
+        }
+        catch (Exception ex) when (IsCommunicationFailure(ex, ct))
+        {
+            // Запрос мог попасть в очередь до потери ответа. Читаем ту же операцию.
+            operation = await ReadPhaseAsync(address, mode, plan, ct);
+            if (operation.State == "Missing")
+                throw;
+        }
+
         var deadline = DateTimeOffset.UtcNow.AddMinutes(30);
 
         while (operation.State is "Queued" or "Running")
@@ -230,7 +242,7 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
                 throw new TimeoutException("Phase completion is not confirmed. Resume the same plan; the child script was not cancelled.");
 
             await Task.Delay(TimeSpan.FromSeconds(2), ct);
-            operation = await remote.ReadAsync(address, mode, plan, ct);
+            operation = await ReadPhaseAsync(address, mode, plan, ct);
         }
 
         EnsureConfirmed(plan, mode, operation);
@@ -241,6 +253,24 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
         progress($"{mode}: confirmed on {address}");
         return operation;
     }
+
+    private async Task<PostgreSqlRemoteOperation> ReadPhaseAsync(string address, string mode, PostgreSqlSwitchPlan plan, CancellationToken ct)
+    {
+        for (var retry = 0; ; retry++)
+        {
+            try
+            {
+                return await remote.ReadAsync(address, mode, plan, ct);
+            }
+            catch (Exception ex) when (retry < 2 && IsCommunicationFailure(ex, ct))
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), ct);
+            }
+        }
+    }
+
+    private static bool IsCommunicationFailure(Exception ex, CancellationToken ct) =>
+        !ct.IsCancellationRequested && ex is (HttpRequestException or IOException or OperationCanceledException);
 
     private static void EnsureConfirmed(PostgreSqlSwitchPlan plan, string mode, PostgreSqlRemoteOperation operation)
     {

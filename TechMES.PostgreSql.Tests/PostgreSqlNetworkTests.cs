@@ -312,8 +312,8 @@ public sealed class PostgreSqlNetworkTests
 
         await Assert.ThrowsAsync<IOException>(() => PostgreSqlSwitchCoordinator.VerifyEmergencyFenceAsync(remote, plan, JsonSerializer.SerializeToElement(new { State = "Fenced" })));
 
-        remote.LoseFenceResponse = true;
-        await Assert.ThrowsAsync<HttpRequestException>(() => PostgreSqlSwitchCoordinator.VerifyEmergencyFenceAsync(remote, plan, recorded));
+        remote.FenceReadFailures = 1;
+        await Assert.ThrowsAsync<IOException>(() => PostgreSqlSwitchCoordinator.VerifyEmergencyFenceAsync(remote, plan, recorded));
     }
 
     [Theory]
@@ -515,15 +515,45 @@ public sealed class PostgreSqlNetworkTests
         Assert.DoesNotContain(remote.Calls, item => item.StartsWith("Promote:"));
     }
 
-    // Потеря связи после запроса Fence оставляет исход операции неизвестным.
+    // Если после потери ответа операция не найдена, повышение блокируется.
     [Fact]
     public async Task LostFenceResponseDoesNotPromoteStandby()
     {
-        var remote = new Remote { LoseFenceResponse = true };
+        var remote = new Remote { LoseFenceResponse = true, MissingPhase = "Fence" };
 
         await Assert.ThrowsAsync<HttpRequestException>(() => new PostgreSqlSwitchCoordinator(remote).RunAsync(Plan, _ => { }, CancellationToken.None));
 
-        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61" }, remote.Calls);
+        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61", "read-Fence:10.77.12.61" }, remote.Calls);
+    }
+
+    [Fact]
+    public async Task AutomaticFailbackContinuesAfterReadingConfirmedFenceWithoutSubmittingItAgain()
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateFailbackWorker(1);
+        var remote = new Remote
+        {
+            LoseFenceResponse = true,
+            FenceReadFailures = 1,
+            StatusOverride = address => RunningNode(address, DateTimeOffset.UtcNow)
+        };
+
+        await worker.CheckAsync(remote, (_, _, _) => Task.FromResult(true), CancellationToken.None);
+
+        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61", "read-Fence:10.77.12.61", "read-Fence:10.77.12.61", "Promote:10.77.12.62", "Rejoin:10.77.12.61", "complete:10.77.12.61", "complete:10.77.12.62" }, remote.Calls);
+        Assert.False(File.Exists(fixture.Store.CoordinatorPlanPath));
+    }
+
+    [Fact]
+    public async Task FenceReadFailureWhilePollingDoesNotDiscardThePendingOperation()
+    {
+        var remote = new Remote { QueueFence = true, FenceReadFailures = 1 };
+
+        await new PostgreSqlSwitchCoordinator(remote).RunAsync(Plan, _ => { }, CancellationToken.None);
+
+        Assert.Single(remote.Calls, call => call == "Fence:10.77.12.61");
+        Assert.Equal(2, remote.Calls.Count(call => call == "read-Fence:10.77.12.61"));
+        Assert.Contains("Promote:10.77.12.62", remote.Calls);
     }
 
     // Ответ Succeeded не заменяет подтверждение изоляции.
@@ -708,6 +738,8 @@ public sealed class PostgreSqlNetworkTests
         public bool FailReservation;
         public bool WrongProof;
         public bool LoseFenceResponse;
+        public bool QueueFence;
+        public int FenceReadFailures;
         public bool MissingFenceProof;
         public bool WrongEmergencyId;
         public string? MissingPhase;
@@ -735,14 +767,15 @@ public sealed class PostgreSqlNetworkTests
             if (mode != "Fence")
                 Assert.NotNull(phase.Fence);
 
-            return Task.FromResult(Operation(phase.Plan, mode));
+            if (mode == "Fence" && LoseFenceResponse)
+                throw new HttpRequestException("Connection lost while waiting for Fence.");
+
+            var operation = Operation(phase.Plan, mode);
+            return Task.FromResult(mode == "Fence" && QueueFence ? operation with { State = "Queued", Fence = null } : operation);
         }
 
         private PostgreSqlRemoteOperation Operation(PostgreSqlSwitchPlan plan, string mode)
         {
-            if (mode == "Fence" && LoseFenceResponse)
-                throw new HttpRequestException("Connection lost while waiting for Fence.");
-
             JsonElement? proof = mode == "Fence" && !MissingFenceProof
                 ? JsonSerializer.SerializeToElement(new { State = "Fenced", plan.From, plan.To, Sid = WrongProof ? "123" : plan.SystemIdentifier, Format = plan.Emergency ? 2 : 1, Id = WrongEmergencyId ? Plan.OperationId("Fence") : plan.OperationId("Fence") })
                 : null;
@@ -754,6 +787,13 @@ public sealed class PostgreSqlNetworkTests
         {
             Assert.Equal(mode == "Promote" ? plan.To : plan.From, address);
             Calls.Add("read-" + mode + ":" + address);
+
+            if (mode == "Fence" && FenceReadFailures > 0)
+            {
+                FenceReadFailures--;
+                throw new IOException("Temporary error reading the Fence journal.");
+            }
+
             return Task.FromResult(Operation(plan, mode));
         }
     }
