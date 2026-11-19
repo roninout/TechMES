@@ -158,11 +158,15 @@ public sealed class PostgreSqlCommandWorker(IOptions<PostgreSqlControlOptions> o
 
             var plan = PostgreSqlSwitchInbox.AssertCommandAllowed(store.Root, request);
 
-            if (plan is { Emergency: true } && request.Mode == "Promote")
+            if (plan is { Emergency: true } && request.Mode is ("Promote" or "Rejoin"))
             {
                 using var certificate = PostgreSqlNodeCertificates.LoadLocal(network.Value);
                 using var remote = new PostgreSqlSwitchRemote(network.Value, certificate);
-                await PostgreSqlSwitchCoordinator.VerifyEmergencyFenceAsync(remote, plan, request.Fence!.Value);
+
+                if (request.Mode == "Promote")
+                    await PostgreSqlSwitchCoordinator.VerifyEmergencyFenceAsync(remote, plan, request.Fence!.Value);
+                else
+                    await PostgreSqlSwitchCoordinator.ReadConfirmedPhaseAsync(remote, plan, "Promote", plan.To, CancellationToken.None);
             }
 
             store.ValidateCredentials();

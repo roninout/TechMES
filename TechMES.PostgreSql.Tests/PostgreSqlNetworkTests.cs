@@ -99,7 +99,7 @@ public sealed class PostgreSqlNetworkTests
     }
 
     [Fact]
-    public async Task EmergencyFenceCannotBypassTheReservationOrRunPlannedRejoin()
+    public async Task EmergencyRejoinKeepsTheFenceIdAndBlocksEarlyCompletion()
     {
         using var fixture = new Fixture();
         await fixture.StartAsync();
@@ -116,8 +116,39 @@ public sealed class PostgreSqlNetworkTests
         Assert.Equal(id, queued.Id);
         Assert.Equal(id, stored.EmergencyFenceId);
         Assert.Equal(plan, PostgreSqlSwitchInbox.AssertCommandAllowed(fixture.Store.Root, stored));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Inbox.SubmitAsync("Rejoin", new(plan, JsonSerializer.SerializeToElement(new { })), CancellationToken.None));
+        var rejoin = await fixture.Inbox.SubmitAsync("Rejoin", new(plan, JsonSerializer.SerializeToElement(new { })), CancellationToken.None);
+        var rejoinRequest = PostgreSqlCommandStore.Read<PostgreSqlCommand>(Path.Combine(fixture.Store.Root, rejoin.Id, "request.json"));
+        Assert.Equal(id, rejoinRequest.EmergencyFenceId);
+        Assert.Equal(plan, PostgreSqlSwitchInbox.AssertCommandAllowed(fixture.Store.Root, rejoinRequest));
         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Inbox.CompleteAsync(plan, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task EmergencyRecoveryReadsExistingProofAndLeavesCurrentPrimaryInPlace()
+    {
+        var remote = new Remote();
+        var plan = Plan with { Emergency = true };
+
+        await new PostgreSqlSwitchCoordinator(remote).RecoverEmergencyAsync(plan, _ => { }, CancellationToken.None);
+
+        Assert.Equal(new[] { "read-Fence:10.77.12.61", "read-Promote:10.77.12.62", "Rejoin:10.77.12.61", "complete:10.77.12.61", "complete:10.77.12.62" }, remote.Calls);
+    }
+
+    [Theory]
+    [InlineData("Fence")]
+    [InlineData("Promote")]
+    [InlineData("Rejoin")]
+    public async Task EmergencyRecoveryRetainsBothReservationsWhenARequiredPhaseIsNotConfirmed(string failed)
+    {
+        var remote = new Remote { Failed = failed };
+        var plan = Plan with { Emergency = true };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new PostgreSqlSwitchCoordinator(remote).RecoverEmergencyAsync(plan, _ => { }, CancellationToken.None));
+
+        Assert.DoesNotContain(remote.Calls, call => call.StartsWith("complete:"));
+
+        if (failed != "Rejoin")
+            Assert.DoesNotContain(remote.Calls, call => call.StartsWith("Rejoin:"));
     }
 
     // Неопределённый результат прекращает переход к следующему этапу.
@@ -377,25 +408,29 @@ public sealed class PostgreSqlNetworkTests
         {
             Calls.Add(mode + ":" + address);
 
-            if (mode == "Fence" && LoseFenceResponse)
-                throw new HttpRequestException("Connection lost while waiting for Fence.");
-
             if (mode != "Fence")
                 Assert.NotNull(phase.Fence);
 
-            var plan = phase.Plan;
+            return Task.FromResult(Operation(phase.Plan, mode));
+        }
+
+        private PostgreSqlRemoteOperation Operation(PostgreSqlSwitchPlan plan, string mode)
+        {
+            if (mode == "Fence" && LoseFenceResponse)
+                throw new HttpRequestException("Connection lost while waiting for Fence.");
+
             JsonElement? proof = mode == "Fence" && !MissingFenceProof
                 ? JsonSerializer.SerializeToElement(new { State = "Fenced", plan.From, plan.To, Sid = WrongProof ? "123" : plan.SystemIdentifier, Format = plan.Emergency ? 2 : 1, Id = WrongEmergencyId ? Plan.OperationId("Fence") : plan.OperationId("Fence") })
                 : null;
 
-            return Task.FromResult(new PostgreSqlRemoteOperation(plan.OperationId(mode), mode == Failed ? "NeedsReview" : "Succeeded", "Test", null, proof));
+            return new PostgreSqlRemoteOperation(plan.OperationId(mode), mode == Failed ? "NeedsReview" : "Succeeded", "Test", null, proof);
         }
 
         public Task<PostgreSqlRemoteOperation> ReadAsync(string address, string mode, PostgreSqlSwitchPlan plan, CancellationToken ct)
         {
-            Assert.Equal(plan.From, address);
-            Assert.Equal("Fence", mode);
-            return SubmitAsync(address, mode, new(plan, null), ct);
+            Assert.Equal(mode == "Promote" ? plan.To : plan.From, address);
+            Calls.Add("read-" + mode + ":" + address);
+            return Task.FromResult(Operation(plan, mode));
         }
     }
 

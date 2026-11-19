@@ -188,7 +188,7 @@ SELECT jsonb_build_object(
     UNION SELECT current_setting('config_file') UNION SELECT current_setting('hba_file') UNION SELECT current_setting('ident_file')
     UNION SELECT current_setting(key) FROM unnest(ARRAY['ssl_cert_file','ssl_key_file','ssl_ca_file','ssl_crl_file']) AS key WHERE current_setting('ssl')='on' AND current_setting(key)<>''
  ) AS files WHERE path IS NOT NULL),
- 'receiver',COALESCE((SELECT jsonb_agg(jsonb_build_object('host',sender_host,'port',sender_port,'slot',slot_name,'status',status)) FROM pg_stat_wal_receiver),'[]'::jsonb),
+ 'receiver',COALESCE((SELECT jsonb_agg(jsonb_build_object('host',sender_host,'port',sender_port,'slot',slot_name,'status',status,'timeline',received_tli)) FROM pg_stat_wal_receiver),'[]'::jsonb),
  'replicas',COALESCE((SELECT jsonb_agg(jsonb_build_object('address',host(client_addr),'state',state)) FROM pg_stat_replication),'[]'::jsonb)
 );
 COMMIT;
@@ -442,7 +442,7 @@ function Write-StandbyConfiguration([string]$Stage, $Proof) {
 }
 
 # Проверяет устойчивую работу возвращённого узла в режиме реплики.
-function Wait-Standby($Proof) {
+function Wait-Standby($Proof, [int]$ExpectedTimeline=0) {
     $deadline=[DateTime]::UtcNow.AddSeconds(180)
     $good=0
 
@@ -465,7 +465,7 @@ function Wait-Standby($Proof) {
 
         if (!$node.recovery -or $node.sid -cne $Proof.Sid) { throw 'The returning node is not a Standby of the expected cluster.' }
 
-        if (@($node.receiver | Where-Object { $_.host -eq $To -and $_.port -eq $Port -and $_.slot -eq $script:Slot -and $_.status -eq 'streaming' }).Count -eq 1 -and !$node.paused) {
+        if (@($node.receiver | Where-Object { $_.host -eq $To -and $_.port -eq $Port -and $_.slot -eq $script:Slot -and $_.status -eq 'streaming' -and (!$ExpectedTimeline -or $_.timeline -eq $ExpectedTimeline) }).Count -eq 1 -and !$node.paused) {
             $good++
         }
         else {
@@ -688,6 +688,46 @@ function Invoke-Promote {
     }
 }
 
+# У аварийного Fence нет списка файлов, снятого через SQL до остановки.
+# -C должен стоять первым для чтения параметров под учётной записью контроллера.
+function Get-EmergencyRejoinConfigs {
+    $postgres=Join-Path $PgBin 'postgres.exe'
+    $service=Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
+    if ($null -eq $service -or $service.PathName -match '(?:^|\s)-o(?:\s|"|$)') { throw 'Cannot reconstruct configuration with PostgreSQL service option overrides.' }
+
+    $directory=Invoke-Tool $postgres @('-C','data_directory','-D',$DataDirectory)
+    if ((Normalize-Path $directory) -ine $DataDirectory) { throw 'The offline PostgreSQL configuration points to a different PGDATA.' }
+
+    $paths=@('postgresql.auto.conf')
+    foreach ($setting in @('config_file','hba_file','ident_file')) {
+        $path=Invoke-Tool $postgres @('-C',$setting,'-D',$DataDirectory)
+        if (!$path) { throw ('Cannot identify offline PostgreSQL setting: '+$setting) }
+        $paths+=Get-ConfigRelativePath $path
+    }
+
+    foreach ($relative in $paths) {
+        $path=Join-Path $DataDirectory $relative
+        if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw ('Local configuration file is missing: '+$relative) }
+        if (Select-String -LiteralPath $path -Pattern '^\s*include(?:_dir|_if_exists)?(?:\s|=)' -Quiet -ErrorAction Stop) {
+            throw 'The saved emergency Fence has no inventory of included configuration files. Keep the source fenced until that inventory is available.'
+        }
+    }
+
+    if ((Invoke-Tool $postgres @('-C','ssl','-D',$DataDirectory)) -eq 'on') {
+        if (Invoke-Tool $postgres @('-C','ssl_crl_dir','-D',$DataDirectory)) { throw 'Cannot preserve the local SSL CRL directory from this emergency Fence.' }
+        foreach ($setting in @('ssl_cert_file','ssl_key_file','ssl_ca_file','ssl_crl_file')) {
+            $path=Invoke-Tool $postgres @('-C',$setting,'-D',$DataDirectory)
+            if ($path) {
+                $relative=Get-ConfigRelativePath $path
+                if (!(Test-Path -LiteralPath (Join-Path $DataDirectory $relative) -PathType Leaf)) { throw ('Local SSL file is missing: '+$relative) }
+                $paths+=$relative
+            }
+        }
+    }
+
+    return $paths | Sort-Object -Unique
+}
+
 # Возвращает старый узел через pg_rewind рабочей копии; исходный каталог сохраняется.
 function Invoke-Rejoin {
     if ($script:LocalAddress -ne $From) { throw 'Rejoin must run on the old Primary.' }
@@ -696,6 +736,11 @@ function Invoke-Rejoin {
     $local=Get-Content -LiteralPath $script:ActiveFencePath -Raw | ConvertFrom-Json
 
     if ($local.Id -cne $proof.Id -or $local.State -ne 'Fenced') { throw 'The local fence marker does not match this operation.' }
+
+    if ($EmergencyFenceId -and ($local.Format -ne 2 -or $local.Sid -cne $proof.Sid -or $local.From -cne $From -or $local.To -cne $To -or $local.Lsn -cne $proof.Lsn -or $local.Timeline -ne $proof.Timeline -or $local.StartMode -cne $proof.StartMode -or $local.ClusterState -ne 'shut down' -or $proof.ClusterState -ne 'shut down')) {
+        throw 'Emergency Rejoin requires the unchanged Fence of a cleanly stopped Primary.'
+    }
+
 
     $null=Assert-ServiceState $false
 
@@ -709,15 +754,27 @@ function Invoke-Rejoin {
 
     if ($primary.recovery -or $primary.readOnly -or $primary.sid -cne $proof.Sid -or $primary.timeline -le $proof.Timeline) { throw 'The selected new Primary is not confirmed.' }
 
+    if ($EmergencyFenceId -and ($primary.version -lt 180000 -or $primary.version -ge 190000 -or !$primary.superuser -or $primary.tablespaces -ne 0 -or $primary.configErrors -ne 0)) {
+        throw 'The current Primary configuration is not supported by the emergency Rejoin.'
+    }
+
     Assert-ReplicationLogin $To $proof.Sid
-    Ensure-Slot $To
 
     if (Get-ChildItem -LiteralPath $DataDirectory -Recurse -Force -Attributes ReparsePoint | Select-Object -First 1) { throw 'Reparse points inside PGDATA are not supported.' }
+
+    $configs=if ($EmergencyFenceId) { @(Get-EmergencyRejoinConfigs) } else { @($proof.Configs) }
+
+    if ($EmergencyFenceId) {
+        $size=(Get-ChildItem -LiteralPath $DataDirectory -Recurse -File -Force | Measure-Object Length -Sum).Sum
+        if ((New-Object IO.DriveInfo([IO.Path]::GetPathRoot($DataDirectory))).AvailableFreeSpace -lt ($size+2GB)) { throw 'Insufficient space for a working copy of PGDATA plus 2 GB.' }
+    }
 
     $stage=$DataDirectory+'.techmes-stage-'+$proof.Id
     $backup=$DataDirectory+'.techmes-before-'+$proof.Id
 
     if ((Test-Path -LiteralPath $stage) -or (Test-Path -LiteralPath $backup)) { throw 'A working copy or backup already exists. Inspect the previous run before retrying.' }
+
+    Ensure-Slot $To
 
     $script:Changed=$true
 
@@ -737,7 +794,7 @@ function Invoke-Rejoin {
     $null=Invoke-Tool (Join-Path $PgBin 'pg_rewind.exe') ($rewindArguments+@('--dry-run')) '' $script:SqlCredential $To -Change
     $null=Invoke-Tool (Join-Path $PgBin 'pg_rewind.exe') $rewindArguments '' $script:SqlCredential $To -Change
 
-    foreach ($relative in $proof.Configs) {
+    foreach ($relative in $configs) {
         $relative=Get-ConfigRelativePath ([string]$relative)
         $original=Join-Path $DataDirectory $relative
 
@@ -761,7 +818,13 @@ function Invoke-Rejoin {
     Write-Json (Join-Path $script:Root ('rejoin-'+$proof.Id+'.json')) ([pscustomobject]@{ State='Installing'; Stage=$stage; Backup=$backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
 
     [IO.Directory]::Move($DataDirectory,$backup)
-    [IO.Directory]::Move($stage,$DataDirectory)
+    try {
+        [IO.Directory]::Move($stage,$DataDirectory)
+    }
+    catch {
+        if (!(Test-Path -LiteralPath $DataDirectory)) { [IO.Directory]::Move($backup,$DataDirectory) }
+        throw
+    }
 
     $script:Installed=$true
 
@@ -772,7 +835,8 @@ function Invoke-Rejoin {
 
     (Get-Service -Name $ServiceName).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running,[TimeSpan]::FromSeconds(300))
 
-    $node=Wait-Standby $proof
+    $expectedTimeline=if ($EmergencyFenceId) { $primary.timeline } else { 0 }
+    $node=Wait-Standby $proof $expectedTimeline
 
     Write-Json (Join-Path $script:Root ('rejoin-'+$proof.Id+'.json')) ([pscustomobject]@{ State='Rejoined'; Backup=$backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
 
@@ -863,7 +927,7 @@ if ($Mode -ne 'Status') {
 }
 
 if ($CredentialInput -and (!$OperationId -or !$ExpectedSystemIdentifier -or !$ResultFile)) { throw 'Non-interactive execution requires OperationId, ExpectedSystemIdentifier and ResultFile.' }
-if ($EmergencyFenceId -and (!$CredentialInput -or $Mode -notin @('Fence','Promote'))) { throw 'Emergency phases require the TechMES controller and a reserved operation.' }
+if ($EmergencyFenceId -and (!$CredentialInput -or $Mode -notin @('Fence','Promote','Rejoin'))) { throw 'Emergency phases require the TechMES controller and a reserved operation.' }
 
 if ($ResultFile) {
     $ResultFile=[IO.Path]::GetFullPath($ResultFile)

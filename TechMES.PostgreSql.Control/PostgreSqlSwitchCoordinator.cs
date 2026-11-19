@@ -156,47 +156,39 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
             throw new IOException("Emergency Fence proof does not belong to this operation.");
     }
 
-    // Аварийный план останавливается после Promote. Rejoin выполняется отдельным этапом.
+    // Продолжает именно сохранённый аварийный план после подтверждённого Promote.
+    public async Task RecoverEmergencyAsync(PostgreSqlSwitchPlan plan, Action<string> progress, CancellationToken ct)
+    {
+        if (!plan.Emergency)
+            throw new InvalidOperationException("The retained plan is not an emergency switch.");
+
+        var fence = await ReadConfirmedPhaseAsync(remote, plan, "Fence", plan.From, ct);
+        var proof = fence.Fence ?? throw new IOException("The saved emergency Fence has no proof.");
+        CheckFenceProof(plan, proof);
+        await ReadConfirmedPhaseAsync(remote, plan, "Promote", plan.To, ct);
+
+        // Повтор с тем же идентификатором читает уже принятую или завершённую фазу.
+        await RunPhaseAsync(plan, "Rejoin", plan.From, proof, progress, ct);
+        await remote.PlanAsync(plan.From, "complete", plan, ct);
+        await remote.PlanAsync(plan.To, "complete", plan, ct);
+        progress($"COMPLETED: Primary={plan.To}; Standby={plan.From}.");
+    }
+
+    public static async Task<PostgreSqlRemoteOperation> ReadConfirmedPhaseAsync(IPostgreSqlSwitchRemote remote, PostgreSqlSwitchPlan plan, string mode, string node, CancellationToken ct)
+    {
+        var operation = await remote.ReadAsync(node, mode, plan, ct);
+        EnsureConfirmed(plan, mode, operation);
+        return operation;
+    }
+
+    // Аварийное повышение оставляет резервирование до отдельного Rejoin.
     public async Task RunAsync(PostgreSqlSwitchPlan plan, Action<string> progress, CancellationToken ct)
     {
         foreach (var address in new[] { plan.From, plan.To }.Order(StringComparer.Ordinal))
             await remote.PlanAsync(address, "reserve", plan, ct);
 
-        JsonElement? proof = null;
-
-        var modes = plan.Emergency ? new[] { "Fence", "Promote" } : new[] { "Fence", "Promote", "Rejoin" };
-
-        foreach (var mode in modes)
-        {
-            var address = mode == "Promote" ? plan.To : plan.From;
-
-            progress($"{mode}: request on {address}");
-
-            var operation = await remote.SubmitAsync(address, mode, new(plan, proof), ct);
-            var deadline = DateTimeOffset.UtcNow.AddMinutes(30);
-
-            while (operation.State is "Queued" or "Running")
-            {
-                if (DateTimeOffset.UtcNow > deadline)
-                    throw new TimeoutException("Phase completion is not confirmed. Resume the same plan; the child script was not cancelled.");
-
-                await Task.Delay(TimeSpan.FromSeconds(2), ct);
-
-                operation = await remote.ReadAsync(address, mode, plan, ct);
-            }
-
-            if (operation.State != "Succeeded" || operation.Id != plan.OperationId(mode))
-                throw new InvalidOperationException($"{mode}: {operation.State}. {operation.Message} Reservation retained; subsequent phases were not requested.");
-
-            if (mode == "Fence")
-            {
-                proof = operation.Fence ?? throw new IOException("Fence succeeded without its exchange file.");
-
-                CheckFenceProof(plan, proof.Value);
-            }
-
-            progress($"{mode}: confirmed on {address}");
-        }
+        var fence = await RunPhaseAsync(plan, "Fence", plan.From, null, progress, ct);
+        await RunPhaseAsync(plan, "Promote", plan.To, fence.Fence, progress, ct);
 
         if (plan.Emergency)
         {
@@ -204,9 +196,42 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
             return;
         }
 
+        await RunPhaseAsync(plan, "Rejoin", plan.From, fence.Fence, progress, ct);
+
         foreach (var address in new[] { plan.From, plan.To }.Order(StringComparer.Ordinal))
             await remote.PlanAsync(address, "complete", plan, ct);
 
         progress($"COMPLETED: Primary={plan.To}; Standby={plan.From}.");
+    }
+
+    private async Task<PostgreSqlRemoteOperation> RunPhaseAsync(PostgreSqlSwitchPlan plan, string mode, string address, JsonElement? proof, Action<string> progress, CancellationToken ct)
+    {
+        progress($"{mode}: request on {address}");
+
+        var operation = await remote.SubmitAsync(address, mode, new(plan, proof), ct);
+        var deadline = DateTimeOffset.UtcNow.AddMinutes(30);
+
+        while (operation.State is "Queued" or "Running")
+        {
+            if (DateTimeOffset.UtcNow > deadline)
+                throw new TimeoutException("Phase completion is not confirmed. Resume the same plan; the child script was not cancelled.");
+
+            await Task.Delay(TimeSpan.FromSeconds(2), ct);
+            operation = await remote.ReadAsync(address, mode, plan, ct);
+        }
+
+        EnsureConfirmed(plan, mode, operation);
+
+        if (mode == "Fence")
+            CheckFenceProof(plan, operation.Fence ?? throw new IOException("Fence succeeded without its exchange file."));
+
+        progress($"{mode}: confirmed on {address}");
+        return operation;
+    }
+
+    private static void EnsureConfirmed(PostgreSqlSwitchPlan plan, string mode, PostgreSqlRemoteOperation operation)
+    {
+        if (operation.State != "Succeeded" || operation.Id != plan.OperationId(mode))
+            throw new InvalidOperationException($"{mode}: {operation.State}. {operation.Message} Reservation retained; subsequent phases were not requested.");
     }
 }

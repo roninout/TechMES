@@ -1,0 +1,516 @@
+diff --git a/TechMES.PostgreSql.Control/PostgreSqlCommandWorker.cs b/TechMES.PostgreSql.Control/PostgreSqlCommandWorker.cs
+index 1de6108..5c15870 100644
+--- a/TechMES.PostgreSql.Control/PostgreSqlCommandWorker.cs
++++ b/TechMES.PostgreSql.Control/PostgreSqlCommandWorker.cs
+@@ -158,11 +158,15 @@ public sealed class PostgreSqlCommandWorker(IOptions<PostgreSqlControlOptions> o
+ 
+             var plan = PostgreSqlSwitchInbox.AssertCommandAllowed(store.Root, request);
+ 
+-            if (plan is { Emergency: true } && request.Mode == "Promote")
++            if (plan is { Emergency: true } && request.Mode is ("Promote" or "Rejoin"))
+             {
+                 using var certificate = PostgreSqlNodeCertificates.LoadLocal(network.Value);
+                 using var remote = new PostgreSqlSwitchRemote(network.Value, certificate);
+-                await PostgreSqlSwitchCoordinator.VerifyEmergencyFenceAsync(remote, plan, request.Fence!.Value);
++
++                if (request.Mode == "Promote")
++                    await PostgreSqlSwitchCoordinator.VerifyEmergencyFenceAsync(remote, plan, request.Fence!.Value);
++                else
++                    await PostgreSqlSwitchCoordinator.ReadConfirmedPhaseAsync(remote, plan, "Promote", plan.To, CancellationToken.None);
+             }
+ 
+             store.ValidateCredentials();
+diff --git a/TechMES.PostgreSql.Control/PostgreSqlSwitchConsole.cs b/TechMES.PostgreSql.Control/PostgreSqlSwitchConsole.cs
+index be76762..d324756 100644
+--- a/TechMES.PostgreSql.Control/PostgreSqlSwitchConsole.cs
++++ b/TechMES.PostgreSql.Control/PostgreSqlSwitchConsole.cs
+@@ -10,7 +10,7 @@ public static class PostgreSqlSwitchConsole
+     // До запуска Generic Host обрабатывает status/switch/cancel.
+     public static async Task<bool> TryRunAsync(string[] args)
+     {
+-        if (args.Length == 0 || args[0] is not ("--postgres-status" or "--postgres-switch" or "--postgres-emergency-switch" or "--postgres-cancel"))
++        if (args.Length == 0 || args[0] is not ("--postgres-status" or "--postgres-switch" or "--postgres-emergency-switch" or "--postgres-emergency-rejoin" or "--postgres-cancel"))
+             return false;
+ 
+         using var cancellation = new CancellationTokenSource();
+@@ -80,6 +80,22 @@ public static class PostgreSqlSwitchConsole
+                 return true;
+             }
+ 
++            if (args[0] == "--postgres-emergency-rejoin")
++            {
++                if (args.Length != 2)
++                    throw new ArgumentException("Usage: --postgres-emergency-rejoin <existing-plan-id>");
++
++                var pending = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(activePath);
++                pending.Validate(network, control);
++
++                if (!pending.Emergency || pending.Id != args[1] || network.NodeAddress != pending.To)
++                    throw new InvalidOperationException("Run on the promoted node with the matching retained emergency plan ID.");
++
++                await new PostgreSqlSwitchCoordinator(remote).RecoverEmergencyAsync(pending, stage => ReportProgress(pending, stage), ct);
++                File.Delete(activePath);
++                return true;
++            }
++
+             var emergency = args[0] == "--postgres-emergency-switch";
+ 
+             if (args.Length != 3)
+@@ -114,21 +130,18 @@ public static class PostgreSqlSwitchConsole
+                 Console.WriteLine("START: " + plan.Id);
+             }
+ 
+-            var journalPath = Path.Combine(root, "coordinator-" + plan.Id + ".json");
++            ReportProgress(plan, "Reservation and sequential phase execution.");
++            await new PostgreSqlSwitchCoordinator(remote).RunAsync(plan, stage => ReportProgress(plan, stage), ct);
+ 
+-            void Progress(string stage)
+-            {
+-                PostgreSqlCommandStore.Write(journalPath, new { plan, stage, checkedAtUtc = DateTimeOffset.UtcNow });
++            if (!plan.Emergency)
++                File.Delete(activePath);
+ 
++            void ReportProgress(PostgreSqlSwitchPlan current, string stage)
++            {
++                var journalPath = Path.Combine(root, "coordinator-" + current.Id + ".json");
++                PostgreSqlCommandStore.Write(journalPath, new { plan = current, stage, checkedAtUtc = DateTimeOffset.UtcNow });
+                 Console.WriteLine(stage);
+             }
+-
+-            Progress("Reservation and sequential phase execution.");
+-
+-            await new PostgreSqlSwitchCoordinator(remote).RunAsync(plan, Progress, ct);
+-
+-            if (!plan.Emergency)
+-                File.Delete(activePath);
+         }
+         catch (Exception ex)
+         {
+diff --git a/TechMES.PostgreSql.Control/PostgreSqlSwitchCoordinator.cs b/TechMES.PostgreSql.Control/PostgreSqlSwitchCoordinator.cs
+index 1a6c053..5ac08ca 100644
+--- a/TechMES.PostgreSql.Control/PostgreSqlSwitchCoordinator.cs
++++ b/TechMES.PostgreSql.Control/PostgreSqlSwitchCoordinator.cs
+@@ -156,57 +156,82 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
+             throw new IOException("Emergency Fence proof does not belong to this operation.");
+     }
+ 
+-    // Аварийный план останавливается после Promote. Rejoin выполняется отдельным этапом.
++    // Продолжает именно сохранённый аварийный план после подтверждённого Promote.
++    public async Task RecoverEmergencyAsync(PostgreSqlSwitchPlan plan, Action<string> progress, CancellationToken ct)
++    {
++        if (!plan.Emergency)
++            throw new InvalidOperationException("The retained plan is not an emergency switch.");
++
++        var fence = await ReadConfirmedPhaseAsync(remote, plan, "Fence", plan.From, ct);
++        var proof = fence.Fence ?? throw new IOException("The saved emergency Fence has no proof.");
++        CheckFenceProof(plan, proof);
++        await ReadConfirmedPhaseAsync(remote, plan, "Promote", plan.To, ct);
++
++        // Повтор с тем же идентификатором читает уже принятую или завершённую фазу.
++        await RunPhaseAsync(plan, "Rejoin", plan.From, proof, progress, ct);
++        await remote.PlanAsync(plan.From, "complete", plan, ct);
++        await remote.PlanAsync(plan.To, "complete", plan, ct);
++        progress($"COMPLETED: Primary={plan.To}; Standby={plan.From}.");
++    }
++
++    public static async Task<PostgreSqlRemoteOperation> ReadConfirmedPhaseAsync(IPostgreSqlSwitchRemote remote, PostgreSqlSwitchPlan plan, string mode, string node, CancellationToken ct)
++    {
++        var operation = await remote.ReadAsync(node, mode, plan, ct);
++        EnsureConfirmed(plan, mode, operation);
++        return operation;
++    }
++
++    // Аварийное повышение оставляет резервирование до отдельного Rejoin.
+     public async Task RunAsync(PostgreSqlSwitchPlan plan, Action<string> progress, CancellationToken ct)
+     {
+         foreach (var address in new[] { plan.From, plan.To }.Order(StringComparer.Ordinal))
+             await remote.PlanAsync(address, "reserve", plan, ct);
+ 
+-        JsonElement? proof = null;
++        var fence = await RunPhaseAsync(plan, "Fence", plan.From, null, progress, ct);
++        await RunPhaseAsync(plan, "Promote", plan.To, fence.Fence, progress, ct);
+ 
+-        var modes = plan.Emergency ? new[] { "Fence", "Promote" } : new[] { "Fence", "Promote", "Rejoin" };
+-
+-        foreach (var mode in modes)
++        if (plan.Emergency)
+         {
+-            var address = mode == "Promote" ? plan.To : plan.From;
+-
+-            progress($"{mode}: request on {address}");
+-
+-            var operation = await remote.SubmitAsync(address, mode, new(plan, proof), ct);
+-            var deadline = DateTimeOffset.UtcNow.AddMinutes(30);
++            progress($"PROMOTED: Primary={plan.To}; {plan.From} remains fenced pending recovery.");
++            return;
++        }
+ 
+-            while (operation.State is "Queued" or "Running")
+-            {
+-                if (DateTimeOffset.UtcNow > deadline)
+-                    throw new TimeoutException("Phase completion is not confirmed. Resume the same plan; the child script was not cancelled.");
++        await RunPhaseAsync(plan, "Rejoin", plan.From, fence.Fence, progress, ct);
+ 
+-                await Task.Delay(TimeSpan.FromSeconds(2), ct);
++        foreach (var address in new[] { plan.From, plan.To }.Order(StringComparer.Ordinal))
++            await remote.PlanAsync(address, "complete", plan, ct);
+ 
+-                operation = await remote.ReadAsync(address, mode, plan, ct);
+-            }
++        progress($"COMPLETED: Primary={plan.To}; Standby={plan.From}.");
++    }
+ 
+-            if (operation.State != "Succeeded" || operation.Id != plan.OperationId(mode))
+-                throw new InvalidOperationException($"{mode}: {operation.State}. {operation.Message} Reservation retained; subsequent phases were not requested.");
++    private async Task<PostgreSqlRemoteOperation> RunPhaseAsync(PostgreSqlSwitchPlan plan, string mode, string address, JsonElement? proof, Action<string> progress, CancellationToken ct)
++    {
++        progress($"{mode}: request on {address}");
+ 
+-            if (mode == "Fence")
+-            {
+-                proof = operation.Fence ?? throw new IOException("Fence succeeded without its exchange file.");
++        var operation = await remote.SubmitAsync(address, mode, new(plan, proof), ct);
++        var deadline = DateTimeOffset.UtcNow.AddMinutes(30);
+ 
+-                CheckFenceProof(plan, proof.Value);
+-            }
++        while (operation.State is "Queued" or "Running")
++        {
++            if (DateTimeOffset.UtcNow > deadline)
++                throw new TimeoutException("Phase completion is not confirmed. Resume the same plan; the child script was not cancelled.");
+ 
+-            progress($"{mode}: confirmed on {address}");
++            await Task.Delay(TimeSpan.FromSeconds(2), ct);
++            operation = await remote.ReadAsync(address, mode, plan, ct);
+         }
+ 
+-        if (plan.Emergency)
+-        {
+-            progress($"PROMOTED: Primary={plan.To}; {plan.From} remains fenced pending recovery.");
+-            return;
+-        }
++        EnsureConfirmed(plan, mode, operation);
+ 
+-        foreach (var address in new[] { plan.From, plan.To }.Order(StringComparer.Ordinal))
+-            await remote.PlanAsync(address, "complete", plan, ct);
++        if (mode == "Fence")
++            CheckFenceProof(plan, operation.Fence ?? throw new IOException("Fence succeeded without its exchange file."));
+ 
+-        progress($"COMPLETED: Primary={plan.To}; Standby={plan.From}.");
++        progress($"{mode}: confirmed on {address}");
++        return operation;
+     }
+-}
+\ No newline at end of file
++
++    private static void EnsureConfirmed(PostgreSqlSwitchPlan plan, string mode, PostgreSqlRemoteOperation operation)
++    {
++        if (operation.State != "Succeeded" || operation.Id != plan.OperationId(mode))
++            throw new InvalidOperationException($"{mode}: {operation.State}. {operation.Message} Reservation retained; subsequent phases were not requested.");
++    }
++}
+diff --git a/TechMES.PostgreSql.Control/PostgreSqlSwitchInbox.cs b/TechMES.PostgreSql.Control/PostgreSqlSwitchInbox.cs
+index 029b15e..df5e0f0 100644
+--- a/TechMES.PostgreSql.Control/PostgreSqlSwitchInbox.cs
++++ b/TechMES.PostgreSql.Control/PostgreSqlSwitchInbox.cs
+@@ -120,9 +120,6 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
+         plan.Validate(network.Value, control.Value);
+         AssertMode(mode);
+ 
+-        if (plan.Emergency && mode == "Rejoin")
+-            throw new InvalidOperationException("Emergency Rejoin requires a separate recovery procedure.");
+-
+         if ((mode == "Promote" ? plan.To : plan.From) != network.Value.NodeAddress || (mode == "Fence" ? phase.Fence is not null : phase.Fence is not { ValueKind: JsonValueKind.Object }))
+             throw new InvalidOperationException("Phase, node or fence proof mismatch.");
+ 
+@@ -235,9 +232,6 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
+     {
+         plan.Validate(network.Value, control.Value);
+ 
+-        if (plan.Emergency)
+-            throw new InvalidOperationException("Emergency plan stays reserved until recovery is confirmed.");
+-
+         await _gate.WaitAsync(ct);
+ 
+         try
+@@ -262,6 +256,14 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
+             if (modes.Any(mode => Read(plan, mode).State != "Succeeded"))
+                 throw new InvalidOperationException("Local switch phases are not confirmed. Reservation retained.");
+ 
++            // Новый Primary сохраняет резервирование, пока прежний узел не подтвердит Rejoin.
++            if (plan.Emergency && network.Value.NodeAddress == plan.To)
++            {
++                using var certificate = PostgreSqlNodeCertificates.LoadLocal(network.Value);
++                using var remote = new PostgreSqlSwitchRemote(network.Value, certificate);
++                await PostgreSqlSwitchCoordinator.ReadConfirmedPhaseAsync(remote, plan, "Rejoin", plan.From, ct);
++            }
++
+             PostgreSqlCommandStore.Write(CompletedPath(plan), plan);
+ 
+             File.Delete(ActivePath);
+@@ -314,7 +316,7 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
+ 
+         var plan = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(active);
+ 
+-        if (request.Id != plan.OperationId(request.Mode) || request.From != plan.From || request.To != plan.To || request.SystemIdentifier != plan.SystemIdentifier || request.EmergencyFenceId != EmergencyFenceId(plan) || plan.Emergency && request.Mode == "Rejoin")
++        if (request.Id != plan.OperationId(request.Mode) || request.From != plan.From || request.To != plan.To || request.SystemIdentifier != plan.SystemIdentifier || request.EmergencyFenceId != EmergencyFenceId(plan))
+             throw new InvalidOperationException("This command does not match the reserved switch.");
+ 
+         return plan;
+diff --git a/TechMES.PostgreSql.Tests/PostgreSqlNetworkTests.cs b/TechMES.PostgreSql.Tests/PostgreSqlNetworkTests.cs
+index 785d2fe..56e9d0d 100644
+--- a/TechMES.PostgreSql.Tests/PostgreSqlNetworkTests.cs
++++ b/TechMES.PostgreSql.Tests/PostgreSqlNetworkTests.cs
+@@ -99,7 +99,7 @@ public sealed class PostgreSqlNetworkTests
+     }
+ 
+     [Fact]
+-    public async Task EmergencyFenceCannotBypassTheReservationOrRunPlannedRejoin()
++    public async Task EmergencyRejoinKeepsTheFenceIdAndBlocksEarlyCompletion()
+     {
+         using var fixture = new Fixture();
+         await fixture.StartAsync();
+@@ -116,10 +116,41 @@ public sealed class PostgreSqlNetworkTests
+         Assert.Equal(id, queued.Id);
+         Assert.Equal(id, stored.EmergencyFenceId);
+         Assert.Equal(plan, PostgreSqlSwitchInbox.AssertCommandAllowed(fixture.Store.Root, stored));
+-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Inbox.SubmitAsync("Rejoin", new(plan, JsonSerializer.SerializeToElement(new { })), CancellationToken.None));
++        var rejoin = await fixture.Inbox.SubmitAsync("Rejoin", new(plan, JsonSerializer.SerializeToElement(new { })), CancellationToken.None);
++        var rejoinRequest = PostgreSqlCommandStore.Read<PostgreSqlCommand>(Path.Combine(fixture.Store.Root, rejoin.Id, "request.json"));
++        Assert.Equal(id, rejoinRequest.EmergencyFenceId);
++        Assert.Equal(plan, PostgreSqlSwitchInbox.AssertCommandAllowed(fixture.Store.Root, rejoinRequest));
+         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Inbox.CompleteAsync(plan, CancellationToken.None));
+     }
+ 
++    [Fact]
++    public async Task EmergencyRecoveryReadsExistingProofAndLeavesCurrentPrimaryInPlace()
++    {
++        var remote = new Remote();
++        var plan = Plan with { Emergency = true };
++
++        await new PostgreSqlSwitchCoordinator(remote).RecoverEmergencyAsync(plan, _ => { }, CancellationToken.None);
++
++        Assert.Equal(new[] { "read-Fence:10.77.12.61", "read-Promote:10.77.12.62", "Rejoin:10.77.12.61", "complete:10.77.12.61", "complete:10.77.12.62" }, remote.Calls);
++    }
++
++    [Theory]
++    [InlineData("Fence")]
++    [InlineData("Promote")]
++    [InlineData("Rejoin")]
++    public async Task EmergencyRecoveryRetainsBothReservationsWhenARequiredPhaseIsNotConfirmed(string failed)
++    {
++        var remote = new Remote { Failed = failed };
++        var plan = Plan with { Emergency = true };
++
++        await Assert.ThrowsAsync<InvalidOperationException>(() => new PostgreSqlSwitchCoordinator(remote).RecoverEmergencyAsync(plan, _ => { }, CancellationToken.None));
++
++        Assert.DoesNotContain(remote.Calls, call => call.StartsWith("complete:"));
++
++        if (failed != "Rejoin")
++            Assert.DoesNotContain(remote.Calls, call => call.StartsWith("Rejoin:"));
++    }
++
+     // Неопределённый результат прекращает переход к следующему этапу.
+     [Theory]
+     [InlineData("Fence")]
+@@ -377,25 +408,29 @@ public sealed class PostgreSqlNetworkTests
+         {
+             Calls.Add(mode + ":" + address);
+ 
+-            if (mode == "Fence" && LoseFenceResponse)
+-                throw new HttpRequestException("Connection lost while waiting for Fence.");
+-
+             if (mode != "Fence")
+                 Assert.NotNull(phase.Fence);
+ 
+-            var plan = phase.Plan;
++            return Task.FromResult(Operation(phase.Plan, mode));
++        }
++
++        private PostgreSqlRemoteOperation Operation(PostgreSqlSwitchPlan plan, string mode)
++        {
++            if (mode == "Fence" && LoseFenceResponse)
++                throw new HttpRequestException("Connection lost while waiting for Fence.");
++
+             JsonElement? proof = mode == "Fence" && !MissingFenceProof
+                 ? JsonSerializer.SerializeToElement(new { State = "Fenced", plan.From, plan.To, Sid = WrongProof ? "123" : plan.SystemIdentifier, Format = plan.Emergency ? 2 : 1, Id = WrongEmergencyId ? Plan.OperationId("Fence") : plan.OperationId("Fence") })
+                 : null;
+ 
+-            return Task.FromResult(new PostgreSqlRemoteOperation(plan.OperationId(mode), mode == Failed ? "NeedsReview" : "Succeeded", "Test", null, proof));
++            return new PostgreSqlRemoteOperation(plan.OperationId(mode), mode == Failed ? "NeedsReview" : "Succeeded", "Test", null, proof);
+         }
+ 
+         public Task<PostgreSqlRemoteOperation> ReadAsync(string address, string mode, PostgreSqlSwitchPlan plan, CancellationToken ct)
+         {
+-            Assert.Equal(plan.From, address);
+-            Assert.Equal("Fence", mode);
+-            return SubmitAsync(address, mode, new(plan, null), ct);
++            Assert.Equal(mode == "Promote" ? plan.To : plan.From, address);
++            Calls.Add("read-" + mode + ":" + address);
++            return Task.FromResult(Operation(plan, mode));
+         }
+     }
+ 
+diff --git a/scripts/deploy/Switch-PostgreSQL18.ps1 b/scripts/deploy/Switch-PostgreSQL18.ps1
+index 5f6de30..bdfc5f8 100644
+--- a/scripts/deploy/Switch-PostgreSQL18.ps1
++++ b/scripts/deploy/Switch-PostgreSQL18.ps1
+@@ -188,7 +188,7 @@ SELECT jsonb_build_object(
+     UNION SELECT current_setting('config_file') UNION SELECT current_setting('hba_file') UNION SELECT current_setting('ident_file')
+     UNION SELECT current_setting(key) FROM unnest(ARRAY['ssl_cert_file','ssl_key_file','ssl_ca_file','ssl_crl_file']) AS key WHERE current_setting('ssl')='on' AND current_setting(key)<>''
+  ) AS files WHERE path IS NOT NULL),
+- 'receiver',COALESCE((SELECT jsonb_agg(jsonb_build_object('host',sender_host,'port',sender_port,'slot',slot_name,'status',status)) FROM pg_stat_wal_receiver),'[]'::jsonb),
++ 'receiver',COALESCE((SELECT jsonb_agg(jsonb_build_object('host',sender_host,'port',sender_port,'slot',slot_name,'status',status,'timeline',received_tli)) FROM pg_stat_wal_receiver),'[]'::jsonb),
+  'replicas',COALESCE((SELECT jsonb_agg(jsonb_build_object('address',host(client_addr),'state',state)) FROM pg_stat_replication),'[]'::jsonb)
+ );
+ COMMIT;
+@@ -442,7 +442,7 @@ function Write-StandbyConfiguration([string]$Stage, $Proof) {
+ }
+ 
+ # Проверяет устойчивую работу возвращённого узла в режиме реплики.
+-function Wait-Standby($Proof) {
++function Wait-Standby($Proof, [int]$ExpectedTimeline=0) {
+     $deadline=[DateTime]::UtcNow.AddSeconds(180)
+     $good=0
+ 
+@@ -465,7 +465,7 @@ function Wait-Standby($Proof) {
+ 
+         if (!$node.recovery -or $node.sid -cne $Proof.Sid) { throw 'The returning node is not a Standby of the expected cluster.' }
+ 
+-        if (@($node.receiver | Where-Object { $_.host -eq $To -and $_.port -eq $Port -and $_.slot -eq $script:Slot -and $_.status -eq 'streaming' }).Count -eq 1 -and !$node.paused) {
++        if (@($node.receiver | Where-Object { $_.host -eq $To -and $_.port -eq $Port -and $_.slot -eq $script:Slot -and $_.status -eq 'streaming' -and (!$ExpectedTimeline -or $_.timeline -eq $ExpectedTimeline) }).Count -eq 1 -and !$node.paused) {
+             $good++
+         }
+         else {
+@@ -688,6 +688,46 @@ function Invoke-Promote {
+     }
+ }
+ 
++# У аварийного Fence нет списка файлов, снятого через SQL до остановки.
++# -C должен стоять первым для чтения параметров под учётной записью контроллера.
++function Get-EmergencyRejoinConfigs {
++    $postgres=Join-Path $PgBin 'postgres.exe'
++    $service=Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
++    if ($null -eq $service -or $service.PathName -match '(?:^|\s)-o(?:\s|"|$)') { throw 'Cannot reconstruct configuration with PostgreSQL service option overrides.' }
++
++    $directory=Invoke-Tool $postgres @('-C','data_directory','-D',$DataDirectory)
++    if ((Normalize-Path $directory) -ine $DataDirectory) { throw 'The offline PostgreSQL configuration points to a different PGDATA.' }
++
++    $paths=@('postgresql.auto.conf')
++    foreach ($setting in @('config_file','hba_file','ident_file')) {
++        $path=Invoke-Tool $postgres @('-C',$setting,'-D',$DataDirectory)
++        if (!$path) { throw ('Cannot identify offline PostgreSQL setting: '+$setting) }
++        $paths+=Get-ConfigRelativePath $path
++    }
++
++    foreach ($relative in $paths) {
++        $path=Join-Path $DataDirectory $relative
++        if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw ('Local configuration file is missing: '+$relative) }
++        if (Select-String -LiteralPath $path -Pattern '^\s*include(?:_dir|_if_exists)?(?:\s|=)' -Quiet -ErrorAction Stop) {
++            throw 'The saved emergency Fence has no inventory of included configuration files. Keep the source fenced until that inventory is available.'
++        }
++    }
++
++    if ((Invoke-Tool $postgres @('-C','ssl','-D',$DataDirectory)) -eq 'on') {
++        if (Invoke-Tool $postgres @('-C','ssl_crl_dir','-D',$DataDirectory)) { throw 'Cannot preserve the local SSL CRL directory from this emergency Fence.' }
++        foreach ($setting in @('ssl_cert_file','ssl_key_file','ssl_ca_file','ssl_crl_file')) {
++            $path=Invoke-Tool $postgres @('-C',$setting,'-D',$DataDirectory)
++            if ($path) {
++                $relative=Get-ConfigRelativePath $path
++                if (!(Test-Path -LiteralPath (Join-Path $DataDirectory $relative) -PathType Leaf)) { throw ('Local SSL file is missing: '+$relative) }
++                $paths+=$relative
++            }
++        }
++    }
++
++    return $paths | Sort-Object -Unique
++}
++
+ # Возвращает старый узел через pg_rewind рабочей копии; исходный каталог сохраняется.
+ function Invoke-Rejoin {
+     if ($script:LocalAddress -ne $From) { throw 'Rejoin must run on the old Primary.' }
+@@ -697,6 +737,11 @@ function Invoke-Rejoin {
+ 
+     if ($local.Id -cne $proof.Id -or $local.State -ne 'Fenced') { throw 'The local fence marker does not match this operation.' }
+ 
++    if ($EmergencyFenceId -and ($local.Format -ne 2 -or $local.Sid -cne $proof.Sid -or $local.From -cne $From -or $local.To -cne $To -or $local.Lsn -cne $proof.Lsn -or $local.Timeline -ne $proof.Timeline -or $local.StartMode -cne $proof.StartMode -or $local.ClusterState -ne 'shut down' -or $proof.ClusterState -ne 'shut down')) {
++        throw 'Emergency Rejoin requires the unchanged Fence of a cleanly stopped Primary.'
++    }
++
++
+     $null=Assert-ServiceState $false
+ 
+     if ((Get-CimInstance Win32_Service -Filter "Name='$ServiceName'").StartMode -ne 'Disabled' -or !(Test-Path -LiteralPath (Join-Path $DataDirectory 'standby.signal'))) { throw 'The old node must remain stopped, disabled and marked as Standby.' }
+@@ -709,16 +754,28 @@ function Invoke-Rejoin {
+ 
+     if ($primary.recovery -or $primary.readOnly -or $primary.sid -cne $proof.Sid -or $primary.timeline -le $proof.Timeline) { throw 'The selected new Primary is not confirmed.' }
+ 
++    if ($EmergencyFenceId -and ($primary.version -lt 180000 -or $primary.version -ge 190000 -or !$primary.superuser -or $primary.tablespaces -ne 0 -or $primary.configErrors -ne 0)) {
++        throw 'The current Primary configuration is not supported by the emergency Rejoin.'
++    }
++
+     Assert-ReplicationLogin $To $proof.Sid
+-    Ensure-Slot $To
+ 
+     if (Get-ChildItem -LiteralPath $DataDirectory -Recurse -Force -Attributes ReparsePoint | Select-Object -First 1) { throw 'Reparse points inside PGDATA are not supported.' }
+ 
++    $configs=if ($EmergencyFenceId) { @(Get-EmergencyRejoinConfigs) } else { @($proof.Configs) }
++
++    if ($EmergencyFenceId) {
++        $size=(Get-ChildItem -LiteralPath $DataDirectory -Recurse -File -Force | Measure-Object Length -Sum).Sum
++        if ((New-Object IO.DriveInfo([IO.Path]::GetPathRoot($DataDirectory))).AvailableFreeSpace -lt ($size+2GB)) { throw 'Insufficient space for a working copy of PGDATA plus 2 GB.' }
++    }
++
+     $stage=$DataDirectory+'.techmes-stage-'+$proof.Id
+     $backup=$DataDirectory+'.techmes-before-'+$proof.Id
+ 
+     if ((Test-Path -LiteralPath $stage) -or (Test-Path -LiteralPath $backup)) { throw 'A working copy or backup already exists. Inspect the previous run before retrying.' }
+ 
++    Ensure-Slot $To
++
+     $script:Changed=$true
+ 
+     $null=New-Item -ItemType Directory -Path $stage
+@@ -737,7 +794,7 @@ function Invoke-Rejoin {
+     $null=Invoke-Tool (Join-Path $PgBin 'pg_rewind.exe') ($rewindArguments+@('--dry-run')) '' $script:SqlCredential $To -Change
+     $null=Invoke-Tool (Join-Path $PgBin 'pg_rewind.exe') $rewindArguments '' $script:SqlCredential $To -Change
+ 
+-    foreach ($relative in $proof.Configs) {
++    foreach ($relative in $configs) {
+         $relative=Get-ConfigRelativePath ([string]$relative)
+         $original=Join-Path $DataDirectory $relative
+ 
+@@ -761,7 +818,13 @@ function Invoke-Rejoin {
+     Write-Json (Join-Path $script:Root ('rejoin-'+$proof.Id+'.json')) ([pscustomobject]@{ State='Installing'; Stage=$stage; Backup=$backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
+ 
+     [IO.Directory]::Move($DataDirectory,$backup)
+-    [IO.Directory]::Move($stage,$DataDirectory)
++    try {
++        [IO.Directory]::Move($stage,$DataDirectory)
++    }
++    catch {
++        if (!(Test-Path -LiteralPath $DataDirectory)) { [IO.Directory]::Move($backup,$DataDirectory) }
++        throw
++    }
+ 
+     $script:Installed=$true
+ 
+@@ -772,7 +835,8 @@ function Invoke-Rejoin {
+ 
+     (Get-Service -Name $ServiceName).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running,[TimeSpan]::FromSeconds(300))
+ 
+-    $node=Wait-Standby $proof
++    $expectedTimeline=if ($EmergencyFenceId) { $primary.timeline } else { 0 }
++    $node=Wait-Standby $proof $expectedTimeline
+ 
+     Write-Json (Join-Path $script:Root ('rejoin-'+$proof.Id+'.json')) ([pscustomobject]@{ State='Rejoined'; Backup=$backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
+ 
+@@ -863,7 +927,7 @@ if ($Mode -ne 'Status') {
+ }
+ 
+ if ($CredentialInput -and (!$OperationId -or !$ExpectedSystemIdentifier -or !$ResultFile)) { throw 'Non-interactive execution requires OperationId, ExpectedSystemIdentifier and ResultFile.' }
+-if ($EmergencyFenceId -and (!$CredentialInput -or $Mode -notin @('Fence','Promote'))) { throw 'Emergency phases require the TechMES controller and a reserved operation.' }
++if ($EmergencyFenceId -and (!$CredentialInput -or $Mode -notin @('Fence','Promote','Rejoin'))) { throw 'Emergency phases require the TechMES controller and a reserved operation.' }
+ 
+ if ($ResultFile) {
+     $ResultFile=[IO.Path]::GetFullPath($ResultFile)

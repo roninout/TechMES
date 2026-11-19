@@ -10,7 +10,7 @@ public static class PostgreSqlSwitchConsole
     // До запуска Generic Host обрабатывает status/switch/cancel.
     public static async Task<bool> TryRunAsync(string[] args)
     {
-        if (args.Length == 0 || args[0] is not ("--postgres-status" or "--postgres-switch" or "--postgres-emergency-switch" or "--postgres-cancel"))
+        if (args.Length == 0 || args[0] is not ("--postgres-status" or "--postgres-switch" or "--postgres-emergency-switch" or "--postgres-emergency-rejoin" or "--postgres-cancel"))
             return false;
 
         using var cancellation = new CancellationTokenSource();
@@ -80,6 +80,22 @@ public static class PostgreSqlSwitchConsole
                 return true;
             }
 
+            if (args[0] == "--postgres-emergency-rejoin")
+            {
+                if (args.Length != 2)
+                    throw new ArgumentException("Usage: --postgres-emergency-rejoin <existing-plan-id>");
+
+                var pending = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(activePath);
+                pending.Validate(network, control);
+
+                if (!pending.Emergency || pending.Id != args[1] || network.NodeAddress != pending.To)
+                    throw new InvalidOperationException("Run on the promoted node with the matching retained emergency plan ID.");
+
+                await new PostgreSqlSwitchCoordinator(remote).RecoverEmergencyAsync(pending, stage => ReportProgress(pending, stage), ct);
+                File.Delete(activePath);
+                return true;
+            }
+
             var emergency = args[0] == "--postgres-emergency-switch";
 
             if (args.Length != 3)
@@ -114,21 +130,18 @@ public static class PostgreSqlSwitchConsole
                 Console.WriteLine("START: " + plan.Id);
             }
 
-            var journalPath = Path.Combine(root, "coordinator-" + plan.Id + ".json");
-
-            void Progress(string stage)
-            {
-                PostgreSqlCommandStore.Write(journalPath, new { plan, stage, checkedAtUtc = DateTimeOffset.UtcNow });
-
-                Console.WriteLine(stage);
-            }
-
-            Progress("Reservation and sequential phase execution.");
-
-            await new PostgreSqlSwitchCoordinator(remote).RunAsync(plan, Progress, ct);
+            ReportProgress(plan, "Reservation and sequential phase execution.");
+            await new PostgreSqlSwitchCoordinator(remote).RunAsync(plan, stage => ReportProgress(plan, stage), ct);
 
             if (!plan.Emergency)
                 File.Delete(activePath);
+
+            void ReportProgress(PostgreSqlSwitchPlan current, string stage)
+            {
+                var journalPath = Path.Combine(root, "coordinator-" + current.Id + ".json");
+                PostgreSqlCommandStore.Write(journalPath, new { plan = current, stage, checkedAtUtc = DateTimeOffset.UtcNow });
+                Console.WriteLine(stage);
+            }
         }
         catch (Exception ex)
         {

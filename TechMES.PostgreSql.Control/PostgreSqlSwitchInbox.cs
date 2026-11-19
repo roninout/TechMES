@@ -120,9 +120,6 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
         plan.Validate(network.Value, control.Value);
         AssertMode(mode);
 
-        if (plan.Emergency && mode == "Rejoin")
-            throw new InvalidOperationException("Emergency Rejoin requires a separate recovery procedure.");
-
         if ((mode == "Promote" ? plan.To : plan.From) != network.Value.NodeAddress || (mode == "Fence" ? phase.Fence is not null : phase.Fence is not { ValueKind: JsonValueKind.Object }))
             throw new InvalidOperationException("Phase, node or fence proof mismatch.");
 
@@ -235,9 +232,6 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
     {
         plan.Validate(network.Value, control.Value);
 
-        if (plan.Emergency)
-            throw new InvalidOperationException("Emergency plan stays reserved until recovery is confirmed.");
-
         await _gate.WaitAsync(ct);
 
         try
@@ -261,6 +255,14 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
 
             if (modes.Any(mode => Read(plan, mode).State != "Succeeded"))
                 throw new InvalidOperationException("Local switch phases are not confirmed. Reservation retained.");
+
+            // Новый Primary сохраняет резервирование, пока прежний узел не подтвердит Rejoin.
+            if (plan.Emergency && network.Value.NodeAddress == plan.To)
+            {
+                using var certificate = PostgreSqlNodeCertificates.LoadLocal(network.Value);
+                using var remote = new PostgreSqlSwitchRemote(network.Value, certificate);
+                await PostgreSqlSwitchCoordinator.ReadConfirmedPhaseAsync(remote, plan, "Rejoin", plan.From, ct);
+            }
 
             PostgreSqlCommandStore.Write(CompletedPath(plan), plan);
 
@@ -314,7 +316,7 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
 
         var plan = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(active);
 
-        if (request.Id != plan.OperationId(request.Mode) || request.From != plan.From || request.To != plan.To || request.SystemIdentifier != plan.SystemIdentifier || request.EmergencyFenceId != EmergencyFenceId(plan) || plan.Emergency && request.Mode == "Rejoin")
+        if (request.Id != plan.OperationId(request.Mode) || request.From != plan.From || request.To != plan.To || request.SystemIdentifier != plan.SystemIdentifier || request.EmergencyFenceId != EmergencyFenceId(plan))
             throw new InvalidOperationException("This command does not match the reserved switch.");
 
         return plan;
