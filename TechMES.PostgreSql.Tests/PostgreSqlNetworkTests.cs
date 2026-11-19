@@ -34,6 +34,92 @@ public sealed class PostgreSqlNetworkTests
         Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61", "Promote:10.77.12.62", "Rejoin:10.77.12.61", "complete:10.77.12.61", "complete:10.77.12.62" }, remote.Calls);
     }
 
+    [Fact]
+    public async Task EmergencyOnlyFencesAndPromotesAndKeepsThePairReserved()
+    {
+        var plan = Plan with { Emergency = true };
+        var remote = new Remote();
+
+        await new PostgreSqlSwitchCoordinator(remote).RunAsync(plan, _ => { }, CancellationToken.None);
+
+        Assert.NotEqual(Plan.OperationId("Fence"), plan.OperationId("Fence"));
+        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61", "Promote:10.77.12.62" }, remote.Calls);
+    }
+
+    [Fact]
+    public async Task EmergencyProofFromAnotherOperationIsRejected()
+    {
+        var remote = new Remote { WrongEmergencyId = true };
+        var plan = Plan with { Emergency = true };
+
+        await Assert.ThrowsAsync<IOException>(() => new PostgreSqlSwitchCoordinator(remote).RunAsync(plan, _ => { }, CancellationToken.None));
+
+        Assert.DoesNotContain(remote.Calls, call => call.StartsWith("Promote:"));
+    }
+
+    [Fact]
+    public async Task EmergencyTargetRequiresMatchingProofFromSourceController()
+    {
+        var plan = Plan with { Emergency = true };
+        var remote = new Remote();
+        var recorded = (await remote.SubmitAsync(plan.From, "Fence", new(plan, null), CancellationToken.None)).Fence!.Value;
+
+        await PostgreSqlSwitchCoordinator.VerifyEmergencyFenceAsync(remote, plan, recorded);
+
+        await Assert.ThrowsAsync<IOException>(() => PostgreSqlSwitchCoordinator.VerifyEmergencyFenceAsync(remote, plan, JsonSerializer.SerializeToElement(new { State = "Fenced" })));
+
+        remote.LoseFenceResponse = true;
+        await Assert.ThrowsAsync<HttpRequestException>(() => PostgreSqlSwitchCoordinator.VerifyEmergencyFenceAsync(remote, plan, recorded));
+    }
+
+    [Theory]
+    [InlineData("in production", 0, 0, true)]
+    [InlineData("shut down", 0, 0, true)]
+    [InlineData("shut down in recovery", 0, 0, false)]
+    [InlineData("in production", 123, 0, false)]
+    [InlineData("in production", 0, 123, false)]
+    public void EmergencyRequiresAnActuallyStoppedPrimary(string clusterState, int postmaster, int listener, bool expected)
+    {
+        var plan = Plan with { Emergency = true };
+        var source = Status(plan.From, "Stopped");
+        source = source with
+        {
+            Local = source.Local with
+            {
+                ClusterState = clusterState,
+                Service = new() { ServiceState = "Stopped", PostmasterProcessId = postmaster, ListenerProcessId = listener }
+            }
+        };
+        var target = Status(plan.To, "Standby");
+
+        if (expected)
+            PostgreSqlSwitchCoordinator.CheckInitial(plan, source, target);
+        else
+            Assert.Throws<InvalidOperationException>(() => PostgreSqlSwitchCoordinator.CheckInitial(plan, source, target));
+    }
+
+    [Fact]
+    public async Task EmergencyFenceCannotBypassTheReservationOrRunPlannedRejoin()
+    {
+        using var fixture = new Fixture();
+        await fixture.StartAsync();
+        var plan = Plan with { Emergency = true };
+        var id = plan.OperationId("Fence");
+        var request = new PostgreSqlCommand(id, "Fence", plan.From, plan.To, plan.SystemIdentifier, DateTimeOffset.UtcNow, null) { EmergencyFenceId = id };
+
+        Assert.Throws<InvalidOperationException>(() => PostgreSqlSwitchInbox.AssertCommandAllowed(fixture.Store.Root, request));
+
+        await fixture.Inbox.ReserveAsync(plan, CancellationToken.None);
+        var queued = await fixture.Inbox.SubmitAsync("Fence", new(plan, null), CancellationToken.None);
+        var stored = PostgreSqlCommandStore.Read<PostgreSqlCommand>(Path.Combine(fixture.Store.Root, id, "request.json"));
+
+        Assert.Equal(id, queued.Id);
+        Assert.Equal(id, stored.EmergencyFenceId);
+        Assert.Equal(plan, PostgreSqlSwitchInbox.AssertCommandAllowed(fixture.Store.Root, stored));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Inbox.SubmitAsync("Rejoin", new(plan, JsonSerializer.SerializeToElement(new { })), CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Inbox.CompleteAsync(plan, CancellationToken.None));
+    }
+
     // Неопределённый результат прекращает переход к следующему этапу.
     [Theory]
     [InlineData("Fence")]
@@ -270,6 +356,7 @@ public sealed class PostgreSqlNetworkTests
         public bool WrongProof;
         public bool LoseFenceResponse;
         public bool MissingFenceProof;
+        public bool WrongEmergencyId;
 
         public Task<PostgreSqlRemoteStatus> StatusAsync(string address, CancellationToken ct)
         {
@@ -296,14 +383,19 @@ public sealed class PostgreSqlNetworkTests
             if (mode != "Fence")
                 Assert.NotNull(phase.Fence);
 
-            JsonElement? proof = mode == "Fence" && !MissingFenceProof ? JsonSerializer.SerializeToElement(new { State = "Fenced", From = Plan.From, To = Plan.To, Sid = WrongProof ? "123" : Plan.SystemIdentifier }) : null;
+            var plan = phase.Plan;
+            JsonElement? proof = mode == "Fence" && !MissingFenceProof
+                ? JsonSerializer.SerializeToElement(new { State = "Fenced", plan.From, plan.To, Sid = WrongProof ? "123" : plan.SystemIdentifier, Format = plan.Emergency ? 2 : 1, Id = WrongEmergencyId ? Plan.OperationId("Fence") : plan.OperationId("Fence") })
+                : null;
 
-            return Task.FromResult(new PostgreSqlRemoteOperation(Plan.OperationId(mode), mode == Failed ? "NeedsReview" : "Succeeded", "Test", null, proof));
+            return Task.FromResult(new PostgreSqlRemoteOperation(plan.OperationId(mode), mode == Failed ? "NeedsReview" : "Succeeded", "Test", null, proof));
         }
 
         public Task<PostgreSqlRemoteOperation> ReadAsync(string address, string mode, PostgreSqlSwitchPlan plan, CancellationToken ct)
         {
-            throw new NotImplementedException();
+            Assert.Equal(plan.From, address);
+            Assert.Equal("Fence", mode);
+            return SubmitAsync(address, mode, new(plan, null), ct);
         }
     }
 

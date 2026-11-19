@@ -137,7 +137,8 @@ public sealed class PostgreSqlMaintenanceSession(IPostgreSqlMaintenanceRemote re
 
         await new PostgreSqlSwitchCoordinator(remote).RunAsync(plan, Report, ct);
 
-        File.Delete(PendingPath);
+        if (!plan.Emergency)
+            File.Delete(PendingPath);
     }
 
     // Локальный план переживает остановку Maintenance и потерю соединения.

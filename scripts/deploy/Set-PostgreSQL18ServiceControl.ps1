@@ -141,6 +141,13 @@ function Get-PostgreSqlServiceState {
             (Test-ServiceAncestor $listenerProcessId ([int]$service.ProcessId))
     }
 
+    # После сбоя PID-файл может остаться. Не удаляем его и проверяем сам процесс.
+    if ($service.State -eq 'Stopped' -and $listenerProcessId -eq 0 -and $fileProcessId -gt 0) {
+        if ($null -eq (Get-CimInstance Win32_Process -Filter "ProcessId=$fileProcessId" -ErrorAction Stop)) {
+            $fileProcessId = 0
+        }
+    }
+
     return [pscustomobject]@{
         Computer = $env:COMPUTERNAME
         ServiceName = $ServiceName

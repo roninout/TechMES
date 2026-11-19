@@ -11,6 +11,7 @@ param(
     [ValidateRange(1,65535)][int]$Port=5432,
     [switch]$CredentialInput,
     [ValidatePattern('^$|^[0-9a-f]{32}$')][string]$OperationId='',
+    [ValidatePattern('^$|^[0-9a-f]{32}$')][string]$EmergencyFenceId='',
     [ValidatePattern('^$|^[0-9]{1,20}$')][string]$ExpectedSystemIdentifier='',
     [string]$ResultFile=''
 )
@@ -172,6 +173,7 @@ SELECT jsonb_build_object(
  'readOnly',current_setting('default_transaction_read_only')::boolean,
  'timeline',(SELECT timeline_id FROM pg_control_checkpoint()),
  'flush',CASE WHEN NOT pg_is_in_recovery() THEN pg_current_wal_flush_lsn()::text END,
+ 'receive',pg_last_wal_receive_lsn()::text,
  'replay',pg_last_wal_replay_lsn()::text,
  'paused',CASE WHEN pg_is_in_recovery() THEN pg_is_wal_replay_paused() END,
  'hints',current_setting('wal_log_hints'), 'checksums',current_setting('data_checksums'),
@@ -229,7 +231,7 @@ function Assert-ServiceState([bool]$Running) {
 }
 
 # Читает контрольный файл остановленного PostgreSQL в фиксированной локали C.
-function Get-Control([string]$Directory) {
+function Get-Control([string]$Directory, [switch]$AllowUncleanPrimary) {
     $raw=Invoke-Tool (Join-Path $PgBin 'pg_controldata.exe') @('-D',$Directory)
     $values=@{}
 
@@ -241,9 +243,12 @@ function Get-Control([string]$Directory) {
         if (!$values.ContainsKey($key)) { throw ('Missing pg_controldata field: '+$key) }
     }
 
-    if ($values['Database cluster state'] -ne 'shut down') { throw 'The old Primary must be shut down cleanly before promotion or rewind.' }
+    $state=$values['Database cluster state']
+
+    if ($state -ne 'shut down' -and !($AllowUncleanPrimary -and $state -eq 'in production')) { throw 'The source control file does not confirm the expected stopped Primary.' }
 
     return [pscustomobject]@{
+        State=$state
         Sid=$values['Database system identifier']
         Lsn=$values['Latest checkpoint location']
         Timeline=[int]$values["Latest checkpoint's TimeLineID"]
@@ -281,8 +286,11 @@ function Write-Json([string]$Path, $Value) {
 function Read-Fence {
     $proof=Get-Content -LiteralPath $FenceFile -Raw | ConvertFrom-Json
     $identifier=[guid]::Parse($proof.Id).ToString('N')
+    $format=if ($EmergencyFenceId) { 2 } else { 1 }
 
-    if ($identifier -cne $proof.Id -or $proof.Format -ne 1 -or $proof.State -ne 'Fenced' -or $proof.From -ne $From -or $proof.To -ne $To -or $proof.ServiceName -ne $ServiceName -or $proof.Port -ne $Port -or (Normalize-Path $proof.DataDirectory) -ine $DataDirectory -or (Normalize-Path $proof.PgBin) -ine $PgBin -or $proof.StartMode -notin @('Auto','Manual') -or $proof.Lsn -notmatch '^[0-9A-F]+/[0-9A-F]+$' -or $proof.Sid -notmatch '^\d+$' -or $proof.Timeline -lt 1) { throw 'Fence file does not match this operation.' }
+    if ($EmergencyFenceId -and $proof.Id -cne $EmergencyFenceId) { throw 'Emergency proof does not match the reserved Fence operation.' }
+
+    if ($identifier -cne $proof.Id -or $proof.Format -ne $format -or $proof.State -ne 'Fenced' -or $proof.From -ne $From -or $proof.To -ne $To -or $proof.ServiceName -ne $ServiceName -or $proof.Port -ne $Port -or (Normalize-Path $proof.DataDirectory) -ine $DataDirectory -or (Normalize-Path $proof.PgBin) -ine $PgBin -or $proof.StartMode -notin @('Auto','Manual') -or $proof.Lsn -notmatch '^[0-9A-F]+/[0-9A-F]+$' -or $proof.Sid -notmatch '^\d+$' -or $proof.Timeline -lt 1) { throw 'Fence file does not match this operation.' }
 
     if ($ExpectedSystemIdentifier -and $proof.Sid -cne $ExpectedSystemIdentifier) { throw 'The fence proof belongs to a different PostgreSQL cluster.' }
 
@@ -543,6 +551,78 @@ function Invoke-Fence {
     }
 }
 
+# Проверяет фактическую остановку, включая оставшиеся процессы и TCP-порт.
+function Assert-EmergencyStopped {
+    $state=Assert-ServiceState $false
+    $listeners=@(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object LocalPort -eq $Port)
+    $processes=@(Get-CimInstance Win32_Process -Filter "Name='postgres.exe'" -ErrorAction Stop | Where-Object {
+        !$_.ExecutablePath -or (Normalize-Path $_.ExecutablePath) -ieq (Join-Path $PgBin 'postgres.exe')
+    })
+
+    if ($state.ServiceProcessId -ne 0 -or $listeners.Count -ne 0 -or $processes.Count -ne 0) { throw 'PostgreSQL is not confirmed stopped or a PostgreSQL process cannot be identified.' }
+}
+
+# Изолирует уже остановленный Primary без SQL-запроса к нему.
+function Invoke-EmergencyFence {
+    if ($script:LocalAddress -ne $From -or $OperationId -cne $EmergencyFenceId) { throw 'Emergency Fence must run on the reserved source.' }
+    if ((Test-Path -LiteralPath $FenceFile) -or (Test-Path -LiteralPath $script:ActiveFencePath)) { throw 'A fence already exists. Inspect the saved operation.' }
+
+    Assert-EmergencyStopped
+
+    $before=Get-Control $DataDirectory -AllowUncleanPrimary
+    $standby=Get-Node $To
+    $service=Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
+    $signal=Join-Path $DataDirectory 'standby.signal'
+
+    if ($before.Sid -cne $ExpectedSystemIdentifier -or $standby.sid -cne $before.Sid -or $standby.timeline -ne $before.Timeline -or !$standby.recovery -or $standby.paused -or $standby.receive -notmatch '^[0-9A-F]+/[0-9A-F]+$') { throw 'The standby cannot confirm the source cluster, timeline or received WAL.' }
+    if ($null -eq $service -or $service.State -ne 'Stopped' -or $service.StartMode -notin @('Auto','Manual')) { throw 'The original service must be stopped with a known startup type.' }
+    if ((Test-Path -LiteralPath $signal) -or (Test-Path -LiteralPath (Join-Path $DataDirectory 'recovery.signal'))) { throw 'Unexpected recovery signal on the old Primary.' }
+
+    $proof=[pscustomobject]@{
+        Format=2
+        Id=$EmergencyFenceId
+        State='Fencing'
+        CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o')
+        From=$From
+        To=$To
+        ServiceName=$ServiceName
+        PgBin=$PgBin
+        DataDirectory=$DataDirectory
+        Port=$Port
+        StartMode=$service.StartMode
+        Sid=$before.Sid
+        Timeline=$before.Timeline
+        Lsn=$before.Lsn
+        ClusterState=$before.State
+    }
+
+    Write-Json $script:ActiveFencePath $proof
+    $script:Changed=$true
+
+    Set-Service -Name $ServiceName -StartupType Disabled -ErrorAction Stop
+    Assert-EmergencyStopped
+
+    $after=Get-Control $DataDirectory -AllowUncleanPrimary
+    $disabled=Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
+
+    if ($null -eq $disabled -or $disabled.StartMode -ne 'Disabled' -or $after.Sid -cne $before.Sid -or $after.Timeline -ne $before.Timeline -or $after.Lsn -cne $before.Lsn -or $after.State -ne $before.State) { throw 'Persistent isolation or the original control file was not confirmed.' }
+
+    # Если старый PGDATA запустят вне службы, этот флаг требует режима восстановления.
+    [IO.File]::WriteAllBytes($signal,[byte[]]@())
+
+    $proof.State='Fenced'
+    $proof.CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o')
+    Write-Json $script:ActiveFencePath $proof
+    Write-Json $FenceFile $proof
+
+    return [pscustomobject]@{
+        State='Fenced'
+        ExchangeFile=$FenceFile
+        SourceCheckpoint=$before.Lsn
+        ClusterState=$before.State
+    }
+}
+
 # Повышает догнавшую реплику после подтверждённой остановки старого Primary.
 function Invoke-Promote {
     if ($script:LocalAddress -ne $To) { throw 'Promote must run on the selected new Primary.' }
@@ -569,7 +649,9 @@ function Invoke-Promote {
     if ($node.recovery) {
         if (Test-Path -LiteralPath $journalPath) { throw 'A promotion was already requested. Inspect its journal before issuing another request.' }
 
-        Wait-Replay '127.0.0.1' $proof.Lsn $proof.Sid $proof.Timeline
+        # При аварии ждём применение WAL, полученного репликой до повышения.
+        $requiredLsn=if ($EmergencyFenceId) { $node.receive } else { $proof.Lsn }
+        Wait-Replay '127.0.0.1' $requiredLsn $proof.Sid $proof.Timeline
 
         $null=Assert-ServiceState $true
 
@@ -781,6 +863,7 @@ if ($Mode -ne 'Status') {
 }
 
 if ($CredentialInput -and (!$OperationId -or !$ExpectedSystemIdentifier -or !$ResultFile)) { throw 'Non-interactive execution requires OperationId, ExpectedSystemIdentifier and ResultFile.' }
+if ($EmergencyFenceId -and (!$CredentialInput -or $Mode -notin @('Fence','Promote'))) { throw 'Emergency phases require the TechMES controller and a reserved operation.' }
 
 if ($ResultFile) {
     $ResultFile=[IO.Path]::GetFullPath($ResultFile)
@@ -857,9 +940,9 @@ try {
 
         $result.Success=$true
     }
-    elseif ($PSCmdlet.ShouldProcess($script:LocalAddress,($Mode+' PostgreSQL planned switch '+$From+' -> '+$To))) {
+    elseif ($PSCmdlet.ShouldProcess($script:LocalAddress,($Mode+' PostgreSQL switch '+$From+' -> '+$To))) {
         switch ($Mode) {
-            'Fence' { $result.Data=Invoke-Fence }
+            'Fence' { $result.Data=if ($EmergencyFenceId) { Invoke-EmergencyFence } else { Invoke-Fence } }
             'Promote' { $result.Data=Invoke-Promote }
             'Rejoin' { $result.Data=Invoke-Rejoin }
         }

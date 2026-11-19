@@ -40,6 +40,12 @@ public sealed class PostgreSqlSwitchRunner : IPostgreSqlSwitchRunner
         foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-Mode", request.Mode, "-From", request.From, "-To", request.To, "-FenceFile", Path.Combine(directory, "fence.json"), "-PgBin", settings.BinDirectory, "-DataDirectory", settings.DataDirectory, "-ServiceName", settings.ServiceName, "-Port", settings.Port.ToString(CultureInfo.InvariantCulture), "-CredentialInput", "-OperationId", request.Id, "-ExpectedSystemIdentifier", settings.ExpectedSystemIdentifier, "-ResultFile", Path.Combine(directory, "script-result.json") })
             process.StartInfo.ArgumentList.Add(argument);
 
+        if (request.EmergencyFenceId is { } emergencyFenceId)
+        {
+            process.StartInfo.ArgumentList.Add("-EmergencyFenceId");
+            process.StartInfo.ArgumentList.Add(emergencyFenceId);
+        }
+
         foreach (var key in process.StartInfo.Environment.Keys.Where(key => key.StartsWith("PG", StringComparison.OrdinalIgnoreCase)).ToArray())
             process.StartInfo.Environment.Remove(key);
 

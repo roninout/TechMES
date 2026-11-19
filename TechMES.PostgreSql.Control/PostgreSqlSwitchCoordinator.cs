@@ -1,6 +1,7 @@
 ﻿using System.Net.Http.Json;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using TechMES.Contracts.Runtime;
 
 namespace TechMES.PostgreSql.Control;
 
@@ -105,10 +106,10 @@ public sealed class PostgreSqlSwitchRemote : IPostgreSqlMaintenanceRemote, IDisp
     }
 }
 
-// Один вызов выполняет весь плановый цикл через существующие локальные скрипты.
+// Выполняет последовательные фазы по сохранённому плану.
 public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
 {
-    // Перед новым планом требует согласованную пару Primary/Standby.
+    // Требует свежих снимков от обоих контроллеров; для аварийного плана исходная служба уже остановлена.
     public static void CheckInitial(PostgreSqlSwitchPlan plan, PostgreSqlRemoteStatus source, PostgreSqlRemoteStatus target)
     {
         var now = DateTimeOffset.UtcNow;
@@ -116,16 +117,46 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
         foreach (var node in new[] { source, target })
         {
             var local = node.Local;
+            var serviceMatches = plan.Emergency && node == source
+                ? IsStopped(local.Service)
+                : local.Service?.ManagedByService == true;
 
-            if (local.CheckedAtUtc is null || now - local.CheckedAtUtc > TimeSpan.FromSeconds(Math.Max(60, 2 * local.HealthPeriodSeconds)) || local.CheckedAtUtc > now.AddMinutes(1) || local.ControllerState != "Monitoring" || !local.OwnsController || !local.PermissionsOk || local.Service?.ManagedByService != true || !local.Settings.CommandsEnabled || local.Settings.ExpectedSystemIdentifier != plan.SystemIdentifier || local.SystemIdentifier != plan.SystemIdentifier)
-                throw new InvalidOperationException("Both local controllers must confirm fresh service ownership, commands and the expected cluster.");
+            if (local.CheckedAtUtc is null || now - local.CheckedAtUtc > TimeSpan.FromSeconds(Math.Max(60, 2 * local.HealthPeriodSeconds)) || local.CheckedAtUtc > now.AddMinutes(1) || local.ControllerState != "Monitoring" || !local.OwnsController || !local.PermissionsOk || !serviceMatches || !local.Settings.CommandsEnabled || local.Settings.ExpectedSystemIdentifier != plan.SystemIdentifier || local.SystemIdentifier != plan.SystemIdentifier)
+                throw new InvalidOperationException("Both controllers must confirm fresh service state, ownership, commands and the expected cluster.");
         }
 
-        if (source.NodeAddress != plan.From || target.NodeAddress != plan.To || source.Local.PostgreSqlRole != "Primary" || target.Local.PostgreSqlRole != "Standby" || source.Local.Timeline != target.Local.Timeline || source.Local.Timeline is null)
-            throw new InvalidOperationException("Expected the selected Primary and its Standby in one timeline. Local phase checks will also verify SQL and WAL.");
+        var sourceRoleMatches = plan.Emergency
+            ? source.Local.PostgreSqlRole == "Stopped" && source.Local.ClusterState is ("in production" or "shut down")
+            : source.Local.PostgreSqlRole == "Primary";
+
+        if (source.NodeAddress != plan.From || target.NodeAddress != plan.To || !sourceRoleMatches || target.Local.PostgreSqlRole != "Standby" || source.Local.Timeline != target.Local.Timeline || source.Local.Timeline is null)
+            throw new InvalidOperationException("Expected the selected source and its Standby in the same timeline. Local checks verify the service, SQL and WAL.");
     }
 
-    // Резервирует оба узла и последовательно ожидает Fence, Promote и Rejoin.
+    private static bool IsStopped(PostgreSqlServiceState? service) => service is { ServiceState: "Stopped", ServiceProcessId: 0, PostmasterProcessId: 0, ListenerProcessId: 0 };
+
+    // Перед выполнением аварийного Promote новый узел сам читает исходное подтверждение по mTLS.
+    public static async Task VerifyEmergencyFenceAsync(IPostgreSqlSwitchRemote remote, PostgreSqlSwitchPlan plan, JsonElement proof)
+    {
+        var fence = await remote.ReadAsync(plan.From, "Fence", plan, CancellationToken.None);
+
+        if (fence.State != "Succeeded" || fence.Id != plan.OperationId("Fence") || fence.Fence is not { } original || !JsonElement.DeepEquals(original, proof))
+            throw new IOException("The source controller did not confirm the submitted emergency Fence.");
+
+        CheckFenceProof(plan, original);
+    }
+
+    // Связывает аварийное доказательство именно с Fence данного плана.
+    private static void CheckFenceProof(PostgreSqlSwitchPlan plan, JsonElement proof)
+    {
+        if (proof.GetProperty("State").GetString() != "Fenced" || proof.GetProperty("From").GetString() != plan.From || proof.GetProperty("To").GetString() != plan.To || proof.GetProperty("Sid").GetString() != plan.SystemIdentifier)
+            throw new IOException("The fence proof does not match the selected plan.");
+
+        if (plan.Emergency && (!proof.TryGetProperty("Format", out var format) || !format.TryGetInt32(out var version) || version != 2 || !proof.TryGetProperty("Id", out var id) || id.GetString() != plan.OperationId("Fence")))
+            throw new IOException("Emergency Fence proof does not belong to this operation.");
+    }
+
+    // Аварийный план останавливается после Promote. Rejoin выполняется отдельным этапом.
     public async Task RunAsync(PostgreSqlSwitchPlan plan, Action<string> progress, CancellationToken ct)
     {
         foreach (var address in new[] { plan.From, plan.To }.Order(StringComparer.Ordinal))
@@ -133,7 +164,9 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
 
         JsonElement? proof = null;
 
-        foreach (var mode in new[] { "Fence", "Promote", "Rejoin" })
+        var modes = plan.Emergency ? new[] { "Fence", "Promote" } : new[] { "Fence", "Promote", "Rejoin" };
+
+        foreach (var mode in modes)
         {
             var address = mode == "Promote" ? plan.To : plan.From;
 
@@ -159,13 +192,16 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
             {
                 proof = operation.Fence ?? throw new IOException("Fence succeeded without its exchange file.");
 
-                var value = proof.Value;
-
-                if (value.GetProperty("State").GetString() != "Fenced" || value.GetProperty("From").GetString() != plan.From || value.GetProperty("To").GetString() != plan.To || value.GetProperty("Sid").GetString() != plan.SystemIdentifier)
-                    throw new IOException("The fence proof does not match the selected plan.");
+                CheckFenceProof(plan, proof.Value);
             }
 
             progress($"{mode}: confirmed on {address}");
+        }
+
+        if (plan.Emergency)
+        {
+            progress($"PROMOTED: Primary={plan.To}; {plan.From} remains fenced pending recovery.");
+            return;
         }
 
         foreach (var address in new[] { plan.From, plan.To }.Order(StringComparer.Ordinal))

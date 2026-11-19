@@ -1,12 +1,18 @@
 ﻿using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using TechMES.Contracts.Runtime;
 
 namespace TechMES.PostgreSql.Control;
 
-public sealed record PostgreSqlCommand(string Id, string Mode, string From, string To, string SystemIdentifier, DateTimeOffset CreatedAtUtc, JsonElement? Fence);
+public sealed record PostgreSqlCommand(string Id, string Mode, string From, string To, string SystemIdentifier, DateTimeOffset CreatedAtUtc, JsonElement? Fence)
+{
+    // Плановые запросы сохраняют прежний JSON и отпечаток журнала.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? EmergencyFenceId { get; init; }
+}
 
 public sealed record PostgreSqlCommandJournal(string Id, string Fingerprint, string State, DateTimeOffset UpdatedAtUtc, string Message);
 

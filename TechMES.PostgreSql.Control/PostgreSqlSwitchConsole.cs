@@ -10,7 +10,7 @@ public static class PostgreSqlSwitchConsole
     // До запуска Generic Host обрабатывает status/switch/cancel.
     public static async Task<bool> TryRunAsync(string[] args)
     {
-        if (args.Length == 0 || args[0] is not ("--postgres-status" or "--postgres-switch" or "--postgres-cancel"))
+        if (args.Length == 0 || args[0] is not ("--postgres-status" or "--postgres-switch" or "--postgres-emergency-switch" or "--postgres-cancel"))
             return false;
 
         using var cancellation = new CancellationTokenSource();
@@ -80,8 +80,10 @@ public static class PostgreSqlSwitchConsole
                 return true;
             }
 
+            var emergency = args[0] == "--postgres-emergency-switch";
+
             if (args.Length != 3)
-                throw new ArgumentException("Usage: --postgres-switch <current-Primary-IP> <current-Standby-IP>");
+                throw new ArgumentException("Usage: --postgres-switch|--postgres-emergency-switch <source-IP> <standby-IP>");
 
             PostgreSqlSwitchPlan plan;
 
@@ -89,7 +91,7 @@ public static class PostgreSqlSwitchConsole
             {
                 plan = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(activePath);
 
-                if (plan.From != args[1] || plan.To != args[2])
+                if (plan.From != args[1] || plan.To != args[2] || plan.Emergency != emergency)
                     throw new InvalidOperationException("A different console plan is pending. Resume it or inspect its journal.");
 
                 plan.Validate(network, control);
@@ -98,7 +100,7 @@ public static class PostgreSqlSwitchConsole
             }
             else
             {
-                plan = new(Guid.NewGuid().ToString("N"), args[1], args[2], control.ExpectedSystemIdentifier, DateTimeOffset.UtcNow);
+                plan = new(Guid.NewGuid().ToString("N"), args[1], args[2], control.ExpectedSystemIdentifier, DateTimeOffset.UtcNow) { Emergency = emergency };
 
                 plan.Validate(network, control);
 
@@ -125,7 +127,8 @@ public static class PostgreSqlSwitchConsole
 
             await new PostgreSqlSwitchCoordinator(remote).RunAsync(plan, Progress, ct);
 
-            File.Delete(activePath);
+            if (!plan.Emergency)
+                File.Delete(activePath);
         }
         catch (Exception ex)
         {

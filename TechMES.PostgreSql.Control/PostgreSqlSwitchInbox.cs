@@ -120,6 +120,9 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
         plan.Validate(network.Value, control.Value);
         AssertMode(mode);
 
+        if (plan.Emergency && mode == "Rejoin")
+            throw new InvalidOperationException("Emergency Rejoin requires a separate recovery procedure.");
+
         if ((mode == "Promote" ? plan.To : plan.From) != network.Value.NodeAddress || (mode == "Fence" ? phase.Fence is not null : phase.Fence is not { ValueKind: JsonValueKind.Object }))
             throw new InvalidOperationException("Phase, node or fence proof mismatch.");
 
@@ -141,7 +144,7 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
 
                 var existing = PostgreSqlCommandStore.Read<PostgreSqlCommand>(requestPath);
 
-                if (existing.Mode != mode || existing.From != plan.From || existing.To != plan.To || existing.SystemIdentifier != plan.SystemIdentifier || ProofText(existing.Fence) != ProofText(phase.Fence))
+                if (existing.Mode != mode || existing.From != plan.From || existing.To != plan.To || existing.SystemIdentifier != plan.SystemIdentifier || existing.EmergencyFenceId != EmergencyFenceId(plan) || ProofText(existing.Fence) != ProofText(phase.Fence))
                     throw new InvalidOperationException("An immutable phase request already exists with different content.");
 
                 return Read(plan, mode);
@@ -158,7 +161,12 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
                 if (OperatingSystem.IsWindows())
                     new DirectoryInfo(directory).SetAccessControl(new DirectoryInfo(store.Root).GetAccessControl());
 
-                PostgreSqlCommandStore.Write(requestPath, new PostgreSqlCommand(plan.OperationId(mode), mode, plan.From, plan.To, plan.SystemIdentifier, DateTimeOffset.UtcNow, phase.Fence));
+                var request = new PostgreSqlCommand(plan.OperationId(mode), mode, plan.From, plan.To, plan.SystemIdentifier, DateTimeOffset.UtcNow, phase.Fence)
+                {
+                    EmergencyFenceId = EmergencyFenceId(plan)
+                };
+
+                PostgreSqlCommandStore.Write(requestPath, request);
 
                 return Task.CompletedTask;
             }, ct);
@@ -227,6 +235,9 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
     {
         plan.Validate(network.Value, control.Value);
 
+        if (plan.Emergency)
+            throw new InvalidOperationException("Emergency plan stays reserved until recovery is confirmed.");
+
         await _gate.WaitAsync(ct);
 
         try
@@ -288,19 +299,28 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
         }
     }
 
-    // Во время сетевого переключения запрещает обход через локальную ручную очередь.
-    public static void AssertCommandAllowed(string root, PostgreSqlCommand request)
+    // Требует привязку аварийной команды к активному сетевому плану.
+    public static PostgreSqlSwitchPlan? AssertCommandAllowed(string root, PostgreSqlCommand request)
     {
         var active = Path.Combine(root, "Network", "active-switch.json");
 
         if (!File.Exists(active))
-            return;
+        {
+            if (request.EmergencyFenceId is not null)
+                throw new InvalidOperationException("An emergency command requires a reserved network plan.");
+
+            return null;
+        }
 
         var plan = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(active);
 
-        if (request.Id != plan.OperationId(request.Mode) || request.From != plan.From || request.To != plan.To || request.SystemIdentifier != plan.SystemIdentifier)
-            throw new InvalidOperationException("This node is reserved by another switch. Manual commands are blocked.");
+        if (request.Id != plan.OperationId(request.Mode) || request.From != plan.From || request.To != plan.To || request.SystemIdentifier != plan.SystemIdentifier || request.EmergencyFenceId != EmergencyFenceId(plan) || plan.Emergency && request.Mode == "Rejoin")
+            throw new InvalidOperationException("This command does not match the reserved switch.");
+
+        return plan;
     }
+
+    private static string? EmergencyFenceId(PostgreSqlSwitchPlan plan) => plan.Emergency ? plan.OperationId("Fence") : null;
 
     // Не забирает узел с ожидающей, работающей или неопределённой прежней командой.
     private void AssertNoOutstandingCommands()

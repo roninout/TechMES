@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using TechMES.Contracts.Runtime;
 
@@ -44,6 +45,9 @@ public sealed record PostgreSqlNetworkOptions
 
 public sealed record PostgreSqlSwitchPlan(string Id, string From, string To, string SystemIdentifier, DateTimeOffset CreatedAtUtc)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Emergency { get; init; }
+
     // Привязывает план к одной настроенной паре и одному кластеру.
     public void Validate(PostgreSqlNetworkOptions network, PostgreSqlControlOptions control)
     {
@@ -54,7 +58,12 @@ public sealed record PostgreSqlSwitchPlan(string Id, string From, string To, str
     // Одна фаза одного переключения всегда получает один OperationId.
     public string OperationId(string mode)
     {
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{Id}|{From}|{To}|{SystemIdentifier}|{mode}")))[..32].ToLowerInvariant();
+        var identity = $"{Id}|{From}|{To}|{SystemIdentifier}|{mode}";
+
+        if (Emergency)
+            identity += "|Emergency";
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..32].ToLowerInvariant();
     }
 }
 
