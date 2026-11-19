@@ -53,18 +53,8 @@ public static class PostgreSqlSwitchConsole
 
             var store = new PostgreSqlCommandStore(Options.Create(control), new PostgreSqlControllerLease());
 
-            store.Initialize();
-
-            var root = Path.Combine(store.Root, "Network");
-
-            Directory.CreateDirectory(root);
-
-            if (OperatingSystem.IsWindows())
-                System.IO.FileSystemAclExtensions.SetAccessControl(new DirectoryInfo(root), System.IO.FileSystemAclExtensions.GetAccessControl(new DirectoryInfo(store.Root)));
-
-            using var held = new FileStream(Path.Combine(root, "console.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-
-            var activePath = Path.Combine(root, "console-active.json");
+            using var held = store.LockCoordinator();
+            var activePath = store.CoordinatorPlanPath;
 
             if (args[0] == "--postgres-cancel")
             {
@@ -138,8 +128,7 @@ public static class PostgreSqlSwitchConsole
 
             void ReportProgress(PostgreSqlSwitchPlan current, string stage)
             {
-                var journalPath = Path.Combine(root, "coordinator-" + current.Id + ".json");
-                PostgreSqlCommandStore.Write(journalPath, new { plan = current, stage, checkedAtUtc = DateTimeOffset.UtcNow });
+                store.WriteCoordinatorProgress(current, stage);
                 Console.WriteLine(stage);
             }
         }

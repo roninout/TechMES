@@ -286,6 +286,13 @@ public static class PostgreSqlNodeServices
         services.AddSingleton<PostgreSqlSwitchInbox>();
         services.AddHostedService<PostgreSqlNetworkHost>();
 
+        var automaticFailover = configuration.GetSection(PostgreSqlAutomaticFailoverOptions.SectionName);
+        if (automaticFailover.GetValue<bool>(nameof(PostgreSqlAutomaticFailoverOptions.Enabled)))
+        {
+            services.AddOptions<PostgreSqlAutomaticFailoverOptions>().Bind(automaticFailover);
+            services.AddHostedService<PostgreSqlAutomaticFailoverWorker>();
+        }
+
         if (hostKind == PostgreSqlHostKind.Standalone)
             services.AddHostedService<PostgreSqlNodePollingWorker>();
 

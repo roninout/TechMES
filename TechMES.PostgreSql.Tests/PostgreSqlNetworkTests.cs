@@ -47,6 +47,139 @@ public sealed class PostgreSqlNetworkTests
     }
 
     [Fact]
+    public async Task AutomaticFailoverCountsNewSnapshotsAndLeavesThePlanForConsoleRejoin()
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateAutomaticWorker(3);
+        var source = StoppedPrimary(DateTimeOffset.UtcNow.AddSeconds(-10));
+        var remote = new Remote { StatusOverride = address => address == Plan.From ? source : RunningStandby() };
+
+        await worker.CheckAsync(remote, CancellationToken.None);
+        for (var duplicate = 0; duplicate < 3; duplicate++)
+            await worker.CheckAsync(remote, CancellationToken.None);
+
+        source = source with { Local = source.Local with { CheckedAtUtc = source.Local.CheckedAtUtc!.Value.AddSeconds(1) } };
+        await worker.CheckAsync(remote, CancellationToken.None);
+        Assert.Empty(remote.Calls);
+
+        source = source with { Local = source.Local with { CheckedAtUtc = source.Local.CheckedAtUtc!.Value.AddSeconds(1) } };
+        await worker.CheckAsync(remote, CancellationToken.None);
+        await worker.CheckAsync(remote, CancellationToken.None);
+
+        var pending = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(fixture.Store.CoordinatorPlanPath);
+        Assert.True(pending.Emergency);
+        Assert.Equal((Plan.From, Plan.To, Plan.SystemIdentifier), (pending.From, pending.To, pending.SystemIdentifier));
+        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61", "Promote:10.77.12.62" }, remote.Calls);
+        var journal = PostgreSqlCommandStore.Read<JsonElement>(Path.Combine(fixture.Store.NetworkRoot, "coordinator-" + pending.Id + ".json"));
+        Assert.StartsWith("PROMOTED:", journal.GetProperty("stage").GetString());
+    }
+
+    [Theory]
+    [InlineData("unreachable")]
+    [InlineData("running")]
+    [InlineData("stale")]
+    [InlineData("reserved")]
+    [InlineData("different timeline")]
+    [InlineData("listener present")]
+    public async Task AutomaticFailoverResetsTheCountWhenThePairCannotBeConfirmed(string interruption)
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateAutomaticWorker(3);
+        var firstCheck = DateTimeOffset.UtcNow.AddSeconds(-10);
+        var source = StoppedPrimary(firstCheck);
+        var unreachable = false;
+        var remote = new Remote
+        {
+            StatusOverride = address => address != Plan.From ? RunningStandby() : unreachable ? throw new HttpRequestException("Peer unavailable") : source
+        };
+        await worker.CheckAsync(remote, CancellationToken.None);
+        source = StoppedPrimary(firstCheck.AddSeconds(1));
+        await worker.CheckAsync(remote, CancellationToken.None);
+
+        source = StoppedPrimary(firstCheck.AddSeconds(2));
+        unreachable = interruption == "unreachable";
+        source = interruption switch
+        {
+            "running" => Status(Plan.From, "Primary"),
+            "stale" => StoppedPrimary(firstCheck.AddMinutes(-5)),
+            "reserved" => source with { ActivePlan = Plan },
+            "different timeline" => source with { Local = source.Local with { Timeline = 3 } },
+            "listener present" => source with { Local = source.Local with { Service = source.Local.Service! with { ListenerProcessId = 123 } } },
+            _ => source
+        };
+        await worker.CheckAsync(remote, CancellationToken.None);
+        Assert.Empty(remote.Calls);
+
+        unreachable = false;
+        source = StoppedPrimary(firstCheck.AddSeconds(3));
+        await worker.CheckAsync(remote, CancellationToken.None);
+        Assert.Empty(remote.Calls);
+        Assert.False(File.Exists(fixture.Store.CoordinatorPlanPath));
+    }
+
+    [Fact]
+    public async Task AutomaticFailoverChecksTheSourceAgainBeforeReserving()
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateAutomaticWorker(1);
+        var sourceReads = 0;
+        var remote = new Remote
+        {
+            StatusOverride = address => address != Plan.From ? RunningStandby() : ++sourceReads == 1 ? StoppedPrimary(DateTimeOffset.UtcNow) : Status(Plan.From, "Primary")
+        };
+
+        await worker.CheckAsync(remote, CancellationToken.None);
+
+        Assert.Equal(2, sourceReads);
+        Assert.Empty(remote.Calls);
+        Assert.False(File.Exists(fixture.Store.CoordinatorPlanPath));
+    }
+
+    [Fact]
+    public async Task AutomaticFailoverDoesNotStartWhileConsoleHoldsTheLock()
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateAutomaticWorker(1);
+        using var held = fixture.Store.LockCoordinator();
+        var remote = new Remote { StatusOverride = address => address == Plan.From ? StoppedPrimary(DateTimeOffset.UtcNow) : RunningStandby() };
+
+        await worker.CheckAsync(remote, CancellationToken.None);
+
+        Assert.Empty(remote.Calls);
+        Assert.False(File.Exists(fixture.Store.CoordinatorPlanPath));
+    }
+
+    [Fact]
+    public async Task AutomaticFailoverRetainsThePlanWithoutPromotingOrRetryingAfterFenceFailure()
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateAutomaticWorker(1);
+        var remote = new Remote
+        {
+            Failed = "Fence",
+            StatusOverride = address => address == Plan.From ? StoppedPrimary(DateTimeOffset.UtcNow) : RunningStandby()
+        };
+
+        await worker.CheckAsync(remote, CancellationToken.None);
+        await worker.CheckAsync(remote, CancellationToken.None);
+
+        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61" }, remote.Calls);
+        Assert.True(File.Exists(fixture.Store.CoordinatorPlanPath));
+    }
+
+    private static PostgreSqlRemoteStatus StoppedPrimary(DateTimeOffset checkedAt)
+    {
+        var source = Status(Plan.From, "Stopped");
+        return source with { Local = source.Local with { ClusterState = "shut down", CheckedAtUtc = checkedAt, Service = new() { ServiceState = "Stopped" } } };
+    }
+
+    private static PostgreSqlRemoteStatus RunningStandby()
+    {
+        var target = Status(Plan.To, "Standby");
+        return target with { Local = target.Local with { Service = new() { ServiceState = "Running", ManagedByService = true } } };
+    }
+
+    [Fact]
     public async Task EmergencyProofFromAnotherOperationIsRejected()
     {
         var remote = new Remote { WrongEmergencyId = true };
@@ -388,10 +521,11 @@ public sealed class PostgreSqlNetworkTests
         public bool LoseFenceResponse;
         public bool MissingFenceProof;
         public bool WrongEmergencyId;
+        public Func<string, PostgreSqlRemoteStatus>? StatusOverride;
 
         public Task<PostgreSqlRemoteStatus> StatusAsync(string address, CancellationToken ct)
         {
-            return Task.FromResult(Status(address, address == Plan.From ? "Primary" : "Standby"));
+            return Task.FromResult(StatusOverride?.Invoke(address) ?? Status(address, address == Plan.From ? "Primary" : "Standby"));
         }
 
         public Task PlanAsync(string address, string action, PostgreSqlSwitchPlan plan, CancellationToken ct)
@@ -458,6 +592,13 @@ public sealed class PostgreSqlNetworkTests
         public Task StartAsync()
         {
             return Monitor.RefreshAsync(CancellationToken.None);
+        }
+
+        public PostgreSqlAutomaticFailoverWorker CreateAutomaticWorker(int threshold)
+        {
+            var control = Options.Create(new PostgreSqlControlOptions { CommandsEnabled = true, ExpectedSystemIdentifier = Plan.SystemIdentifier });
+            var network = Options.Create(new PostgreSqlNetworkOptions { Enabled = true, NodeAddress = Plan.To, PeerAddress = Plan.From, CertificateSha256 = new string('b', 64), PeerCertificateSha256 = new string('a', 64) });
+            return new(Options.Create(new PostgreSqlAutomaticFailoverOptions { Enabled = true, FailureThreshold = threshold }), network, control, Monitor, Store, NullLogger<PostgreSqlAutomaticFailoverWorker>.Instance);
         }
 
         public bool IsInstalled(string serviceName)

@@ -159,6 +159,24 @@ public sealed class PostgreSqlNodeHostTests
         Assert.Equal(expected, provider.GetServices<IHostedService>().Count());
     }
 
+    [Theory]
+    [InlineData(PostgreSqlHostKind.Runtime)]
+    [InlineData(PostgreSqlHostKind.Standalone)]
+    public void ExplicitOptInRegistersTheAutomaticFailoverWorker(PostgreSqlHostKind kind)
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["PostgreSqlAutomaticFailover:Enabled"] = "true" }).Build();
+        services.AddLogging();
+        services.AddPostgreSqlNode(configuration, kind);
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Single(provider.GetServices<IHostedService>().OfType<PostgreSqlAutomaticFailoverWorker>());
+        var options = provider.GetRequiredService<IOptions<PostgreSqlAutomaticFailoverOptions>>().Value;
+        Assert.True(options.Enabled);
+        Assert.Equal(3, options.FailureThreshold);
+    }
+
     // Явное отключение не запускает диагностику и не получает владение.
     [Fact]
     public async Task ExplicitDisableDoesNotProbeOrTakeLease()

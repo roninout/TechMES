@@ -23,6 +23,8 @@ public sealed class PostgreSqlCommandStore
 
     public string Root { get; }
     public string CredentialPath => Path.Combine(Root, "credentials.bin");
+    internal string NetworkRoot => Path.Combine(Root, "Network");
+    internal string CoordinatorPlanPath => Path.Combine(NetworkRoot, "console-active.json");
 
     /// <summary>Оба вида хостов используют каталог одной и той же локальной службы.</summary>
     public PostgreSqlCommandStore(IOptions<PostgreSqlControlOptions> options, IPostgreSqlControllerLease leases)
@@ -63,6 +65,26 @@ public sealed class PostgreSqlCommandStore
             directory.SetAccessControl(security);
         else
             directory.Create(security);
+    }
+
+    // Один журнал и одна блокировка для автоматического и консольного координаторов.
+    internal FileStream LockCoordinator()
+    {
+        Initialize();
+
+        var lockPath = Path.Combine(NetworkRoot, "console.lock");
+        AssertNoLinks(lockPath);
+        Directory.CreateDirectory(NetworkRoot);
+
+        if (OperatingSystem.IsWindows())
+            new DirectoryInfo(NetworkRoot).SetAccessControl(new DirectoryInfo(Root).GetAccessControl());
+
+        return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+    }
+
+    internal void WriteCoordinatorProgress(PostgreSqlSwitchPlan plan, string stage)
+    {
+        Write(Path.Combine(NetworkRoot, "coordinator-" + plan.Id + ".json"), new { plan, stage, checkedAtUtc = DateTimeOffset.UtcNow });
     }
 
     /// <summary>Исключает junction/symlink во всём существующем пути.</summary>
