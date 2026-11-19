@@ -293,6 +293,13 @@ public static class PostgreSqlNodeServices
             services.AddHostedService<PostgreSqlAutomaticFailoverWorker>();
         }
 
+        var automaticFailback = configuration.GetSection(PostgreSqlAutomaticFailbackOptions.SectionName);
+        if (automaticFailback.GetValue<bool>(nameof(PostgreSqlAutomaticFailbackOptions.Enabled)))
+        {
+            services.AddOptions<PostgreSqlAutomaticFailbackOptions>().Bind(automaticFailback);
+            services.AddHostedService<PostgreSqlAutomaticFailbackWorker>();
+        }
+
         if (hostKind == PostgreSqlHostKind.Standalone)
             services.AddHostedService<PostgreSqlNodePollingWorker>();
 

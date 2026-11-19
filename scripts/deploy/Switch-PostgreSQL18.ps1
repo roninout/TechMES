@@ -1,7 +1,7 @@
 #requires -Version 5.1
 [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
 param(
-    [ValidateSet('Status','Fence','Promote','Rejoin','Rebuild')][string]$Mode='Status',
+    [ValidateSet('Status','Fence','Promote','Rejoin','Rebuild','FailbackReadiness')][string]$Mode='Status',
     [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$From,
     [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$To,
     [string]$FenceFile='',
@@ -13,7 +13,9 @@ param(
     [ValidatePattern('^$|^[0-9a-f]{32}$')][string]$OperationId='',
     [ValidatePattern('^$|^[0-9a-f]{32}$')][string]$EmergencyFenceId='',
     [ValidatePattern('^$|^[0-9]{1,20}$')][string]$ExpectedSystemIdentifier='',
-    [string]$ResultFile=''
+    [string]$ResultFile='',
+    [int]$ExpectedTimeline=0,
+    [ValidateRange(0,2147483647)][int]$MaxReplayLagBytes=0
 )
 
 Set-StrictMode -Version Latest
@@ -303,8 +305,8 @@ function Read-Fence {
     return $proof
 }
 
-# Проверяет базовые условия и локальные файлы до остановки Primary.
-function Assert-Pair($Primary, $Standby) {
+# Общие SQL-проверки для планового переключения и автоматического возврата.
+function Assert-SqlPair($Primary, $Standby) {
     if ($Primary.recovery -or $Primary.readOnly -or !$Standby.recovery -or $Standby.paused -or $Primary.sid -cne $Standby.sid -or $Primary.timeline -ne $Standby.timeline) { throw 'Expected one writable Primary and its unpaused Standby in the same cluster and timeline.' }
 
     foreach ($node in @($Primary,$Standby)) {
@@ -312,11 +314,30 @@ function Assert-Pair($Primary, $Standby) {
     }
 
     if (@($Standby.receiver | Where-Object { $_.host -eq $From -and $_.port -eq $Port -and $_.status -eq 'streaming' }).Count -ne 1 -or @($Primary.replicas | Where-Object { $_.address -eq $To -and $_.state -eq 'streaming' }).Count -ne 1) { throw 'The selected replication stream is not healthy.' }
+}
+
+# Проверяет базовые условия и локальные файлы до остановки Primary.
+function Assert-Pair($Primary, $Standby) {
+    Assert-SqlPair $Primary $Standby
 
     $null=Assert-ServiceState $true
     Assert-ReplicationLogin $To $Primary.sid
 
     if (Get-ChildItem -LiteralPath $DataDirectory -Recurse -Force -Attributes ReparsePoint | Select-Object -First 1) { throw 'Reparse points inside PGDATA are not supported.' }
+}
+
+# Измеряет отставание применения WAL относительно точки flush на текущем Primary.
+function Test-FailbackReadiness {
+    $primary=Get-Node '127.0.0.1'
+    $standby=Get-Node $To
+    Assert-SqlPair $primary $standby
+
+    if ($primary.timeline -ne $ExpectedTimeline -or $standby.receiver[0].timeline -ne $ExpectedTimeline -or !$standby.replay -or $primary.flush -notmatch '^[0-9A-F]+/[0-9A-F]+$') { return $false }
+
+    $lsn=$primary.flush
+    $lag=$MaxReplayLagBytes.ToString([Globalization.CultureInfo]::InvariantCulture)
+    $ready=Invoke-Sql $To "SELECT COALESCE(pg_wal_lsn_diff('$lsn'::pg_lsn,pg_last_wal_replay_lsn()) <= $lag,false) WHERE pg_is_in_recovery() AND NOT pg_is_wal_replay_paused() AND (SELECT timeline_id FROM pg_control_checkpoint()) = $ExpectedTimeline AND (SELECT system_identifier::text FROM pg_control_system()) = '$ExpectedSystemIdentifier';"
+    return $ready -ceq 't'
 }
 
 # Сравнивает позицию реплики с последним checkpoint остановленного Primary.
@@ -993,6 +1014,15 @@ $local=@($From,$To | Where-Object { $_ -in $addresses })
 if ($local.Count -ne 1) { throw 'Run locally on exactly one selected database node.' }
 
 $script:LocalAddress=$local[0]
+
+if ($Mode -eq 'FailbackReadiness') {
+    if (!$CredentialInput -or !$ExpectedSystemIdentifier -or $ExpectedTimeline -le 0 -or $script:LocalAddress -ne $From) { throw 'Failback readiness requires protected credentials and the local source controller.' }
+
+    Read-ProtectedCredentials
+    if (Test-FailbackReadiness) { 'READY' } else { 'WAITING' }
+    return
+}
+
 $script:Slot=if ([StringComparer]::Ordinal.Compare($From,$To) -gt 0) { 'techmes_primary' } else { 'techmes_secondary' }
 $script:WindowsPowerShell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $script:ServiceTool=Join-Path $PSScriptRoot 'Set-PostgreSQL18ServiceControl.ps1'

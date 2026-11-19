@@ -167,6 +167,117 @@ public sealed class PostgreSqlNetworkTests
         Assert.True(File.Exists(fixture.Store.CoordinatorPlanPath));
     }
 
+    [Fact]
+    public async Task AutomaticFailbackRequiresDistinctSamplesOnBothNodesAndFinishesThePlannedSwitch()
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateFailbackWorker(2);
+        var sourceCheck = DateTimeOffset.UtcNow.AddSeconds(-10);
+        var targetCheck = sourceCheck;
+        var remote = new Remote { StatusOverride = address => RunningNode(address, address == Plan.From ? sourceCheck : targetCheck) };
+        var probes = 0;
+
+        Task<bool> Probe(PostgreSqlSwitchPlan plan, int timeline, CancellationToken ct)
+        {
+            Assert.False(plan.Emergency);
+            Assert.Equal((Plan.From, Plan.To, 2), (plan.From, plan.To, timeline));
+            probes++;
+            return Task.FromResult(true);
+        }
+
+        await worker.CheckAsync(remote, Probe, CancellationToken.None);
+        await worker.CheckAsync(remote, Probe, CancellationToken.None);
+        sourceCheck = sourceCheck.AddSeconds(1);
+        await worker.CheckAsync(remote, Probe, CancellationToken.None);
+        Assert.Equal(1, probes);
+        Assert.Empty(remote.Calls);
+
+        targetCheck = targetCheck.AddSeconds(1);
+        await worker.CheckAsync(remote, Probe, CancellationToken.None);
+
+        Assert.Equal(3, probes);
+        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61", "Promote:10.77.12.62", "Rejoin:10.77.12.61", "complete:10.77.12.61", "complete:10.77.12.62" }, remote.Calls);
+        Assert.False(File.Exists(fixture.Store.CoordinatorPlanPath));
+        var journal = PostgreSqlCommandStore.Read<JsonElement>(Assert.Single(Directory.GetFiles(fixture.Store.NetworkRoot, "coordinator-*.json")));
+        Assert.Equal("COMPLETED: Primary=10.77.12.62; Standby=10.77.12.61. (automatic failback)", journal.GetProperty("stage").GetString());
+    }
+
+    [Theory]
+    [InlineData("unreachable")]
+    [InlineData("reserved")]
+    [InlineData("too far behind")]
+    [InlineData("new timeline")]
+    public async Task AutomaticFailbackWaitsForNewConfirmationsAfterAnInterruption(string interruption)
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateFailbackWorker(3);
+        var time = DateTimeOffset.UtcNow.AddSeconds(-10);
+        var timeline = 2;
+        var problem = false;
+        var remote = new Remote
+        {
+            StatusOverride = address => address == Plan.To && problem && interruption == "unreachable"
+                ? throw new HttpRequestException("Peer unavailable")
+                : RunningNode(address, time, timeline) with { ActivePlan = address == Plan.To && problem && interruption == "reserved" ? Plan : null }
+        };
+        Task<bool> Probe(PostgreSqlSwitchPlan plan, int timeline, CancellationToken ct) => Task.FromResult(!problem || interruption != "too far behind");
+
+        await worker.CheckAsync(remote, Probe, CancellationToken.None);
+        time = time.AddSeconds(1);
+        await worker.CheckAsync(remote, Probe, CancellationToken.None);
+
+        problem = true;
+        if (interruption == "new timeline")
+            timeline++;
+        time = time.AddSeconds(1);
+        await worker.CheckAsync(remote, Probe, CancellationToken.None);
+
+        problem = false;
+        time = time.AddSeconds(1);
+        await worker.CheckAsync(remote, Probe, CancellationToken.None);
+
+        Assert.Empty(remote.Calls);
+        Assert.False(File.Exists(fixture.Store.CoordinatorPlanPath));
+    }
+
+    [Fact]
+    public async Task AutomaticFailbackRechecksReplicationBeforeReserving()
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateFailbackWorker(1);
+        var checkedAt = DateTimeOffset.UtcNow;
+        var remote = new Remote { StatusOverride = address => RunningNode(address, checkedAt) };
+        var probes = 0;
+
+        await worker.CheckAsync(remote, (_, _, _) => Task.FromResult(++probes == 1), CancellationToken.None);
+
+        Assert.Equal(2, probes);
+        Assert.Empty(remote.Calls);
+        Assert.False(File.Exists(fixture.Store.CoordinatorPlanPath));
+    }
+
+    [Fact]
+    public async Task AutomaticFailbackRetainsThePlanAfterFenceFailureAndDoesNotStartAnother()
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateFailbackWorker(1);
+        var remote = new Remote { StatusOverride = address => RunningNode(address, DateTimeOffset.UtcNow), Failed = "Fence" };
+
+        await worker.CheckAsync(remote, (_, _, _) => Task.FromResult(true), CancellationToken.None);
+        var pending = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(fixture.Store.CoordinatorPlanPath);
+        await worker.CheckAsync(remote, (_, _, _) => Task.FromResult(true), CancellationToken.None);
+
+        Assert.False(pending.Emergency);
+        Assert.Equal(pending, PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(fixture.Store.CoordinatorPlanPath));
+        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61" }, remote.Calls);
+    }
+
+    private static PostgreSqlRemoteStatus RunningNode(string address, DateTimeOffset checkedAt, int timeline = 2)
+    {
+        var node = Status(address, address == Plan.From ? "Primary" : "Standby");
+        return node with { Local = node.Local with { CheckedAtUtc = checkedAt, Timeline = timeline, Service = new() { ServiceState = "Running", ManagedByService = true } } };
+    }
+
     private static PostgreSqlRemoteStatus StoppedPrimary(DateTimeOffset checkedAt)
     {
         var source = Status(Plan.From, "Stopped");
@@ -678,6 +789,13 @@ public sealed class PostgreSqlNetworkTests
             var control = Options.Create(new PostgreSqlControlOptions { CommandsEnabled = true, ExpectedSystemIdentifier = Plan.SystemIdentifier });
             var network = Options.Create(new PostgreSqlNetworkOptions { Enabled = true, NodeAddress = Plan.To, PeerAddress = Plan.From, CertificateSha256 = new string('b', 64), PeerCertificateSha256 = new string('a', 64) });
             return new(Options.Create(new PostgreSqlAutomaticFailoverOptions { Enabled = true, FailureThreshold = threshold }), network, control, Monitor, Store, NullLogger<PostgreSqlAutomaticFailoverWorker>.Instance);
+        }
+
+        public PostgreSqlAutomaticFailbackWorker CreateFailbackWorker(int threshold)
+        {
+            var control = Options.Create(new PostgreSqlControlOptions { CommandsEnabled = true, ExpectedSystemIdentifier = Plan.SystemIdentifier });
+            var network = Options.Create(new PostgreSqlNetworkOptions { Enabled = true, NodeAddress = Plan.From, PeerAddress = Plan.To });
+            return new(Options.Create(new PostgreSqlAutomaticFailbackOptions { Enabled = true, PreferredPrimary = Plan.To, RecoveryThreshold = threshold }), network, control, Monitor, Store, NullLogger<PostgreSqlAutomaticFailbackWorker>.Instance);
         }
 
         public bool IsInstalled(string serviceName)

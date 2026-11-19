@@ -177,6 +177,37 @@ public sealed class PostgreSqlNodeHostTests
         Assert.Equal(3, options.FailureThreshold);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AutomaticFailbackIsRegisteredOnlyWhenEnabled(bool enabled)
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["PostgreSqlAutomaticFailback:Enabled"] = enabled.ToString(),
+            ["PostgreSqlAutomaticFailback:PreferredPrimary"] = "10.77.12.62",
+            ["PostgreSqlAutomaticFailback:MaxReplayLagBytes"] = "0"
+        }).Build();
+        services.AddLogging();
+        services.AddPostgreSqlNode(configuration, PostgreSqlHostKind.Standalone);
+
+        using var provider = services.BuildServiceProvider();
+
+        var workers = provider.GetServices<IHostedService>().OfType<PostgreSqlAutomaticFailbackWorker>();
+        if (!enabled)
+        {
+            Assert.Empty(workers);
+            return;
+        }
+
+        Assert.Single(workers);
+        var options = provider.GetRequiredService<IOptions<PostgreSqlAutomaticFailbackOptions>>().Value;
+        Assert.Equal("10.77.12.62", options.PreferredPrimary);
+        Assert.Equal(6, options.RecoveryThreshold);
+        Assert.Equal(0, options.MaxReplayLagBytes);
+    }
+
     // Явное отключение не запускает диагностику и не получает владение.
     [Fact]
     public async Task ExplicitDisableDoesNotProbeOrTakeLease()
