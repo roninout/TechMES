@@ -10,7 +10,7 @@ public static class PostgreSqlSwitchConsole
     // До запуска Generic Host обрабатывает status/switch/cancel.
     public static async Task<bool> TryRunAsync(string[] args)
     {
-        if (args.Length == 0 || args[0] is not ("--postgres-status" or "--postgres-switch" or "--postgres-emergency-switch" or "--postgres-emergency-rejoin" or "--postgres-cancel"))
+        if (args.Length == 0 || args[0] is not ("--postgres-status" or "--postgres-switch" or "--postgres-emergency-switch" or "--postgres-emergency-rejoin" or "--postgres-emergency-rebuild" or "--postgres-cancel"))
             return false;
 
         using var cancellation = new CancellationTokenSource();
@@ -70,10 +70,10 @@ public static class PostgreSqlSwitchConsole
                 return true;
             }
 
-            if (args[0] == "--postgres-emergency-rejoin")
+            if (args[0] is "--postgres-emergency-rejoin" or "--postgres-emergency-rebuild")
             {
                 if (args.Length != 2)
-                    throw new ArgumentException("Usage: --postgres-emergency-rejoin <existing-plan-id>");
+                    throw new ArgumentException($"Usage: {args[0]} <existing-plan-id>");
 
                 var pending = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(activePath);
                 pending.Validate(network, control);
@@ -81,7 +81,7 @@ public static class PostgreSqlSwitchConsole
                 if (!pending.Emergency || pending.Id != args[1] || network.NodeAddress != pending.To)
                     throw new InvalidOperationException("Run on the promoted node with the matching retained emergency plan ID.");
 
-                await new PostgreSqlSwitchCoordinator(remote).RecoverEmergencyAsync(pending, stage => ReportProgress(pending, stage), ct);
+                await new PostgreSqlSwitchCoordinator(remote).RecoverEmergencyAsync(pending, stage => ReportProgress(pending, stage), ct, rebuild: args[0] == "--postgres-emergency-rebuild");
                 File.Delete(activePath);
                 return true;
             }

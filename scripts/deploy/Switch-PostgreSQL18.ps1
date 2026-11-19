@@ -1,7 +1,7 @@
 #requires -Version 5.1
 [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
 param(
-    [ValidateSet('Status','Fence','Promote','Rejoin')][string]$Mode='Status',
+    [ValidateSet('Status','Fence','Promote','Rejoin','Rebuild')][string]$Mode='Status',
     [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$From,
     [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$To,
     [string]$FenceFile='',
@@ -442,7 +442,9 @@ function Write-StandbyConfiguration([string]$Stage, $Proof) {
 }
 
 # Проверяет устойчивую работу возвращённого узла в режиме реплики.
-function Wait-Standby($Proof, [int]$ExpectedTimeline=0) {
+function Wait-Standby($Proof, [int]$ExpectedTimeline=0, [string]$RequiredReplay='') {
+    if ($RequiredReplay -and $RequiredReplay -notmatch '^[0-9A-F]+/[0-9A-F]+$') { throw 'Invalid required replay LSN.' }
+
     $deadline=[DateTime]::UtcNow.AddSeconds(180)
     $good=0
 
@@ -465,7 +467,18 @@ function Wait-Standby($Proof, [int]$ExpectedTimeline=0) {
 
         if (!$node.recovery -or $node.sid -cne $Proof.Sid) { throw 'The returning node is not a Standby of the expected cluster.' }
 
-        if (@($node.receiver | Where-Object { $_.host -eq $To -and $_.port -eq $Port -and $_.slot -eq $script:Slot -and $_.status -eq 'streaming' -and (!$ExpectedTimeline -or $_.timeline -eq $ExpectedTimeline) }).Count -eq 1 -and !$node.paused) {
+        $streaming=@($node.receiver | Where-Object { $_.host -eq $To -and $_.port -eq $Port -and $_.slot -eq $script:Slot -and $_.status -eq 'streaming' -and (!$ExpectedTimeline -or $_.timeline -eq $ExpectedTimeline) }).Count -eq 1
+        $caughtUp=!$RequiredReplay
+        if ($RequiredReplay -and $streaming -and !$node.paused) {
+            try {
+                $caughtUp=(Invoke-Sql '127.0.0.1' "SELECT COALESCE(pg_last_wal_replay_lsn() >= '$RequiredReplay'::pg_lsn,false);") -eq 't'
+            }
+            catch {
+                Write-Host 'Waiting for confirmation of the required replay LSN.'
+            }
+        }
+
+        if ($streaming -and !$node.paused -and $caughtUp) {
             $good++
         }
         else {
@@ -728,36 +741,58 @@ function Get-EmergencyRejoinConfigs {
     return $paths | Sort-Object -Unique
 }
 
-# Возвращает старый узел через pg_rewind рабочей копии; исходный каталог сохраняется.
-function Invoke-Rejoin {
-    if ($script:LocalAddress -ne $From) { throw 'Rejoin must run on the old Primary.' }
+# Подтверждает совпадение локального Fence и состояние прежнего Primary.
+function Read-RecoveryFence {
+    if ($script:LocalAddress -ne $From) { throw 'Standby recovery must run on the old Primary.' }
 
     $proof=Read-Fence
+    Assert-LocalPath $script:ActiveFencePath
     $local=Get-Content -LiteralPath $script:ActiveFencePath -Raw | ConvertFrom-Json
 
     if ($local.Id -cne $proof.Id -or $local.State -ne 'Fenced') { throw 'The local fence marker does not match this operation.' }
 
-    if ($EmergencyFenceId -and ($local.Format -ne 2 -or $local.Sid -cne $proof.Sid -or $local.From -cne $From -or $local.To -cne $To -or $local.Lsn -cne $proof.Lsn -or $local.Timeline -ne $proof.Timeline -or $local.StartMode -cne $proof.StartMode -or $local.ClusterState -ne 'shut down' -or $proof.ClusterState -ne 'shut down')) {
-        throw 'Emergency Rejoin requires the unchanged Fence of a cleanly stopped Primary.'
+    if ($EmergencyFenceId -and ($local.Format -ne 2 -or $local.Sid -cne $proof.Sid -or $local.From -cne $From -or $local.To -cne $To -or $local.Lsn -cne $proof.Lsn -or $local.Timeline -ne $proof.Timeline -or $local.StartMode -ne $proof.StartMode -or $local.ClusterState -ne $proof.ClusterState -or $proof.ClusterState -notin @('shut down','in production'))) {
+        throw 'Emergency recovery requires the unchanged local Fence.'
     }
 
+    Assert-RecoveryServiceStopped
+    $control=Get-Control $DataDirectory -AllowUncleanPrimary:([bool]$EmergencyFenceId)
+    if ($control.Sid -cne $proof.Sid -or $control.Lsn -cne $proof.Lsn -or $control.Timeline -ne $proof.Timeline -or ($EmergencyFenceId -and $control.State -ne $proof.ClusterState)) { throw 'The old data directory changed after fencing.' }
 
-    $null=Assert-ServiceState $false
+    return $proof
+}
 
-    if ((Get-CimInstance Win32_Service -Filter "Name='$ServiceName'").StartMode -ne 'Disabled' -or !(Test-Path -LiteralPath (Join-Path $DataDirectory 'standby.signal'))) { throw 'The old node must remain stopped, disabled and marked as Standby.' }
+function Assert-RecoveryServiceStopped {
+    if ($EmergencyFenceId) {
+        Assert-EmergencyStopped
+    }
+    else {
+        $null=Assert-ServiceState $false
+    }
 
-    $control=Get-Control $DataDirectory
+    if ((Get-CimInstance Win32_Service -Filter "Name='$ServiceName'").StartMode -ne 'Disabled' -or !(Test-Path -LiteralPath (Join-Path $DataDirectory 'standby.signal') -PathType Leaf)) { throw 'The old node must remain stopped, disabled and marked as Standby.' }
+}
 
-    if ($control.Sid -cne $proof.Sid -or $control.Lsn -cne $proof.Lsn -or $control.Timeline -ne $proof.Timeline) { throw 'The old data directory changed after fencing.' }
-
+function Get-RecoveryPrimary($Proof) {
     $primary=Get-Node $To
-
-    if ($primary.recovery -or $primary.readOnly -or $primary.sid -cne $proof.Sid -or $primary.timeline -le $proof.Timeline) { throw 'The selected new Primary is not confirmed.' }
+    if ($primary.recovery -or $primary.readOnly -or $primary.sid -cne $Proof.Sid -or $primary.timeline -le $Proof.Timeline) { throw 'The selected new Primary is not confirmed.' }
 
     if ($EmergencyFenceId -and ($primary.version -lt 180000 -or $primary.version -ge 190000 -or !$primary.superuser -or $primary.tablespaces -ne 0 -or $primary.configErrors -ne 0)) {
-        throw 'The current Primary configuration is not supported by the emergency Rejoin.'
+        throw 'The current Primary configuration is not supported by emergency recovery.'
     }
 
+    return $primary
+}
+
+# Возвращает старый узел через pg_rewind рабочей копии; исходный каталог сохраняется.
+function Invoke-Rejoin {
+    $proof=Read-RecoveryFence
+    if ($EmergencyFenceId -and $proof.ClusterState -ne 'shut down') {
+        $script:RebuildRequired=$true
+        throw 'Emergency Rejoin requires a clean shutdown. Use Rebuild for this emergency plan.'
+    }
+
+    $primary=Get-RecoveryPrimary $proof
     Assert-ReplicationLogin $To $proof.Sid
 
     if (Get-ChildItem -LiteralPath $DataDirectory -Recurse -Force -Attributes ReparsePoint | Select-Object -First 1) { throw 'Reparse points inside PGDATA are not supported.' }
@@ -791,65 +826,118 @@ function Invoke-Rejoin {
     $source='host='+(Quote-Libpq $To)+' port='+$Port+' dbname=postgres user='+(Quote-Libpq $script:SqlCredential.UserName)+' connect_timeout=5'
     $rewindArguments=@(('--target-pgdata='+$stage),('--source-server='+$source),'--no-ensure-shutdown','--progress')
 
-    $null=Invoke-Tool (Join-Path $PgBin 'pg_rewind.exe') ($rewindArguments+@('--dry-run')) '' $script:SqlCredential $To -Change
-    $null=Invoke-Tool (Join-Path $PgBin 'pg_rewind.exe') $rewindArguments '' $script:SqlCredential $To -Change
+    try {
+        $null=Invoke-Tool (Join-Path $PgBin 'pg_rewind.exe') ($rewindArguments+@('--dry-run')) '' $script:SqlCredential $To -Change
+        $null=Invoke-Tool (Join-Path $PgBin 'pg_rewind.exe') $rewindArguments '' $script:SqlCredential $To -Change
+    }
+    catch {
+        if ($EmergencyFenceId) { $script:RebuildRequired=$true }
+        throw
+    }
 
-    foreach ($relative in $configs) {
+    Restore-StandbyConfigs $stage $configs
+    $expectedTimeline=if ($EmergencyFenceId) { $primary.timeline } else { 0 }
+    return Install-StandbyCopy $stage $backup $proof $expectedTimeline
+}
+
+# Возвращает в рабочую копию локальную конфигурацию и TLS-материал.
+function Restore-StandbyConfigs([string]$Stage, [string[]]$Configs) {
+    foreach ($relative in $Configs) {
         $relative=Get-ConfigRelativePath ([string]$relative)
         $original=Join-Path $DataDirectory $relative
 
         if (Test-Path -LiteralPath $original -PathType Leaf) {
-            $target=Join-Path $stage $relative
+            $target=Join-Path $Stage $relative
             $null=New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($target)) -Force
-
             [IO.File]::Copy($original,$target,$true)
         }
     }
+}
 
-    Write-StandbyConfiguration $stage $proof
-    Set-WorkingCopyAccess $stage
-
+# Устанавливает готовую копию и снимает Fence после проверки реплики.
+function Install-StandbyCopy([string]$Stage, [string]$Backup, $Proof, [int]$ExpectedTimeline, [string]$RequiredReplay='') {
+    Write-StandbyConfiguration $Stage $Proof
+    Set-WorkingCopyAccess $Stage
     Ensure-Slot $To
+    Assert-RecoveryServiceStopped
 
-    $null=Assert-ServiceState $false
+    $journal=Join-Path $script:Root ($Mode.ToLowerInvariant()+'-'+$Proof.Id+'.json')
+    Write-Json $journal ([pscustomobject]@{ State='Installing'; Stage=$Stage; Backup=$Backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
 
-    if ((Get-CimInstance Win32_Service -Filter "Name='$ServiceName'").StartMode -ne 'Disabled') { throw 'Service startup type changed before data installation.' }
-
-    Write-Json (Join-Path $script:Root ('rejoin-'+$proof.Id+'.json')) ([pscustomobject]@{ State='Installing'; Stage=$stage; Backup=$backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
-
-    [IO.Directory]::Move($DataDirectory,$backup)
+    [IO.Directory]::Move($DataDirectory,$Backup)
     try {
-        [IO.Directory]::Move($stage,$DataDirectory)
+        [IO.Directory]::Move($Stage,$DataDirectory)
     }
     catch {
-        if (!(Test-Path -LiteralPath $DataDirectory)) { [IO.Directory]::Move($backup,$DataDirectory) }
+        if (!(Test-Path -LiteralPath $DataDirectory)) { [IO.Directory]::Move($Backup,$DataDirectory) }
         throw
     }
 
     $script:Installed=$true
-
-    $startup=if ($proof.StartMode -eq 'Auto') { 'Automatic' } else { 'Manual' }
+    $startup=if ($Proof.StartMode -eq 'Auto') { 'Automatic' } else { 'Manual' }
 
     Set-Service -Name $ServiceName -StartupType $startup
     Start-Service -Name $ServiceName -ErrorAction Stop
 
     (Get-Service -Name $ServiceName).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running,[TimeSpan]::FromSeconds(300))
 
-    $expectedTimeline=if ($EmergencyFenceId) { $primary.timeline } else { 0 }
-    $node=Wait-Standby $proof $expectedTimeline
+    $node=Wait-Standby $Proof $ExpectedTimeline $RequiredReplay
+    $state=if ($Mode -eq 'Rebuild') { 'Rebuilt' } else { 'Rejoined' }
 
-    Write-Json (Join-Path $script:Root ('rejoin-'+$proof.Id+'.json')) ([pscustomobject]@{ State='Rejoined'; Backup=$backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
-
+    Write-Json $journal ([pscustomobject]@{ State=$state; Backup=$Backup; RequiredReplay=$RequiredReplay; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
     Remove-Item -LiteralPath $script:ActiveFencePath
 
     return [pscustomobject]@{
-        State='Rejoined'
+        State=$state
         Primary=$To
         Standby=$From
-        Backup=$backup
+        Backup=$Backup
         Receiver=$node.receiver
         Next='Verify application database routing and retain the backup.'
     }
+}
+
+# Получает и проверяет полный снимок текущего Primary в отдельном каталоге.
+function Invoke-Rebuild {
+    $proof=Read-RecoveryFence
+    $primary=Get-RecoveryPrimary $proof
+    Assert-ReplicationLogin $To $proof.Sid
+    $configs=@(Get-EmergencyRejoinConfigs)
+
+    if (Get-ChildItem -LiteralPath $DataDirectory -Recurse -Force -Attributes ReparsePoint | Select-Object -First 1) { throw 'Reparse points inside PGDATA are not supported.' }
+
+    $stage=$DataDirectory+'.techmes-rebuild-stage-'+$proof.Id
+    $backup=$DataDirectory+'.techmes-before-'+$proof.Id
+    Assert-LocalPath $stage
+    Assert-LocalPath $backup
+    if ((Test-Path -LiteralPath $stage) -or (Test-Path -LiteralPath $backup)) { throw 'A Rebuild working copy or original backup already exists. Inspect the previous run.' }
+
+    $estimate=Invoke-Sql $To 'SELECT COALESCE(sum(pg_database_size(oid)),0)::bigint + COALESCE((SELECT sum(size) FROM pg_ls_waldir()),0)::bigint FROM pg_database;'
+    $bytes=0L
+    if (![long]::TryParse($estimate,[ref]$bytes) -or $bytes -le 0) { throw 'Cannot estimate the size of the current PostgreSQL cluster.' }
+    if ((New-Object IO.DriveInfo([IO.Path]::GetPathRoot($DataDirectory))).AvailableFreeSpace -lt ($bytes+2GB)) { throw 'Insufficient space for a base backup plus 2 GB.' }
+
+    Ensure-Slot $To
+    $journal=Join-Path $script:Root ('rebuild-'+$proof.Id+'.json')
+    Write-Json $journal ([pscustomobject]@{ State='BackingUp'; Stage=$stage; Backup=$backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
+    $script:Changed=$true
+
+    $null=New-Item -ItemType Directory -Path $stage
+    Set-WorkingCopyAccess $stage -ForRewind
+
+    $arguments=@(('--pgdata='+$stage),'--format=plain','--wal-method=stream',('--slot='+$script:Slot),'--no-password','--no-clean')
+    $null=Invoke-Tool (Join-Path $PgBin 'pg_basebackup.exe') $arguments '' $script:ReplicationCredential $To -Change
+    Write-Json $journal ([pscustomobject]@{ State='Verifying'; Stage=$stage; Backup=$backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
+    $null=Invoke-Tool (Join-Path $PgBin 'pg_verifybackup.exe') @($stage) -Change
+
+    $copy=Get-Control $stage -AllowUncleanPrimary
+    if ($copy.Sid -cne $proof.Sid -or $copy.Timeline -ne $primary.timeline) { throw 'The base backup belongs to a different cluster or timeline.' }
+    $confirmed=Get-RecoveryPrimary $proof
+    if ($confirmed.timeline -ne $primary.timeline -or $confirmed.flush -notmatch '^[0-9A-F]+/[0-9A-F]+$') { throw 'Cannot confirm the current Primary and its WAL position after backup.' }
+    $null=Read-RecoveryFence
+
+    Restore-StandbyConfigs $stage $configs
+    return Install-StandbyCopy $stage $backup $proof $confirmed.timeline $confirmed.flush
 }
 
 # Получает DPAPI-блок через stdin; пароли не попадают в аргументы и файлы запроса.
@@ -909,7 +997,9 @@ $script:Slot=if ([StringComparer]::Ordinal.Compare($From,$To) -gt 0) { 'techmes_
 $script:WindowsPowerShell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $script:ServiceTool=Join-Path $PSScriptRoot 'Set-PostgreSQL18ServiceControl.ps1'
 
-foreach ($file in @('psql.exe','pg_rewind.exe','pg_controldata.exe')) {
+$tools=@('psql.exe','pg_rewind.exe','pg_controldata.exe')
+if ($Mode -eq 'Rebuild') { $tools=@('psql.exe','pg_controldata.exe','pg_basebackup.exe','pg_verifybackup.exe') }
+foreach ($file in $tools) {
     if (!(Test-Path -LiteralPath (Join-Path $PgBin $file) -PathType Leaf)) { throw ('Required tool missing: '+$file) }
 }
 
@@ -927,7 +1017,7 @@ if ($Mode -ne 'Status') {
 }
 
 if ($CredentialInput -and (!$OperationId -or !$ExpectedSystemIdentifier -or !$ResultFile)) { throw 'Non-interactive execution requires OperationId, ExpectedSystemIdentifier and ResultFile.' }
-if ($EmergencyFenceId -and (!$CredentialInput -or $Mode -notin @('Fence','Promote','Rejoin'))) { throw 'Emergency phases require the TechMES controller and a reserved operation.' }
+if (($Mode -eq 'Rebuild' -and !$EmergencyFenceId) -or ($EmergencyFenceId -and (!$CredentialInput -or $Mode -notin @('Fence','Promote','Rejoin','Rebuild')))) { throw 'Emergency phases require the TechMES controller and a reserved operation.' }
 
 if ($ResultFile) {
     $ResultFile=[IO.Path]::GetFullPath($ResultFile)
@@ -948,6 +1038,7 @@ $locked=$false
 $transcript=$false
 $script:Changed=$false
 $script:Installed=$false
+$script:RebuildRequired=$false
 $exitCode=0
 
 $result=[ordered]@{
@@ -1009,6 +1100,7 @@ try {
             'Fence' { $result.Data=if ($EmergencyFenceId) { Invoke-EmergencyFence } else { Invoke-Fence } }
             'Promote' { $result.Data=Invoke-Promote }
             'Rejoin' { $result.Data=Invoke-Rejoin }
+            'Rebuild' { $result.Data=Invoke-Rebuild }
         }
 
         $result.Success=$true
@@ -1018,7 +1110,12 @@ catch {
     $exitCode=1
     $result.Error=$_.Exception.Message
 
-    if ($Mode -eq 'Rejoin' -and $script:Installed) {
+    if ($script:RebuildRequired) {
+        $exitCode=2
+        $result.Data=[pscustomobject]@{ State='RebuildRequired' }
+    }
+
+    if ($Mode -in @('Rejoin','Rebuild') -and $script:Installed) {
         try {
             Set-Service -Name $ServiceName -StartupType Disabled
             $state=Get-LocalService

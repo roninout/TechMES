@@ -150,7 +150,8 @@ public partial class PostgreSqlSwitchControl : UserControl
                 + "\n"
                 + string.Join("\n\n", phases.Values.Select(phase => $"{phase.Mode}: {phase.State}\nOperationId: {phase.Id}\n{phase.Message}\nError: {phase.Error ?? "—"}\nLog: {phase.Log ?? "—"}"));
 
-            return new HistoryRow(plan, plan.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm:ss"), plan.From + " → " + plan.To, state, State("Fence"), State("Promote"), State("Rejoin"), details);
+            var recovery = State("Rebuild") == "Missing" ? State("Rejoin") : "Rebuild: " + State("Rebuild");
+            return new HistoryRow(plan, plan.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm:ss"), plan.From + " → " + plan.To, state, State("Fence"), State("Promote"), recovery, details);
         }).OrderByDescending(row => row.Plan.CreatedAtUtc).ToArray();
 
         HistoryGrid.ItemsSource = rows;
@@ -253,7 +254,7 @@ public partial class PostgreSqlSwitchControl : UserControl
             if (from is null || to is null)
                 throw new InvalidOperationException("Незавершённый план не найден.");
 
-            if (resume && snapshot.History.Any(entry => entry.Plan.Id == pending!.Id && entry.Phases.Any(phase => phase.State is "NeedsReview" or "Rejected")))
+            if (resume && snapshot.History.Any(entry => entry.Plan.Id == pending!.Id && entry.Phases.Any(phase => phase.State is "NeedsReview" or "Rejected" or "RebuildRequired")))
             {
                 throw new InvalidOperationException("Операция требует разбора. Причина и журнал указаны в истории; повторное выполнение заблокировано.");
             }
@@ -318,8 +319,8 @@ public partial class PostgreSqlSwitchControl : UserControl
 
         ResumeButton.IsEnabled = !busy
             && _snapshot?.Pending is { } pending
-            && !_snapshot.History.Any(entry => entry.Plan.Id == pending.Id && entry.Phases.Any(phase => phase.State is "NeedsReview" or "Rejected"));
+            && !_snapshot.History.Any(entry => entry.Plan.Id == pending.Id && entry.Phases.Any(phase => phase.State is "NeedsReview" or "Rejected" or "RebuildRequired"));
     }
 
-    private sealed record HistoryRow(PostgreSqlSwitchPlan Plan, string Created, string Direction, string State, string Fence, string Promote, string Rejoin, string Details);
+    private sealed record HistoryRow(PostgreSqlSwitchPlan Plan, string Created, string Direction, string State, string Fence, string Promote, string Recovery, string Details);
 }

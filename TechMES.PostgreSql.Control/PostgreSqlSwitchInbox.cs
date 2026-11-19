@@ -55,7 +55,8 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
         {
             plan.Validate(network.Value, control.Value);
 
-            var modes = network.Value.NodeAddress == plan.From ? new[] { "Fence", "Rejoin" } : new[] { "Promote" };
+            var modes = network.Value.NodeAddress != plan.From ? new[] { "Promote" }
+                : plan.Emergency ? new[] { "Fence", "Rejoin", "Rebuild" } : new[] { "Fence", "Rejoin" };
             var phases = modes.Select(mode =>
             {
                 var operation = Read(plan, mode);
@@ -120,7 +121,7 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
         plan.Validate(network.Value, control.Value);
         AssertMode(mode);
 
-        if ((mode == "Promote" ? plan.To : plan.From) != network.Value.NodeAddress || (mode == "Fence" ? phase.Fence is not null : phase.Fence is not { ValueKind: JsonValueKind.Object }))
+        if ((mode == "Rebuild" && !plan.Emergency) || (mode == "Promote" ? plan.To : plan.From) != network.Value.NodeAddress || (mode == "Fence" ? phase.Fence is not null : phase.Fence is not { ValueKind: JsonValueKind.Object }))
             throw new InvalidOperationException("Phase, node or fence proof mismatch.");
 
         await _gate.WaitAsync(ct);
@@ -148,6 +149,7 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
             }
 
             AssertActive(plan);
+            AssertRecoveryChoice(store.Root, plan, mode, phase.Fence);
 
             await host.ExecuteOwnedAsync(_ =>
             {
@@ -203,7 +205,7 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
             var message = journal.Message;
             var resultPath = Path.Combine(directory, "script-result.json");
 
-            if (journal.State == "NeedsReview" && File.Exists(resultPath))
+            if (journal.State is ("NeedsReview" or "RebuildRequired") && File.Exists(resultPath))
             {
                 try
                 {
@@ -251,17 +253,19 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
 
             AssertActive(plan);
 
-            var modes = network.Value.NodeAddress == plan.From ? new[] { "Fence", "Rejoin" } : new[] { "Promote" };
-
-            if (modes.Any(mode => Read(plan, mode).State != "Succeeded"))
+            var onSource = network.Value.NodeAddress == plan.From;
+            var confirmed = onSource
+                ? Read(plan, "Fence").State == "Succeeded" && (Read(plan, "Rejoin").State == "Succeeded" || (plan.Emergency && Read(plan, "Rebuild").State == "Succeeded"))
+                : Read(plan, "Promote").State == "Succeeded";
+            if (!confirmed)
                 throw new InvalidOperationException("Local switch phases are not confirmed. Reservation retained.");
 
-            // Новый Primary сохраняет резервирование, пока прежний узел не подтвердит Rejoin.
-            if (plan.Emergency && network.Value.NodeAddress == plan.To)
+            // Новый Primary сохраняет резервирование, пока прежний узел не подтвердит восстановление.
+            if (plan.Emergency && !onSource)
             {
                 using var certificate = PostgreSqlNodeCertificates.LoadLocal(network.Value);
                 using var remote = new PostgreSqlSwitchRemote(network.Value, certificate);
-                await PostgreSqlSwitchCoordinator.ReadConfirmedPhaseAsync(remote, plan, "Rejoin", plan.From, ct);
+                await PostgreSqlSwitchCoordinator.VerifyEmergencyRecoveryAsync(remote, plan, ct);
             }
 
             PostgreSqlCommandStore.Write(CompletedPath(plan), plan);
@@ -290,7 +294,7 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
 
             AssertActive(plan);
 
-            if (new[] { "Fence", "Promote", "Rejoin" }.Any(mode => File.Exists(Path.Combine(OperationDirectory(plan, mode), "request.json"))))
+            if (new[] { "Fence", "Promote", "Rejoin", "Rebuild" }.Any(mode => File.Exists(Path.Combine(OperationDirectory(plan, mode), "request.json"))))
                 throw new InvalidOperationException("A phase was already submitted. Cancellation is refused; resume or inspect the operation.");
 
             File.Delete(ActivePath);
@@ -308,7 +312,7 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
 
         if (!File.Exists(active))
         {
-            if (request.EmergencyFenceId is not null)
+            if (request.Mode == "Rebuild" || request.EmergencyFenceId is not null)
                 throw new InvalidOperationException("An emergency command requires a reserved network plan.");
 
             return null;
@@ -319,7 +323,41 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
         if (request.Id != plan.OperationId(request.Mode) || request.From != plan.From || request.To != plan.To || request.SystemIdentifier != plan.SystemIdentifier || request.EmergencyFenceId != EmergencyFenceId(plan))
             throw new InvalidOperationException("This command does not match the reserved switch.");
 
+        AssertRecoveryChoice(root, plan, request.Mode, request.Fence);
         return plan;
+    }
+
+    // Запрещает конкурирующие способы восстановления и сверяет Rebuild с локальным журналом Fence.
+    private static void AssertRecoveryChoice(string root, PostgreSqlSwitchPlan plan, string mode, JsonElement? proof)
+    {
+        var rebuildPath = Path.Combine(root, plan.OperationId("Rebuild"), "request.json");
+        if (mode == "Rejoin" && File.Exists(rebuildPath))
+            throw new InvalidOperationException("Rebuild was selected for this plan. Inspect or resume Rebuild.");
+
+        if (mode != "Rebuild")
+            return;
+
+        if (!plan.Emergency || proof is null)
+            throw new InvalidOperationException("Rebuild requires the reserved emergency plan and its Fence proof.");
+
+        var rejoinPath = Path.Combine(root, plan.OperationId("Rejoin"));
+        if (File.Exists(Path.Combine(rejoinPath, "request.json")))
+        {
+            var journalPath = Path.Combine(rejoinPath, "journal.json");
+            if (!File.Exists(journalPath))
+                throw new InvalidOperationException("Rejoin is queued. Inspect its outcome before Rebuild.");
+
+            var journal = PostgreSqlCommandStore.Read<PostgreSqlCommandJournal>(journalPath);
+            if (journal.Id != plan.OperationId("Rejoin") || journal.State is not ("Rejected" or "RebuildRequired"))
+                throw new InvalidOperationException("Rejoin has not confirmed that Rebuild is safe. Inspect the existing operation.");
+        }
+
+        var fenceId = plan.OperationId("Fence");
+        var fencePath = Path.Combine(root, fenceId);
+        var fence = PostgreSqlCommandStore.Read<PostgreSqlCommandJournal>(Path.Combine(fencePath, "journal.json"));
+        var recorded = PostgreSqlCommandStore.Read<JsonElement>(Path.Combine(fencePath, "fence.json"));
+        if (fence.Id != fenceId || fence.State != "Succeeded" || !JsonElement.DeepEquals(recorded, proof.Value))
+            throw new InvalidOperationException("Rebuild Fence proof does not match the confirmed local operation.");
     }
 
     private static string? EmergencyFenceId(PostgreSqlSwitchPlan plan) => plan.Emergency ? plan.OperationId("Fence") : null;
@@ -336,7 +374,7 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
 
             var journal = Path.Combine(directory, "journal.json");
 
-            if (!File.Exists(journal) || PostgreSqlCommandStore.Read<PostgreSqlCommandJournal>(journal).State is not ("Succeeded" or "Rejected"))
+            if (!File.Exists(journal) || PostgreSqlCommandStore.Read<PostgreSqlCommandJournal>(journal).State is not ("Succeeded" or "Rejected" or "RebuildRequired"))
                 throw new InvalidOperationException("An outstanding local command must be inspected first.");
         }
     }
@@ -351,7 +389,7 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
     // Использует только фиксированные имена фаз.
     private static void AssertMode(string mode)
     {
-        if (mode is not ("Fence" or "Promote" or "Rejoin"))
+        if (mode is not ("Fence" or "Promote" or "Rejoin" or "Rebuild"))
             throw new InvalidOperationException("Unknown PostgreSQL phase.");
     }
 

@@ -57,7 +57,7 @@
                         <DataGridTextColumn Header="Состояние" Binding="{Binding State}" Width="125" />
                         <DataGridTextColumn Header="Fence" Binding="{Binding Fence}" Width="100" />
                         <DataGridTextColumn Header="Promote" Binding="{Binding Promote}" Width="100" />
-                        <DataGridTextColumn Header="Rejoin" Binding="{Binding Rejoin}" Width="100" />
+                        <DataGridTextColumn Header="Восстановление" Binding="{Binding Recovery}" Width="145" />
                     </DataGrid.Columns>
                 </DataGrid>
 

@@ -267,6 +267,84 @@ public sealed class PostgreSqlNetworkTests
         Assert.Equal(new[] { "read-Fence:10.77.12.61", "read-Promote:10.77.12.62", "Rejoin:10.77.12.61", "complete:10.77.12.61", "complete:10.77.12.62" }, remote.Calls);
     }
 
+    [Fact]
+    public async Task EmergencyRebuildRunsOnTheFencedNodeAndKeepsTheCurrentPrimary()
+    {
+        var remote = new Remote();
+        var plan = Plan with { Emergency = true };
+
+        await new PostgreSqlSwitchCoordinator(remote).RecoverEmergencyAsync(plan, _ => { }, CancellationToken.None, rebuild: true);
+
+        Assert.Equal(new[] { "read-Fence:10.77.12.61", "read-Promote:10.77.12.62", "Rebuild:10.77.12.61", "complete:10.77.12.61", "complete:10.77.12.62" }, remote.Calls);
+    }
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("RebuildRequired", true)]
+    [InlineData("Rejected", true)]
+    [InlineData("Queued", false)]
+    [InlineData("Running", false)]
+    [InlineData("NeedsReview", false)]
+    [InlineData("Succeeded", false)]
+    public async Task RebuildOnlyFollowsAnUnattemptedOrSafelyStoppedRejoin(string? rejoinState, bool allowed)
+    {
+        using var fixture = new Fixture();
+        await fixture.StartAsync();
+        var plan = Plan with { Emergency = true };
+        var proof = (await new Remote().ReadAsync(plan.From, "Fence", plan, CancellationToken.None)).Fence!.Value;
+        await fixture.Inbox.ReserveAsync(plan, CancellationToken.None);
+        await fixture.Inbox.SubmitAsync("Fence", new(plan, null), CancellationToken.None);
+        var fencePath = Path.Combine(fixture.Store.Root, plan.OperationId("Fence"));
+        PostgreSqlCommandStore.Write(Path.Combine(fencePath, "fence.json"), proof);
+        PostgreSqlCommandStore.Write(Path.Combine(fencePath, "script-result.json"), JsonSerializer.SerializeToElement(new { }));
+        PostgreSqlCommandStore.Write(Path.Combine(fencePath, "journal.json"), new PostgreSqlCommandJournal(plan.OperationId("Fence"), "fingerprint", "Succeeded", DateTimeOffset.UtcNow, ""));
+
+        if (rejoinState is not null)
+        {
+            await fixture.Inbox.SubmitAsync("Rejoin", new(plan, proof), CancellationToken.None);
+            if (rejoinState != "Queued")
+                PostgreSqlCommandStore.Write(Path.Combine(fixture.Store.Root, plan.OperationId("Rejoin"), "journal.json"), new PostgreSqlCommandJournal(plan.OperationId("Rejoin"), "fingerprint", rejoinState, DateTimeOffset.UtcNow, ""));
+        }
+
+        if (!allowed)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Inbox.SubmitAsync("Rebuild", new(plan, proof), CancellationToken.None));
+            return;
+        }
+
+        var differentProof = JsonSerializer.SerializeToElement(new { State = "Fenced" });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Inbox.SubmitAsync("Rebuild", new(plan, differentProof), CancellationToken.None));
+        var result = await fixture.Inbox.SubmitAsync("Rebuild", new(plan, proof), CancellationToken.None);
+        Assert.Equal("Queued", result.State);
+        Assert.Equal(plan.OperationId("Rebuild"), result.Id);
+        var command = PostgreSqlCommandStore.Read<PostgreSqlCommand>(Path.Combine(fixture.Store.Root, result.Id, "request.json"));
+        Assert.Equal(plan, PostgreSqlSwitchInbox.AssertCommandAllowed(fixture.Store.Root, command));
+        if (rejoinState is null)
+            await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Inbox.SubmitAsync("Rejoin", new(plan, proof), CancellationToken.None));
+        else
+            Assert.Equal(rejoinState, (await fixture.Inbox.SubmitAsync("Rejoin", new(plan, proof), CancellationToken.None)).State);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Inbox.CompleteAsync(plan, CancellationToken.None));
+
+        var rebuildPath = Path.Combine(fixture.Store.Root, result.Id);
+        PostgreSqlCommandStore.Write(Path.Combine(rebuildPath, "script-result.json"), JsonSerializer.SerializeToElement(new { }));
+        PostgreSqlCommandStore.Write(Path.Combine(rebuildPath, "journal.json"), new PostgreSqlCommandJournal(result.Id, "fingerprint", "Succeeded", DateTimeOffset.UtcNow, ""));
+        await fixture.Inbox.CompleteAsync(plan, CancellationToken.None);
+        Assert.Null(fixture.Inbox.Status().ActivePlan);
+    }
+
+    [Fact]
+    public async Task NewPrimaryRequiresTheRemoteRebuildToFinishBeforeCompleting()
+    {
+        var plan = Plan with { Emergency = true };
+        var remote = new Remote { MissingPhase = "Rejoin", Failed = "Rebuild" };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => PostgreSqlSwitchCoordinator.VerifyEmergencyRecoveryAsync(remote, plan, CancellationToken.None));
+        remote.Failed = null;
+        await PostgreSqlSwitchCoordinator.VerifyEmergencyRecoveryAsync(remote, plan, CancellationToken.None);
+
+        Assert.Equal(new[] { "read-Rejoin:10.77.12.61", "read-Rebuild:10.77.12.61", "read-Rejoin:10.77.12.61", "read-Rebuild:10.77.12.61" }, remote.Calls);
+    }
+
     [Theory]
     [InlineData("Fence")]
     [InlineData("Promote")]
@@ -521,6 +599,7 @@ public sealed class PostgreSqlNetworkTests
         public bool LoseFenceResponse;
         public bool MissingFenceProof;
         public bool WrongEmergencyId;
+        public string? MissingPhase;
         public Func<string, PostgreSqlRemoteStatus>? StatusOverride;
 
         public Task<PostgreSqlRemoteStatus> StatusAsync(string address, CancellationToken ct)
@@ -557,7 +636,7 @@ public sealed class PostgreSqlNetworkTests
                 ? JsonSerializer.SerializeToElement(new { State = "Fenced", plan.From, plan.To, Sid = WrongProof ? "123" : plan.SystemIdentifier, Format = plan.Emergency ? 2 : 1, Id = WrongEmergencyId ? Plan.OperationId("Fence") : plan.OperationId("Fence") })
                 : null;
 
-            return new PostgreSqlRemoteOperation(plan.OperationId(mode), mode == Failed ? "NeedsReview" : "Succeeded", "Test", null, proof);
+            return new PostgreSqlRemoteOperation(plan.OperationId(mode), mode == Failed ? "NeedsReview" : mode == MissingPhase ? "Missing" : "Succeeded", "Test", null, proof);
         }
 
         public Task<PostgreSqlRemoteOperation> ReadAsync(string address, string mode, PostgreSqlSwitchPlan plan, CancellationToken ct)

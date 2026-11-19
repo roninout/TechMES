@@ -157,7 +157,7 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
     }
 
     // Продолжает именно сохранённый аварийный план после подтверждённого Promote.
-    public async Task RecoverEmergencyAsync(PostgreSqlSwitchPlan plan, Action<string> progress, CancellationToken ct)
+    public async Task RecoverEmergencyAsync(PostgreSqlSwitchPlan plan, Action<string> progress, CancellationToken ct, bool rebuild = false)
     {
         if (!plan.Emergency)
             throw new InvalidOperationException("The retained plan is not an emergency switch.");
@@ -168,7 +168,7 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
         await ReadConfirmedPhaseAsync(remote, plan, "Promote", plan.To, ct);
 
         // Повтор с тем же идентификатором читает уже принятую или завершённую фазу.
-        await RunPhaseAsync(plan, "Rejoin", plan.From, proof, progress, ct);
+        await RunPhaseAsync(plan, rebuild ? "Rebuild" : "Rejoin", plan.From, proof, progress, ct);
         await remote.PlanAsync(plan.From, "complete", plan, ct);
         await remote.PlanAsync(plan.To, "complete", plan, ct);
         progress($"COMPLETED: Primary={plan.To}; Standby={plan.From}.");
@@ -179,6 +179,19 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
         var operation = await remote.ReadAsync(node, mode, plan, ct);
         EnsureConfirmed(plan, mode, operation);
         return operation;
+    }
+
+    // Подтверждает один из двух способов восстановления на прежнем Primary.
+    internal static async Task VerifyEmergencyRecoveryAsync(IPostgreSqlSwitchRemote remote, PostgreSqlSwitchPlan plan, CancellationToken ct)
+    {
+        var rejoin = await remote.ReadAsync(plan.From, "Rejoin", plan, ct);
+        if (rejoin.State == "Succeeded")
+        {
+            EnsureConfirmed(plan, "Rejoin", rejoin);
+            return;
+        }
+
+        await ReadConfirmedPhaseAsync(remote, plan, "Rebuild", plan.From, ct);
     }
 
     // Аварийное повышение оставляет резервирование до отдельного Rejoin.
@@ -213,7 +226,7 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
 
         while (operation.State is "Queued" or "Running")
         {
-            if (DateTimeOffset.UtcNow > deadline)
+            if (mode != "Rebuild" && DateTimeOffset.UtcNow > deadline)
                 throw new TimeoutException("Phase completion is not confirmed. Resume the same plan; the child script was not cancelled.");
 
             await Task.Delay(TimeSpan.FromSeconds(2), ct);

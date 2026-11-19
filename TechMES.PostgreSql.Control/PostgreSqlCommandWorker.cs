@@ -85,7 +85,7 @@ public sealed class PostgreSqlCommandWorker(IOptions<PostgreSqlControlOptions> o
                 if (journal.State == "NeedsReview")
                     return;
 
-                if (journal.State is not ("Succeeded" or "Rejected"))
+                if (journal.State is not ("Succeeded" or "Rejected" or "RebuildRequired"))
                     throw new IOException("Unknown operation journal state.");
 
                 var original = PostgreSqlCommandStore.Read<PostgreSqlCommand>(Path.Combine(directory, "request.json"));
@@ -114,7 +114,7 @@ public sealed class PostgreSqlCommandWorker(IOptions<PostgreSqlControlOptions> o
     /// <summary>Проверяет идентификатор, направление, срок запроса и отсутствие произвольных команд.</summary>
     private void Validate(PostgreSqlCommand request, string directory, PostgreSqlControlOptions settings)
     {
-        if (request.Id != Path.GetFileName(directory) || request.Mode is not ("Fence" or "Promote" or "Rejoin") || request.SystemIdentifier != settings.ExpectedSystemIdentifier)
+        if (request.Id != Path.GetFileName(directory) || request.Mode is not ("Fence" or "Promote" or "Rejoin" or "Rebuild") || request.SystemIdentifier != settings.ExpectedSystemIdentifier)
             throw new InvalidOperationException("Invalid command identity, mode or PostgreSQL cluster.");
 
         var pair = network.Value;
@@ -158,7 +158,7 @@ public sealed class PostgreSqlCommandWorker(IOptions<PostgreSqlControlOptions> o
 
             var plan = PostgreSqlSwitchInbox.AssertCommandAllowed(store.Root, request);
 
-            if (plan is { Emergency: true } && request.Mode is ("Promote" or "Rejoin"))
+            if (plan is { Emergency: true } && request.Mode is ("Promote" or "Rejoin" or "Rebuild"))
             {
                 using var certificate = PostgreSqlNodeCertificates.LoadLocal(network.Value);
                 using var remote = new PostgreSqlSwitchRemote(network.Value, certificate);
@@ -188,10 +188,20 @@ public sealed class PostgreSqlCommandWorker(IOptions<PostgreSqlControlOptions> o
         {
             var exitCode = await runner.RunAsync(settings, request, directory, store.CredentialPath);
             var result = PostgreSqlCommandStore.Read<JsonElement>(Path.Combine(directory, "script-result.json"));
-            var expected = request.Mode == "Fence" ? "Fenced" : request.Mode == "Promote" ? "Promoted" : "Rejoined";
-            var confirmed = exitCode == 0 && result.GetProperty("Success").GetBoolean() && result.GetProperty("OperationId").GetString() == request.Id && result.GetProperty("Mode").GetString() == request.Mode && result.GetProperty("From").GetString() == request.From && result.GetProperty("To").GetString() == request.To && result.GetProperty("ExpectedSystemIdentifier").GetString() == settings.ExpectedSystemIdentifier && result.GetProperty("Data").GetProperty("State").GetString() == expected;
+            var expected = request.Mode switch { "Fence" => "Fenced", "Promote" => "Promoted", "Rebuild" => "Rebuilt", _ => "Rejoined" };
+            var identityMatches = result.GetProperty("OperationId").GetString() == request.Id && result.GetProperty("Mode").GetString() == request.Mode && result.GetProperty("From").GetString() == request.From && result.GetProperty("To").GetString() == request.To && result.GetProperty("ExpectedSystemIdentifier").GetString() == settings.ExpectedSystemIdentifier;
+            var success = result.GetProperty("Success").GetBoolean();
+            var state = result.GetProperty("Data") is { ValueKind: JsonValueKind.Object } data && data.TryGetProperty("State", out var phaseState) ? phaseState.GetString() : null;
+            var confirmed = exitCode == 0 && success && identityMatches && state == expected;
+            var rebuildRequired = exitCode == 2 && !success && identityMatches && state == "RebuildRequired" && request.Mode == "Rejoin" && request.EmergencyFenceId is not null;
 
-            journal = journal with { State = confirmed ? "Succeeded" : "NeedsReview", UpdatedAtUtc = DateTimeOffset.UtcNow, Message = confirmed ? "The script confirmed completion. See script-result.json and its log." : "Completion was not confirmed. Inspect script-result.json and its log; automatic retries are blocked." };
+            var (resultState, message) = (confirmed, rebuildRequired) switch
+            {
+                (true, _) => ("Succeeded", "The script confirmed completion. See script-result.json and its log."),
+                (_, true) => ("RebuildRequired", "Rewind could not finish before data installation. The node remains fenced; Rebuild can be requested for this plan."),
+                _ => ("NeedsReview", "Completion was not confirmed. Inspect script-result.json and its log; automatic retries are blocked.")
+            };
+            journal = journal with { State = resultState, UpdatedAtUtc = DateTimeOffset.UtcNow, Message = message };
         }
         catch (Exception ex)
         {
