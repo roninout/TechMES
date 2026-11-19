@@ -3,11 +3,13 @@
     position: static;
 }
 
+/* Две строки Host выровнены с остальными строками диагностики. */
 summary {
-    display: inline-flex;
+    display: grid;
+    grid-template-columns: max-content max-content;
+    grid-template-rows: 24px 24px;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 5px;
+    gap: 4px 5px;
     cursor: pointer;
     list-style: none;
 }

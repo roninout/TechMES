@@ -18,9 +18,7 @@
 .summary-item,
 .checked-time,
 .dependency-heading,
-.node-label,
 .node-commands,
-.state-pill,
 summary {
     display: inline-flex;
     align-items: center;
@@ -78,7 +76,7 @@ summary {
 
 .dependency-table {
     display: grid;
-    grid-template-columns: auto repeat(5, max-content);
+    grid-template-columns: auto repeat(7, max-content);
     gap: 5px 7px;
     flex: 0 0 auto;
 }
@@ -111,19 +109,15 @@ summary {
 .runtime-nodes {
     display: grid;
     gap: 4px;
-    flex: 1 0 460px;
+    flex: 1 0 auto;
 }
 
 .runtime-node {
     display: grid;
-    grid-template-columns: 90px minmax(120px, 1fr) 105px 110px 52px;
+    grid-template-columns: minmax(120px, 1fr) 110px 52px;
     gap: 8px;
     align-items: center;
     min-height: 24px;
-}
-
-.node-label {
-    color: var(--rz-text-secondary-color);
 }
 
 .node-address {
@@ -131,14 +125,6 @@ summary {
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 600;
-}
-
-.state-pill {
-    border: 1px solid currentColor;
-    border-radius: 4px;
-    padding: 1px 5px;
-    line-height: 19px;
-    font-size: 11px;
 }
 
 .node-commands,
@@ -152,20 +138,12 @@ summary {
     color: var(--rz-success);
 }
 
-.tone-info {
-    color: var(--rz-info);
-}
-
 .tone-warning {
     color: var(--rz-warning);
 }
 
 .tone-danger {
     color: var(--rz-danger);
-}
-
-.tone-muted {
-    color: var(--rz-text-secondary-color);
 }
 
 /* Подробности открываются над Footer, сохраняя размер рабочей области. */

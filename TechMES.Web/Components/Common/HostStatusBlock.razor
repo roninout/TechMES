@@ -3,24 +3,18 @@
 @inject IConfiguration Configuration
 @implements IAsyncDisposable
 
+@{
+    var state = CurrentState;
+    var owner = state?.Ownership;
+    var automatic = owner is not null && owner.Node == owner.Coordinator ? owner.WebFailover : null;
+}
+
 <details class="host-diagnostics">
     <summary title="Локальный Host текущего WEB. Нажмите для подробностей.">
         <RadzenBadge Text="@HostText" BadgeStyle="@HostStyle" />
-
-        @if (CurrentState is { } state)
-        {
-            <RadzenBadge Text="@VipText(state)" BadgeStyle="@VipStyle(state)" />
-
-            @if (state.Ownership is { } owner)
-            {
-                <RadzenBadge Text="@($"Epoch: {owner.Grant.Epoch}")" BadgeStyle="BadgeStyle.Base" />
-
-                @if (owner.Node == owner.Coordinator && owner.WebFailover is { } automatic)
-                {
-                    <RadzenBadge Text="@($"Auto: {automatic.State}")" BadgeStyle="@(automatic.State == "Blocked" ? BadgeStyle.Warning : automatic.Enabled ? BadgeStyle.Info : BadgeStyle.Base)" />
-                }
-            }
-        }
+        <RadzenBadge Text="@(state is null ? "VIP: —" : VipText(state))" BadgeStyle="@(state is null ? BadgeStyle.Base : VipStyle(state))" />
+        <RadzenBadge Text="@($"Epoch: {owner?.Grant.Epoch.ToString() ?? "—"}")" BadgeStyle="BadgeStyle.Base" />
+        <RadzenBadge Text="@($"Auto: {automatic?.State ?? "—"}")" BadgeStyle="@(automatic?.State == "Blocked" ? BadgeStyle.Warning : automatic?.Enabled == true ? BadgeStyle.Info : BadgeStyle.Base)" />
     </summary>
 
     <div class="host-details-panel">

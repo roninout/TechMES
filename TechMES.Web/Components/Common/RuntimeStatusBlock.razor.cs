@@ -194,14 +194,35 @@ public partial class RuntimeStatusBlock
     /// <summary>Готовность узла по свежему снимку.</summary>
     private static bool IsReady(RuntimeEndpointStatus? state) => IsFresh(state) && state!.IsActive;
 
-    /// <summary>HTTP-недоступность отличается от штатного Standby.</summary>
-    private string NodeText(RuntimeEndpointStatus? state) => state is null ? (_activityError.Length > 0 ? "Unknown" : "Checking") : !IsFresh(state) ? "Stale" : state.Activity is null ? "Unavailable" : state.Activity.Mode;
+    /// <summary>Подбирает текст и цвет бейджа по свежему состоянию конкретного Runtime.</summary>
+    private (string Text, BadgeStyle Style, string Hint) DescribeRuntime(int index)
+    {
+        if (index == 1 && _states.Length == 1)
+            return ("N/A", BadgeStyle.Base, "Второй отдельный адрес Runtime отсутствует.");
 
-    /// <summary>Цвет фактического состояния узла.</summary>
-    private static string NodeTone(RuntimeEndpointStatus? state) => !IsFresh(state) ? "tone-muted" : state!.Activity is null || state.Activity.Mode == "Faulted" ? "tone-danger" : state.IsActive ? "tone-success" : state.Activity.Mode == "Standby" ? "tone-info" : "tone-warning";
+        var state = _states.ElementAtOrDefault(index);
 
-    /// <summary>Иконка состояния из набора Material Symbols, используемого темой WEB.</summary>
-    private static string NodeIcon(RuntimeEndpointStatus? state) => !IsFresh(state) ? "schedule" : state!.Activity is null ? "cloud_off" : state.IsActive ? "check_circle" : state.Activity.Mode == "Standby" ? "pause_circle" : state.Activity.Mode == "Faulted" ? "error" : "sync";
+        if (state is null)
+            return _activityError.Length > 0
+                ? ("Unknown", BadgeStyle.Warning, _activityError)
+                : ("Checking", BadgeStyle.Base, "Ожидание данных Runtime.");
+
+        var hint = $"{state.Endpoint.Authority}\n{BuildRuntimeHint(state)}";
+
+        if (!IsFresh(state))
+            return ("Stale", BadgeStyle.Warning, hint);
+
+        if (state.Activity is not { } activity)
+            return ("Unavailable", BadgeStyle.Danger, hint);
+
+        return activity.Mode switch
+        {
+            _ when state.IsActive => ("Active", BadgeStyle.Success, hint),
+            "Standby" => ("Standby", BadgeStyle.Info, hint),
+            "Faulted" => ("Faulted", BadgeStyle.Danger, hint),
+            _ => (activity.Mode, BadgeStyle.Warning, hint)
+        };
+    }
 
     /// <summary>
     /// Показывает причины, владельца и сроки lease без строк подключения.

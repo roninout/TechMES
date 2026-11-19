@@ -18,8 +18,6 @@
             @RoutingText
         </span>
 
-        <HostStatusBlock />
-
         <span class="checked-time" title="Время последнего прямого опроса Runtime">
             <RadzenIcon Icon="schedule" aria-hidden="true" />
             @CheckedText
@@ -88,12 +86,17 @@
     </div>
 
     <div class="diagnostics-body">
-        <div class="dependency-table" aria-label="Диагностика: Calc по адресам Runtime, остальные колонки по профилям подключения">
+        <div class="dependency-table" aria-label="Диагностика SCADA, Runtime, Calc, баз данных и локального Host">
             <span class="dependency-heading">Профиль</span>
 
             <span class="dependency-heading">
                 <RadzenIcon Icon="settings_ethernet" aria-hidden="true" />
                 SCADA
+            </span>
+
+            <span class="dependency-heading" title="Режим каждого настроенного Runtime">
+                <RadzenIcon Icon="dns" aria-hidden="true" />
+                Runtime
             </span>
 
             <span class="dependency-heading" title="Calc 1 и Calc 2 относятся к адресам Runtime 1 и Runtime 2">
@@ -116,12 +119,26 @@
                 PostgreSQL
             </span>
 
+            <span class="dependency-heading" title="Локальный Host текущего WEB">
+                <RadzenIcon Icon="hub" aria-hidden="true" />
+                Host
+            </span>
+
             <div class="server-status-column server-roles">
                 <span>Primary</span>
                 <span>Secondary</span>
             </div>
 
             <ScadaServerStatusBlock />
+
+            <div class="server-status-column" aria-label="Режимы обоих Runtime" aria-live="polite">
+                @for (var index = 0; index < 2; index++)
+                {
+                    var runtime = DescribeRuntime(index);
+                    <RadzenBadge Text="@($"Runtime {index + 1}: {runtime.Text}")" BadgeStyle="@runtime.Style" title="@runtime.Hint" />
+                }
+            </div>
+
             <div class="server-status-column" aria-label="Локальная служба Calc на каждом Runtime">
                 @for (var index = 0; index < 2; index++)
                 {
@@ -129,8 +146,10 @@
                     <RadzenBadge Text="@($"Calc {index + 1}: {calc.Text}")" BadgeStyle="@calc.Style" title="@calc.Hint" />
                 }
             </div>
+
             <OdbcServerStatusBlock />
             <MainDatabaseStatusBlock />
+
             <div class="server-status-column" aria-label="Репликация PostgreSQL по профилям Main DB">
                 @for (var index = 0; index < 2; index++)
                 {
@@ -138,26 +157,19 @@
                     <RadzenBadge Text="@($"WAL: {wal.Text}")" BadgeStyle="@wal.Style" title="@wal.Hint" />
                 }
             </div>
+
+            <HostStatusBlock />
         </div>
 
-        <div class="runtime-nodes" aria-label="Режимы обоих Runtime">
+        <div class="runtime-nodes" aria-label="Адреса, команды и операции Runtime">
             @for (var index = 0; index < 2; index++)
             {
                 var state = _states.ElementAtOrDefault(index);
                 var unconfigured = index == 1 && _states.Length == 1;
 
                 <div class="runtime-node" title="@(state is null ? unconfigured ? "Второй адрес пустой или совпадает с первым." : "Ожидание данных Runtime." : BuildRuntimeHint(state))">
-                    <span class="node-label">
-                        <RadzenBadge Text="@($"Runtime {index + 1}")" BadgeStyle="BadgeStyle.Base" Style="font-size: 10px; line-height: 20px; padding: 0 5px; white-space: nowrap;" />
-                    </span>
-
                     <span class="node-address">
                         @(state?.Endpoint.Authority ?? (unconfigured ? "нет отдельного адреса" : "—"))
-                    </span>
-
-                    <span class="state-pill @(unconfigured ? "tone-muted" : NodeTone(state))" aria-live="polite">
-                        <RadzenIcon Icon="@(unconfigured ? "remove_circle" : NodeIcon(state))" aria-hidden="true" />
-                        @(unconfigured ? "Disabled" : NodeText(state))
                     </span>
 
                     <span class="node-commands" title="Разрешение рабочих команд данным Runtime">
