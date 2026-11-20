@@ -26,5 +26,7 @@
 		<Compile Include="..\TechMES.Maintenance\Services\PostgreSqlSetupService.cs" Link="PostgreSqlSetupService.cs" />
 		<Compile Include="..\TechMES.Maintenance\Services\PostgreSqlHostSetupService.cs" Link="PostgreSqlHostSetupService.cs" />
 		<Compile Include="..\TechMES.Maintenance\Services\PostgreSqlWizardDiagnostics.cs" Link="PostgreSqlWizardDiagnostics.cs" />
+		<Compile Include="..\TechMES.Maintenance\Services\PostgreSqlNetworkSetupService.cs" Link="PostgreSqlNetworkSetupService.cs" />
+		<Content Include="..\scripts\deploy\Setup-TechMESPostgreSqlNetworkBundle.ps1;..\scripts\deploy\Configure-TechMESPostgreSqlNetwork.ps1;..\scripts\deploy\Configure-TechMESPostgreSqlMaintenance.ps1;..\scripts\deploy\Invoke-TechMESPostgreSqlCommand.ps1" Link="Tools\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 </Project>

@@ -12,7 +12,9 @@ param(
     [ValidateSet('','TechMES.Runtime.Service','TechMES.PostgreSql.Agent')][string]$HostService='',
     [switch]$RestoreNetwork,
     [ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$NodeAddress='',
-    [ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$PeerAddress=''
+    [ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$PeerAddress='',
+    [ValidatePattern('^$|^[A-Za-z0-9_.-]+$')][string]$ExpectedServiceName='',
+    [switch]$AsObject
 )
 
 Set-StrictMode -Version Latest
@@ -318,14 +320,15 @@ if ($Mode -eq 'Prepare') {
 
     $null=Export-Certificate -Cert $certificate -FilePath $publicPath -Type CERT -Force
 
-    [pscustomobject]@{
+    $result=[pscustomobject]@{
         Computer=$env:COMPUTERNAME
         MaintenanceAddress=$MaintenanceAddress
         MaintenanceSha256=$pin
         PublicCertificate=$publicPath
         Settings=$settingsPath
         PrivateAcl=$true
-    } | Format-List
+    }
+    if ($AsObject) { $result } else { $result | Format-List }
 
     return
 }
@@ -358,6 +361,9 @@ foreach ($name in @('CommandsEnabled','ExpectedSystemIdentifier','ServiceName','
 
 if (!$control.CommandsEnabled -or $control.ExpectedSystemIdentifier -ne $SystemIdentifier -or $control.ServiceName -notmatch '^[A-Za-z0-9_.-]+$') {
     throw 'The selected host must have commands enabled and the expected cluster SID.'
+}
+if ($ExpectedServiceName -and $control.ServiceName -ine $ExpectedServiceName) {
+    throw 'The selected controller belongs to another PostgreSQL service.'
 }
 
 $commandsRoot=Join-Path $env:ProgramData ('TechMES\PostgreSqlNodes\'+$control.ServiceName.ToUpperInvariant()+'\Commands')
@@ -404,7 +410,7 @@ if (!$network.Enabled -or $network.NodeAddress -notin $addresses -or !$peerIpVal
     throw "Invalid database network profile: $settingsPath"
 }
 
-if (($NodeAddress -and $network.NodeAddress -ne $NodeAddress) -or ($PeerAddress -and $network.PeerAddress -ne $PeerAddress)) {
+if (($NodeAddress -and $network.NodeAddress -ne $NodeAddress) -or ($PeerAddress -and $network.PeerAddress -ne $PeerAddress) -or ($PSBoundParameters.ContainsKey('Port') -and $network.Port -ne $Port)) {
     throw 'The selected host profile belongs to another node.'
 }
 
@@ -456,11 +462,12 @@ if ($restored) {
 
 Restart-Service -Name $service.Name -ErrorAction Stop
 
-[pscustomobject]@{
+$result=[pscustomobject]@{
     Node=$network.NodeAddress
     HostService=$service.Name
     MaintenanceAddress=$MaintenanceAddress
     MaintenanceSha256=$pin
     Settings=$settingsPath
     NetworkRestored=$restored
-} | Format-List
+}
+if ($AsObject) { $result } else { $result | Format-List }

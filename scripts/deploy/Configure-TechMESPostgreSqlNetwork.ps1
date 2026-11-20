@@ -6,7 +6,10 @@ param(
     [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$PeerAddress,
     [string]$PeerCertificatePath='',
     [ValidatePattern('^$|^[0-9A-Fa-f]{64}$')][string]$ExpectedPeerSha256='',
-    [ValidateRange(1024,65535)][int]$Port=5115
+    [ValidateRange(1024,65535)][int]$Port=5115,
+    [ValidatePattern('^$|^[0-9]{1,20}$')][string]$ExpectedSystemIdentifier='',
+    [ValidatePattern('^$|^[A-Za-z0-9_.-]+$')][string]$ExpectedServiceName='',
+    [switch]$AsObject
 )
 
 Set-StrictMode -Version Latest
@@ -35,6 +38,26 @@ $settingsPath=Join-Path $directory 'appsettings.PostgreSqlControl.json'
 $settings=Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
 $control=$settings.PostgreSqlControl
 
+if ($ExpectedServiceName -and $control.ServiceName -ine $ExpectedServiceName) { throw 'The selected controller belongs to another PostgreSQL service.' }
+
+if ($ExpectedSystemIdentifier) {
+    $existing=$control.PSObject.Properties['ExpectedSystemIdentifier']
+    if ($existing -and $existing.Value -and $existing.Value -cne $ExpectedSystemIdentifier) {
+        throw 'The expected cluster differs from the configured controller.'
+    }
+
+    # A prepared local controller can identify an existing cluster before command access is enabled.
+    $statusPath=Join-Path $env:ProgramData ('TechMES\PostgreSqlNodes\'+$control.ServiceName.ToUpperInvariant()+'\status.json')
+    $status=Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+    $now=[DateTimeOffset]::UtcNow
+    $checked=[DateTimeOffset]$status.checkedAtUtc
+    if (!$status.ownsController -or !$status.permissionsOk -or $status.controllerState -ne 'Monitoring' -or !$status.service.managedByService -or $status.service.computer -ine $env:COMPUTERNAME -or $status.settings.serviceName -ine $control.ServiceName -or $status.service.port -ne $control.Port -or $status.systemIdentifier -cne $ExpectedSystemIdentifier -or $checked -gt $now.AddMinutes(1) -or ($now-$checked).TotalSeconds -gt [Math]::Max(30,3*$status.healthPeriodSeconds)) {
+        throw 'The local PostgreSQL controller could not confirm the expected cluster and service.'
+    }
+    $control | Add-Member -NotePropertyName CommandsEnabled -NotePropertyValue $true -Force
+    $control | Add-Member -NotePropertyName ExpectedSystemIdentifier -NotePropertyValue $ExpectedSystemIdentifier -Force
+}
+
 if (!$control.CommandsEnabled -or $control.ExpectedSystemIdentifier -notmatch '^[0-9]{1,20}$') { throw 'Configure CommandsEnabled and ExpectedSystemIdentifier first.' }
 if ($Port -eq $control.Port) { throw 'Use a separate HTTPS port.' }
 
@@ -47,6 +70,10 @@ function Get-CertificatePin([Security.Cryptography.X509Certificates.X509Certific
 
 $property=$settings.PSObject.Properties['PostgreSqlNetwork']
 $network=if ($null -ne $property -and $null -ne $property.Value) { $property.Value } else { [pscustomobject]@{} }
+$priorEnabled=$network.PSObject.Properties['Enabled']
+if ($ExpectedSystemIdentifier -and $priorEnabled -and $priorEnabled.Value -and ($network.NodeAddress -ne $NodeAddress -or $network.PeerAddress -ne $PeerAddress -or $network.Port -ne $Port)) {
+    throw 'The active network profile belongs to another pair or HTTPS port.'
+}
 $localPinProperty=$network.PSObject.Properties['CertificateSha256']
 $certificate=$null
 
@@ -115,7 +142,7 @@ if ($Mode -eq 'Connect') {
     Restart-Service -Name $service.Name -ErrorAction Stop
 }
 
-[pscustomobject]@{
+$result=[pscustomobject]@{
     Node=$NodeAddress
     Peer=$peerAddress
     HostService=$service.Name
@@ -124,4 +151,5 @@ if ($Mode -eq 'Connect') {
     PublicCertificate=$publicPath
     Settings=$settingsPath
     NetworkEnabled=$enabled
-} | Format-List
+}
+if ($AsObject) { $result } else { $result | Format-List }

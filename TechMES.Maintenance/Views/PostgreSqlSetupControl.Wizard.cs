@@ -14,6 +14,8 @@ public partial class PostgreSqlSetupControl
 
     private void OnWizardPreparationClick(object sender, RoutedEventArgs e) => ActionsPanel.SelectedItem = PreparationTab;
 
+    private void OnWizardActivePlanClick(object sender, RoutedEventArgs e) => ActionsPanel.SelectedItem = SwitchingTab;
+
     private void OnWizardRuntimeUrlChanged(object sender, TextChangedEventArgs e)
     {
         _wizardPairVerified = false;
@@ -29,11 +31,20 @@ public partial class PostgreSqlSetupControl
         _wizardPairVerified = false;
         UpdateWizardPolicyButton();
         SetCardActionsEnabled(false);
+        WizardActivePlan.Visibility = Visibility.Collapsed;
         WizardResult.Text = "Проверяем контроллеры и поток WAL…";
 
         try
         {
             await RefreshCardsAsync(manageActions: false);
+            var plans = Cards.Select(card => card.LiveNode?.ActivePlan).OfType<PostgreSqlSwitchPlan>().Distinct().ToArray();
+            if (plans.Length > 0)
+            {
+                WizardResult.Text = "Идёт переключение PostgreSQL.\n"
+                    + string.Join("\n", plans.Select(plan => $"{plan.Id} · {plan.From} → {plan.To}"));
+                WizardActivePlan.Visibility = Visibility.Visible;
+                return;
+            }
             var (primary, standby) = GetWizardPair();
             var (cluster, main) = await PostgreSqlWizardDiagnostics.ReadAsync(WizardRuntimeUrl.Text);
             var error = PostgreSqlWizardDiagnostics.Check(cluster, main, primary.NodeAddress, standby.NodeAddress, primary.Local.SystemIdentifier!, DateTimeOffset.UtcNow);
@@ -43,14 +54,15 @@ public partial class PostgreSqlSetupControl
             WizardResult.Text = $"Primary: {primary.NodeAddress} · {ControllerName(primary.Local.HostKind)}\n"
                 + $"Standby: {standby.NodeAddress} · {ControllerName(standby.Local.HostKind)}\n"
                 + $"WAL: {receiver?.SenderHost ?? "—"} → {standby.NodeAddress} · {receiver?.ReceiverStatus ?? "—"} · слот {receiver?.SlotName ?? "—"} · отставание применения {lag}\n"
-                + (error ?? $"Main DB: запись на {primary.NodeAddress} подтверждена диагностикой Runtime.");
+                + (error ?? $"Main DB: запись на {primary.NodeAddress} подтверждена диагностикой Runtime.")
+                + "\nАктивный план: отсутствует.";
             _wizardPairVerified = error is null;
         }
         catch (Exception ex)
         {
             WizardResult.Text = ex.Message;
             if (Cards.Any(card => card.LiveNode is null))
-                WizardResult.Text += "\nЕсли mTLS ещё не настроен, подготовьте сетевую связь обоих контроллеров и клиент Maintenance штатными скриптами.";
+                WizardResult.Text += "\nДля первой настройки mTLS откройте «Сетевая связь и сертификаты».";
         }
         finally
         {

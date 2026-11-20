@@ -119,14 +119,67 @@
                             <ui:Button Content="Загрузить отчёт…" Click="OnImportHostClick" Margin="0,0,8,8" />
                         </WrapPanel>
 
+                        <Expander x:Name="WizardNetwork" Header="Сетевая связь и сертификаты" Expanded="OnNetworkWizardExpanded" Margin="0,4,0,8">
+                            <StackPanel Margin="8,8,8,0">
+                                <TextBlock Text="Для новой пары сначала подтвердите работу обоих контроллеров в пункте 1. Если проверка пары уже проходит, этот блок можно пропустить." Margin="0,0,0,8" />
+                                <WrapPanel>
+                                    <StackPanel Width="215" Margin="0,0,8,0">
+                                        <TextBlock Text="IPv4 из профиля Primary DB" />
+                                        <ui:TextBox x:Name="NetworkFirstAddress" Style="{StaticResource SetupField}" />
+                                        <TextBlock Text="IPv4 из профиля Secondary DB" />
+                                        <ui:TextBox x:Name="NetworkSecondAddress" Style="{StaticResource SetupField}" />
+                                    </StackPanel>
+                                    <StackPanel Width="215" Margin="0,0,8,0">
+                                        <TextBlock Text="Идентификатор кластера" />
+                                        <ui:TextBox x:Name="NetworkSystemIdentifier" Style="{StaticResource SetupField}" />
+                                        <TextBlock Text="Порт mTLS" />
+                                        <ui:TextBox x:Name="NetworkPort" Text="5115" Style="{StaticResource SetupField}" />
+                                    </StackPanel>
+                                    <StackPanel Width="215" Margin="0,0,8,0">
+                                        <TextBlock Text="IPv4 компьютера Maintenance" />
+                                        <ui:TextBox x:Name="NetworkMaintenanceAddress" Style="{StaticResource SetupField}" />
+                                    </StackPanel>
+                                </WrapPanel>
+                                <ui:Button Content="A. Экспортировать подготовку узлов…" Click="OnPrepareNetworkNodesClick" Margin="0,0,0,8" />
+                                <TextBlock Text="После запуска комплектов на обоих узлах выберите их файлы public.cer. Введите SHA-256, который показал PowerShell на соответствующем узле." Margin="0,0,0,8" />
+                                <DockPanel Margin="0,0,0,8">
+                                    <ui:Button DockPanel.Dock="Right" Content="CER Primary DB…" Tag="First" Click="OnSelectNetworkCertificateClick" Margin="8,0,0,0" />
+                                    <ui:TextBox DockPanel.Dock="Right" x:Name="NetworkFirstPin" PlaceholderText="SHA-256 Primary DB" Width="275" Margin="8,0,0,0" />
+                                    <ui:TextBox x:Name="NetworkFirstCertificate" PlaceholderText="Файл Primary DB" IsReadOnly="True" />
+                                </DockPanel>
+                                <DockPanel Margin="0,0,0,8">
+                                    <ui:Button DockPanel.Dock="Right" Content="CER Secondary DB…" Tag="Second" Click="OnSelectNetworkCertificateClick" Margin="8,0,0,0" />
+                                    <ui:TextBox DockPanel.Dock="Right" x:Name="NetworkSecondPin" PlaceholderText="SHA-256 Secondary DB" Width="275" Margin="8,0,0,0" />
+                                    <ui:TextBox x:Name="NetworkSecondCertificate" PlaceholderText="Файл Secondary DB" IsReadOnly="True" />
+                                </DockPanel>
+                                <WrapPanel>
+                                    <ui:Button Content="B. Экспортировать подключение узлов…" Click="OnConnectNetworkNodesClick" Margin="0,0,8,8" />
+                                    <ui:Button Content="C. Подготовить сертификат Maintenance…" Click="OnPrepareNetworkMaintenanceClick" Margin="0,0,8,8" />
+                                </WrapPanel>
+                                <DockPanel Margin="0,0,0,8">
+                                    <ui:Button DockPanel.Dock="Right" Content="CER Maintenance…" Tag="Maintenance" Click="OnSelectNetworkCertificateClick" Margin="8,0,0,0" />
+                                    <ui:TextBox DockPanel.Dock="Right" x:Name="NetworkMaintenancePin" PlaceholderText="SHA-256 Maintenance" Width="275" Margin="8,0,0,0" />
+                                    <ui:TextBox x:Name="NetworkMaintenanceCertificate" PlaceholderText="Файл Maintenance" IsReadOnly="True" />
+                                </DockPanel>
+                                <WrapPanel>
+                                    <ui:Button Content="D. Экспортировать доверие к Maintenance…" Click="OnTrustNetworkMaintenanceClick" Margin="0,0,8,8" />
+                                    <ui:Button x:Name="NetworkOpenFolder" Content="Открыть папку комплекта" Click="OnOpenNetworkFolderClick" IsEnabled="False" Margin="0,0,8,8" />
+                                </WrapPanel>
+                                <ui:TextBox x:Name="NetworkResult" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                            VerticalScrollBarVisibility="Auto" MaxHeight="160" />
+                            </StackPanel>
+                        </Expander>
+
                         <TextBlock Text="2. Проверить репликацию и Main DB" Style="{StaticResource SectionTitleText}" Margin="0,8,0,6" />
                         <TextBlock Text="Базовый URL Runtime, который проверяет эту пару PostgreSQL" />
                         <ui:TextBox x:Name="WizardRuntimeUrl" Text="http://127.0.0.1:5101" Style="{StaticResource SetupField}" TextChanged="OnWizardRuntimeUrlChanged" />
                         <ui:Button Content="Проверить пару" Click="OnCheckWizardClick" Margin="0,0,0,8" />
                         <ui:TextBox x:Name="WizardResult" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
                                     VerticalScrollBarVisibility="Auto" MinHeight="100" MaxHeight="240" />
+                        <ui:Button x:Name="WizardActivePlan" Content="Открыть план переключения" Click="OnWizardActivePlanClick" Visibility="Collapsed" Margin="0,8,0,0" />
 
                         <TextBlock Text="3. Автоматический возврат" Style="{StaticResource SectionTitleText}" Margin="0,12,0,6" />
+                        <TextBlock Text="Этот шаг нужен для изменения политики автовозврата. Для проверки уже настроенной пары достаточно пункта 2." Margin="0,0,0,8" />
                         <TextBlock Text="Предпочтительный Primary" />
                         <ComboBox x:Name="WizardPreferredPrimary" ItemsSource="{Binding Cards}" DisplayMemberPath="Address"
                                   SelectionChanged="OnWizardPolicyChanged" Margin="0,4,0,8" />

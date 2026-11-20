@@ -2,6 +2,7 @@
 using System.Windows;
 using System.IO;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using TechMES.Maintenance.Models;
 using TechMES.Maintenance.Services;
 
@@ -14,6 +15,39 @@ public partial class MainWindow
 
     /// <summary>Использует тот же каталог опубликованных инструментов для проверки и экспорта контроллера.</summary>
     public string PostgreSqlHostToolsDirectory => Path.GetDirectoryName(GetDeploymentTool("Prepare-TechMESPostgreSqlController.ps1"))!;
+
+    internal async Task RunLocalPostgreSqlNetworkSetupAsync(string folder)
+    {
+        if (_deploymentOperationRunning)
+            throw new InvalidOperationException("Дождитесь завершения текущей операции Maintenance.");
+
+        _deploymentOperationRunning = true;
+        IsEnabled = false;
+        try
+        {
+            var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe"))
+            {
+                UseShellExecute = true,
+                Verb = "runas"
+            };
+            foreach (var argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(folder, "Setup-Network.ps1") })
+                start.ArgumentList.Add(argument);
+
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Не удалось запустить PowerShell.");
+            await process.WaitForExitAsync();
+            if (process.ExitCode != 0)
+            {
+                var errorPath = Path.Combine(folder, "error.txt");
+                var reason = File.Exists(errorPath) ? File.ReadAllText(errorPath).Trim() : $"Код PowerShell {process.ExitCode}.";
+                throw new InvalidOperationException($"Подготовка сертификата Maintenance остановлена.\n{reason}\nКомплект: {folder}");
+            }
+        }
+        finally
+        {
+            _deploymentOperationRunning = false;
+            IsEnabled = true;
+        }
+    }
 
     /// <summary>Копирует комплект вне UI-потока и сериализует операцию с deployment.</summary>
     public async Task<string> ExportPostgreSqlHostSetupAsync(PostgreSqlSetupProfile profile, string outputDirectory, bool includePackage = true, PostgreSqlFailbackSetup? failback = null)
