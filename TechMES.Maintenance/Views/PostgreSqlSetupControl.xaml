@@ -109,6 +109,32 @@
             <TabItem x:Name="WizardTab" Header="Мастер HA">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="12">
+                        <Expander x:Name="WizardInitialStandby" Header="Создать первый Standby" Expanded="OnInitialStandbyExpanded" Margin="0,0,0,10">
+                            <StackPanel Margin="8,8,8,0">
+                                <TextBlock Text="Для нового сервера БД с установленным PostgreSQL 18. Исходный Primary продолжает работать. Старый каталог данных нового сервера сохраняется рядом с установленной копией." Margin="0,0,0,8" />
+                                <WrapPanel>
+                                    <StackPanel Width="215" Margin="0,0,8,0">
+                                        <TextBlock Text="IPv4 источника из Primary DB" />
+                                        <ui:TextBox x:Name="InitialStandbySource" Style="{StaticResource SetupField}" />
+                                    </StackPanel>
+                                    <StackPanel Width="215" Margin="0,0,8,0">
+                                        <TextBlock Text="IPv4 назначения из Secondary DB" />
+                                        <ui:TextBox x:Name="InitialStandbyTarget" Style="{StaticResource SetupField}" />
+                                    </StackPanel>
+                                    <StackPanel Width="215" Margin="0,0,8,0">
+                                        <TextBlock Text="Идентификатор кластера Primary" />
+                                        <ui:TextBox x:Name="InitialStandbySystemIdentifier" Style="{StaticResource SetupField}" />
+                                    </StackPanel>
+                                </WrapPanel>
+                                <TextBlock Text="Идентификатор можно получить на Primary запросом SELECT system_identifier::text FROM pg_control_system();" Margin="0,0,0,8" />
+                                <WrapPanel>
+                                    <ui:Button Content="Экспортировать комплект для нового Standby…" Click="OnExportInitialStandbyClick" Margin="0,0,8,8" />
+                                    <ui:Button x:Name="InitialStandbyOpenFolder" Content="Открыть папку комплекта" Click="OnOpenInitialStandbyFolderClick" IsEnabled="False" Margin="0,0,8,8" />
+                                </WrapPanel>
+                                <ui:TextBox x:Name="InitialStandbyResult" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MaxHeight="170" />
+                            </StackPanel>
+                        </Expander>
+
                         <TextBlock Text="1. Проверить контроллеры" Style="{StaticResource SectionTitleText}" />
                         <TextBlock Text="Используются два профиля из карточек сверху. Для узла с установленным Runtime выберите Runtime или Auto в профиле." Margin="0,0,0,6" />
                         <TextBlock x:Name="WizardTarget" Margin="0,0,0,8" />

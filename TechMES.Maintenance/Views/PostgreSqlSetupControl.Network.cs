@@ -19,22 +19,22 @@ public partial class PostgreSqlSetupControl
             return;
 
         if (NetworkFirstAddress.Text.Length == 0)
-            NetworkFirstAddress.Text = Address(Cards[0]);
+            NetworkFirstAddress.Text = GetProfileAddress(Cards[0]);
         if (NetworkSecondAddress.Text.Length == 0)
-            NetworkSecondAddress.Text = Address(Cards[1]);
+            NetworkSecondAddress.Text = GetProfileAddress(Cards[1]);
 
         var identifiers = Cards.Select(card => (card.Live ?? card.Report?.Local)?.SystemIdentifier).Distinct().ToArray();
         if (NetworkSystemIdentifier.Text.Length == 0 && identifiers is [string identifier])
             NetworkSystemIdentifier.Text = identifier;
+    }
 
-        static string Address(ServerCard card)
-        {
-            if (card.LiveNode is { } live)
-                return live.NodeAddress;
-            if (IPAddress.TryParse(card.Profile.ComputerName, out var configured) && configured.AddressFamily == AddressFamily.InterNetwork)
-                return card.Profile.ComputerName;
-            return card.Report?.Addresses is [string address] ? address : "";
-        }
+    private static string GetProfileAddress(ServerCard card)
+    {
+        if (card.LiveNode is { } live)
+            return live.NodeAddress;
+        if (IPAddress.TryParse(card.Profile.ComputerName, out var configured) && configured.AddressFamily == AddressFamily.InterNetwork)
+            return card.Profile.ComputerName;
+        return card.Report?.Addresses is [string address] ? address : "";
     }
 
     private void OnSelectNetworkCertificateClick(object sender, RoutedEventArgs e)

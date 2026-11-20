@@ -33,6 +33,7 @@
 	<ItemGroup>
 		<Content Include="..\scripts\deploy\Prepare-TechMESPostgreSqlController.ps1" Link="Tools\Prepare-TechMESPostgreSqlController.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Content Include="..\scripts\deploy\Setup-TechMESPostgreSqlNetworkBundle.ps1;..\scripts\deploy\Configure-TechMESPostgreSqlNetwork.ps1;..\scripts\deploy\Configure-TechMESPostgreSqlMaintenance.ps1;..\scripts\deploy\Invoke-TechMESPostgreSqlCommand.ps1" Link="Tools\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="..\scripts\deploy\Setup-TechMESPostgreSqlInitialStandby.ps1" Link="Tools\Setup-TechMESPostgreSqlInitialStandby.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Content Include="..\scripts\deploy\Update-TechMESServer.ps1" Link="Tools\Update-TechMESServer.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Content Include="..\scripts\deploy\Build-TechMESUpdate.ps1" Link="Tools\Build-TechMESUpdate.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Content Include="..\scripts\deploy\Build-TechMESPostgreSqlAgent.ps1" Link="Tools\Build-TechMESPostgreSqlAgent.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

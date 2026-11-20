@@ -1,7 +1,7 @@
 #requires -Version 5.1
 [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
 param(
-    [ValidateSet('Status','Fence','Promote','Rejoin','Rebuild','FailbackReadiness')][string]$Mode='Status',
+    [ValidateSet('Status','Fence','Promote','Rejoin','Rebuild','FailbackReadiness','CheckInitialStandby','InitializeStandby')][string]$Mode='Status',
     [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$From,
     [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$To,
     [string]$FenceFile='',
@@ -15,7 +15,8 @@ param(
     [ValidatePattern('^$|^[0-9]{1,20}$')][string]$ExpectedSystemIdentifier='',
     [string]$ResultFile='',
     [int]$ExpectedTimeline=0,
-    [ValidateRange(0,2147483647)][int]$MaxReplayLagBytes=0
+    [ValidateRange(0,2147483647)][int]$MaxReplayLagBytes=0,
+    [ValidatePattern('^$|^[0-9]{1,20}$')][string]$ExpectedTargetSystemIdentifier=''
 )
 
 Set-StrictMode -Version Latest
@@ -181,6 +182,11 @@ SELECT jsonb_build_object(
  'hints',current_setting('wal_log_hints'), 'checksums',current_setting('data_checksums'),
  'fullPages',current_setting('full_page_writes'),
  'syncNames',current_setting('synchronous_standby_names'),
+ 'walLevel',current_setting('wal_level'),
+ 'walSendersFree',current_setting('max_wal_senders')::integer-(SELECT count(*) FROM pg_stat_replication),
+ 'slotsFree',current_setting('max_replication_slots')::integer-(SELECT count(*) FROM pg_replication_slots),
+ 'standbyMinimums',(SELECT jsonb_object_agg(name,setting::integer) FROM pg_settings
+     WHERE name IN ('max_connections','max_prepared_transactions','max_locks_per_transaction','max_wal_senders','max_worker_processes')),
  'tablespaces',(SELECT count(*) FROM pg_tablespace WHERE spcname NOT IN ('pg_default','pg_global')),
  'superuser',(SELECT rolsuper FROM pg_roles WHERE rolname=current_user),
  'configErrors',(SELECT count(*) FROM pg_file_settings WHERE error IS NOT NULL)+(SELECT count(*) FROM pg_hba_file_rules WHERE error IS NOT NULL),
@@ -362,11 +368,12 @@ function Wait-Replay([string]$Address, [string]$Lsn, [string]$Sid, [int]$Timelin
 }
 
 # Сохраняет слот нового Primary для возвращаемого старого узла.
-function Ensure-Slot([string]$Address) {
+function Ensure-Slot([string]$Address, [switch]$CheckOnly) {
     $sql="SELECT jsonb_build_object('type',slot_type,'active',active,'status',wal_status) FROM pg_replication_slots WHERE slot_name='$script:Slot';"
     $raw=Invoke-Sql $Address $sql
 
     if (!$raw) {
+        if ($CheckOnly) { return $false }
         $null=Invoke-Sql $Address ("SELECT pg_create_physical_replication_slot('"+$script:Slot+"',true);") -Change
         $raw=Invoke-Sql $Address $sql
     }
@@ -374,6 +381,7 @@ function Ensure-Slot([string]$Address) {
     $slot=$raw | ConvertFrom-Json
 
     if ($slot.type -ne 'physical' -or $slot.active -or $slot.status -in @('lost','unreserved') -or $null -eq $slot.status) { throw 'The rejoin slot is active elsewhere or does not retain the required WAL.' }
+    if ($CheckOnly) { return $true }
 }
 
 # Экранирует значение строки подключения libpq.
@@ -438,7 +446,7 @@ function Write-StandbyConfiguration([string]$Stage, $Proof) {
     [IO.File]::WriteAllText($passPath,$line,(New-Object Text.UTF8Encoding($false)))
 
     $connection='host='+(Quote-Libpq $To)+' port='+$Port+' user='+(Quote-Libpq $script:ReplicationCredential.UserName)+' passfile='+(Quote-Libpq $finalPassPath)+' application_name='+(Quote-Libpq $script:Slot)+' connect_timeout=5'
-    $configuration="`r`n# TechMES planned switch "+$Proof.Id+"`r`nprimary_conninfo = '"+$connection.Replace('\','\\').Replace("'","''")+"'`r`nprimary_slot_name = '"+$script:Slot+"'`r`nrecovery_target_timeline = 'latest'`r`n"
+    $configuration="`r`n# TechMES standby "+$Proof.Id+"`r`nprimary_conninfo = '"+$connection.Replace('\','\\').Replace("'","''")+"'`r`nprimary_slot_name = '"+$script:Slot+"'`r`nrecovery_target_timeline = 'latest'`r`n"
 
     foreach ($setting in @('recovery_target','recovery_target_name','recovery_target_time','recovery_target_xid','recovery_target_lsn','restore_command')) {
         $configuration+=$setting+" = ''`r`n"
@@ -743,7 +751,7 @@ function Get-EmergencyRejoinConfigs {
         $path=Join-Path $DataDirectory $relative
         if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw ('Local configuration file is missing: '+$relative) }
         if (Select-String -LiteralPath $path -Pattern '^\s*include(?:_dir|_if_exists)?(?:\s|=)' -Quiet -ErrorAction Stop) {
-            throw 'The saved emergency Fence has no inventory of included configuration files. Keep the source fenced until that inventory is available.'
+            throw 'Included configuration files require a verified inventory. This operation cannot preserve them.'
         }
     }
 
@@ -875,12 +883,114 @@ function Restore-StandbyConfigs([string]$Stage, [string[]]$Configs) {
     }
 }
 
+# Проверяет отключённый новый экземпляр и его исходный идентификатор.
+function Get-InitialTarget([string]$TargetSid='') {
+    if ($script:LocalAddress -ne $From) { throw 'Run locally on the new Standby computer.' }
+    if (Test-Path -LiteralPath $script:ActiveFencePath) { throw 'The target has an active Fence. Finish the existing switch.' }
+
+    $network=Join-Path $env:ProgramData ('TechMES\PostgreSqlNodes\'+$ServiceName.ToUpperInvariant()+'\Commands\Network')
+    if ((Test-Path -LiteralPath (Join-Path $network 'active-switch.json')) -or (Test-Path -LiteralPath (Join-Path $network 'console-active.json'))) {
+        throw 'The target has an active switch plan.'
+    }
+    $null=Assert-ServiceState $false
+    $service=Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
+    if ($null -eq $service -or $service.State -ne 'Stopped' -or $service.StartMode -ne 'Disabled') { throw 'The PostgreSQL service on the new Standby must be stopped and Disabled.' }
+    if ((Get-Content -LiteralPath (Join-Path $DataDirectory 'PG_VERSION') -Raw).Trim() -cne '18') { throw 'The target must contain an initialized PostgreSQL 18 data directory.' }
+    foreach ($file in @('standby.signal','recovery.signal','postmaster.pid')) {
+        if (Test-Path -LiteralPath (Join-Path $DataDirectory $file)) { throw ('Unexpected file in the new target: '+$file) }
+    }
+    if (Get-ChildItem -LiteralPath $DataDirectory -Recurse -Force -Attributes ReparsePoint | Select-Object -First 1) { throw 'Reparse points inside target PGDATA are not supported.' }
+
+    $control=Get-Control $DataDirectory
+    if ($control.Sid -notmatch '^[0-9]{1,20}$' -or $control.Sid -ceq $ExpectedSystemIdentifier -or ($TargetSid -and $control.Sid -cne $TargetSid)) {
+        throw 'The target identity is not the separate PostgreSQL cluster selected for first Standby creation.'
+    }
+    return $control
+}
+
+# Подтверждает доступ к Primary и физическому протоколу репликации до копирования.
+function Get-InitialPrimary {
+    $primary=Get-Node $To
+    if ($primary.recovery -or $primary.readOnly -or $primary.version -lt 180000 -or $primary.version -ge 190000 -or !$primary.superuser -or $primary.tablespaces -ne 0 -or $primary.configErrors -ne 0 -or $primary.timeline -le 0 -or $primary.flush -notmatch '^[0-9A-F]+/[0-9A-F]+$') {
+        throw 'The selected source must be a writable PostgreSQL 18 Primary with valid configuration and no custom tablespaces.'
+    }
+    if (@($primary.replicas).Count -gt 0 -or $primary.walLevel -notin @('replica','logical') -or $primary.walSendersFree -lt 2) {
+        throw 'First Standby creation requires a source without connected replicas, wal_level=replica/logical and two free WAL senders.'
+    }
+    if (!(Ensure-Slot $To -CheckOnly) -and $primary.slotsFree -lt 1) { throw 'The Primary has no free physical replication slot.' }
+    Assert-ReplicationLogin $To $ExpectedSystemIdentifier
+    return $primary
+}
+
+function Get-BaseBackupSize {
+    $estimate=Invoke-Sql $To 'SELECT COALESCE(sum(pg_database_size(oid)),0)::bigint + COALESCE((SELECT sum(size) FROM pg_ls_waldir()),0)::bigint FROM pg_database;'
+    $bytes=0L
+    if (![long]::TryParse($estimate,[ref]$bytes) -or $bytes -le 0) { throw 'Cannot estimate the size of the current PostgreSQL cluster.' }
+    if ((New-Object IO.DriveInfo([IO.Path]::GetPathRoot($DataDirectory))).AvailableFreeSpace -lt ($bytes+2GB)) { throw 'Insufficient space for a base backup plus 2 GB.' }
+    return $bytes
+}
+
+function Copy-VerifiedBaseBackup([string]$Stage, [string]$Backup, [string]$Journal, [string]$Sid, [int]$Timeline) {
+    Write-Json $Journal ([pscustomobject]@{ State='BackingUp'; Stage=$Stage; Backup=$Backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
+    $script:Changed=$true
+    $null=New-Item -ItemType Directory -Path $Stage
+    Set-WorkingCopyAccess $Stage -ForRewind
+
+    Write-Host ('Copying Primary '+$To+' using slot '+$script:Slot+' into '+$Stage)
+    $arguments=@(('--pgdata='+$Stage),'--format=plain','--wal-method=stream',('--slot='+$script:Slot),'--no-password','--no-clean')
+    $null=Invoke-Tool (Join-Path $PgBin 'pg_basebackup.exe') $arguments '' $script:ReplicationCredential $To -Change
+    Write-Json $Journal ([pscustomobject]@{ State='Verifying'; Stage=$Stage; Backup=$Backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
+    $null=Invoke-Tool (Join-Path $PgBin 'pg_verifybackup.exe') @($Stage) -Change
+
+    $copy=Get-Control $Stage -AllowUncleanPrimary
+    if ($copy.Sid -cne $Sid -or $copy.Timeline -ne $Timeline) { throw 'The base backup belongs to a different cluster or timeline.' }
+}
+
+function Invoke-InitialStandby([switch]$CheckOnly) {
+    $target=Get-InitialTarget $ExpectedTargetSystemIdentifier
+    $primary=Get-InitialPrimary
+    $configs=@(Get-EmergencyRejoinConfigs)
+    $postgres=Join-Path $PgBin 'postgres.exe'
+    if ((Invoke-Tool $postgres @('-C','hot_standby','-D',$DataDirectory)) -ne 'on' -or (Invoke-Tool $postgres @('-C','port','-D',$DataDirectory)) -ne [string]$Port) {
+        throw 'Enable hot_standby and match the configured port on the new target.'
+    }
+    foreach ($minimum in $primary.standbyMinimums.PSObject.Properties) {
+        $setting=Invoke-Tool $postgres @('-C',$minimum.Name,'-D',$DataDirectory)
+        if ($setting -notmatch '^[0-9]+$' -or [int]$setting -lt $minimum.Value) { throw ('The target must match or exceed the Primary setting '+$minimum.Name+'.') }
+    }
+    $bytes=Get-BaseBackupSize
+    if ($CheckOnly) {
+        return [pscustomobject]@{ State='Ready'; Primary=$To; Standby=$From; SystemIdentifier=$primary.sid; TargetSystemIdentifier=$target.Sid; Slot=$script:Slot; EstimatedBytes=$bytes }
+    }
+
+    $proof=[pscustomobject]@{ Id=$OperationId; Sid=$primary.sid; StartMode='Auto'; TargetSid=$target.Sid; TargetCheckpoint=$target.Lsn }
+    $stage=$DataDirectory+'.techmes-initial-stage-'+$proof.Id
+    $backup=$DataDirectory+'.techmes-before-'+$proof.Id
+    Assert-LocalPath $stage
+    Assert-LocalPath $backup
+    if ((Test-Path -LiteralPath $stage) -or (Test-Path -LiteralPath $backup)) { throw 'A working copy or original backup already exists for this run.' }
+
+    $script:InitialCopy=[pscustomobject]@{ State='Initializing'; Stage=$stage; Backup=$backup; Slot=$script:Slot; TargetSystemIdentifier=$target.Sid }
+    $journal=Join-Path $script:Root ('initial-'+$proof.Id+'.json')
+    Ensure-Slot $To
+    Copy-VerifiedBaseBackup $stage $backup $journal $proof.Sid $primary.timeline
+    $confirmed=Get-Node $To
+    if ($confirmed.recovery -or $confirmed.readOnly -or $confirmed.timeline -ne $primary.timeline -or $confirmed.flush -notmatch '^[0-9A-F]+/[0-9A-F]+$') { throw 'The source role or timeline changed during the base backup.' }
+
+    Restore-StandbyConfigs $stage $configs
+    return Install-StandbyCopy $stage $backup $proof $confirmed.timeline $confirmed.flush
+}
+
 # Устанавливает готовую копию и снимает Fence после проверки реплики.
 function Install-StandbyCopy([string]$Stage, [string]$Backup, $Proof, [int]$ExpectedTimeline, [string]$RequiredReplay='') {
     Write-StandbyConfiguration $Stage $Proof
     Set-WorkingCopyAccess $Stage
     Ensure-Slot $To
-    Assert-RecoveryServiceStopped
+    if ($Mode -eq 'InitializeStandby') {
+        $target=Get-InitialTarget $Proof.TargetSid
+        if ($target.Lsn -cne $Proof.TargetCheckpoint) { throw 'The target checkpoint changed during initial copy.' }
+    }
+    else { Assert-RecoveryServiceStopped }
 
     $journal=Join-Path $script:Root ($Mode.ToLowerInvariant()+'-'+$Proof.Id+'.json')
     Write-Json $journal ([pscustomobject]@{ State='Installing'; Stage=$Stage; Backup=$Backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
@@ -903,10 +1013,10 @@ function Install-StandbyCopy([string]$Stage, [string]$Backup, $Proof, [int]$Expe
     (Get-Service -Name $ServiceName).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running,[TimeSpan]::FromSeconds(300))
 
     $node=Wait-Standby $Proof $ExpectedTimeline $RequiredReplay
-    $state=if ($Mode -eq 'Rebuild') { 'Rebuilt' } else { 'Rejoined' }
+    $state=switch ($Mode) { 'Rebuild' { 'Rebuilt' }; 'InitializeStandby' { 'Initialized' }; default { 'Rejoined' } }
 
     Write-Json $journal ([pscustomobject]@{ State=$state; Backup=$Backup; RequiredReplay=$RequiredReplay; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
-    Remove-Item -LiteralPath $script:ActiveFencePath
+    if ($Mode -ne 'InitializeStandby') { Remove-Item -LiteralPath $script:ActiveFencePath }
 
     return [pscustomobject]@{
         State=$state
@@ -933,26 +1043,10 @@ function Invoke-Rebuild {
     Assert-LocalPath $backup
     if ((Test-Path -LiteralPath $stage) -or (Test-Path -LiteralPath $backup)) { throw 'A Rebuild working copy or original backup already exists. Inspect the previous run.' }
 
-    $estimate=Invoke-Sql $To 'SELECT COALESCE(sum(pg_database_size(oid)),0)::bigint + COALESCE((SELECT sum(size) FROM pg_ls_waldir()),0)::bigint FROM pg_database;'
-    $bytes=0L
-    if (![long]::TryParse($estimate,[ref]$bytes) -or $bytes -le 0) { throw 'Cannot estimate the size of the current PostgreSQL cluster.' }
-    if ((New-Object IO.DriveInfo([IO.Path]::GetPathRoot($DataDirectory))).AvailableFreeSpace -lt ($bytes+2GB)) { throw 'Insufficient space for a base backup plus 2 GB.' }
-
+    $null=Get-BaseBackupSize
     Ensure-Slot $To
     $journal=Join-Path $script:Root ('rebuild-'+$proof.Id+'.json')
-    Write-Json $journal ([pscustomobject]@{ State='BackingUp'; Stage=$stage; Backup=$backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
-    $script:Changed=$true
-
-    $null=New-Item -ItemType Directory -Path $stage
-    Set-WorkingCopyAccess $stage -ForRewind
-
-    $arguments=@(('--pgdata='+$stage),'--format=plain','--wal-method=stream',('--slot='+$script:Slot),'--no-password','--no-clean')
-    $null=Invoke-Tool (Join-Path $PgBin 'pg_basebackup.exe') $arguments '' $script:ReplicationCredential $To -Change
-    Write-Json $journal ([pscustomobject]@{ State='Verifying'; Stage=$stage; Backup=$backup; CheckedAtUtc=[DateTimeOffset]::UtcNow.ToString('o') })
-    $null=Invoke-Tool (Join-Path $PgBin 'pg_verifybackup.exe') @($stage) -Change
-
-    $copy=Get-Control $stage -AllowUncleanPrimary
-    if ($copy.Sid -cne $proof.Sid -or $copy.Timeline -ne $primary.timeline) { throw 'The base backup belongs to a different cluster or timeline.' }
+    Copy-VerifiedBaseBackup $stage $backup $journal $proof.Sid $primary.timeline
     $confirmed=Get-RecoveryPrimary $proof
     if ($confirmed.timeline -ne $primary.timeline -or $confirmed.flush -notmatch '^[0-9A-F]+/[0-9A-F]+$') { throw 'Cannot confirm the current Primary and its WAL position after backup.' }
     $null=Read-RecoveryFence
@@ -1026,16 +1120,24 @@ if ($Mode -eq 'FailbackReadiness') {
 $script:Slot=if ([StringComparer]::Ordinal.Compare($From,$To) -gt 0) { 'techmes_primary' } else { 'techmes_secondary' }
 $script:WindowsPowerShell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $script:ServiceTool=Join-Path $PSScriptRoot 'Set-PostgreSQL18ServiceControl.ps1'
+$initial=$Mode -in @('CheckInitialStandby','InitializeStandby')
+if ($initial -and ($CredentialInput -or $EmergencyFenceId -or !$ExpectedSystemIdentifier -or $script:LocalAddress -ne $From)) {
+    throw 'First Standby creation requires interactive use on the target and the expected source cluster identifier.'
+}
+if ($initial -and $Mode -eq 'InitializeStandby' -and (!$ExpectedTargetSystemIdentifier -or !$OperationId)) {
+    throw 'Run the preflight and specify its target cluster identifier and a new operation ID.'
+}
 
 $tools=@('psql.exe','pg_rewind.exe','pg_controldata.exe')
 if ($Mode -eq 'Rebuild') { $tools=@('psql.exe','pg_controldata.exe','pg_basebackup.exe','pg_verifybackup.exe') }
+if ($initial) { $tools=@('psql.exe','postgres.exe','pg_controldata.exe','pg_basebackup.exe','pg_verifybackup.exe') }
 foreach ($file in $tools) {
     if (!(Test-Path -LiteralPath (Join-Path $PgBin $file) -PathType Leaf)) { throw ('Required tool missing: '+$file) }
 }
 
 if (!(Test-Path -LiteralPath $script:ServiceTool -PathType Leaf)) { throw 'Place Set-PostgreSQL18ServiceControl.ps1 beside this script.' }
 
-if ($Mode -ne 'Status') {
+if ($Mode -ne 'Status' -and !$initial) {
     if (!$FenceFile) { throw 'Specify an exchange file using -FenceFile.' }
 
     $FenceFile=[IO.Path]::GetFullPath($FenceFile)
@@ -1065,10 +1167,14 @@ $run=Join-Path $script:Root ([guid]::NewGuid().ToString('N'))
 $null=New-Item -ItemType Directory -Path $run -WhatIf:$false -Confirm:$false
 $mutex=New-Object Threading.Mutex($false,('Global\TechMES.PostgreSqlSetup.'+$ServiceName))
 $locked=$false
+$deploymentMutex=$null
+$deploymentLocked=$false
+$consoleLock=$null
 $transcript=$false
 $script:Changed=$false
 $script:Installed=$false
 $script:RebuildRequired=$false
+$script:InitialCopy=$null
 $exitCode=0
 
 $result=[ordered]@{
@@ -1086,6 +1192,11 @@ $result=[ordered]@{
 }
 
 try {
+    if ($initial) {
+        $deploymentMutex=New-Object Threading.Mutex($false,'Global\TechMES.ServerUpdate')
+        try { $deploymentLocked=$deploymentMutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $deploymentLocked=$true }
+        if (!$deploymentLocked) { throw 'A TechMES server update is running on this computer.' }
+    }
     try {
         $locked=$mutex.WaitOne(0)
     }
@@ -1094,6 +1205,15 @@ try {
     }
 
     if (!$locked) { throw 'Another local PostgreSQL setup operation is running.' }
+    if ($initial) {
+        $network=Join-Path $env:ProgramData ('TechMES\PostgreSqlNodes\'+$ServiceName.ToUpperInvariant()+'\Commands\Network')
+        $consolePath=Join-Path $network 'console.lock'
+        Assert-LocalPath $consolePath
+        if (Test-Path -LiteralPath $network -PathType Container) {
+            $consoleLock=[IO.File]::Open($consolePath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+        }
+        $null=Get-InitialTarget $ExpectedTargetSystemIdentifier
+    }
 
     Start-Transcript -LiteralPath $result.Log -Force | Out-Null
     $transcript=$true
@@ -1125,12 +1245,17 @@ try {
 
         $result.Success=$true
     }
+    elseif ($Mode -eq 'CheckInitialStandby') {
+        $result.Data=Invoke-InitialStandby -CheckOnly
+        $result.Success=$true
+    }
     elseif ($PSCmdlet.ShouldProcess($script:LocalAddress,($Mode+' PostgreSQL switch '+$From+' -> '+$To))) {
         switch ($Mode) {
             'Fence' { $result.Data=if ($EmergencyFenceId) { Invoke-EmergencyFence } else { Invoke-Fence } }
             'Promote' { $result.Data=Invoke-Promote }
             'Rejoin' { $result.Data=Invoke-Rejoin }
             'Rebuild' { $result.Data=Invoke-Rebuild }
+            'InitializeStandby' { $result.Data=Invoke-InitialStandby }
         }
 
         $result.Success=$true
@@ -1145,7 +1270,9 @@ catch {
         $result.Data=[pscustomobject]@{ State='RebuildRequired' }
     }
 
-    if ($Mode -in @('Rejoin','Rebuild') -and $script:Installed) {
+    if ($initial -and $null -ne $script:InitialCopy) { $result.Data=$script:InitialCopy }
+
+    if ($Mode -in @('Rejoin','Rebuild','InitializeStandby') -and $script:Installed) {
         try {
             Set-Service -Name $ServiceName -StartupType Disabled
             $state=Get-LocalService
@@ -1158,7 +1285,8 @@ catch {
     }
 
     Write-Host ('FAILED: '+$result.Error) -ForegroundColor Red
-    Write-Host 'Do not start the old node as Primary. Retain the exchange file, data directories and logs.' -ForegroundColor Yellow
+    if ($initial) { Write-Host 'Keep the original data, work directory and log. Check the Primary slot before retrying.' -ForegroundColor Yellow }
+    else { Write-Host 'Do not start the old node as Primary. Retain the exchange file, data directories and logs.' -ForegroundColor Yellow }
 }
 finally {
     try {
@@ -1171,9 +1299,11 @@ finally {
         if ($ResultFile) { Write-Json $ResultFile $result }
     }
     finally {
+        if ($null -ne $consoleLock) { $consoleLock.Dispose() }
         if ($locked) { $mutex.ReleaseMutex() }
-
         $mutex.Dispose()
+        if ($deploymentLocked) { $deploymentMutex.ReleaseMutex() }
+        if ($null -ne $deploymentMutex) { $deploymentMutex.Dispose() }
     }
 }
 
