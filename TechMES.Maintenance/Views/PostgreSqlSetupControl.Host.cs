@@ -33,7 +33,8 @@ public partial class PostgreSqlSetupControl
                 ? $"Отчёт от {FormatTime(report.CheckedAtUtc)}"
                 : NetworkError.Length > 0 ? "Снимок недоступен" : "Ожидает проверки";
 
-        internal PostgreSqlLocalHealthResponse? Live { get; private set; }
+        internal PostgreSqlRemoteStatus? LiveNode { get; private set; }
+        internal PostgreSqlLocalHealthResponse? Live => LiveNode?.Local;
         internal PostgreSqlHostSetupReport? Report { get; private set; }
         internal string NetworkError { get; private set; } = "";
         internal string BundleDirectory { get; set; } = "";
@@ -41,9 +42,9 @@ public partial class PostgreSqlSetupControl
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        internal void SetNetworkStatus(PostgreSqlLocalHealthResponse? status, string error = "")
+        internal void SetNetworkStatus(PostgreSqlRemoteStatus? status, string error = "")
         {
-            Live = status;
+            LiveNode = status;
             NetworkError = error;
             Notify();
         }
@@ -53,14 +54,14 @@ public partial class PostgreSqlSetupControl
             Report = report;
 
             if (Live?.CheckedAtUtc is { } time && time <= report.CheckedAtUtc)
-                Live = null;
+                LiveNode = null;
 
             Notify();
         }
 
         internal void Clear()
         {
-            Live = null;
+            LiveNode = null;
             Report = null;
             NetworkError = "";
             BundleDirectory = "";
@@ -81,9 +82,13 @@ public partial class PostgreSqlSetupControl
     private async void OnRefreshCardsClick(object sender, RoutedEventArgs e) => await RefreshCardsAsync();
 
     /// <summary>Читает состояние каждого узла тем же mTLS-клиентом, что и панель переключения.</summary>
-    private async Task RefreshCardsAsync()
+    private async Task RefreshCardsAsync(bool manageActions = true)
     {
-        SetCardActionsEnabled(false);
+        if (manageActions)
+        {
+            _wizardPairVerified = false;
+            SetCardActionsEnabled(false);
+        }
         ActionStatus.Text = "Читаем состояние контроллеров…";
 
         try
@@ -103,7 +108,7 @@ public partial class PostgreSqlSetupControl
 
                 if (matching.Length == 1)
                 {
-                    card.SetNetworkStatus(matching[0].Status?.Local, matching[0].Error);
+                    card.SetNetworkStatus(matching[0].Status, matching[0].Error);
                 }
                 else
                 {
@@ -123,9 +128,7 @@ public partial class PostgreSqlSetupControl
                         return (address, null, "Сервер вернул состояние другого узла.");
 
                     var now = DateTimeOffset.UtcNow;
-                    var maxAge = TimeSpan.FromSeconds(Math.Max(30, 3d * status.Local.HealthPeriodSeconds));
-
-                    if (status.Local.CheckedAtUtc is not { } time || time > now.AddMinutes(1) || now - time > maxAge)
+                    if (!PostgreSqlWizardDiagnostics.IsFresh(status.Local.CheckedAtUtc, status.Local.HealthPeriodSeconds, now))
                         return (address, null, $"Снимок контроллера устарел · {FormatTime(status.Local.CheckedAtUtc)}");
 
                     return (address, status, "");
@@ -148,7 +151,8 @@ public partial class PostgreSqlSetupControl
                 : "";
 
             UpdateSelectedCard();
-            SetCardActionsEnabled(true);
+            if (manageActions)
+                SetCardActionsEnabled(true);
         }
     }
 
@@ -159,7 +163,7 @@ public partial class PostgreSqlSetupControl
     private async void OnInstallAgentClick(object sender, RoutedEventArgs e) => await RunControllerActionAsync(ControllerAction.InstallAgent);
 
     /// <summary>Выбирает локальный запуск или экспорт для того же действия над выбранным сервером.</summary>
-    private async Task RunControllerActionAsync(ControllerAction action)
+    private async Task RunControllerActionAsync(ControllerAction action, PostgreSqlFailbackSetup? failback = null)
     {
         SetCardActionsEnabled(false);
 
@@ -170,6 +174,8 @@ public partial class PostgreSqlSetupControl
             var install = action == ControllerAction.InstallAgent;
             var prepare = action != ControllerAction.Check;
             var local = PostgreSqlSetupService.IsLocal(profile);
+            if (prepare)
+                _wizardPairVerified = false;
 
             if (install && (EffectiveHost(card) != "Standalone" || string.IsNullOrWhiteSpace(profile.AgentPackageDirectory)))
                 throw new InvalidOperationException("Для установки нужен выбранный сервер с отдельным Agent и готовый пакет.");
@@ -181,7 +187,8 @@ public partial class PostgreSqlSetupControl
             {
                 var service = install ? "TechMES.PostgreSql.Agent" : ControllerService(EffectiveHost(card));
 
-                if (MessageBox.Show(window, $"Компьютер: {profile.ComputerName}\nПри подготовке будет перезапущена служба {service}. Продолжить?", "Подготовка контроллера", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+                var operation = failback is null ? "При подготовке" : "При изменении настройки автовозврата";
+                if (MessageBox.Show(window, $"Компьютер: {profile.ComputerName}\n{operation} будет перезапущена служба {service}. Продолжить?", "Подготовка контроллера", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
                     return;
             }
 
@@ -207,19 +214,19 @@ public partial class PostgreSqlSetupControl
 
             if (local)
             {
-                var report = await window.RunPostgreSqlHostSetupAsync(profile, prepare, includePackage: install);
+                var report = await window.RunPostgreSqlHostSetupAsync(profile, prepare, includePackage: install, failback: failback);
                 card.SetReport(report);
-                ActionStatus.Text = ReportOutcome(report);
+                ActionStatus.Text = failback is null ? ReportOutcome(report) : report.Message;
             }
             else
             {
-                var mode = prepare ? "Prepare" : "Check";
-                var directory = await window.ExportPostgreSqlHostSetupAsync(profile, outputDirectory!, includePackage: install);
+                var mode = failback is not null ? "Failback" : prepare ? "Prepare" : "Check";
+                var directory = await window.ExportPostgreSqlHostSetupAsync(profile, outputDirectory!, includePackage: install, failback: failback);
 
                 card.BundleDirectory = directory;
                 card.BundleInstructions = $"{directory}\nСкопируйте всю папку на {profile.ComputerName}. Запустите команду из неё в PowerShell от администратора.\n\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\\Prepare-Controller.ps1' -Mode {mode} -NoPause\n\nВерните файл result.json по пути из строки Result: и нажмите «Загрузить результат…».";
 
-                ActionStatus.Text = prepare ? "Комплект подготовки сохранён." : "Комплект проверки сохранён.";
+                ActionStatus.Text = failback is not null ? "Комплект настройки автовозврата сохранён." : prepare ? "Комплект подготовки сохранён." : "Комплект проверки сохранён.";
             }
         }
         catch (Exception ex)
@@ -367,6 +374,10 @@ public partial class PostgreSqlSetupControl
         TransferPanel.Visibility = card.BundleDirectory.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         TransferInstructions.Text = card.BundleInstructions;
         HostDetails.Text = DescribeDetails(card);
+        WizardTarget.Text = $"Выбранный узел: {card.Address} · {ControllerName(kind)}";
+        WizardTransferText.Text = card.BundleInstructions;
+        WizardTransferPanel.Visibility = TransferPanel.Visibility;
+        UpdateWizardPolicyButton();
     }
 
     private PostgreSqlSwitchControl? _switchControl;

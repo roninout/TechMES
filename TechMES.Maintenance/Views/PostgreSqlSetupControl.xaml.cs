@@ -139,6 +139,7 @@ public partial class PostgreSqlSetupControl : UserControl
             return;
 
         card.Clear();
+        _wizardPairVerified = false;
         StatusBox.Text = "Профиль изменён. Выполните новую проверку службы.";
         UpdateSelectedCard();
     }

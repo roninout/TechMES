@@ -25,5 +25,6 @@
 		<Compile Include="..\TechMES.Maintenance\Models\PostgreSqlSetupProfile.cs" Link="PostgreSqlSetupProfile.cs" />
 		<Compile Include="..\TechMES.Maintenance\Services\PostgreSqlSetupService.cs" Link="PostgreSqlSetupService.cs" />
 		<Compile Include="..\TechMES.Maintenance\Services\PostgreSqlHostSetupService.cs" Link="PostgreSqlHostSetupService.cs" />
+		<Compile Include="..\TechMES.Maintenance\Services\PostgreSqlWizardDiagnostics.cs" Link="PostgreSqlWizardDiagnostics.cs" />
 	</ItemGroup>
 </Project>

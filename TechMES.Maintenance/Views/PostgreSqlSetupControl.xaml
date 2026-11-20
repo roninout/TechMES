@@ -106,7 +106,44 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem>
+            <TabItem x:Name="WizardTab" Header="Мастер HA">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="12">
+                        <TextBlock Text="1. Проверить контроллеры" Style="{StaticResource SectionTitleText}" />
+                        <TextBlock Text="Используются два профиля из карточек сверху. Для узла с установленным Runtime выберите Runtime или Auto в профиле." Margin="0,0,0,6" />
+                        <TextBlock x:Name="WizardTarget" Margin="0,0,0,8" />
+                        <WrapPanel>
+                            <ui:Button Content="Профили узлов" Click="OnWizardProfilesClick" Margin="0,0,8,8" />
+                            <ui:Button Content="Проверить выбранный узел…" Click="OnCheckHostClick" Margin="0,0,8,8" />
+                            <ui:Button Content="Подготовка выбранного узла…" Click="OnWizardPreparationClick" Margin="0,0,8,8" />
+                            <ui:Button Content="Загрузить отчёт…" Click="OnImportHostClick" Margin="0,0,8,8" />
+                        </WrapPanel>
+
+                        <TextBlock Text="2. Проверить репликацию и Main DB" Style="{StaticResource SectionTitleText}" Margin="0,8,0,6" />
+                        <TextBlock Text="Базовый URL Runtime, который проверяет эту пару PostgreSQL" />
+                        <ui:TextBox x:Name="WizardRuntimeUrl" Text="http://127.0.0.1:5101" Style="{StaticResource SetupField}" TextChanged="OnWizardRuntimeUrlChanged" />
+                        <ui:Button Content="Проверить пару" Click="OnCheckWizardClick" Margin="0,0,0,8" />
+                        <ui:TextBox x:Name="WizardResult" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                    VerticalScrollBarVisibility="Auto" MinHeight="100" MaxHeight="240" />
+
+                        <TextBlock Text="3. Автоматический возврат" Style="{StaticResource SectionTitleText}" Margin="0,12,0,6" />
+                        <TextBlock Text="Предпочтительный Primary" />
+                        <ComboBox x:Name="WizardPreferredPrimary" ItemsSource="{Binding Cards}" DisplayMemberPath="Address"
+                                  SelectionChanged="OnWizardPolicyChanged" Margin="0,4,0,8" />
+                        <CheckBox x:Name="WizardEnableFailback" Content="Включить автовозврат" Checked="OnWizardPolicyChanged"
+                                  Unchecked="OnWizardPolicyChanged" Margin="0,0,0,8" />
+                        <TextBlock x:Name="WizardPolicyHint" Margin="0,0,0,8" />
+                        <ui:Button x:Name="WizardApply" Content="Настроить автовозврат…" Click="OnWizardApplyClick" IsEnabled="False" />
+
+                        <StackPanel x:Name="WizardTransferPanel" Visibility="Collapsed" Margin="0,10,0,0">
+                            <ui:TextBox x:Name="WizardTransferText" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" Margin="0,0,0,8" />
+                            <ui:Button Content="Открыть папку комплекта" Click="OnOpenHostFolderClick" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem x:Name="ProfileTab">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <ui:SymbolIcon Symbol="Person24" Style="{StaticResource TabIcon}" />
@@ -177,7 +214,7 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem>
+            <TabItem x:Name="PreparationTab">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <ui:SymbolIcon Symbol="WindowWrench24" Style="{StaticResource TabIcon}" />

@@ -1,6 +1,6 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([ValidateSet('Check','Prepare')][string]$Mode = 'Check', [Guid]$RunId = [Guid]::NewGuid(), [switch]$NoPause)
+param([ValidateSet('Check','Prepare','Failback')][string]$Mode = 'Check', [Guid]$RunId = [Guid]::NewGuid(), [switch]$NoPause)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -16,7 +16,10 @@ $logPath = Join-Path $run 'setup.log'
 $exitCode = 0
 $transcript = $false
 $locks = New-Object 'System.Collections.Generic.List[System.Threading.Mutex]'
-$report = [ordered]@{ Format = 1; ProfileFingerprint = $payload.ProfileFingerprint; RunId = $RunId.ToString(); Computer = $env:COMPUTERNAME; Addresses = @(); CheckedAtUtc = ''; Ready = $false; PreparationCompleted = $false; HostKind = ''; HostService = ''; HostServiceState = ''; HostProcessId = 0; SettingsPath = ''; Local = $null; Message = ''; LogPath = $logPath }
+$coordinatorLock = $null
+$settingsBackup = $null
+$settingsPath = $null
+$report = [ordered]@{ Format = 1; ProfileFingerprint = $payload.ProfileFingerprint; RunId = $RunId.ToString(); Computer = $env:COMPUTERNAME; Addresses = @(); CheckedAtUtc = ''; Ready = $false; PreparationCompleted = $false; HostKind = ''; HostService = ''; HostServiceState = ''; HostProcessId = 0; SettingsPath = ''; Local = $null; Failback = $null; Message = ''; LogPath = $logPath }
 if (Test-Path -LiteralPath $run) { throw 'This RunId already exists. Use a new run.' }
 
 # Reads only the apphost path from a registered TechMES service.
@@ -31,6 +34,20 @@ function Get-ServiceDirectory([string]$Command, [string]$ExpectedExe) {
 # Compares Windows paths without changing PostgreSQL settings.
 function Test-SamePath([string]$Left, [string]$Right) {
     return $Left.Replace('/', '\').TrimEnd('\').Equals($Right.Replace('/', '\').TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-FailbackSetting($Policy, $Settings) {
+    $network = $Settings.PostgreSqlNetwork
+    $control = $Settings.PostgreSqlControl
+    if (!$network.Enabled -or !$control.CommandsEnabled -or [string]$control.ExpectedSystemIdentifier -cne $Policy.SystemIdentifier -or $network.NodeAddress -cne $Policy.NodeAddress -or $network.PeerAddress -cne $Policy.PeerAddress) { throw 'The local controller is not configured for this pair and cluster.' }
+    if ($network.PeerAddress -eq $network.NodeAddress -or $Policy.PreferredPrimary -notin @($network.NodeAddress,$network.PeerAddress) -or ($Policy.Enabled -and $Policy.PreferredPrimary -ne $network.PeerAddress)) { throw 'The selected failback policy does not match the local PostgreSQL pair.' }
+
+    $current = $Settings.PSObject.Properties['PostgreSqlAutomaticFailback']
+    if (!$Policy.Enabled -and ($null -eq $current -or $null -eq $current.Value -or !$current.Value.PSObject.Properties['Enabled'] -or !$current.Value.Enabled)) { return $null }
+    $value = if ($null -eq $current -or $null -eq $current.Value) { [pscustomobject]@{} } else { $current.Value }
+    $value | Add-Member -NotePropertyName 'Enabled' -NotePropertyValue ([bool]$Policy.Enabled) -Force
+    $value | Add-Member -NotePropertyName 'PreferredPrimary' -NotePropertyValue ([string]$Policy.PreferredPrimary) -Force
+    return $value
 }
 
 # Rechecks packaged bytes before the existing installer can stop or copy a service.
@@ -92,6 +109,7 @@ try {
     $report.HostService = if ($selected -eq 'Runtime') { 'TechMES.Runtime.Service' } else { 'TechMES.PostgreSql.Agent' }
     $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $started = [DateTimeOffset]::UtcNow
+    $waitForFresh = $Mode -eq 'Prepare'
 
     if ($Mode -eq 'Prepare') {
         $installer = Join-Path $PSScriptRoot 'Tools\Install-TechMESPostgreSqlHost.ps1'
@@ -122,7 +140,49 @@ try {
     }
 
     $statusPath = Join-Path $env:ProgramData ('TechMES\PostgreSqlNodes\' + $profile.ServiceName.ToUpperInvariant() + '\status.json')
-    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($(if ($Mode -eq 'Prepare') { 90 } else { 0 }))
+    if ($Mode -eq 'Failback') {
+        $policy = $payload.Failback
+        if ($null -eq $policy -or $policy.SystemIdentifier -notmatch '^[0-9]{1,20}$' -or $addresses -notcontains $policy.NodeAddress) { throw 'This policy belongs to another computer or cluster.' }
+        $selectedService = if ($selected -eq 'Runtime') { $runtime } else { $agent }
+        if ($null -eq $selectedService -or $selectedService.State -ne 'Running') { throw 'Start the configured controller before applying failback.' }
+        $hostDirectory = Get-ServiceDirectory $selectedService.PathName ($report.HostService + '.exe')
+        $settingsPath = Join-Path $hostDirectory 'appsettings.PostgreSqlControl.json'
+        $commandsDirectory = Join-Path (Split-Path -Parent $statusPath) 'Commands'
+        $credentialsPath = Join-Path $commandsDirectory 'credentials.bin'
+        $networkDirectory = Join-Path $commandsDirectory 'Network'
+        $lockPath = Join-Path $networkDirectory 'console.lock'
+
+        foreach ($path in @($settingsPath, $lockPath, $credentialsPath)) {
+            for ($current = $path; $current; $current = Split-Path -Path $current -Parent) {
+                if ((Test-Path -LiteralPath $current) -and ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Controller paths must not contain reparse points.' }
+            }
+        }
+        if (!(Test-Path -LiteralPath $commandsDirectory -PathType Container) -or ($policy.Enabled -and !(Test-Path -LiteralPath $credentialsPath -PathType Leaf))) { throw 'Configure local PostgreSQL command credentials before applying failback.' }
+        $null = New-Item -ItemType Directory -Path $networkDirectory -Force
+        $coordinatorLock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        if ((Test-Path -LiteralPath (Join-Path $networkDirectory 'active-switch.json')) -or (Test-Path -LiteralPath (Join-Path $networkDirectory 'console-active.json'))) { throw 'Complete the PostgreSQL operation before changing failback settings.' }
+
+        $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+        $control = $settings.PostgreSqlControl
+        if ($control.ServiceName -ine $profile.ServiceName -or $control.Port -ne $profile.Port -or !(Test-SamePath $control.BinDirectory $profile.BinDirectory) -or !(Test-SamePath $control.DataDirectory $profile.DataDirectory)) { throw 'The installed PostgreSQL profile differs from the selected profile.' }
+        $before = $settings | ConvertTo-Json -Depth 32
+        $value = Get-FailbackSetting $policy $settings
+        if ($null -ne $value) { $settings | Add-Member -NotePropertyName 'PostgreSqlAutomaticFailback' -NotePropertyValue $value -Force }
+        $after = $settings | ConvertTo-Json -Depth 32
+        if ($after -cne $before) {
+            $temporary = $settingsPath + '.' + $RunId.ToString('N') + '.tmp'
+            $backup = $settingsPath + '.' + $RunId.ToString('N') + '.bak'
+            [IO.File]::WriteAllText($temporary, $after, (New-Object Text.UTF8Encoding($true)))
+            [IO.File]::Replace($temporary, $settingsPath, $backup)
+            $settingsBackup = $backup
+            Restart-Service -Name $report.HostService
+            $waitForFresh = $true
+        }
+        $report.PreparationCompleted = $true
+        $report.Failback = $policy
+    }
+
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($(if ($waitForFresh) { [Math]::Max(90, $profile.HostHealthPeriodSeconds + 30) } else { 0 }))
 
     do {
         $hostService = Get-CimInstance Win32_Service -Filter ("Name='" + $report.HostService + "'")
@@ -139,7 +199,7 @@ try {
             $checkedAt = [DateTimeOffset]$local.checkedAtUtc
             $hostProcess = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $hostService.ProcessId)
             $fresh = $null -ne $hostProcess -and $checkedAt.UtcDateTime -ge $hostProcess.CreationDate.ToUniversalTime() -and $checkedAt -le [DateTimeOffset]::UtcNow.AddSeconds(1) -and ([DateTimeOffset]::UtcNow - $checkedAt).TotalSeconds -le [Math]::Max(30, 3 * $local.healthPeriodSeconds)
-            if ($Mode -eq 'Prepare') { $fresh = $fresh -and $checkedAt -ge $started }
+            if ($waitForFresh) { $fresh = $fresh -and $checkedAt -ge $started }
             $valid = $fresh -and $local.hostKind -eq $selected -and $local.controllerState -eq 'Monitoring' -and $local.ownsController -and $local.monitoringEnabled -and $local.permissionsOk -and $local.postgreSqlRole -in @('Primary','Standby') -and $local.settings.serviceName -ieq $profile.ServiceName -and (Test-SamePath $local.settings.binDirectory $profile.BinDirectory) -and (Test-SamePath $local.settings.dataDirectory $profile.DataDirectory) -and $local.settings.port -eq $profile.Port -and $null -ne $local.service -and $local.service.managedByService -and $local.service.serviceState -eq 'Running' -and $local.service.computer -ieq $env:COMPUTERNAME -and $local.service.serviceName -ieq $profile.ServiceName -and (Test-SamePath $local.service.dataDirectory $profile.DataDirectory) -and $local.service.port -eq $profile.Port -and $local.service.serviceProcessId -gt 0 -and $local.service.postmasterProcessId -gt 0 -and $local.service.listenerProcessId -eq $local.service.postmasterProcessId
         }
 
@@ -149,15 +209,25 @@ try {
     } while ($true)
 
     $report.Ready = $true
-    $report.Message = 'Controller ownership, PostgreSQL service and fresh local status confirmed.'
+    $report.Message = if ($Mode -eq 'Failback') { "Failback enabled: $($policy.Enabled). Preferred Primary: $($policy.PreferredPrimary)." } else { 'Controller ownership, PostgreSQL service and fresh local status confirmed.' }
     Write-Host $report.Message -ForegroundColor Green
 }
 catch {
     $exitCode = 1
     $report.Message = $_.Exception.Message
+    if ($settingsBackup) {
+        try {
+            [IO.File]::Replace($settingsBackup, $settingsPath, ($settingsBackup + '.failed'))
+            Restart-Service -Name $report.HostService
+            $report.Message += ' Original controller settings restored.'
+        } catch {
+            $report.Message += " Rollback failed: $($_.Exception.Message)"
+        }
+    }
     Write-Host ('FAILED: ' + $report.Message) -ForegroundColor Red
 }
 finally {
+    if ($null -ne $coordinatorLock) { $coordinatorLock.Dispose() }
     for ($index = $locks.Count - 1; $index -ge 0; $index--) { $locks[$index].ReleaseMutex(); $locks[$index].Dispose() }
     if ($transcript) { Stop-Transcript | Out-Null }
     $report.CheckedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')

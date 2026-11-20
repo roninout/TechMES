@@ -9,6 +9,8 @@ using TechMES.Maintenance.Models;
 
 namespace TechMES.Maintenance.Services;
 
+public sealed record PostgreSqlFailbackSetup(string NodeAddress, string PeerAddress, string PreferredPrimary, string SystemIdentifier, bool Enabled);
+
 /// <summary>Результат локальной подготовки; импортированный отчёт остаётся снимком на указанное время.</summary>
 public sealed class PostgreSqlHostSetupReport
 {
@@ -26,6 +28,7 @@ public sealed class PostgreSqlHostSetupReport
     public int HostProcessId { get; set; }
     public string SettingsPath { get; set; } = "";
     public PostgreSqlLocalHealthResponse? Local { get; set; }
+    public PostgreSqlFailbackSetup? Failback { get; set; }
     public string Message { get; set; } = "";
     public string LogPath { get; set; } = "";
 }
@@ -40,7 +43,7 @@ public sealed class PostgreSqlHostSetupService
     public static string Fingerprint(PostgreSqlSetupProfile profile) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(profile, Json))));
 
     /// <summary>Создаёт новый каталог; чужие файлы и прежние комплекты не заменяются.</summary>
-    public string Export(PostgreSqlSetupProfile profile, string outputDirectory, string toolsDirectory, bool includePackage = true)
+    public string Export(PostgreSqlSetupProfile profile, string outputDirectory, string toolsDirectory, bool includePackage = true, PostgreSqlFailbackSetup? failback = null)
     {
         profile.ValidateHost();
         var directory = Path.Combine(outputDirectory, "TechMES_PgHost_" + Guid.NewGuid().ToString("N"));
@@ -59,7 +62,7 @@ public sealed class PostgreSqlHostSetupService
             if (engine.Split(ProfileMarker, StringSplitOptions.None).Length != 2)
                 throw new InvalidDataException("Неподходящая версия инструмента подготовки контроллера.");
 
-            var payload = JsonSerializer.Serialize(new { Profile = profile, ProfileFingerprint = Fingerprint(profile) }, Json);
+            var payload = JsonSerializer.Serialize(new { Profile = profile, ProfileFingerprint = Fingerprint(profile), Failback = failback }, Json);
             var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(payload));
             engine = engine.Replace(ProfileMarker, "$script:EmbeddedProfileBase64 = '" + encoded + "'", StringComparison.Ordinal);
             File.WriteAllText(Path.Combine(directory, "Prepare-Controller.ps1"), engine, new UTF8Encoding(true));
@@ -154,6 +157,10 @@ public sealed class PostgreSqlHostSetupService
 
             if (!validHost || !validSnapshot || !validSettings || !validPostgreSql)
                 throw new InvalidDataException("Отчёт содержит противоречивое состояние контроллера PostgreSQL.");
+
+            if (report.Failback is { } policy && (!report.PreparationCompleted || !report.Addresses.Contains(policy.NodeAddress)
+                || local.SystemIdentifier != policy.SystemIdentifier || (policy.Enabled && policy.NodeAddress == policy.PreferredPrimary)))
+                throw new InvalidDataException("Отчёт об автовозврате относится к другой паре или узлу.");
         }
 
         return report;
@@ -163,12 +170,13 @@ public sealed class PostgreSqlHostSetupService
     private static bool SamePath(string? left, string right) => string.Equals(left?.Replace('/', '\\').TrimEnd('\\'), right.Replace('/', '\\').TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Запускает автономную консоль с UAC и ждёт её результата.</summary>
-    public async Task<PostgreSqlHostSetupReport> RunLocalAsync(PostgreSqlSetupProfile profile, string toolsDirectory, bool prepare, bool includePackage = true)
+    public async Task<PostgreSqlHostSetupReport> RunLocalAsync(PostgreSqlSetupProfile profile, string toolsDirectory, bool prepare, bool includePackage = true, PostgreSqlFailbackSetup? failback = null)
     {
         if (!PostgreSqlSetupService.IsLocal(profile))
             throw new InvalidOperationException("Выбран другой компьютер. Экспортируйте комплект и запустите его на сервере БД.");
 
-        var directory = await Task.Run(() => Export(profile, Path.Combine(PostgreSqlSetupService.Root, "ControllerRuns"), toolsDirectory, prepare && includePackage));
+        var directory = await Task.Run(() => Export(profile, Path.Combine(PostgreSqlSetupService.Root, "ControllerRuns"), toolsDirectory, prepare && includePackage, failback));
+        var mode = failback is not null ? "Failback" : prepare ? "Prepare" : "Check";
         var id = Guid.NewGuid();
         var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe"))
         {
@@ -176,7 +184,7 @@ public sealed class PostgreSqlHostSetupService
             Verb = "runas"
         };
 
-        foreach (var argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(directory, "Prepare-Controller.ps1"), "-Mode", prepare ? "Prepare" : "Check", "-RunId", id.ToString(), "-NoPause" })
+        foreach (var argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(directory, "Prepare-Controller.ps1"), "-Mode", mode, "-RunId", id.ToString(), "-NoPause" })
             start.ArgumentList.Add(argument);
 
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Не удалось запустить подготовку контроллера.");
