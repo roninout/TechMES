@@ -202,13 +202,25 @@ foreach ($component in $definitions) {
             }
     )
 
-    $components += [ordered]@{
+    $manifestComponent=[ordered]@{
         Key=$component.Key
         Folder=$component.Folder
         Service=$component.Service
         Exe=$exe
         Files=$files
     }
+    if ($component.Service) {
+        # Package only reviewed first-install defaults, not the project's working settings.
+        $relative=$component.Folder+'/appsettings.json'
+        $template=Join-Path $RepositoryRoot ('scripts/deploy/defaults/'+$relative)
+        $initialSettings=Join-Path $package ('InitialSettings/'+$relative)
+        $settings=Get-Content -LiteralPath $template -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($settings -isnot [pscustomobject]) { throw "Invalid initial appsettings: $template" }
+        New-Item -ItemType Directory -Path (Split-Path $initialSettings -Parent) -Force | Out-Null
+        [IO.File]::Copy($template,$initialSettings)
+        $manifestComponent['InitialSettingsSha256']=(Get-FileHash -LiteralPath $initialSettings -Algorithm SHA256).Hash
+    }
+    $components += $manifestComponent
 }
 
 [ordered]@{

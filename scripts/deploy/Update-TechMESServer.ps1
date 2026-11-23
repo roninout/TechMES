@@ -182,7 +182,7 @@ function Get-WebServiceEnvironment {
 
 # Проверяет наличие и читаемость файловых HTTPS-сертификатов до остановки служб.
 # Учитывает appsettings окружения и переменные службы; конфигурацию и сертификаты не изменяет.
-function Assert-WebCertificateFiles([string]$WebRoot) {
+function Assert-WebCertificateFiles([string]$WebRoot, [string]$InitialSettingsSource) {
     $environment=Get-WebServiceEnvironment
     $environmentName='Production'
     if ($environment['ASPNETCORE_ENVIRONMENT']) { $environmentName=$environment['ASPNETCORE_ENVIRONMENT'] }
@@ -198,6 +198,7 @@ function Assert-WebCertificateFiles([string]$WebRoot) {
     }
     foreach ($name in @('appsettings.json',('appsettings.'+$environmentName+'.json'))) {
         $path=Join-Path $WebRoot $name
+        if ($name -eq 'appsettings.json' -and $InitialSettingsSource) { $path=$InitialSettingsSource }
         if (!(Test-Path -LiteralPath $path -PathType Leaf)) { continue }
         try { $settings=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop }
         catch {
@@ -227,12 +228,31 @@ function Assert-WebCertificateFiles([string]$WebRoot) {
     }
 }
 
+# Publishes the verified initial settings only if the final path is still unused.
+function Install-InitialSettings($Entry) {
+    $temporary=$Entry.Target+'.'+[Guid]::NewGuid().ToString('N')+'.tmp'
+    try {
+        [IO.File]::Copy($Entry.Source,$temporary)
+        if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash -ine $Entry.Hash) { throw "Initial appsettings hash mismatch: $($Entry.Target)" }
+        [IO.File]::Move($temporary,$Entry.Target)
+        $Entry.Touched=$true
+        Write-Output "Installed initial settings: $($Entry.Target)"
+    } finally {
+        [IO.File]::Delete($temporary)
+    }
+}
+
 # Проверяет HTTPS, заменяет файлы и запускает службы; при ошибке восстанавливает прежнее состояние.
 function Invoke-UpdateTransaction($Jobs, $Entries, $Configs, [string]$StatusUrl) {
-    foreach ($job in @($Jobs | Where-Object { $_.Key -eq 'web' })) { Assert-WebCertificateFiles $job.Folder }
+    foreach ($job in @($Jobs | Where-Object { $_.Key -eq 'web' })) { Assert-WebCertificateFiles $job.Folder $job.InitialSettingsSource }
     try {
         Stop-DeploymentJobs $Jobs
         foreach ($entry in $Entries) {
+            if ($entry.InitialSettings) {
+                New-Item -ItemType Directory -Path (Split-Path $entry.Target -Parent) -Force | Out-Null
+                Install-InitialSettings $entry
+                continue
+            }
             $entry.Touched=$true
             if ($entry.Delete) { Remove-Item -LiteralPath $entry.Target -Force; continue }
             New-Item -ItemType Directory -Path (Split-Path $entry.Target -Parent) -Force | Out-Null
@@ -317,13 +337,26 @@ function Invoke-LocalDeployment($Profile, [string]$PayloadRoot, $Caller) {
         $source=Get-SafePath $PayloadRoot $part.Folder
         $target=Get-SafePath $install $part.Folder
         $service=$null
+        $initialSettingsSource=''
         if ($part.Service) {
             $service=Get-CimInstance Win32_Service -Filter "Name='$($part.Service)'"
             if ($service) {
                 if ($service.State -notin @('Running','Stopped')) { throw "Service is not stable: $($service.Name)" }
                 if ((Get-ServiceFolder $service $part.Exe) -ine $target) { throw "Profile InstallRoot does not match registered service $($part.Service). Correct the profile; no service was stopped." }
             }
-            if (!(Test-Path -LiteralPath (Join-Path $target 'appsettings.json') -PathType Leaf)) { throw "Prepare server-specific appsettings.json first: $target" }
+            $settingsTarget=Get-SafePath $target 'appsettings.json'
+            if (!(Test-Path -LiteralPath $settingsTarget -PathType Leaf)) {
+                if (Test-Path -LiteralPath $settingsTarget -PathType Container) { throw "A directory blocks appsettings.json: $settingsTarget" }
+                $fingerprint=$part.PSObject.Properties['InitialSettingsSha256']
+                if ($null -eq $fingerprint) { throw "The package has no initial settings for $key. Create a new TechMES archive with the updated Maintenance, or supply local appsettings.json: $settingsTarget" }
+                $hash=[string]$fingerprint.Value
+                $initialSettingsSource=Get-SafePath $PayloadRoot ('InitialSettings/'+$part.Folder+'/appsettings.json')
+                if ($hash -notmatch '^[0-9A-Fa-f]{64}$' -or !(Test-Path -LiteralPath $initialSettingsSource -PathType Leaf) -or
+                    (Get-FileHash -LiteralPath $initialSettingsSource -Algorithm SHA256).Hash -ine $hash) {
+                    throw "Initial appsettings is missing or does not match the package manifest: $key"
+                }
+                $entries += [pscustomobject]@{Source=$initialSettingsSource;Target=$settingsTarget;Hash=$hash;Existed=$false;Touched=$false;Delete=$false;InitialSettings=$true}
+            }
         } else {
             foreach ($process in @(Get-Process -Name 'TechMES.Maintenance' -ErrorAction SilentlyContinue)) {
                 if ([IO.Path]::GetDirectoryName($process.MainModule.FileName) -ieq $target) { throw 'Close Maintenance on this computer before running its deployment script.' }
@@ -337,18 +370,18 @@ function Invoke-LocalDeployment($Profile, [string]$PayloadRoot, $Caller) {
             $to=Get-SafePath $target $file.Path
             if (Test-Path -LiteralPath $to -PathType Container) { throw "A directory blocks a payload file: $to" }
             if ((Get-FileHash -LiteralPath $from -Algorithm SHA256).Hash -ine $file.Sha256) { throw "Package hash mismatch: $key/$($file.Path)" }
-            $entries += [pscustomobject]@{Source=$from;Target=$to;Hash=$file.Sha256;Backup=(Get-SafePath (Join-Path $backup $key) $file.Path);Existed=(Test-Path -LiteralPath $to -PathType Leaf);Touched=$false;Delete=$false}
+            $entries += [pscustomobject]@{Source=$from;Target=$to;Hash=$file.Sha256;Backup=(Get-SafePath (Join-Path $backup $key) $file.Path);Existed=(Test-Path -LiteralPath $to -PathType Leaf);Touched=$false;Delete=$false;InitialSettings=$false}
         }
         if (!$seen.ContainsKey($part.Exe)) { throw "Executable missing from manifest: $($part.Exe)" }
         if ($key -eq 'maintenance') {
             foreach ($obsolete in @('Tools/Deploy-TechMESSecondary.ps1','Tools/Run-TechMESUpdate.ps1')) {
                 $oldPath=Get-SafePath $target $obsolete
                 if (!$seen.ContainsKey($obsolete) -and (Test-Path -LiteralPath $oldPath -PathType Leaf)) {
-                    $entries += [pscustomobject]@{Source='';Target=$oldPath;Hash='';Backup=(Get-SafePath (Join-Path $backup $key) $obsolete);Existed=$true;Touched=$false;Delete=$true}
+                    $entries += [pscustomobject]@{Source='';Target=$oldPath;Hash='';Backup=(Get-SafePath (Join-Path $backup $key) $obsolete);Existed=$true;Touched=$false;Delete=$true;InitialSettings=$false}
                 }
             }
         }
-        $jobs += [pscustomobject]@{Key=$key;Name=$part.Service;Folder=$target;Executable=(Join-Path $target $part.Exe);Existed=($null -ne $service);Created=$false;WasRunning=($null -ne $service -and $service.State -eq 'Running')}
+        $jobs += [pscustomobject]@{Key=$key;Name=$part.Service;Folder=$target;Executable=(Join-Path $target $part.Exe);Existed=($null -ne $service);Created=$false;WasRunning=($null -ne $service -and $service.State -eq 'Running');InitialSettingsSource=$initialSettingsSource}
         if (Test-Path -LiteralPath $target -PathType Container) {
             $configs += @(Get-ChildItem -LiteralPath $target -Filter 'appsettings*.json' -File -Force | ForEach-Object { Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256 })
         }

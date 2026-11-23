@@ -43,7 +43,7 @@
                                 <CheckBox Content="Host" IsChecked="{Binding UpdateHost}" Margin="0,0,20,0" />
                                 <CheckBox Content="Maintenance" IsChecked="{Binding UpdateMaintenance}" />
                             </WrapPanel>
-                            <TextBlock Text="Существующие appsettings*.json сохраняются. Для обновления Maintenance закройте её на целевом сервере перед запуском скрипта." TextWrapping="Wrap" />
+                            <TextBlock Text="Если у службы отсутствует appsettings.json, установщик добавит стартовый файл из нового архива. Существующие настройки сохраняются. Для обновления Maintenance закройте её на целевом сервере перед запуском скрипта." TextWrapping="Wrap" />
                         </StackPanel>
                     </DataTemplate>
                 </TabControl.ContentTemplate>
