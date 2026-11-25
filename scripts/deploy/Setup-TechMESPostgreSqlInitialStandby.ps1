@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Check','Apply')][string]$Mode='Check',
-    [ValidatePattern('^$|^[0-9]{1,20}$')][string]$TargetSystemIdentifier=''
+    [ValidatePattern('^$|^[0-9]{1,20}$')][string]$TargetSystemIdentifier='',
+    [switch]$PrepareTarget
 )
 
 Set-StrictMode -Version Latest
@@ -16,6 +17,8 @@ try {
         throw ('Run the bundle on the new Standby '+$setup.TargetAddress+'.')
     }
     if ($Mode -eq 'Apply' -and !$TargetSystemIdentifier) { throw 'Run Check first and copy the exact -Mode Apply command it prints.' }
+
+    if ($PrepareTarget -and ($Mode -ne 'Check' -or !$TargetSystemIdentifier)) { throw 'Target preparation requires Check and the verified target identifier.' }
 
     $operation=[guid]::NewGuid().ToString('N')
     $resultFile=Join-Path $PSScriptRoot ("result-"+$Mode+"-"+$operation+".json")
@@ -32,6 +35,7 @@ try {
         Port=[int]$setup.Port
         OperationId=$operation
         ResultFile=$resultFile
+        PrepareInitialTarget=$PrepareTarget
     }
     & (Join-Path $tools 'Switch-PostgreSQL18.ps1') @options
     $code=$LASTEXITCODE

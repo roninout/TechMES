@@ -126,12 +126,51 @@
                                         <ui:TextBox x:Name="InitialStandbySystemIdentifier" Style="{StaticResource SetupField}" />
                                     </StackPanel>
                                 </WrapPanel>
-                                <TextBlock Text="Идентификатор можно получить на Primary запросом SELECT system_identifier::text FROM pg_control_system();" Margin="0,0,0,8" />
                                 <WrapPanel>
-                                    <ui:Button Content="Экспортировать комплект для нового Standby…" Click="OnExportInitialStandbyClick" Margin="0,0,8,8" />
-                                    <ui:Button x:Name="InitialStandbyOpenFolder" Content="Открыть папку комплекта" Click="OnOpenInitialStandbyFolderClick" IsEnabled="False" Margin="0,0,8,8" />
+                                    <StackPanel Width="210" Margin="0,0,8,0">
+                                        <TextBlock Text="Администратор PostgreSQL" />
+                                        <ui:TextBox x:Name="ReplicaAdminUser" Text="postgres" Style="{StaticResource SetupField}" />
+                                    </StackPanel>
+                                    <StackPanel Width="210" Margin="0,0,8,0">
+                                        <TextBlock Text="Пароль администратора" />
+                                        <PasswordBox x:Name="ReplicaAdminPassword" Margin="0,4,0,10" />
+                                    </StackPanel>
+                                    <StackPanel Width="210" Margin="0,0,8,0">
+                                        <TextBlock Text="Пароль роли techmes_repl" />
+                                        <PasswordBox x:Name="ReplicaPassword" Margin="0,4,0,10" />
+                                    </StackPanel>
                                 </WrapPanel>
-                                <ui:TextBox x:Name="InitialStandbyResult" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MaxHeight="170" />
+                                <TabControl HorizontalContentAlignment="Stretch">
+                                    <TabItem Header="Primary">
+                                        <StackPanel Margin="10">
+                                            <TextBlock Text="Откройте эту вкладку на Primary. Проверка заполнит ID кластера. Сохраните новый пароль роли в защищённом месте для ввода на Secondary." Margin="0,0,0,8" />
+                                            <WrapPanel>
+                                                <ui:Button Content="Проверить Primary" Click="OnInspectReplicaPrimaryClick" Margin="0,0,8,8" />
+                                                <ui:Button Content="Создать techmes_repl" Click="OnCreateReplicaRoleClick" Margin="0,0,8,8" />
+                                                <ui:Button Content="Скопировать пароль роли" Click="OnCopyReplicaPasswordClick" Margin="0,0,8,8" />
+                                                <ui:Button Content="Разрешить репликацию с Secondary" Click="OnAllowReplicaClick" Margin="0,0,8,8" />
+                                            </WrapPanel>
+                                            <ui:TextBox x:Name="ReplicaPrimaryResult" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                                        VerticalScrollBarVisibility="Auto" MaxHeight="230" />
+                                        </StackPanel>
+                                    </TabItem>
+                                    <TabItem Header="Secondary">
+                                        <StackPanel Margin="10">
+                                            <TextBlock Text="Откройте эту вкладку на Secondary. Проверьте локальные базы, SQL-доступ к Primary и физическое подключение роли репликации." Margin="0,0,0,8" />
+                                            <WrapPanel>
+                                                <ui:Button Content="Проверить Secondary и доступ к Primary" Click="OnInspectReplicaSecondaryClick" Margin="0,0,8,8" />
+                                                <ui:Button Content="Подготовить Secondary и запустить Check" Click="OnRunReplicaCheckClick" Margin="0,0,8,8" />
+                                                <ui:Button x:Name="ReplicaApply" Content="Создать Standby (Apply)" Click="OnRunReplicaApplyClick" IsEnabled="False" Margin="0,0,8,8" />
+                                            </WrapPanel>
+                                            <WrapPanel>
+                                                <ui:Button Content="Экспортировать комплект…" Click="OnExportInitialStandbyClick" Margin="0,0,8,8" />
+                                                <ui:Button x:Name="InitialStandbyOpenFolder" Content="Открыть папку комплекта" Click="OnOpenInitialStandbyFolderClick" IsEnabled="False" Margin="0,0,8,8" />
+                                            </WrapPanel>
+                                            <ui:TextBox x:Name="InitialStandbyResult" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                                        VerticalScrollBarVisibility="Auto" MaxHeight="230" />
+                                        </StackPanel>
+                                    </TabItem>
+                                </TabControl>
                             </StackPanel>
                         </Expander>
 

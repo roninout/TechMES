@@ -16,7 +16,8 @@ param(
     [string]$ResultFile='',
     [int]$ExpectedTimeline=0,
     [ValidateRange(0,2147483647)][int]$MaxReplayLagBytes=0,
-    [ValidatePattern('^$|^[0-9]{1,20}$')][string]$ExpectedTargetSystemIdentifier=''
+    [ValidatePattern('^$|^[0-9]{1,20}$')][string]$ExpectedTargetSystemIdentifier='',
+    [switch]$PrepareInitialTarget
 )
 
 Set-StrictMode -Version Latest
@@ -165,7 +166,7 @@ function Invoke-Sql([string]$Address, [string]$Sql, [switch]$Change) {
 }
 
 # Читает роль, идентификатор кластера, WAL и пути конфигурации без секретов подключения.
-function Get-Node([string]$Address) {
+function Get-Node([string]$Address, [switch]$AllowDifferentCluster) {
     $sql=@'
 BEGIN READ ONLY;
 SELECT jsonb_build_object(
@@ -204,7 +205,7 @@ COMMIT;
 
     $node=(Invoke-Sql $Address $sql) | ConvertFrom-Json
 
-    if ($ExpectedSystemIdentifier -and $node.sid -cne $ExpectedSystemIdentifier) { throw 'The SQL endpoint belongs to a different PostgreSQL cluster.' }
+    if (!$AllowDifferentCluster -and $ExpectedSystemIdentifier -and $node.sid -cne $ExpectedSystemIdentifier) { throw 'The SQL endpoint belongs to a different PostgreSQL cluster.' }
 
     return $node
 }
@@ -883,8 +884,8 @@ function Restore-StandbyConfigs([string]$Stage, [string[]]$Configs) {
     }
 }
 
-# Проверяет отключённый новый экземпляр и его исходный идентификатор.
-function Get-InitialTarget([string]$TargetSid='') {
+# Проверяет адрес назначения и отсутствие действующего переключения.
+function Assert-InitialTargetAvailable {
     if ($script:LocalAddress -ne $From) { throw 'Run locally on the new Standby computer.' }
     if (Test-Path -LiteralPath $script:ActiveFencePath) { throw 'The target has an active Fence. Finish the existing switch.' }
 
@@ -892,6 +893,11 @@ function Get-InitialTarget([string]$TargetSid='') {
     if ((Test-Path -LiteralPath (Join-Path $network 'active-switch.json')) -or (Test-Path -LiteralPath (Join-Path $network 'console-active.json'))) {
         throw 'The target has an active switch plan.'
     }
+}
+
+# Проверяет отключённый новый экземпляр и его исходный идентификатор.
+function Get-InitialTarget([string]$TargetSid='') {
+    Assert-InitialTargetAvailable
     $null=Assert-ServiceState $false
     $service=Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
     if ($null -eq $service -or $service.State -ne 'Stopped' -or $service.StartMode -ne 'Disabled') { throw 'The PostgreSQL service on the new Standby must be stopped and Disabled.' }
@@ -920,6 +926,27 @@ function Get-InitialPrimary {
     if (!(Ensure-Slot $To -CheckOnly) -and $primary.slotsFree -lt 1) { throw 'The Primary has no free physical replication slot.' }
     Assert-ReplicationLogin $To $ExpectedSystemIdentifier
     return $primary
+}
+
+# Подготавливает остановку только проверенного независимого экземпляра на локальном Secondary.
+function Stop-InitialTarget {
+    Assert-InitialTargetAvailable
+    $service=Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
+    if ($service.State -eq 'Stopped' -and $service.StartMode -eq 'Disabled') {
+        $null=Get-InitialTarget $ExpectedTargetSystemIdentifier
+        return
+    }
+    $null=Assert-ServiceState $true
+    $target=Get-Node '127.0.0.1' -AllowDifferentCluster
+    if ($target.recovery -or $target.sid -cne $ExpectedTargetSystemIdentifier -or $target.sid -ceq $ExpectedSystemIdentifier -or
+        $target.version -lt 180000 -or $target.version -ge 190000 -or (Normalize-Path $target.data) -ine $DataDirectory) {
+        throw 'The running Secondary does not match the independent PostgreSQL cluster being replaced.'
+    }
+    $null=Get-InitialPrimary
+    $script:InitialTargetPreviousStartMode=$service.StartMode
+    Stop-Service -Name $ServiceName -ErrorAction Stop
+    (Get-Service -Name $ServiceName).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(120))
+    Set-Service -Name $ServiceName -StartupType Disabled -ErrorAction Stop
 }
 
 function Get-BaseBackupSize {
@@ -1148,6 +1175,9 @@ if ($Mode -ne 'Status' -and !$initial) {
     if (!(Test-Path -LiteralPath ([IO.Path]::GetDirectoryName($FenceFile)) -PathType Container)) { throw 'Create the exchange directory before running this script.' }
 }
 
+if ($PrepareInitialTarget -and ($Mode -ne 'CheckInitialStandby' -or !$ExpectedTargetSystemIdentifier -or !$ExpectedSystemIdentifier)) {
+    throw 'Initial target preparation must identify both clusters and run in CheckInitialStandby mode.'
+}
 if ($CredentialInput -and (!$OperationId -or !$ExpectedSystemIdentifier -or !$ResultFile)) { throw 'Non-interactive execution requires OperationId, ExpectedSystemIdentifier and ResultFile.' }
 if (($Mode -eq 'Rebuild' -and !$EmergencyFenceId) -or ($EmergencyFenceId -and (!$CredentialInput -or $Mode -notin @('Fence','Promote','Rejoin','Rebuild')))) { throw 'Emergency phases require the TechMES controller and a reserved operation.' }
 
@@ -1175,6 +1205,7 @@ $script:Changed=$false
 $script:Installed=$false
 $script:RebuildRequired=$false
 $script:InitialCopy=$null
+$script:InitialTargetPreviousStartMode=$null
 $exitCode=0
 
 $result=[ordered]@{
@@ -1212,7 +1243,8 @@ try {
         if (Test-Path -LiteralPath $network -PathType Container) {
             $consoleLock=[IO.File]::Open($consolePath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
         }
-        $null=Get-InitialTarget $ExpectedTargetSystemIdentifier
+        if ($PrepareInitialTarget) { Assert-InitialTargetAvailable }
+        else { $null=Get-InitialTarget $ExpectedTargetSystemIdentifier }
     }
 
     Start-Transcript -LiteralPath $result.Log -Force | Out-Null
@@ -1246,6 +1278,12 @@ try {
         $result.Success=$true
     }
     elseif ($Mode -eq 'CheckInitialStandby') {
+        if ($PrepareInitialTarget) {
+            if (!$PSCmdlet.ShouldProcess($script:LocalAddress, 'Stop the verified PostgreSQL Secondary for first Standby creation')) {
+                throw 'Secondary preparation was not confirmed.'
+            }
+            Stop-InitialTarget
+        }
         $result.Data=Invoke-InitialStandby -CheckOnly
         $result.Success=$true
     }
@@ -1264,6 +1302,18 @@ try {
 catch {
     $exitCode=1
     $result.Error=$_.Exception.Message
+
+    if ($null -ne $script:InitialTargetPreviousStartMode) {
+        try {
+            $startup=if ($script:InitialTargetPreviousStartMode -eq 'Auto') { 'Automatic' } else { 'Manual' }
+            Set-Service -Name $ServiceName -StartupType $startup -ErrorAction Stop
+            Start-Service -Name $ServiceName -ErrorAction Stop
+            if ($script:InitialTargetPreviousStartMode -eq 'Disabled') {
+                Set-Service -Name $ServiceName -StartupType Disabled -ErrorAction Stop
+            }
+        }
+        catch { $result.Error+='; restoring Secondary service: '+$_.Exception.Message }
+    }
 
     if ($script:RebuildRequired) {
         $exitCode=2
