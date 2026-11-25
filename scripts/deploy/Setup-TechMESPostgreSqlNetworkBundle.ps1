@@ -70,9 +70,14 @@ try {
     switch ($mode) {
         'PrepareNodes' {
             $answer = & $networkTool -Mode Prepare -NodeAddress $node -PeerAddress $setup.PeerAddress -ExpectedSystemIdentifier $setup.SystemIdentifier -ExpectedServiceName $setup.ServiceName -Port $setup.Port -AsObject
-            Assert-NoLinks (Join-Path $commandsRoot 'credentials.bin')
-            if (!(Test-Path -LiteralPath (Join-Path $commandsRoot 'credentials.bin') -PathType Leaf)) {
-                & (Join-Path $PSScriptRoot 'Tools\Invoke-TechMESPostgreSqlCommand.ps1') -Mode Credentials -ServiceName $setup.ServiceName
+            $credentialPath = Join-Path $commandsRoot 'credentials.bin'
+            Assert-NoLinks $credentialPath
+            if (!(Test-Path -LiteralPath $credentialPath -PathType Leaf)) {
+                # Read credentials in the PowerShell window that is running this bundle.
+                $credentialTool = Join-Path $PSScriptRoot 'Tools\Invoke-TechMESPostgreSqlCommand.ps1'
+                & $credentialTool -Mode Credentials -ServiceName $setup.ServiceName -ConsoleCredentialPrompt
+            } else {
+                Write-Host 'Using the existing local PostgreSQL command credentials.'
             }
             Copy-Item -LiteralPath $answer.PublicCertificate -Destination $publicFile -Force
         }

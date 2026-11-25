@@ -7,7 +7,8 @@ param(
     [string]$FenceFile='',
     [ValidatePattern('^[0-9]{1,20}$')][string]$SystemIdentifier='',
     [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$ServiceName='postgresql-x64-18',
-    [ValidatePattern('^$|^[0-9a-f]{32}$')][string]$OperationId=''
+    [ValidatePattern('^$|^[0-9a-f]{32}$')][string]$OperationId='',
+    [switch]$ConsoleCredentialPrompt
 )
 
 Set-StrictMode -Version Latest
@@ -92,6 +93,19 @@ function Write-Atomic([string]$Path, [byte[]]$Bytes) {
     }
 }
 
+# Reads a PostgreSQL login and a masked password in the current console.
+function Read-ConsoleCredential([string]$Account, [string]$DefaultUser) {
+    $user = (Read-Host "PostgreSQL $Account username [Enter for $DefaultUser]").Trim()
+    if (!$user) { $user = $DefaultUser }
+
+    $password = Read-Host "PostgreSQL $Account password" -AsSecureString
+    if ($null -eq $password -or $password.Length -eq 0) {
+        throw "No password entered for the PostgreSQL $Account account."
+    }
+
+    [PSCredential]::new($user, $password)
+}
+
 if ($Mode -eq 'Status') {
     Assert-NoLinks $root
 
@@ -124,8 +138,13 @@ Initialize-Store
 if ($Mode -eq 'Credentials') {
     Add-Type -AssemblyName System.Security
 
-    $sql=Get-Credential -UserName 'postgres' -Message 'PostgreSQL administration account on both nodes'
-    $replication=Get-Credential -UserName 'techmes_repl' -Message 'PostgreSQL replication account'
+    if ($ConsoleCredentialPrompt) {
+        $sql = Read-ConsoleCredential -Account 'administration' -DefaultUser 'postgres'
+        $replication = Read-ConsoleCredential -Account 'replication' -DefaultUser 'techmes_repl'
+    } else {
+        $sql=Get-Credential -UserName 'postgres' -Message 'PostgreSQL administration account on both nodes'
+        $replication=Get-Credential -UserName 'techmes_repl' -Message 'PostgreSQL replication account'
+    }
 
     if ($null -eq $sql -or $null -eq $replication) { throw 'Credential entry cancelled.' }
     if ($sql.UserName -notmatch '^[A-Za-z0-9_.-]+$' -or $replication.UserName -notmatch '^[A-Za-z0-9_.-]+$') { throw 'Unsupported PostgreSQL username.' }

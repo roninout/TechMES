@@ -114,7 +114,7 @@ public partial class PostgreSqlSetupControl
 
             var next = stage switch
             {
-                PostgreSqlNetworkSetupStage.PrepareNodes => "Перенесите оба public.cer в Maintenance. SHA-256 возьмите из вывода на соответствующем сервере. Затем выполните B.",
+                PostgreSqlNetworkSetupStage.PrepareNodes => "При первой настройке введите в окне PowerShell данные администратора PostgreSQL и роли репликации. Перенесите оба public.cer в Maintenance. SHA-256 возьмите из вывода на соответствующем сервере. Затем выполните B.",
                 PostgreSqlNetworkSetupStage.ConnectNodes => "Дождитесь успешного запуска комплектов на обоих узлах. Комплект перезапускает контроллер своего узла. Затем выполните C.",
                 _ => "Комплект перезапускает контроллер своего узла. После успешного запуска обоих комплектов нажмите «Проверить пару» в пункте 2."
             };

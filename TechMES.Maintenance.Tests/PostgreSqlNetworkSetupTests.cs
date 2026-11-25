@@ -52,6 +52,28 @@ public sealed class PostgreSqlNetworkSetupTests : IDisposable
         }
     }
 
+    [Fact]
+    public void PrepareBundleUsesConsoleCredentialPromptOnBothNodes()
+    {
+        var toolsDirectory = Path.Combine(AppContext.BaseDirectory, "Tools");
+        var service = new PostgreSqlNetworkSetupService(toolsDirectory);
+        const string toolName = "Invoke-TechMESPostgreSqlCommand.ps1";
+
+        var root = service.Export(_directory, PostgreSqlNetworkSetupStage.PrepareNodes, Node(FirstAddress), Node(SecondAddress), SystemIdentifier, 5115, "");
+
+        foreach (var address in new[] { FirstAddress, SecondAddress })
+        {
+            var folder = Path.Combine(root, address);
+            var setup = File.ReadAllText(Path.Combine(folder, "Setup-Network.ps1"));
+            var credentialTool = File.ReadAllText(Path.Combine(folder, "Tools", toolName));
+
+            Assert.Contains(toolName, setup);
+            Assert.Contains("-Mode Credentials -ServiceName $setup.ServiceName -ConsoleCredentialPrompt", setup);
+            Assert.Contains("[switch]$ConsoleCredentialPrompt", credentialTool);
+            Assert.Contains("-AsSecureString", credentialTool);
+        }
+    }
+
     public void Dispose() => Directory.Delete(_directory, recursive: true);
 
     private (string Path, string Pin) CreateCertificate(string address)
