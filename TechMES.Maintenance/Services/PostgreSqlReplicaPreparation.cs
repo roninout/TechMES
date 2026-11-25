@@ -12,10 +12,9 @@ internal sealed class PostgreSqlReplicaPreparation
 {
     internal const string ReplicationUser = "techmes_repl";
 
-    internal sealed record Node(string Id, string Version, int VersionNumber, bool Standby, bool ReadOnly,
-        string DataDirectory, string HbaFile, string WalLevel, int FreeSenders, int FreeSlots, int Senders,
-        string Databases, string Receiver, string Sender, string Slot, string ReplicationRole);
+    internal sealed record Node(string Id, string Version, int VersionNumber, bool Standby, bool ReadOnly, string DataDirectory, string HbaFile, string WalLevel, int FreeSenders, int FreeSlots, int Senders, string Databases, string Receiver, string Sender, string Slot, string ReplicationRole);
 
+    /// <summary>Проверяет, что профиль и его IPv4 относятся к текущему компьютеру перед локальной операцией.</summary>
     internal static void RequireLocal(PostgreSqlSetupProfile profile, string address)
     {
         profile.Validate();
@@ -27,10 +26,12 @@ internal sealed class PostgreSqlReplicaPreparation
             throw new InvalidOperationException($"Откройте Maintenance на сервере {address} и проверьте имя компьютера в профиле.");
     }
 
+    /// <summary>Создаёт отдельное подключение к базе postgres с короткими таймаутами и без пула.</summary>
     private static NpgsqlConnectionStringBuilder Settings(string address, int port, string user, string password) =>
         new() { Host = address, Port = port, Database = "postgres", Username = user, Password = password,
             Timeout = 5, CommandTimeout = 10, Pooling = false, ApplicationName = "TechMES.ReplicaSetup" };
 
+    /// <summary>Читает снимок кластера с указанного адреса и сверяет каталог данных с профилем.</summary>
     internal static async Task<Node> CheckNodeAsync(string address, PostgreSqlSetupProfile profile, string user, string password)
     {
         await using var connection = new NpgsqlConnection(Settings(address, profile.Port, user, password).ConnectionString);
@@ -38,6 +39,7 @@ internal sealed class PostgreSqlReplicaPreparation
         return await ReadNodeAsync(connection, profile);
     }
 
+    /// <summary>Разрешает подготовку только на PostgreSQL 18 Primary с ожидаемым идентификатором и доступом на запись.</summary>
     internal static void RequireWritablePrimary(Node node, string expectedId)
     {
         if (node.VersionNumber is < 180000 or >= 190000 || node.Standby || node.ReadOnly ||
@@ -45,6 +47,7 @@ internal sealed class PostgreSqlReplicaPreparation
             throw new InvalidOperationException("SQL-сервер должен быть доступным для записи PostgreSQL 18 Primary с указанным ID кластера.");
     }
 
+    /// <summary>Читает состояние WAL, список баз и состояние роли репликации без выполнения операций записи.</summary>
     private static async Task<Node> ReadNodeAsync(NpgsqlConnection connection, PostgreSqlSetupProfile profile)
     {
         const string query = """
@@ -79,10 +82,12 @@ internal sealed class PostgreSqlReplicaPreparation
             reader.GetString(14), reader.GetString(15));
     }
 
+    /// <summary>Сравнивает пути PGDATA после нормализации разделителей, регистра и завершающего слеша.</summary>
     private static bool SamePath(string left, string right) =>
         string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
             Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)), StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Проверяет физический вход роли репликации командой IDENTIFY_SYSTEM и возвращает ID кластера.</summary>
     internal static async Task<string> IdentifyPrimaryAsync(string address, int port, string password)
     {
         if (string.IsNullOrEmpty(password))
@@ -93,6 +98,7 @@ internal sealed class PostgreSqlReplicaPreparation
         return (await connection.IdentifySystem(timeout.Token)).SystemId;
     }
 
+    /// <summary>Создаёт роль репликации один раз. Возвращает новый пароль только после успешной фиксации транзакции.</summary>
     internal static async Task<string?> CreateRoleAsync(PostgreSqlSetupProfile profile, string source, string expectedId, string adminUser, string adminPassword)
     {
         RequireLocal(profile, source);
@@ -116,6 +122,7 @@ internal sealed class PostgreSqlReplicaPreparation
         return password;
     }
 
+    /// <summary>Строит SCRAM-SHA-256 verifier для локально сгенерированного ASCII-пароля.</summary>
     private static string CreateVerifier(string password)
     {
         const int iterations = 4096;
@@ -133,6 +140,7 @@ internal sealed class PostgreSqlReplicaPreparation
         }
     }
 
+    /// <summary>Добавляет правило SCRAM для одного Secondary. При ошибке восстанавливает исходный файл, если его больше никто не менял.</summary>
     internal static async Task<string?> AddReplicationRuleAsync(PostgreSqlSetupProfile profile, string source, string target, string expectedId, string adminUser, string adminPassword)
     {
         RequireLocal(profile, source);
@@ -184,6 +192,7 @@ internal sealed class PostgreSqlReplicaPreparation
             await File.WriteAllBytesAsync(temporary, revised);
             if (!(await File.ReadAllBytesAsync(path)).SequenceEqual(original))
                 throw new IOException("pg_hba.conf изменился во время подготовки. Повторите операцию.");
+            // Замена оставляет исходный файл рядом для восстановления при ошибке.
             File.Replace(temporary, path, backup);
             replaced = true;
 

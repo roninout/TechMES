@@ -15,6 +15,7 @@ public partial class PostgreSqlSetupControl
     private sealed record ReplicaCheck(ReplicaPair Pair, string PrimaryId, string TargetId, string Directory);
     private ReplicaCheck? _replicaCheck;
 
+    /// <summary>Фиксирует адреса и отпечатки обоих профилей, чтобы Apply проверял именно ту пару, для которой выполнен Check.</summary>
     private ReplicaPair GetReplicaPair()
     {
         if (_loadFailed || Cards.Count != 2)
@@ -31,8 +32,7 @@ public partial class PostgreSqlSetupControl
         if (source == target || primary.Port != secondary.Port)
             throw new InvalidDataException("Укажите разные адреса и одинаковый порт в профилях PostgreSQL.");
 
-        return new ReplicaPair(source, target, PostgreSqlSetupService.Fingerprint(primary),
-            PostgreSqlSetupService.Fingerprint(secondary));
+        return new ReplicaPair(source, target, PostgreSqlSetupService.Fingerprint(primary), PostgreSqlSetupService.Fingerprint(secondary));
     }
 
     private string ReplicaAdmin => string.IsNullOrWhiteSpace(ReplicaAdminUser.Text)
@@ -41,6 +41,7 @@ public partial class PostgreSqlSetupControl
 
     private string ExpectedPrimaryId => InitialStandbySystemIdentifier.Text.Trim();
 
+    /// <summary>Проверяет локальный Primary, заполняет его ID и показывает готовность WAL и роли репликации.</summary>
     private async void OnInspectReplicaPrimaryClick(object sender, RoutedEventArgs e) =>
         await RunReplicaActionAsync(ReplicaPrimaryResult, async (_, pair) =>
         {
@@ -55,17 +56,18 @@ public partial class PostgreSqlSetupControl
             return DescribeReplicaNode(node) + $"\n{readiness}\nРоль techmes_repl: {node.ReplicationRole}\npg_hba.conf: {node.HbaFile}";
         });
 
+    /// <summary>Создаёт роль на локальном Primary и помещает новый пароль в поле ввода с маскировкой.</summary>
     private async void OnCreateReplicaRoleClick(object sender, RoutedEventArgs e) =>
         await RunReplicaActionAsync(ReplicaPrimaryResult, async (_, pair) =>
         {
-            var password = await PostgreSqlReplicaPreparation.CreateRoleAsync(Cards[0].Profile, pair.Source, ExpectedPrimaryId,
-                ReplicaAdmin, ReplicaAdminPassword.Password);
+            var password = await PostgreSqlReplicaPreparation.CreateRoleAsync(Cards[0].Profile, pair.Source, ExpectedPrimaryId, ReplicaAdmin, ReplicaAdminPassword.Password);
             if (password is null)
                 return "Роль techmes_repl уже настроена. Используйте её действующий пароль.";
             ReplicaPassword.Password = password;
             return "Роль techmes_repl создана. Новый пароль находится в поле выше. Сохраните его для Secondary.";
         });
 
+    /// <summary>Копирует пароль по явному действию оператора для переноса на Secondary.</summary>
     private void OnCopyReplicaPasswordClick(object sender, RoutedEventArgs e)
     {
         try
@@ -81,6 +83,7 @@ public partial class PostgreSqlSetupControl
         }
     }
 
+    /// <summary>Обновляет pg_hba.conf на Primary и показывает путь к резервной копии файла.</summary>
     private async void OnAllowReplicaClick(object sender, RoutedEventArgs e) =>
         await RunReplicaActionAsync(ReplicaPrimaryResult, async (_, pair) =>
         {
@@ -90,6 +93,7 @@ public partial class PostgreSqlSetupControl
                 + "\nЗатем проверьте физическое подключение на Secondary. Более ранние правила pg_hba.conf сохраняют приоритет.";
         });
 
+    /// <summary>Проверяет существующий Standby или готовность отдельного кластера к созданию первой реплики.</summary>
     private async void OnInspectReplicaSecondaryClick(object sender, RoutedEventArgs e) =>
         await RunReplicaActionAsync(InitialStandbyResult, async (_, pair) =>
         {
@@ -104,6 +108,7 @@ public partial class PostgreSqlSetupControl
             return DescribeReplicaNode(local) + "\n" + DescribeReplicaConnection(primary, local);
         });
 
+    /// <summary>Читает локальный PostgreSQL через loopback и показывает его состояние до обращения к Primary.</summary>
     private async Task<PostgreSqlReplicaPreparation.Node> ReadReplicaTargetAsync(ReplicaPair pair)
     {
         var target = Cards[1].Profile;
@@ -113,6 +118,7 @@ public partial class PostgreSqlSetupControl
         return local;
     }
 
+    /// <summary>Проверяет SQL-вход на Primary с Secondary и, при подготовке, вход по протоколу репликации.</summary>
     private async Task<PostgreSqlReplicaPreparation.Node> CheckReplicaSourceFromTargetAsync(ReplicaPair pair, bool checkReplicationLogin = true)
     {
         var source = Cards[0].Profile;
@@ -134,9 +140,11 @@ public partial class PostgreSqlSetupControl
         return primary;
     }
 
+    /// <summary>Готовит запуск Check на локальном Secondary и разрешает Apply только после сверки отчёта и обоих ID.</summary>
     private async void OnRunReplicaCheckClick(object sender, RoutedEventArgs e) =>
         await RunReplicaActionAsync(InitialStandbyResult, async (window, pair) =>
         {
+            // Новый Check аннулирует предыдущий отчёт, даже если проверка завершится ошибкой.
             _replicaCheck = null;
             ReplicaApply.IsEnabled = false;
             PostgreSqlReplicaPreparation.RequireLocal(Cards[1].Profile, pair.Target);
@@ -166,8 +174,7 @@ public partial class PostgreSqlSetupControl
                 "Подготовка Secondary", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
                 return "Проверка отменена. Служба не останавливалась.";
 
-            var folder = new PostgreSqlInitialStandbyService(window.PostgreSqlHostToolsDirectory).Export(
-                Path.GetTempPath(), Cards[0].Profile, pair.Source, Cards[1].Profile, pair.Target, primary.Id);
+            var folder = new PostgreSqlInitialStandbyService(window.PostgreSqlHostToolsDirectory).Export(Path.GetTempPath(), Cards[0].Profile, pair.Source, Cards[1].Profile, pair.Target, primary.Id);
             ShowReplicaDirectory(folder);
             InitialStandbyResult.Text = "Откроется PowerShell. Введите учётные данные администратора и techmes_repl.";
             var data = await RunReplicaBundleAsync(folder, "Check", local?.Id ?? "");
@@ -184,6 +191,7 @@ public partial class PostgreSqlSetupControl
                 + "Secondary остановлен. Нажмите Apply после проверки, что нужные данные сохранены.";
         });
 
+    /// <summary>Повторно сверяет пару и после подтверждения запускает штатное создание и проверку Standby.</summary>
     private async void OnRunReplicaApplyClick(object sender, RoutedEventArgs e) =>
         await RunReplicaActionAsync(InitialStandbyResult, async (window, pair) =>
         {
@@ -211,6 +219,7 @@ public partial class PostgreSqlSetupControl
                 + "Выполните проверку контроллеров и подключите Main DB Secondary после подтверждения репликации.";
         });
 
+    /// <summary>Подтверждает, что локальный узел получил ID Primary и принимает WAL от ожидаемого адреса.</summary>
     private string VerifyRunningReplica(PostgreSqlReplicaPreparation.Node local, ReplicaPair pair)
     {
         if (ExpectedPrimaryId.Length == 0 || local.Id != ExpectedPrimaryId || !local.Standby ||
@@ -219,21 +228,25 @@ public partial class PostgreSqlSetupControl
         return $"Standby {pair.Target} · ID {local.Id}\nWAL: {local.Sender} → {pair.Target} · streaming · слот {local.Slot}";
     }
 
+    /// <summary>Формирует сводку о роли, каталоге, базах и свободных ресурсах WAL.</summary>
     private static string DescribeReplicaNode(PostgreSqlReplicaPreparation.Node node) =>
         $"PostgreSQL {node.Version} · {(node.Standby ? "Standby" : "Primary")} · ID {node.Id}\n"
         + $"Данные: {node.DataDirectory}\nБазы: {node.Databases}\n"
         + $"WAL: {node.WalLevel} · свободных отправителей: {node.FreeSenders} · слотов: {node.FreeSlots}";
 
+    /// <summary>Показывает результат двух проверок доступа и предупреждает о различии минорных версий.</summary>
     private static string DescribeReplicaConnection(PostgreSqlReplicaPreparation.Node primary, PostgreSqlReplicaPreparation.Node local) =>
         $"SQL и IDENTIFY_SYSTEM подтверждены. Primary PostgreSQL {primary.Version} · ID {primary.Id}."
         + (primary.VersionNumber != local.VersionNumber ? " Перед вводом в эксплуатацию выровняйте минорные версии." : "");
 
+    /// <summary>Запоминает каталог комплекта, чтобы оператор мог открыть отчёты Check и Apply.</summary>
     private void ShowReplicaDirectory(string folder)
     {
         _initialStandbyDirectory = folder;
         InitialStandbyOpenFolder.IsEnabled = true;
     }
 
+    /// <summary>Запускает действие под общей блокировкой Maintenance и выводит ошибку рядом с диагностикой узла.</summary>
     private async Task RunReplicaActionAsync(TextBox output, Func<MainWindow, ReplicaPair, Task<string>> operation)
     {
         try
@@ -256,10 +269,10 @@ public partial class PostgreSqlSetupControl
         }
     }
 
+    /// <summary>Запускает штатный комплект с повышением прав и читает отчёт выбранного режима.</summary>
     private static async Task<JsonElement> RunReplicaBundleAsync(string folder, string mode, string targetId)
     {
-        var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
-            @"WindowsPowerShell\v1.0\powershell.exe"))
+        var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe"))
         {
             UseShellExecute = true,
             Verb = "runas",
