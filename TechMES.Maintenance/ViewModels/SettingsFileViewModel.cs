@@ -8,6 +8,7 @@ namespace TechMES.Maintenance.ViewModels;
 /// </summary>
 public sealed class SettingsFileViewModel(SettingsFileDefinition definition, string fullPath) : ObservableObject
 {
+    private string _fullPath = fullPath;
     private string _content = "";
     private string _status = "Not loaded";
     private bool _isDirty;
@@ -25,7 +26,11 @@ public sealed class SettingsFileViewModel(SettingsFileDefinition definition, str
     /// <summary>
     /// Полный путь к файлу на диске.
     /// </summary>
-    public string FullPath { get; } = fullPath;
+    public string FullPath
+    {
+        get => _fullPath;
+        private set => SetProperty(ref _fullPath, value);
+    }
 
     /// <summary>
     /// JSON-текст файла.
@@ -59,11 +64,11 @@ public sealed class SettingsFileViewModel(SettingsFileDefinition definition, str
     }
 
     /// <summary>
-    /// Устанавливает содержимое без пометки файла как измененного.
-    /// Используется после чтения с диска и после успешного сохранения.
+    /// Обновляет путь и текст одной загруженной версии файла без пометки как изменённой.
     /// </summary>
-    public void SetCleanContent(string content)
+    public void SetLoadedFile(string path, string content)
     {
+        FullPath = path;
         _content = content;
         OnPropertyChanged(nameof(Content));
         IsDirty = false;

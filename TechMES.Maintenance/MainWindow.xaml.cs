@@ -1819,6 +1819,22 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             LoadSettingsFile(SelectedSettingsFile);
     }
 
+    /// <summary>Открывает исходный JSON в репозитории и рабочий JSON соответствующей службы на сервере.</summary>
+    private string GetRawAppsettingsPath(SettingsFileDefinition definition)
+    {
+        var relativePath = definition.RelativePath.Replace('/', '\\');
+        if (File.Exists(Path.Combine(_repositoryRoot.FullName, "TechMES.sln")))
+            return GetSourceAppsettingsPath(relativePath);
+
+        return relativePath.ToUpperInvariant() switch
+        {
+            @"TECHMES.RUNTIME.SERVICE\APPSETTINGS.JSON" => GetPreferredAppsettingsPath("runtime", relativePath, "Runtime.Service"),
+            @"TECHMES.CALC.SERVICE\APPSETTINGS.JSON" => GetPreferredAppsettingsPath("calc", relativePath, "Calc.Service"),
+            @"TECHMES.WEB\APPSETTINGS.JSON" => GetPreferredAppsettingsPath("web", relativePath, "Web"),
+            _ => GetSourceAppsettingsPath(relativePath)
+        };
+    }
+
     /// <summary>
     /// Загружает typed-представление Runtime, Calc.Service и WEB appsettings.
     /// Если сервис опубликован, читается рабочий published appsettings.
@@ -2184,9 +2200,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
             publishFolderName,
             "appsettings.json");
 
-        return File.Exists(publishedPath)
-            ? publishedPath
-            : GetSourceAppsettingsPath(sourceRelativePath);
+        if (File.Exists(publishedPath))
+            return publishedPath;
+        if (File.Exists(Path.Combine(_repositoryRoot.FullName, "TechMES.sln")))
+            return GetSourceAppsettingsPath(sourceRelativePath);
+
+        // В серверном пакете папки служб находятся рядом с Maintenance.
+        var maintenance = new DirectoryInfo(AppContext.BaseDirectory);
+        return maintenance.Name.Equals("Maintenance", StringComparison.OrdinalIgnoreCase) && maintenance.Parent is { } installRoot
+            ? Path.Combine(installRoot.FullName, publishFolderName, "appsettings.json")
+            : publishedPath;
     }
 
     /// <summary>
@@ -4144,8 +4167,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     /// </summary>
     private void OnSettingsFileSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (SelectedSettingsFile is not null && string.IsNullOrEmpty(SelectedSettingsFile.Content))
-            LoadSettingsFile(SelectedSettingsFile);
+        if (SelectedSettingsFile is { IsDirty: false } settingsFile)
+            LoadSettingsFile(settingsFile);
     }
 
     /// <summary>
@@ -4167,7 +4190,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
 
         try
         {
-            _settingsFileService.SaveWithoutBackup(SelectedSettingsFile.FullPath, SelectedSettingsFile.Content);
+            var currentPath = GetRawAppsettingsPath(SelectedSettingsFile.Definition);
+            if (!string.Equals(currentPath, SelectedSettingsFile.FullPath, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Путь рабочего файла изменился на {currentPath}. Перезагрузите файл перед сохранением.");
+
+            _settingsFileService.SaveWithoutBackup(currentPath, SelectedSettingsFile.Content);
             SelectedSettingsFile.IsDirty = false;
             SelectedSettingsFile.Status = "Saved.";
             AppendDiagnostics($"{SelectedSettingsFile.DisplayName}: saved.");
@@ -4186,9 +4213,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow, System.Component
     {
         try
         {
-            var content = _settingsFileService.Load(settingsFile.FullPath);
-            settingsFile.SetCleanContent(content);
-            settingsFile.Status = File.Exists(settingsFile.FullPath) ? $"Loaded: {DateTime.Now:HH:mm:ss}" : "File not found.";
+            var fullPath = GetRawAppsettingsPath(settingsFile.Definition);
+            var content = _settingsFileService.Load(fullPath);
+            settingsFile.SetLoadedFile(fullPath, content);
+            settingsFile.Status = File.Exists(fullPath) ? $"Loaded: {DateTime.Now:HH:mm:ss}" : "File not found.";
         }
         catch (Exception ex)
         {

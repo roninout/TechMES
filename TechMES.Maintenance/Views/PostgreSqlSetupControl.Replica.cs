@@ -50,9 +50,12 @@ public partial class PostgreSqlSetupControl
             var node = await PostgreSqlReplicaPreparation.CheckNodeAsync("127.0.0.1", profile, ReplicaAdmin, ReplicaAdminPassword.Password);
             PostgreSqlReplicaPreparation.RequireWritablePrimary(node, node.Id);
             InitialStandbySystemIdentifier.Text = node.Id;
-            var readiness = node.WalLevel is "replica" or "logical" && node.FreeSenders >= 2 && node.FreeSlots >= 1 && node.Senders == 0
-                ? "WAL: есть свободные отправители и слот для первой реплики."
-                : "Проверьте WAL и действующие подключения: для первого Standby нужны replica/logical, два свободных отправителя и физический слот.";
+            // При подключённой реплике проверка готовности для первой копии уже неприменима.
+            var readiness = node.Senders > 0
+                ? $"Есть подключения WAL ({node.Senders}). Состояние реплики проверьте на вкладке Secondary."
+                : node.WalLevel is "replica" or "logical" && node.FreeSenders >= 2 && node.FreeSlots >= 1
+                    ? "WAL: есть свободные отправители и слот для первой реплики."
+                    : "Для первого Standby проверьте wal_level (replica или logical), два свободных отправителя и физический слот.";
             return DescribeReplicaNode(node) + $"\n{readiness}\nРоль techmes_repl: {node.ReplicationRole}\npg_hba.conf: {node.HbaFile}";
         });
 

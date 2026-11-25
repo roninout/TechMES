@@ -139,6 +139,12 @@ public partial class PostgreSqlSetupControl
                 }
             }
         }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            foreach (var card in Cards)
+                card.SetNetworkStatus(null, "Клиент mTLS для PostgreSQL ещё не настроен на этом компьютере. "
+                    + "В мастере HA пройдите шаги A–D блока «Сетевая связь и сертификаты». Шаг C создаёт файл client.json.");
+        }
         catch (Exception ex)
         {
             foreach (var card in Cards)

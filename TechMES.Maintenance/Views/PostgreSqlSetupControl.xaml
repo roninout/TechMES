@@ -170,6 +170,16 @@
                                                         VerticalScrollBarVisibility="Auto" MaxHeight="230" />
                                         </StackPanel>
                                     </TabItem>
+                                    <TabItem Header="Help">
+                                        <StackPanel Margin="10">
+                                            <TextBlock Text="1. Подготовить Primary" FontWeight="SemiBold" />
+                                            <TextBlock Text="На сервере-источнике проверьте роль, ID кластера и ресурсы WAL. Создайте techmes_repl при необходимости и разрешите репликацию с IPv4 Secondary. Сохраните пароль роли для второго узла." Margin="0,4,0,10" />
+                                            <TextBlock Text="2. Создать Standby на Secondary" FontWeight="SemiBold" />
+                                            <TextBlock Text="Проверьте локальные базы и оба подключения к Primary. Сохраните нужные данные старого кластера. Выполните Check и Apply. Подтвердите общий ID кластера и streaming от Primary." Margin="0,4,0,10" />
+                                            <TextBlock Text="3. Подключить резервную Main DB в TechMES" FontWeight="SemiBold" />
+                                            <TextBlock Text="После streaming добавьте резервную строку сначала в Runtime на Secondary, затем на Primary. В строке оставьте ту же базу и измените Host на IPv4 реплики. Перезапускайте Runtime по одному и после каждого запуска проверяйте обе БД и доступность записи на Primary." Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </TabItem>
                                 </TabControl>
                             </StackPanel>
                         </Expander>
