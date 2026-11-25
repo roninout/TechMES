@@ -191,6 +191,10 @@ try {
         $report.HostProcessId = [int]$hostService.ProcessId
         $hostDirectory = Get-ServiceDirectory $hostService.PathName ($report.HostService + '.exe')
         $report.SettingsPath = Join-Path $hostDirectory 'appsettings.PostgreSqlControl.json'
+        # Runtime может читать параметры из основного appsettings, но сетевой мастер требует отдельный файл.
+        if (!(Test-Path -LiteralPath $report.SettingsPath -PathType Leaf)) {
+            throw ('Controller settings are missing: ' + $report.SettingsPath + '. Use Preparing the controller in Maintenance to configure the selected controller before network setup.')
+        }
         $valid = $false
 
         if ($hostService.State -eq 'Running' -and $hostService.ProcessId -gt 0 -and (Test-Path -LiteralPath $statusPath)) {

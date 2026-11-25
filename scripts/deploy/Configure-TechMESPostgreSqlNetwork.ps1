@@ -35,6 +35,10 @@ if ([IO.Path]::GetFileName($executable) -ine ($service.Name+'.exe')) { throw 'Us
 
 $directory=[IO.Path]::GetDirectoryName($executable)
 $settingsPath=Join-Path $directory 'appsettings.PostgreSqlControl.json'
+# Сеть настраивается поверх конфигурации, созданной штатной локальной подготовкой контроллера.
+if (!(Test-Path -LiteralPath $settingsPath -PathType Leaf)) {
+    throw ('Controller settings are missing: ' + $settingsPath + '. Use Preparing the controller in Maintenance, then run this network setup again.')
+}
 $settings=Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
 $control=$settings.PostgreSqlControl
 
