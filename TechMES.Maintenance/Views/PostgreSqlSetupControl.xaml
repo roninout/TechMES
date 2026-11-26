@@ -255,6 +255,13 @@
 
                         <TextBlock Text="3. Проверить готовность к плановому переключению" Style="{StaticResource SectionTitleText}" Margin="0,12,0,6" />
                         <TextBlock Text="Выполните перед переключением. Контроллеры проверят условия pg_rewind и вход репликации в обе стороны." TextWrapping="Wrap" Margin="0,0,0,8" />
+                        <Expander Header="Правила pg_hba.conf для репликации в обе стороны" Expanded="OnWizardReplicationRulesExpanded" Margin="0,0,0,8">
+                            <StackPanel Margin="8,8,8,0">
+                                <TextBlock Text="При первой настройке проверьте, что оба сервера разрешают вход физической репликации роли techmes_repl с IPv4 соседнего узла. На каждом сервере при необходимости добавьте его строку в действующий pg_hba.conf. Путь к файлу показывает команда SHOW hba_file. Существующее подходящее правило можно оставить." TextWrapping="Wrap" Margin="0,0,0,8" />
+                                <ui:TextBox x:Name="WizardReplicationRules" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas" />
+                                <TextBlock Text="На Windows новые подключения применяют сохранённые правила без перезапуска PostgreSQL. Затем нажмите «Проверить готовность»." TextWrapping="Wrap" Margin="0,8,0,0" />
+                            </StackPanel>
+                        </Expander>
                         <ui:Button Content="Проверить готовность" Click="OnCheckSwitchReadinessClick" Margin="0,0,0,8" />
                         <ui:TextBox x:Name="WizardSwitchReadinessResult" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
                                     VerticalScrollBarVisibility="Auto" MaxHeight="200" Visibility="Collapsed" />

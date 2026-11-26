@@ -157,6 +157,7 @@ public partial class PostgreSqlSetupControl
                 : "";
 
             UpdateSelectedCard();
+            UpdateWizardReplicationRules();
             if (manageActions)
                 SetCardActionsEnabled(true);
         }

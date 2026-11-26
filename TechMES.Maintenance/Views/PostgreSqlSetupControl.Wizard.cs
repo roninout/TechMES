@@ -72,6 +72,33 @@ public partial class PostgreSqlSetupControl
         }
     }
 
+    /// <summary>Обновляет подсказку при открытии, используя адреса выбранной пары.</summary>
+    private void OnWizardReplicationRulesExpanded(object sender, RoutedEventArgs e) => UpdateWizardReplicationRules();
+
+    /// <summary>Показывает для каждого узла правило с адресом противоположной стороны.</summary>
+    private void UpdateWizardReplicationRules()
+    {
+        const string example = "host    replication    techmes_repl    <IPv4 соседа>/32    scram-sha-256";
+        var addresses = Cards.Select(GetProfileAddress).ToArray();
+        if (addresses is not [var first, var second] || first == second)
+        {
+            WizardReplicationRules.Text = example;
+            return;
+        }
+
+        try
+        {
+            PostgreSqlNetworkSetupService.ValidateAddress(first);
+            PostgreSqlNetworkSetupService.ValidateAddress(second);
+            WizardReplicationRules.Text = $"На {first}:\nhost    replication    techmes_repl    {second}/32    scram-sha-256\n\n"
+                + $"На {second}:\nhost    replication    techmes_repl    {first}/32    scram-sha-256";
+        }
+        catch (InvalidDataException)
+        {
+            WizardReplicationRules.Text = example;
+        }
+    }
+
     /// <summary>Запрашивает отдельную проверку готовности у каждого контроллера по mTLS.</summary>
     private async void OnCheckSwitchReadinessClick(object sender, RoutedEventArgs e)
     {
