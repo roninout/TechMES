@@ -266,7 +266,16 @@
                         <ui:TextBox x:Name="WizardSwitchReadinessResult" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
                                     VerticalScrollBarVisibility="Auto" MaxHeight="200" Visibility="Collapsed" />
 
-                        <TextBlock Text="4. Автоматический возврат" Style="{StaticResource SectionTitleText}" Margin="0,12,0,6" />
+                        <TextBlock Text="4. Аварийное автопереключение PostgreSQL" Style="{StaticResource SectionTitleText}" Margin="0,12,0,6" />
+                        <TextBlock x:Name="WizardFailoverTarget" TextWrapping="Wrap" Margin="0,0,0,8" />
+                        <CheckBox x:Name="WizardEnableFailover" Content="Включить аварийное автопереключение на выбранном узле" Margin="0,0,0,8" />
+                        <TextBlock Text="При отказе PostgreSQL решение принимает Standby. Для перехода .11 → .12 включите флажок на .12. Для переключения в обоих направлениях примените настройку по очереди на обоих узлах."
+                                   TextWrapping="Wrap" Margin="0,0,0,6" />
+                        <TextBlock Text="Оба контроллера должны оставаться доступны по mTLS. При изменении настройки перезапускается контроллер выбранного узла. Чтобы применить настройку, сначала выполните «Проверить пару»."
+                                   TextWrapping="Wrap" Margin="0,0,0,8" />
+                        <ui:Button x:Name="WizardApplyFailover" Content="Применить на выбранном узле…" Click="OnWizardApplyFailoverClick" IsEnabled="False" />
+
+                        <TextBlock Text="5. Автоматический возврат" Style="{StaticResource SectionTitleText}" Margin="0,12,0,6" />
                         <TextBlock Text="Этот шаг нужен для изменения политики автовозврата. Для проверки уже настроенной пары достаточно пункта 2." Margin="0,0,0,8" />
                         <TextBlock Text="Предпочтительный Primary" />
                         <ComboBox x:Name="WizardPreferredPrimary" ItemsSource="{Binding Cards}" DisplayMemberPath="Address"

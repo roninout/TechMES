@@ -47,7 +47,7 @@ public sealed class PostgreSqlNetworkTests
     }
 
     [Fact]
-    public async Task AutomaticFailoverCountsNewSnapshotsAndLeavesThePlanForConsoleRejoin()
+    public async Task AutomaticFailoverCountsNewSnapshotsAndAutomaticallyRejoinsTheFormerPrimary()
     {
         using var fixture = new Fixture();
         using var worker = fixture.CreateAutomaticWorker(3);
@@ -64,14 +64,66 @@ public sealed class PostgreSqlNetworkTests
 
         source = source with { Local = source.Local with { CheckedAtUtc = source.Local.CheckedAtUtc!.Value.AddSeconds(1) } };
         await worker.CheckAsync(remote, CancellationToken.None);
-        await worker.CheckAsync(remote, CancellationToken.None);
-
         var pending = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(fixture.Store.CoordinatorPlanPath);
         Assert.True(pending.Emergency);
         Assert.Equal((Plan.From, Plan.To, Plan.SystemIdentifier), (pending.From, pending.To, pending.SystemIdentifier));
         Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61", "Promote:10.77.12.62" }, remote.Calls);
         var journal = PostgreSqlCommandStore.Read<JsonElement>(Path.Combine(fixture.Store.NetworkRoot, "coordinator-" + pending.Id + ".json"));
         Assert.StartsWith("PROMOTED:", journal.GetProperty("stage").GetString());
+
+        remote.Calls.Clear();
+        remote.ReadState = mode => mode is "Rejoin" or "Rebuild" ? "Missing" : null;
+        // Новый экземпляр должен продолжить сохранённый план без новых Fence и Promote.
+        using var restarted = fixture.CreateAutomaticWorker(3);
+        await restarted.CheckAsync(remote, CancellationToken.None);
+
+        Assert.Equal(new[] { "read-Promote:10.77.12.62", "read-Rejoin:10.77.12.61", "read-Rebuild:10.77.12.61",
+            "read-Fence:10.77.12.61", "read-Promote:10.77.12.62", "Rejoin:10.77.12.61",
+            "complete:10.77.12.61", "complete:10.77.12.62" }, remote.Calls);
+        Assert.False(File.Exists(fixture.Store.CoordinatorPlanPath));
+    }
+
+    [Theory]
+    [InlineData("Promote", "Missing")]
+    [InlineData("Rejoin", "Queued")]
+    [InlineData("Rejoin", "Running")]
+    [InlineData("Rejoin", "NeedsReview")]
+    [InlineData("Rejoin", "RebuildRequired")]
+    [InlineData("Rebuild", "Queued")]
+    public async Task AutomaticRejoinLeavesUnconfirmedOrBlockedRecoveryInTheJournal(string phase, string state)
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateAutomaticWorker(3);
+        var pending = Plan with { Emergency = true };
+        using (fixture.Store.LockCoordinator())
+            PostgreSqlCommandStore.Write(fixture.Store.CoordinatorPlanPath, pending);
+        var remote = new Remote { ReadState = mode => mode == phase ? state : mode == "Rejoin" ? "Missing" : null };
+
+        await worker.CheckAsync(remote, CancellationToken.None);
+
+        Assert.All(remote.Calls, call => Assert.StartsWith("read-", call));
+        Assert.Equal(pending, PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(fixture.Store.CoordinatorPlanPath));
+    }
+
+    [Fact]
+    public async Task AutomaticRejoinResumesCompletionAfterALostResponse()
+    {
+        using var fixture = new Fixture();
+        using var worker = fixture.CreateAutomaticWorker(3);
+        var pending = Plan with { Emergency = true };
+        using (fixture.Store.LockCoordinator())
+            PostgreSqlCommandStore.Write(fixture.Store.CoordinatorPlanPath, pending);
+        var remote = new Remote { LoseCompletionResponse = true };
+
+        await worker.CheckAsync(remote, CancellationToken.None);
+        Assert.True(File.Exists(fixture.Store.CoordinatorPlanPath));
+
+        remote.LoseCompletionResponse = false;
+        await worker.CheckAsync(remote, CancellationToken.None);
+
+        Assert.False(File.Exists(fixture.Store.CoordinatorPlanPath));
+        Assert.Equal(2, remote.Calls.Count(call => call == "complete:10.77.12.62"));
+        Assert.DoesNotContain("Rejoin:10.77.12.61", remote.Calls);
     }
 
     [Theory]
@@ -161,9 +213,10 @@ public sealed class PostgreSqlNetworkTests
         };
 
         await worker.CheckAsync(remote, CancellationToken.None);
+        remote.MissingPhase = "Promote";
         await worker.CheckAsync(remote, CancellationToken.None);
 
-        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61" }, remote.Calls);
+        Assert.Equal(new[] { "reserve:10.77.12.61", "reserve:10.77.12.62", "Fence:10.77.12.61", "read-Promote:10.77.12.62" }, remote.Calls);
         Assert.True(File.Exists(fixture.Store.CoordinatorPlanPath));
     }
 
@@ -743,6 +796,8 @@ public sealed class PostgreSqlNetworkTests
         public bool MissingFenceProof;
         public bool WrongEmergencyId;
         public string? MissingPhase;
+        public Func<string, string?>? ReadState;
+        public bool LoseCompletionResponse;
         public Func<string, PostgreSqlRemoteStatus>? StatusOverride;
 
         public Task<PostgreSqlRemoteStatus> StatusAsync(string address, CancellationToken ct)
@@ -756,6 +811,9 @@ public sealed class PostgreSqlNetworkTests
 
             if (FailReservation && address == Plan.To && action == "reserve")
                 throw new IOException("Peer refused reservation.");
+
+            if (LoseCompletionResponse && address == Plan.To && action == "complete")
+                throw new HttpRequestException("Peer completion response was lost.");
 
             return Task.CompletedTask;
         }
@@ -794,7 +852,8 @@ public sealed class PostgreSqlNetworkTests
                 throw new IOException("Temporary error reading the Fence journal.");
             }
 
-            return Task.FromResult(Operation(plan, mode));
+            var operation = Operation(plan, mode);
+            return Task.FromResult(ReadState?.Invoke(mode) is { } state ? operation with { State = state } : operation);
         }
     }
 

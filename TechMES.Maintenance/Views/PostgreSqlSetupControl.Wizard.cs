@@ -200,10 +200,13 @@ public partial class PostgreSqlSetupControl
 
     private void UpdateWizardPolicyButton()
     {
+        var selected = ServerCards?.SelectedItem as ServerCard;
+        if (WizardApplyFailover is not null)
+            WizardApplyFailover.IsEnabled = _wizardPairVerified && selected?.LiveNode is not null;
+
         if (WizardApply is null || WizardPreferredPrimary is null || WizardEnableFailback is null)
             return;
 
-        var selected = ServerCards.SelectedItem as ServerCard;
         var preferred = WizardPreferredPrimary.SelectedItem as ServerCard;
         var enabled = WizardEnableFailback.IsChecked == true;
         var canEnable = preferred is not null && !ReferenceEquals(selected, preferred) && PreferredNodeIsPassive(preferred);
@@ -219,6 +222,41 @@ public partial class PostgreSqlSetupControl
         preferred.Report is { Ready: true, Failback: { Enabled: false } policy }
         && preferred.LiveNode is { } node && policy.NodeAddress == node.NodeAddress
         && policy.PreferredPrimary == node.NodeAddress && policy.SystemIdentifier == node.Local.SystemIdentifier;
+
+    private void UpdateWizardFailoverSelection(ServerCard card)
+    {
+        var report = card.Report;
+        var saved = report is { Ready: true } ? report.FailoverEnabled : null;
+        WizardEnableFailover.IsChecked = saved == true;
+        WizardFailoverTarget.Text = report is { Ready: true, FailoverEnabled: { } enabled }
+            ? $"{card.Address} · Сохранённая настройка по отчёту от {FormatTime(report.CheckedAtUtc)}: {(enabled ? "включено" : "выключено")}."
+            : $"{card.Address} · Сохранённая настройка неизвестна. Значение можно получить проверкой выбранного узла в пункте 1.";
+        WizardApplyFailover.Content = PostgreSqlSetupService.IsLocal(card.Profile)
+            ? "Применить на выбранном узле…"
+            : "Экспорт настройки для выбранного узла…";
+    }
+
+    private async void OnWizardApplyFailoverClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!_wizardPairVerified)
+                throw new InvalidDataException("Сначала выполните «Проверить пару».");
+
+            var (primary, standby) = GetWizardPair();
+            var node = SelectedCard().LiveNode!.NodeAddress;
+            var peer = node == primary.NodeAddress ? standby.NodeAddress : primary.NodeAddress;
+            var policy = new PostgreSqlFailoverSetup(node, peer, primary.Local.SystemIdentifier!, WizardEnableFailover.IsChecked == true);
+            _wizardPairVerified = false;
+            WizardResult.Text = "После применения настроек обновите проверку пары.";
+            UpdateWizardPolicyButton();
+            await RunControllerActionAsync(ControllerAction.Configure, failover: policy);
+        }
+        catch (Exception ex)
+        {
+            ActionStatus.Text = ex.Message;
+        }
+    }
 
     private async void OnWizardApplyClick(object sender, RoutedEventArgs e)
     {

@@ -180,6 +180,11 @@ public sealed class PostgreSqlSwitchCoordinator(IPostgreSqlSwitchRemote remote)
 
         // Повтор с тем же идентификатором читает уже принятую или завершённую фазу.
         await RunPhaseAsync(plan, rebuild ? "Rebuild" : "Rejoin", plan.From, proof, progress, ct);
+        await CompleteEmergencyRecoveryAsync(plan, progress, ct);
+    }
+
+    internal async Task CompleteEmergencyRecoveryAsync(PostgreSqlSwitchPlan plan, Action<string> progress, CancellationToken ct)
+    {
         await remote.PlanAsync(plan.From, "complete", plan, ct);
         await remote.PlanAsync(plan.To, "complete", plan, ct);
         progress($"COMPLETED: Primary={plan.To}; Standby={plan.From}.");

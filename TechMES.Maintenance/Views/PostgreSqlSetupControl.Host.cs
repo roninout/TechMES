@@ -170,7 +170,7 @@ public partial class PostgreSqlSetupControl
     private async void OnInstallAgentClick(object sender, RoutedEventArgs e) => await RunControllerActionAsync(ControllerAction.InstallAgent);
 
     /// <summary>Выбирает локальный запуск или экспорт для того же действия над выбранным сервером.</summary>
-    private async Task RunControllerActionAsync(ControllerAction action, PostgreSqlFailbackSetup? failback = null)
+    private async Task RunControllerActionAsync(ControllerAction action, PostgreSqlFailbackSetup? failback = null, PostgreSqlFailoverSetup? failover = null)
     {
         SetCardActionsEnabled(false);
 
@@ -181,6 +181,7 @@ public partial class PostgreSqlSetupControl
             var install = action == ControllerAction.InstallAgent;
             var prepare = action != ControllerAction.Check;
             var local = PostgreSqlSetupService.IsLocal(profile);
+            var mode = PostgreSqlHostSetupService.ControllerMode(prepare, failback, failover);
             if (prepare)
                 _wizardPairVerified = false;
 
@@ -194,7 +195,12 @@ public partial class PostgreSqlSetupControl
             {
                 var service = install ? "TechMES.PostgreSql.Agent" : ControllerService(EffectiveHost(card));
 
-                var operation = failback is null ? "При подготовке" : "При изменении настройки автовозврата";
+                var operation = mode switch
+                {
+                    "Failover" => "При изменении настройки аварийного автопереключения",
+                    "Failback" => "При изменении настройки автовозврата",
+                    _ => "При подготовке"
+                };
                 if (MessageBox.Show(window, $"Компьютер: {profile.ComputerName}\n{operation} будет перезапущена служба {service}. Продолжить?", "Подготовка контроллера", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
                     return;
             }
@@ -221,19 +227,24 @@ public partial class PostgreSqlSetupControl
 
             if (local)
             {
-                var report = await window.RunPostgreSqlHostSetupAsync(profile, prepare, includePackage: install, failback: failback);
+                var report = await window.RunPostgreSqlHostSetupAsync(profile, prepare, includePackage: install, failback: failback, failover: failover);
                 card.SetReport(report);
-                ActionStatus.Text = failback is null ? ReportOutcome(report) : report.Message;
+                ActionStatus.Text = failback is null && failover is null ? ReportOutcome(report) : report.Message;
             }
             else
             {
-                var mode = failback is not null ? "Failback" : prepare ? "Prepare" : "Check";
-                var directory = await window.ExportPostgreSqlHostSetupAsync(profile, outputDirectory!, includePackage: install, failback: failback);
+                var directory = await window.ExportPostgreSqlHostSetupAsync(profile, outputDirectory!, includePackage: install, failback: failback, failover: failover);
 
                 card.BundleDirectory = directory;
                 card.BundleInstructions = $"{directory}\nСкопируйте всю папку на {profile.ComputerName}. Запустите команду из неё в PowerShell от администратора.\n\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\\Prepare-Controller.ps1' -Mode {mode} -NoPause\n\nВерните файл result.json по пути из строки Result: и нажмите «Загрузить результат…».";
 
-                ActionStatus.Text = failback is not null ? "Комплект настройки автовозврата сохранён." : prepare ? "Комплект подготовки сохранён." : "Комплект проверки сохранён.";
+                ActionStatus.Text = mode switch
+                {
+                    "Failover" => "Комплект настройки аварийного автопереключения сохранён.",
+                    "Failback" => "Комплект настройки автовозврата сохранён.",
+                    "Prepare" => "Комплект подготовки сохранён.",
+                    _ => "Комплект проверки сохранён."
+                };
             }
         }
         catch (Exception ex)
@@ -384,6 +395,7 @@ public partial class PostgreSqlSetupControl
         WizardTarget.Text = $"Выбранный узел: {card.Address} · {ControllerName(kind)}";
         WizardTransferText.Text = card.BundleInstructions;
         WizardTransferPanel.Visibility = TransferPanel.Visibility;
+        UpdateWizardFailoverSelection(card);
         UpdateWizardPolicyButton();
     }
 

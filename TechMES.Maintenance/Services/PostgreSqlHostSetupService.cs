@@ -10,6 +10,7 @@ using TechMES.Maintenance.Models;
 namespace TechMES.Maintenance.Services;
 
 public sealed record PostgreSqlFailbackSetup(string NodeAddress, string PeerAddress, string PreferredPrimary, string SystemIdentifier, bool Enabled);
+public sealed record PostgreSqlFailoverSetup(string NodeAddress, string PeerAddress, string SystemIdentifier, bool Enabled);
 
 /// <summary>Результат локальной подготовки; импортированный отчёт остаётся снимком на указанное время.</summary>
 public sealed class PostgreSqlHostSetupReport
@@ -29,6 +30,8 @@ public sealed class PostgreSqlHostSetupReport
     public string SettingsPath { get; set; } = "";
     public PostgreSqlLocalHealthResponse? Local { get; set; }
     public PostgreSqlFailbackSetup? Failback { get; set; }
+    public PostgreSqlFailoverSetup? Failover { get; set; }
+    public bool? FailoverEnabled { get; set; }
     public string Message { get; set; } = "";
     public string LogPath { get; set; } = "";
 }
@@ -43,9 +46,12 @@ public sealed class PostgreSqlHostSetupService
     public static string Fingerprint(PostgreSqlSetupProfile profile) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(profile, Json))));
 
     /// <summary>Создаёт новый каталог; чужие файлы и прежние комплекты не заменяются.</summary>
-    public string Export(PostgreSqlSetupProfile profile, string outputDirectory, string toolsDirectory, bool includePackage = true, PostgreSqlFailbackSetup? failback = null)
+    public string Export(PostgreSqlSetupProfile profile, string outputDirectory, string toolsDirectory, bool includePackage = true, PostgreSqlFailbackSetup? failback = null, PostgreSqlFailoverSetup? failover = null)
     {
         profile.ValidateHost();
+        if (failback is not null && failover is not null)
+            throw new ArgumentException("Настраивайте аварийное переключение и автовозврат отдельными операциями.");
+
         var directory = Path.Combine(outputDirectory, "TechMES_PgHost_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
 
@@ -62,7 +68,7 @@ public sealed class PostgreSqlHostSetupService
             if (engine.Split(ProfileMarker, StringSplitOptions.None).Length != 2)
                 throw new InvalidDataException("Неподходящая версия инструмента подготовки контроллера.");
 
-            var payload = JsonSerializer.Serialize(new { Profile = profile, ProfileFingerprint = Fingerprint(profile), Failback = failback }, Json);
+            var payload = JsonSerializer.Serialize(new { Profile = profile, ProfileFingerprint = Fingerprint(profile), Failback = failback, Failover = failover }, Json);
             var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(payload));
             engine = engine.Replace(ProfileMarker, "$script:EmbeddedProfileBase64 = '" + encoded + "'", StringComparison.Ordinal);
             File.WriteAllText(Path.Combine(directory, "Prepare-Controller.ps1"), engine, new UTF8Encoding(true));
@@ -161,6 +167,11 @@ public sealed class PostgreSqlHostSetupService
             if (report.Failback is { } policy && (!report.PreparationCompleted || !report.Addresses.Contains(policy.NodeAddress)
                 || local.SystemIdentifier != policy.SystemIdentifier || (policy.Enabled && policy.NodeAddress == policy.PreferredPrimary)))
                 throw new InvalidDataException("Отчёт об автовозврате относится к другой паре или узлу.");
+
+            if (report.Failover is { } failover && (!report.PreparationCompleted || !report.Addresses.Contains(failover.NodeAddress)
+                || local.SystemIdentifier != failover.SystemIdentifier || failover.NodeAddress == failover.PeerAddress
+                || report.FailoverEnabled != failover.Enabled))
+                throw new InvalidDataException("Отчёт об аварийном автопереключении относится к другой паре, узлу или настройке.");
         }
 
         return report;
@@ -169,14 +180,17 @@ public sealed class PostgreSqlHostSetupService
     /// <summary>Сравнивает пути Windows независимо от регистра и вида разделителя.</summary>
     private static bool SamePath(string? left, string right) => string.Equals(left?.Replace('/', '\\').TrimEnd('\\'), right.Replace('/', '\\').TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
 
+    internal static string ControllerMode(bool prepare, PostgreSqlFailbackSetup? failback, PostgreSqlFailoverSetup? failover) =>
+        failover is not null ? "Failover" : failback is not null ? "Failback" : prepare ? "Prepare" : "Check";
+
     /// <summary>Запускает автономную консоль с UAC и ждёт её результата.</summary>
-    public async Task<PostgreSqlHostSetupReport> RunLocalAsync(PostgreSqlSetupProfile profile, string toolsDirectory, bool prepare, bool includePackage = true, PostgreSqlFailbackSetup? failback = null)
+    public async Task<PostgreSqlHostSetupReport> RunLocalAsync(PostgreSqlSetupProfile profile, string toolsDirectory, bool prepare, bool includePackage = true, PostgreSqlFailbackSetup? failback = null, PostgreSqlFailoverSetup? failover = null)
     {
         if (!PostgreSqlSetupService.IsLocal(profile))
             throw new InvalidOperationException("Выбран другой компьютер. Экспортируйте комплект и запустите его на сервере БД.");
 
-        var directory = await Task.Run(() => Export(profile, Path.Combine(PostgreSqlSetupService.Root, "ControllerRuns"), toolsDirectory, prepare && includePackage, failback));
-        var mode = failback is not null ? "Failback" : prepare ? "Prepare" : "Check";
+        var directory = await Task.Run(() => Export(profile, Path.Combine(PostgreSqlSetupService.Root, "ControllerRuns"), toolsDirectory, prepare && includePackage, failback, failover));
+        var mode = ControllerMode(prepare, failback, failover);
         var id = Guid.NewGuid();
         var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe"))
         {
@@ -194,6 +208,9 @@ public sealed class PostgreSqlHostSetupService
 
         if (process.ExitCode != 0 && report.Ready)
             throw new InvalidDataException("Код завершения не соответствует успешному отчёту контроллера.");
+
+        if (report.Ready && failover is not null && report.Failover != failover)
+            throw new InvalidDataException("Отчёт не подтверждает запрошенную настройку аварийного автопереключения.");
 
         return report;
     }

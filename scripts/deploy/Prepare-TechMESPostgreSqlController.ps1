@@ -1,6 +1,6 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([ValidateSet('Check','Prepare','Failback')][string]$Mode = 'Check', [Guid]$RunId = [Guid]::NewGuid(), [switch]$NoPause)
+param([ValidateSet('Check','Prepare','Failback','Failover')][string]$Mode = 'Check', [Guid]$RunId = [Guid]::NewGuid(), [switch]$NoPause)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -19,7 +19,7 @@ $locks = New-Object 'System.Collections.Generic.List[System.Threading.Mutex]'
 $coordinatorLock = $null
 $settingsBackup = $null
 $settingsPath = $null
-$report = [ordered]@{ Format = 1; ProfileFingerprint = $payload.ProfileFingerprint; RunId = $RunId.ToString(); Computer = $env:COMPUTERNAME; Addresses = @(); CheckedAtUtc = ''; Ready = $false; PreparationCompleted = $false; HostKind = ''; HostService = ''; HostServiceState = ''; HostProcessId = 0; SettingsPath = ''; Local = $null; Failback = $null; Message = ''; LogPath = $logPath }
+$report = [ordered]@{ Format = 1; ProfileFingerprint = $payload.ProfileFingerprint; RunId = $RunId.ToString(); Computer = $env:COMPUTERNAME; Addresses = @(); CheckedAtUtc = ''; Ready = $false; PreparationCompleted = $false; HostKind = ''; HostService = ''; HostServiceState = ''; HostProcessId = 0; SettingsPath = ''; Local = $null; Failback = $null; Failover = $null; FailoverEnabled = $null; Message = ''; LogPath = $logPath }
 if (Test-Path -LiteralPath $run) { throw 'This RunId already exists. Use a new run.' }
 
 # Reads only the apphost path from a registered TechMES service.
@@ -38,9 +38,7 @@ function Test-SamePath([string]$Left, [string]$Right) {
 
 function Get-FailbackSetting($Policy, $Settings) {
     $network = $Settings.PostgreSqlNetwork
-    $control = $Settings.PostgreSqlControl
-    if (!$network.Enabled -or !$control.CommandsEnabled -or [string]$control.ExpectedSystemIdentifier -cne $Policy.SystemIdentifier -or $network.NodeAddress -cne $Policy.NodeAddress -or $network.PeerAddress -cne $Policy.PeerAddress) { throw 'The local controller is not configured for this pair and cluster.' }
-    if ($network.PeerAddress -eq $network.NodeAddress -or $Policy.PreferredPrimary -notin @($network.NodeAddress,$network.PeerAddress) -or ($Policy.Enabled -and $Policy.PreferredPrimary -ne $network.PeerAddress)) { throw 'The selected failback policy does not match the local PostgreSQL pair.' }
+    if ($Policy.PreferredPrimary -notin @($network.NodeAddress,$network.PeerAddress) -or ($Policy.Enabled -and $Policy.PreferredPrimary -ne $network.PeerAddress)) { throw 'The selected failback policy does not match the local PostgreSQL pair.' }
 
     $current = $Settings.PSObject.Properties['PostgreSqlAutomaticFailback']
     if (!$Policy.Enabled -and ($null -eq $current -or $null -eq $current.Value -or !$current.Value.PSObject.Properties['Enabled'] -or !$current.Value.Enabled)) { return $null }
@@ -48,6 +46,30 @@ function Get-FailbackSetting($Policy, $Settings) {
     $value | Add-Member -NotePropertyName 'Enabled' -NotePropertyValue ([bool]$Policy.Enabled) -Force
     $value | Add-Member -NotePropertyName 'PreferredPrimary' -NotePropertyValue ([string]$Policy.PreferredPrimary) -Force
     return $value
+}
+
+function Get-FailoverSetting($Policy, $Settings) {
+    $current = $Settings.PSObject.Properties['PostgreSqlAutomaticFailover']
+    $value = if ($null -eq $current -or $null -eq $current.Value) { [pscustomobject]@{} } else { $current.Value }
+    if ($value -isnot [pscustomobject]) { throw 'PostgreSqlAutomaticFailover must be a JSON object.' }
+
+    $thresholdSetting = $value.PSObject.Properties['FailureThreshold']
+    $threshold = 0
+    if ($Policy.Enabled -and $null -ne $thresholdSetting -and
+        (![int]::TryParse([string]$thresholdSetting.Value, [ref]$threshold) -or $threshold -lt 1 -or $threshold -gt 10)) {
+        throw 'PostgreSqlAutomaticFailover.FailureThreshold must be an integer from 1 to 10.'
+    }
+
+    $value | Add-Member -NotePropertyName 'Enabled' -NotePropertyValue ([bool]$Policy.Enabled) -Force
+    return $value
+}
+
+function Read-FailoverEnabled([string]$Path) {
+    $settings = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    $section = $settings.PSObject.Properties['PostgreSqlAutomaticFailover']
+    if ($null -eq $section -or $null -eq $section.Value) { return }
+    $enabled = $section.Value.PSObject.Properties['Enabled']
+    if ($null -ne $enabled -and $enabled.Value -is [bool]) { return $enabled.Value }
 }
 
 # Rechecks packaged bytes before the existing installer can stop or copy a service.
@@ -140,11 +162,11 @@ try {
     }
 
     $statusPath = Join-Path $env:ProgramData ('TechMES\PostgreSqlNodes\' + $profile.ServiceName.ToUpperInvariant() + '\status.json')
-    if ($Mode -eq 'Failback') {
-        $policy = $payload.Failback
-        if ($null -eq $policy -or $policy.SystemIdentifier -notmatch '^[0-9]{1,20}$' -or $addresses -notcontains $policy.NodeAddress) { throw 'This policy belongs to another computer or cluster.' }
+    if ($Mode -in @('Failback','Failover')) {
+        $policy = $payload.PSObject.Properties[$Mode].Value
+        if ($null -eq $policy -or $policy.SystemIdentifier -notmatch '^[0-9]{1,20}$' -or $addresses -notcontains $policy.NodeAddress -or $policy.Enabled -isnot [bool]) { throw 'Invalid policy or this policy belongs to another computer or cluster.' }
         $selectedService = if ($selected -eq 'Runtime') { $runtime } else { $agent }
-        if ($null -eq $selectedService -or $selectedService.State -ne 'Running') { throw 'Start the configured controller before applying failback.' }
+        if ($null -eq $selectedService -or $selectedService.State -ne 'Running') { throw 'Start the configured controller before applying the PostgreSQL policy.' }
         $hostDirectory = Get-ServiceDirectory $selectedService.PathName ($report.HostService + '.exe')
         $settingsPath = Join-Path $hostDirectory 'appsettings.PostgreSqlControl.json'
         $commandsDirectory = Join-Path (Split-Path -Parent $statusPath) 'Commands'
@@ -157,17 +179,24 @@ try {
                 if ((Test-Path -LiteralPath $current) -and ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Controller paths must not contain reparse points.' }
             }
         }
-        if (!(Test-Path -LiteralPath $commandsDirectory -PathType Container) -or ($policy.Enabled -and !(Test-Path -LiteralPath $credentialsPath -PathType Leaf))) { throw 'Configure local PostgreSQL command credentials before applying failback.' }
+        if (!(Test-Path -LiteralPath $commandsDirectory -PathType Container) -or ($policy.Enabled -and !(Test-Path -LiteralPath $credentialsPath -PathType Leaf))) { throw 'Configure local PostgreSQL command credentials before applying the policy.' }
         $null = New-Item -ItemType Directory -Path $networkDirectory -Force
         $coordinatorLock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-        if ((Test-Path -LiteralPath (Join-Path $networkDirectory 'active-switch.json')) -or (Test-Path -LiteralPath (Join-Path $networkDirectory 'console-active.json'))) { throw 'Complete the PostgreSQL operation before changing failback settings.' }
+        if ((Test-Path -LiteralPath (Join-Path $networkDirectory 'active-switch.json')) -or (Test-Path -LiteralPath (Join-Path $networkDirectory 'console-active.json'))) { throw 'Complete the PostgreSQL operation before changing automatic switching settings.' }
 
         $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+        $network = $settings.PostgreSqlNetwork
         $control = $settings.PostgreSqlControl
         if ($control.ServiceName -ine $profile.ServiceName -or $control.Port -ne $profile.Port -or !(Test-SamePath $control.BinDirectory $profile.BinDirectory) -or !(Test-SamePath $control.DataDirectory $profile.DataDirectory)) { throw 'The installed PostgreSQL profile differs from the selected profile.' }
+        if (!$network.Enabled -or !$control.CommandsEnabled -or [string]$control.ExpectedSystemIdentifier -cne $policy.SystemIdentifier -or $network.NodeAddress -cne $policy.NodeAddress -or $network.PeerAddress -cne $policy.PeerAddress -or $network.NodeAddress -eq $network.PeerAddress) { throw 'The local controller is not configured for this pair and cluster.' }
         $before = $settings | ConvertTo-Json -Depth 32
-        $value = Get-FailbackSetting $policy $settings
-        if ($null -ne $value) { $settings | Add-Member -NotePropertyName 'PostgreSqlAutomaticFailback' -NotePropertyValue $value -Force }
+        if ($Mode -eq 'Failback') {
+            $value = Get-FailbackSetting $policy $settings
+            if ($null -ne $value) { $settings | Add-Member -NotePropertyName 'PostgreSqlAutomaticFailback' -NotePropertyValue $value -Force }
+        }
+        else {
+            $settings | Add-Member -NotePropertyName 'PostgreSqlAutomaticFailover' -NotePropertyValue (Get-FailoverSetting $policy $settings) -Force
+        }
         $after = $settings | ConvertTo-Json -Depth 32
         if ($after -cne $before) {
             $temporary = $settingsPath + '.' + $RunId.ToString('N') + '.tmp'
@@ -175,11 +204,17 @@ try {
             [IO.File]::WriteAllText($temporary, $after, (New-Object Text.UTF8Encoding($true)))
             [IO.File]::Replace($temporary, $settingsPath, $backup)
             $settingsBackup = $backup
+        }
+        if ($Mode -eq 'Failover' -and !$settingsBackup) {
+            $hostProcess = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $selectedService.ProcessId)
+            $waitForFresh = $null -ne $hostProcess -and (Get-Item -LiteralPath $settingsPath).LastWriteTimeUtc -gt $hostProcess.CreationDate.ToUniversalTime()
+        }
+        if ($settingsBackup -or $waitForFresh) {
             Restart-Service -Name $report.HostService
             $waitForFresh = $true
         }
         $report.PreparationCompleted = $true
-        $report.Failback = $policy
+        $report[$Mode] = $policy
     }
 
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($(if ($waitForFresh) { [Math]::Max(90, $profile.HostHealthPeriodSeconds + 30) } else { 0 }))
@@ -212,8 +247,20 @@ try {
         Start-Sleep -Seconds 2
     } while ($true)
 
+    try { $report.FailoverEnabled = Read-FailoverEnabled $report.SettingsPath }
+    catch {
+        if ($Mode -eq 'Failover') { throw }
+        Write-Verbose "Could not read the saved failover setting: $($_.Exception.Message)"
+    }
+    if ($Mode -eq 'Failover' -and ($null -eq $report.FailoverEnabled -or $report.FailoverEnabled -ne $policy.Enabled)) {
+        throw 'The requested failover state was not confirmed in the installed controller settings.'
+    }
     $report.Ready = $true
-    $report.Message = if ($Mode -eq 'Failback') { "Failback enabled: $($policy.Enabled). Preferred Primary: $($policy.PreferredPrimary)." } else { 'Controller ownership, PostgreSQL service and fresh local status confirmed.' }
+    $report.Message = switch ($Mode) {
+        'Failback' { "Failback enabled: $($policy.Enabled). Preferred Primary: $($policy.PreferredPrimary)." }
+        'Failover' { "Automatic PostgreSQL failover enabled: $($policy.Enabled) on $($policy.NodeAddress)." }
+        default { 'Controller ownership, PostgreSQL service and fresh local status confirmed.' }
+    }
     Write-Host $report.Message -ForegroundColor Green
 }
 catch {

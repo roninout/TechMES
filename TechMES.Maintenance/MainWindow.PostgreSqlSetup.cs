@@ -50,7 +50,7 @@ public partial class MainWindow
     }
 
     /// <summary>Копирует комплект вне UI-потока и сериализует операцию с deployment.</summary>
-    public async Task<string> ExportPostgreSqlHostSetupAsync(PostgreSqlSetupProfile profile, string outputDirectory, bool includePackage = true, PostgreSqlFailbackSetup? failback = null)
+    public async Task<string> ExportPostgreSqlHostSetupAsync(PostgreSqlSetupProfile profile, string outputDirectory, bool includePackage = true, PostgreSqlFailbackSetup? failback = null, PostgreSqlFailoverSetup? failover = null)
     {
         if (_deploymentOperationRunning)
             throw new InvalidOperationException("Дождитесь завершения текущей операции Maintenance.");
@@ -61,7 +61,7 @@ public partial class MainWindow
 
         try
         {
-            return await Task.Run(() => new PostgreSqlHostSetupService().Export(profile, outputDirectory, tools, includePackage, failback));
+            return await Task.Run(() => new PostgreSqlHostSetupService().Export(profile, outputDirectory, tools, includePackage, failback, failover));
         }
         finally
         {
@@ -71,7 +71,7 @@ public partial class MainWindow
     }
 
     /// <summary>Запускает проверку или подготовку контроллера на текущем компьютере.</summary>
-    public async Task<PostgreSqlHostSetupReport> RunPostgreSqlHostSetupAsync(PostgreSqlSetupProfile profile, bool prepare, bool includePackage = true, PostgreSqlFailbackSetup? failback = null)
+    public async Task<PostgreSqlHostSetupReport> RunPostgreSqlHostSetupAsync(PostgreSqlSetupProfile profile, bool prepare, bool includePackage = true, PostgreSqlFailbackSetup? failback = null, PostgreSqlFailoverSetup? failover = null)
     {
         if (_deploymentOperationRunning)
             throw new InvalidOperationException("Дождитесь завершения текущей операции Maintenance.");
@@ -86,7 +86,7 @@ public partial class MainWindow
 
         try
         {
-            return await new PostgreSqlHostSetupService().RunLocalAsync(profile, PostgreSqlHostToolsDirectory, prepare, includePackage, failback);
+            return await new PostgreSqlHostSetupService().RunLocalAsync(profile, PostgreSqlHostToolsDirectory, prepare, includePackage, failback, failover);
         }
         finally
         {

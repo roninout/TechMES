@@ -60,10 +60,41 @@ internal sealed class PostgreSqlAutomaticFailoverWorker(IOptions<PostgreSqlAutom
 
         try
         {
-            // Console может возобновить или завершить этот план после сбоя или Promote.
             if (File.Exists(store.CoordinatorPlanPath))
             {
                 Reset();
+                using var recoveryLock = store.LockCoordinator();
+                if (!File.Exists(store.CoordinatorPlanPath))
+                    return;
+
+                var pending = PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(store.CoordinatorPlanPath);
+                pending.Validate(network.Value, control.Value);
+                if (!pending.Emergency || pending.To != network.Value.NodeAddress)
+                    return;
+
+                // Подтверждение Promote сохраняется на новом Primary и переживает перезапуск контроллера.
+                var promote = await remote.ReadAsync(pending.To, "Promote", pending, ct);
+                if (promote.State != "Succeeded" || promote.Id != pending.OperationId("Promote"))
+                    return;
+
+                var rejoin = await remote.ReadAsync(pending.From, "Rejoin", pending, ct);
+                if (rejoin.Id != pending.OperationId("Rejoin") || rejoin.State is not ("Missing" or "Succeeded"))
+                    return;
+
+                if (rejoin.State == "Missing")
+                {
+                    var rebuild = await remote.ReadAsync(pending.From, "Rebuild", pending, ct);
+                    if (rebuild.Id != pending.OperationId("Rebuild") || rebuild.State != "Missing")
+                        return;
+                }
+
+                var coordinator = new PostgreSqlSwitchCoordinator(remote);
+                started = pending;
+                if (rejoin.State == "Succeeded")
+                    await coordinator.CompleteEmergencyRecoveryAsync(pending, stage => Report(pending, stage), ct);
+                else
+                    await coordinator.RecoverEmergencyAsync(pending, stage => Report(pending, stage), ct);
+                File.Delete(store.CoordinatorPlanPath);
                 return;
             }
 
@@ -107,24 +138,24 @@ internal sealed class PostgreSqlAutomaticFailoverWorker(IOptions<PostgreSqlAutom
             PostgreSqlCommandStore.Write(store.CoordinatorPlanPath, plan);
             started = plan;
 
-            Report("Automatic emergency switch started.");
-            await new PostgreSqlSwitchCoordinator(remote).RunAsync(plan, Report, ct);
-
-            void Report(string stage)
-            {
-                store.WriteCoordinatorProgress(plan, stage);
-                logger.LogInformation("PostgreSQL automatic failover {PlanId}: {Stage}", plan.Id, stage);
-            }
+            Report(plan, "Automatic emergency switch started.");
+            await new PostgreSqlSwitchCoordinator(remote).RunAsync(plan, stage => Report(plan, stage), ct);
         }
-        catch (Exception ex) when (!ct.IsCancellationRequested && ex is (IOException or HttpRequestException or OperationCanceledException or InvalidOperationException or UnauthorizedAccessException or JsonException))
+        catch (Exception ex) when (!ct.IsCancellationRequested && ex is (IOException or HttpRequestException or OperationCanceledException or InvalidOperationException or UnauthorizedAccessException or JsonException or TimeoutException))
         {
             Reset();
 
             if (started is not null)
                 logger.LogWarning(ex, "PostgreSQL automatic failover {PlanId} did not finish. The active plan was retained.", started.Id);
             else
-                logger.LogDebug(ex, "PostgreSQL automatic failover could not confirm a stopped Primary and its Standby.");
+                logger.LogDebug(ex, "PostgreSQL automatic failover could not verify the pair or the retained emergency plan.");
         }
+    }
+
+    private void Report(PostgreSqlSwitchPlan plan, string stage)
+    {
+        store.WriteCoordinatorProgress(plan, stage);
+        logger.LogInformation("PostgreSQL automatic failover {PlanId}: {Stage}", plan.Id, stage);
     }
 
     private static async Task<PostgreSqlLocalHealthResponse?> ReadStoppedPrimaryAsync(IPostgreSqlSwitchRemote remote, PostgreSqlSwitchPlan plan, CancellationToken ct)

@@ -112,6 +112,22 @@ public sealed class PostgreSqlHostSetupTests : IDisposable
         Assert.DoesNotContain(PostgreSqlHostSetupService.ProfileMarker, File.ReadAllText(Path.Combine(directory, "Prepare-Controller.ps1")));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ExportsFailoverPolicyForTheSelectedNode(bool enabled)
+    {
+        var policy = new PostgreSqlFailoverSetup("192.168.3.12", "192.168.3.11", "123456", enabled);
+        var directory = _service.Export(Profile(), _root, Tools(), includePackage: false, failover: policy);
+        var script = File.ReadAllText(Path.Combine(directory, "Prepare-Controller.ps1"));
+        var encoded = script.Split('\'')[1];
+        using var payload = JsonDocument.Parse(Convert.FromBase64String(encoded));
+
+        Assert.Equal("Failover", PostgreSqlHostSetupService.ControllerMode(true, null, policy));
+        Assert.Equal(policy, payload.RootElement.GetProperty("Failover").Deserialize<PostgreSqlFailoverSetup>());
+        Assert.Equal(JsonValueKind.Null, payload.RootElement.GetProperty("Failback").ValueKind);
+    }
+
     /// <summary>Подменённые файлы не попадают в готовый комплект; незавершённый каталог удаляется.</summary>
     [Fact]
     public void RejectsTamperedAgentAndCleansOwnOutput()
