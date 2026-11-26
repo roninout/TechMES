@@ -47,7 +47,10 @@
 
             <CheckBox Content="Включить автоматическую передачу IP при отказе WEB владельца" IsChecked="{Binding WebFailover.Enabled}" Margin="0,0,0,8" />
 
-            <TextBlock Text="Работает у координатора при доступных обоих Host. Недоступность Host блокирует новую передачу. После восстановления WEB обратная передача автоматически не выполняется." TextWrapping="Wrap" Margin="0,0,0,8" />
+            <TextBlock Text="Достаточно включить флажок на координаторе — узле с меньшим IPv4. Если адреса пары отличаются только окончанием .11 и .12, включите флажок на узле .11."
+                       TextWrapping="Wrap" Margin="0,0,0,4" />
+            <TextBlock Text="Для передачи IP оба Host должны быть доступны. После восстановления WEB IP автоматически не возвращается. Автоматическое переключение PostgreSQL настраивается отдельно."
+                       TextWrapping="Wrap" Margin="0,0,0,8" />
 
             <TextBlock Text="Последовательных наблюдений отказа WEB владельца" />
             <ui:TextBox Text="{Binding FailureThresholdText, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
