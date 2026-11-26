@@ -24,7 +24,7 @@ public sealed class PostgreSqlSwitchRemote : IPostgreSqlMaintenanceRemote, IDisp
     private readonly Dictionary<string, HttpClient> _clients = new(StringComparer.Ordinal);
 
     // Создаёт клиентов только для двух настроенных адресов.
-    public PostgreSqlSwitchRemote(PostgreSqlNetworkOptions options, X509Certificate2 certificate)
+    public PostgreSqlSwitchRemote(PostgreSqlNetworkOptions options, X509Certificate2 certificate, TimeSpan? timeout = null)
     {
         foreach (var address in new[] { options.NodeAddress, options.PeerAddress })
         {
@@ -40,7 +40,7 @@ public sealed class PostgreSqlSwitchRemote : IPostgreSqlMaintenanceRemote, IDisp
 
             handler.ClientCertificates.Add(certificate);
 
-            _clients.Add(address, new HttpClient(handler) { BaseAddress = new Uri($"https://{address}:{options.Port}/"), Timeout = TimeSpan.FromSeconds(25), MaxResponseContentBufferSize = 1048576 });
+            _clients.Add(address, new HttpClient(handler) { BaseAddress = new Uri($"https://{address}:{options.Port}/"), Timeout = timeout ?? TimeSpan.FromSeconds(25), MaxResponseContentBufferSize = 1048576 });
         }
     }
 
@@ -48,6 +48,17 @@ public sealed class PostgreSqlSwitchRemote : IPostgreSqlMaintenanceRemote, IDisp
     public async Task<PostgreSqlRemoteStatus> StatusAsync(string address, CancellationToken ct)
     {
         return await _clients[address].GetFromJsonAsync<PostgreSqlRemoteStatus>("v1/status", ct) ?? throw new IOException("Empty node status.");
+    }
+
+    // Получает результат диагностики с закреплённого mTLS-узла.
+    public async Task<PostgreSqlSwitchReadiness> CheckSwitchReadinessAsync(string address, CancellationToken ct)
+    {
+        using var response = await _clients[address].GetAsync("v1/switch-readiness", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            throw new IOException("На узле установлена версия контроллера без проверки готовности. Обновите Runtime или Agent.");
+
+        await CheckAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<PostgreSqlSwitchReadiness>(ct) ?? throw new IOException("Контроллер не вернул результат диагностики.");
     }
 
     // Читает историю с узла, включая этапы и сохранённую причину отказа.

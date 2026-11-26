@@ -32,6 +32,7 @@ public partial class PostgreSqlSetupControl
         UpdateWizardPolicyButton();
         SetCardActionsEnabled(false);
         WizardActivePlan.Visibility = Visibility.Collapsed;
+        WizardSwitchReadinessResult.Visibility = Visibility.Collapsed;
         WizardResult.Text = "Проверяем контроллеры и поток WAL…";
 
         try
@@ -68,6 +69,60 @@ public partial class PostgreSqlSetupControl
         {
             SetCardActionsEnabled(true);
             UpdateWizardPolicyButton();
+        }
+    }
+
+    /// <summary>Запрашивает отдельную проверку готовности у каждого контроллера по mTLS.</summary>
+    private async void OnCheckSwitchReadinessClick(object sender, RoutedEventArgs e)
+    {
+        SetCardActionsEnabled(false);
+        WizardSwitchReadinessResult.Visibility = Visibility.Visible;
+        WizardSwitchReadinessResult.Text = "Проверяем условия переключения на обоих узлах…";
+
+        try
+        {
+            await RefreshCardsAsync(manageActions: false);
+            var (primary, standby) = GetWizardPair();
+            var from = primary.NodeAddress;
+            var to = standby.NodeAddress;
+            var connection = PostgreSqlMaintenanceConnection.Load();
+            using var certificate = connection.LoadCertificate();
+            using var remote = new PostgreSqlSwitchRemote(connection.Network, certificate, TimeSpan.FromSeconds(90));
+
+            var reports = await Task.WhenAll(CheckNodeAsync(from), CheckNodeAsync(to));
+            var summary = reports.All(report => report.Ready)
+                ? "Оба узла прошли проверку. Для планового переключения откройте вкладку Switching."
+                : "Готовность пары не подтверждена. Устраните указанные причины и повторите проверку.";
+            WizardSwitchReadinessResult.Text = $"Направление {from} → {to} · Проверено {DateTime.Now:HH:mm:ss}\n" + string.Join("\n", reports.Select(report => report.Text)) + "\n" + summary;
+
+            // Показывает результат второго узла даже при отказе или тайм-ауте первого.
+            async Task<(bool Ready, string Text)> CheckNodeAsync(string address)
+            {
+                try
+                {
+                    var result = await remote.CheckSwitchReadinessAsync(address, CancellationToken.None);
+                    if (result.NodeAddress != address || result.From != from || result.To != to)
+                        throw new InvalidDataException("Роли PostgreSQL изменились. Повторите проверку пары.");
+
+                    return result.Ready ? (true, $"{address} · Готов") : (false, $"{address} · {result.Detail}");
+                }
+                catch (OperationCanceledException)
+                {
+                    return (false, $"{address} · Истекло время ожидания ответа контроллера.");
+                }
+                catch (Exception ex)
+                {
+                    return (false, $"{address} · {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            WizardSwitchReadinessResult.Text = ex.Message;
+        }
+        finally
+        {
+            SetCardActionsEnabled(true);
         }
     }
 

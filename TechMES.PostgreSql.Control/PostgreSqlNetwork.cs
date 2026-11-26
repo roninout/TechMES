@@ -72,6 +72,7 @@ public sealed record PostgreSqlPhaseRequest(PostgreSqlSwitchPlan Plan, JsonEleme
 public sealed record PostgreSqlRemoteOperation(string Id, string State, string Message, JsonElement? Result, JsonElement? Fence);
 
 public sealed record PostgreSqlRemoteStatus(string NodeAddress, PostgreSqlLocalHealthResponse Local, PostgreSqlSwitchPlan? ActivePlan = null);
+public sealed record PostgreSqlSwitchReadiness(string NodeAddress, string From, string To, bool Ready, string Detail);
 
 public sealed record PostgreSqlPhaseSummary(string Mode, string Id, string State, string Message, string? Error, string? Log);
 

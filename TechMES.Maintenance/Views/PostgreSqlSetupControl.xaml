@@ -253,7 +253,13 @@
                                     VerticalScrollBarVisibility="Auto" MinHeight="100" MaxHeight="240" />
                         <ui:Button x:Name="WizardActivePlan" Content="Открыть план переключения" Click="OnWizardActivePlanClick" Visibility="Collapsed" Margin="0,8,0,0" />
 
-                        <TextBlock Text="3. Автоматический возврат" Style="{StaticResource SectionTitleText}" Margin="0,12,0,6" />
+                        <TextBlock Text="3. Проверить готовность к плановому переключению" Style="{StaticResource SectionTitleText}" Margin="0,12,0,6" />
+                        <TextBlock Text="Выполните перед переключением. Контроллеры проверят условия pg_rewind и вход репликации в обе стороны." TextWrapping="Wrap" Margin="0,0,0,8" />
+                        <ui:Button Content="Проверить готовность" Click="OnCheckSwitchReadinessClick" Margin="0,0,0,8" />
+                        <ui:TextBox x:Name="WizardSwitchReadinessResult" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                    VerticalScrollBarVisibility="Auto" MaxHeight="200" Visibility="Collapsed" />
+
+                        <TextBlock Text="4. Автоматический возврат" Style="{StaticResource SectionTitleText}" Margin="0,12,0,6" />
                         <TextBlock Text="Этот шаг нужен для изменения политики автовозврата. Для проверки уже настроенной пары достаточно пункта 2." Margin="0,0,0,8" />
                         <TextBlock Text="Предпочтительный Primary" />
                         <ComboBox x:Name="WizardPreferredPrimary" ItemsSource="{Binding Cards}" DisplayMemberPath="Address"

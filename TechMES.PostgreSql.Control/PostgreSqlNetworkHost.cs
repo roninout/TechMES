@@ -79,6 +79,7 @@ public sealed class PostgreSqlNetworkHost(IOptions<PostgreSqlNetworkOptions> net
 
                 app.MapGet("/v1/status", () => inbox.Status());
                 app.MapGet("/v1/switches", () => inbox.History());
+                app.MapGet("/v1/switch-readiness", (CancellationToken token) => inbox.CheckSwitchReadinessAsync(token));
 
                 app.MapPost("/v1/reserve", async (PostgreSqlSwitchPlan plan, CancellationToken token) =>
                 {

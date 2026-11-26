@@ -1,7 +1,7 @@
 #requires -Version 5.1
 [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
 param(
-    [ValidateSet('Status','Fence','Promote','Rejoin','Rebuild','FailbackReadiness','CheckInitialStandby','InitializeStandby')][string]$Mode='Status',
+    [ValidateSet('Status','Fence','Promote','Rejoin','Rebuild','FailbackReadiness','SwitchReadiness','CheckInitialStandby','InitializeStandby')][string]$Mode='Status',
     [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$From,
     [Parameter(Mandatory=$true)][ValidateScript({ $ip=$_ -as [Net.IPAddress]; $null -ne $ip -and $ip.AddressFamily -eq 'InterNetwork' -and $ip.ToString() -ceq $_ -and $ip.GetAddressBytes()[0] -in 1..223 -and ![Net.IPAddress]::IsLoopback($ip) })][string]$To,
     [string]$FenceFile='',
@@ -316,8 +316,18 @@ function Read-Fence {
 function Assert-SqlPair($Primary, $Standby) {
     if ($Primary.recovery -or $Primary.readOnly -or !$Standby.recovery -or $Standby.paused -or $Primary.sid -cne $Standby.sid -or $Primary.timeline -ne $Standby.timeline) { throw 'Expected one writable Primary and its unpaused Standby in the same cluster and timeline.' }
 
+    if ($Primary.version -lt 180000 -or $Primary.version -ge 190000 -or $Primary.version -ne $Standby.version) {
+        throw "Both nodes must run the same PostgreSQL 18 release. Primary: $($Primary.version), Standby: $($Standby.version)."
+    }
+
+    $address=$From
     foreach ($node in @($Primary,$Standby)) {
-        if ($node.version -lt 180000 -or $node.version -ge 190000 -or $node.version -ne $Primary.version -or !$node.superuser -or $node.configErrors -ne 0 -or $node.tablespaces -ne 0 -or $node.syncNames -ne '' -or (Normalize-Path $node.data) -ine $DataDirectory -or $node.fullPages -ne 'on' -or ($node.hints -ne 'on' -and $node.checksums -ne 'on')) { throw 'Unsupported PostgreSQL settings, permissions or storage layout for this first planned test.' }
+        if (!$node.superuser) { throw "The configured SQL account on $address must be a superuser." }
+        if ($node.configErrors -ne 0) { throw "PostgreSQL or pg_hba.conf has configuration errors on $address." }
+        if ($node.tablespaces -ne 0 -or (Normalize-Path $node.data) -ine $DataDirectory) { throw "Unsupported PGDATA path or external tablespaces on $address." }
+        if ($node.syncNames -ne '') { throw "The planned switch requires empty synchronous_standby_names on $address." }
+        if ($node.fullPages -ne 'on' -or ($node.hints -ne 'on' -and $node.checksums -ne 'on')) { throw "pg_rewind on $address requires full_page_writes=on and either wal_log_hints=on or data_checksums=on." }
+        $address=$To
     }
 
     if (@($Standby.receiver | Where-Object { $_.host -eq $From -and $_.port -eq $Port -and $_.status -eq 'streaming' }).Count -ne 1 -or @($Primary.replicas | Where-Object { $_.address -eq $To -and $_.state -eq 'streaming' }).Count -ne 1) { throw 'The selected replication stream is not healthy.' }
@@ -331,6 +341,47 @@ function Assert-Pair($Primary, $Standby) {
     Assert-ReplicationLogin $To $Primary.sid
 
     if (Get-ChildItem -LiteralPath $DataDirectory -Recurse -Force -Attributes ReparsePoint | Select-Object -First 1) { throw 'Reparse points inside PGDATA are not supported.' }
+}
+
+# Сверяет условия планового переключения и проверяет вход репликации с текущего компьютера.
+function Assert-SwitchReadiness {
+    $local=Get-Node '127.0.0.1'
+    $primary=$local
+    $standby=$local
+    if ($script:LocalAddress -eq $From) {
+        $peerAddress=$To
+        $standby=Get-Node $peerAddress
+    }
+    else {
+        $peerAddress=$From
+        $primary=Get-Node $peerAddress
+    }
+
+    Assert-SqlPair $primary $standby
+    $null=Assert-ServiceState $true
+
+    try {
+        Assert-ReplicationLogin $peerAddress $local.sid
+    }
+    catch {
+        throw "Replication login to ${peerAddress}: $($_.Exception.Message)"
+    }
+
+    if ($script:LocalAddress -eq $From) {
+        if (!(Ensure-Slot $To -CheckOnly) -and $standby.slotsFree -lt 1) { throw "No free physical replication slot on $To." }
+        if ($standby.walLevel -notin @('replica','logical') -or $standby.walSendersFree -lt 1) { throw "WAL sender capacity is unavailable on $To." }
+    }
+
+    if (Get-ChildItem -LiteralPath $DataDirectory -Recurse -Force -Attributes ReparsePoint | Select-Object -First 1) { throw 'Reparse points inside PGDATA are not supported.' }
+    foreach ($path in $local.configs) { $null=Get-ConfigRelativePath $path }
+
+    Assert-RewindSpace
+}
+
+# Проверяет запас места на диске для рабочей копии PGDATA.
+function Assert-RewindSpace {
+    $size=(Get-ChildItem -LiteralPath $DataDirectory -Recurse -File -Force | Measure-Object -Property Length -Sum).Sum
+    if ((New-Object IO.DriveInfo([IO.Path]::GetPathRoot($DataDirectory))).AvailableFreeSpace -lt ($size+2GB)) { throw 'Insufficient space for one working copy of PGDATA plus 2 GB.' }
 }
 
 # Измеряет отставание применения WAL относительно точки flush на текущем Primary.
@@ -540,9 +591,7 @@ function Invoke-Fence {
 
     if ($service.StartMode -notin @('Auto','Manual')) { throw 'The current service startup type is not Auto or Manual.' }
 
-    $size=(Get-ChildItem -LiteralPath $DataDirectory -Recurse -File -Force | Measure-Object -Property Length -Sum).Sum
-
-    if ((New-Object IO.DriveInfo([IO.Path]::GetPathRoot($DataDirectory))).AvailableFreeSpace -lt ($size+2GB)) { throw 'The first test needs space for one working copy of PGDATA plus 2 GB.' }
+    Assert-RewindSpace
 
     $proof=[pscustomobject]@{
         Format=1
@@ -830,8 +879,7 @@ function Invoke-Rejoin {
     $configs=if ($EmergencyFenceId) { @(Get-EmergencyRejoinConfigs) } else { @($proof.Configs) }
 
     if ($EmergencyFenceId) {
-        $size=(Get-ChildItem -LiteralPath $DataDirectory -Recurse -File -Force | Measure-Object Length -Sum).Sum
-        if ((New-Object IO.DriveInfo([IO.Path]::GetPathRoot($DataDirectory))).AvailableFreeSpace -lt ($size+2GB)) { throw 'Insufficient space for a working copy of PGDATA plus 2 GB.' }
+        Assert-RewindSpace
     }
 
     $stage=$DataDirectory+'.techmes-stage-'+$proof.Id
@@ -1163,6 +1211,21 @@ foreach ($file in $tools) {
 }
 
 if (!(Test-Path -LiteralPath $script:ServiceTool -PathType Leaf)) { throw 'Place Set-PostgreSQL18ServiceControl.ps1 beside this script.' }
+
+# Завершает диагностику до создания журнала, резервирования и запуска фаз переключения.
+if ($Mode -eq 'SwitchReadiness') {
+    try {
+        if (!$CredentialInput -or !$ExpectedSystemIdentifier) { throw 'Switch readiness requires protected local credentials and the expected cluster identity.' }
+        Read-ProtectedCredentials
+        Assert-SwitchReadiness
+        'READY'
+        return
+    }
+    catch {
+        [Console]::Error.WriteLine($_.Exception.Message)
+        exit 1
+    }
+}
 
 if ($Mode -ne 'Status' -and !$initial) {
     if (!$FenceFile) { throw 'Specify an exchange file using -FenceFile.' }

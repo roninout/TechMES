@@ -33,6 +33,41 @@ public sealed class PostgreSqlSwitchInbox(PostgreSqlCommandStore store, PostgreS
         return new(network.Value.NodeAddress, monitor.GetHealth(), File.Exists(ActivePath) ? PostgreSqlCommandStore.Read<PostgreSqlSwitchPlan>(ActivePath) : null);
     }
 
+    // Запускает только диагностику на узле с действующим владением и без активного плана.
+    public async Task<PostgreSqlSwitchReadiness> CheckSwitchReadinessAsync(CancellationToken ct)
+    {
+        if (!await _gate.WaitAsync(0, ct))
+            throw new InvalidOperationException("The local PostgreSQL controller is busy. Try the check again.");
+
+        try
+        {
+            if (File.Exists(ActivePath))
+                throw new InvalidOperationException("An active PostgreSQL switch already exists.");
+
+            var node = network.Value.NodeAddress;
+            var peer = network.Value.PeerAddress;
+            var (from, to) = monitor.GetHealth().PostgreSqlRole switch
+            {
+                "Primary" => (node, peer),
+                "Standby" => (peer, node),
+                _ => throw new InvalidOperationException("The local PostgreSQL role is unknown.")
+            };
+
+            (bool Ready, string Detail) result = (false, "");
+            await host.ExecuteOwnedAsync(async settings =>
+            {
+                AssertNoOutstandingCommands();
+                result = await PostgreSqlSwitchRunner.CheckSwitchReadinessAsync(settings, from, to, store, ct);
+            }, ct);
+
+            return new(node, from, to, result.Ready, result.Detail);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     // Возвращает активный план и последние двадцать завершённых планов без изменений на диске.
     public PostgreSqlSwitchHistoryEntry[] History()
     {

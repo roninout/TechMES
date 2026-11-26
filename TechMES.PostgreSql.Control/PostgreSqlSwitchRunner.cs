@@ -48,29 +48,55 @@ public sealed class PostgreSqlSwitchRunner : IPostgreSqlSwitchRunner
         return process.ExitCode;
     }
 
+    // Проверяет отставание WAL перед автоматическим возвратом.
     internal static async Task<bool> IsReadyForFailbackAsync(PostgreSqlControlOptions settings, PostgreSqlSwitchPlan plan, int timeline, int maxReplayLagBytes, PostgreSqlCommandStore store, CancellationToken ct)
+    {
+        var start = CreateStartInfo(settings, "FailbackReadiness", plan.From, plan.To);
+
+        foreach (var argument in new[] { "-ExpectedTimeline", timeline.ToString(CultureInfo.InvariantCulture), "-MaxReplayLagBytes", maxReplayLagBytes.ToString(CultureInfo.InvariantCulture) })
+            start.ArgumentList.Add(argument);
+
+        var (ready, _) = await RunReadOnlyAsync(start, store, ct);
+        return ready;
+    }
+
+    // Проверяет условия планового переключения с учётными данными локального контроллера.
+    internal static async Task<(bool Ready, string Detail)> CheckSwitchReadinessAsync(PostgreSqlControlOptions settings, string from, string to, PostgreSqlCommandStore store, CancellationToken ct)
+    {
+        try
+        {
+            return await RunReadOnlyAsync(CreateStartInfo(settings, "SwitchReadiness", from, to), store, ct);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return (false, "The PostgreSQL readiness check timed out.");
+        }
+    }
+
+    // Передаёт защищённые данные через stdin и ограничивает время только для диагностики.
+    private static async Task<(bool Ready, string Detail)> RunReadOnlyAsync(ProcessStartInfo start, PostgreSqlCommandStore store, CancellationToken ct)
     {
         store.ValidateCredentials();
         var credentials = Convert.ToBase64String(await File.ReadAllBytesAsync(store.CredentialPath, ct));
-        using var process = new Process { StartInfo = CreateStartInfo(settings, "FailbackReadiness", plan.From, plan.To) };
-
-        foreach (var argument in new[] { "-ExpectedTimeline", timeline.ToString(CultureInfo.InvariantCulture), "-MaxReplayLagBytes", maxReplayLagBytes.ToString(CultureInfo.InvariantCulture) })
-            process.StartInfo.ArgumentList.Add(argument);
-
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(65));
         var token = timeout.Token;
+        using var process = new Process { StartInfo = start };
         process.Start();
 
         try
         {
             var output = process.StandardOutput.ReadToEndAsync(token);
-            var errors = process.StandardError.BaseStream.CopyToAsync(Stream.Null, token);
+            var errors = process.StandardError.ReadToEndAsync(token);
             await process.StandardInput.WriteLineAsync(credentials.AsMemory(), token);
             process.StandardInput.Close();
             await Task.WhenAll(process.WaitForExitAsync(token), output, errors);
 
-            return process.ExitCode == 0 && (await output).Trim() == "READY";
+            if (process.ExitCode == 0 && (await output).Trim() == "READY")
+                return (true, "");
+
+            var detail = (await errors).Trim();
+            return (false, detail.Length == 0 ? "The readiness check did not confirm success." : detail[..Math.Min(detail.Length, 2048)]);
         }
         finally
         {
