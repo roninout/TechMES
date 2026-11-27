@@ -4,97 +4,173 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:views="clr-namespace:TechMES.Maintenance.Views">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="16" DataContext="{Binding HostSetup}" IsEnabled="{Binding CanOperate}">
-            <TextBlock Text="TechMes Host — общий адрес WEB" FontSize="20" Margin="0,0,0,8" />
-            <TextBlock Text="Подготовьте сеть и mTLS на обоих узлах. Первоначальное назначение и передача IP выполняются отдельными кнопками ниже."
-                       TextWrapping="Wrap" Margin="0,0,0,12" />
+    <views:MaintenancePageControl.Resources>
+        <Style x:Key="CoordinatorSettings" TargetType="StackPanel">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsCoordinator}" Value="True">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
 
-            <WrapPanel Margin="0,0,0,12">
-                <ui:Button Content="Загрузить" Click="OnLoadHostSetupClick" Margin="0,0,8,8" />
-                <ui:Button Content="Проверить сеть" Click="OnCheckHostSetupClick" Margin="0,0,8,8" />
-                <ui:Button Content="Создать сертификат узла" Click="OnCreateHostCertificateClick" Margin="0,0,8,8" />
-            </WrapPanel>
+        <Style x:Key="StandbySettings" TargetType="StackPanel">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsCoordinator}" Value="False">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
 
-            <TextBlock Text="Локальный интерфейс — выбирается отдельно на каждом компьютере" />
-            <ComboBox ItemsSource="{Binding Adapters}" DisplayMemberPath="Display" SelectedValuePath="Id"
-                      SelectedValue="{Binding Shared.InterfaceId, Mode=TwoWay}" Margin="0,4,0,10" />
+        <Style x:Key="HostHint" TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
 
-            <TextBlock Text="Собственный IPv4 этого компьютера" />
-            <ui:TextBox Text="{Binding Shared.NodeAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+        <Style x:Key="HostField" TargetType="{x:Type ui:TextBox}" BasedOn="{StaticResource {x:Type ui:TextBox}}">
+            <Setter Property="Margin" Value="0,4,0,10" />
+        </Style>
+    </views:MaintenancePageControl.Resources>
 
-            <TextBlock Text="IPv4 второго компьютера" />
-            <ui:TextBox Text="{Binding Shared.PeerAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+    <Grid DataContext="{Binding HostSetup}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-            <TextBlock Text="Выделенный общий IPv4" />
-            <ui:TextBox Text="{Binding Shared.VirtualAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+        <StackPanel Margin="16,16,16,0" IsEnabled="{Binding CanOperate}">
+            <TextBlock Text="{Binding NodeTitle}" Style="{StaticResource SectionTitleText}" />
+            <TextBlock Text="{Binding AddressSummary}" Style="{StaticResource HostHint}" Margin="0,0,0,12" />
 
-            <TextBlock Text="Префикс подсети, например 24" />
-            <ui:TextBox Text="{Binding PrefixLengthText, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
-
-            <CheckBox Content="Включить защищённый endpoint Host" IsChecked="{Binding Control.Enabled}" Margin="0,4,0,10" />
-
-            <TextBlock Text="Порт HTTPS Host — одинаковый на обоих узлах" />
-            <ui:TextBox Text="{Binding ControlPortText, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
-
-            <TextBlock Text="SHA256 собственного сертификата узла" />
-            <ui:TextBox Text="{Binding Control.CertificateSha256, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
-
-            <TextBlock Text="SHA256 сертификата второго узла — скопируйте с другого компьютера" />
-            <ui:TextBox Text="{Binding Control.PeerCertificateSha256, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
-
-            <TextBlock Text="Автоматическая передача при отказе WEB" FontSize="18" Margin="0,12,0,8" />
-
-            <CheckBox Content="Включить автоматическую передачу IP при отказе WEB владельца" IsChecked="{Binding WebFailover.Enabled}" Margin="0,0,0,8" />
-
-            <TextBlock Text="Достаточно включить флажок на координаторе — узле с меньшим IPv4. Если адреса пары отличаются только окончанием .11 и .12, включите флажок на узле .11."
-                       TextWrapping="Wrap" Margin="0,0,0,4" />
-            <TextBlock Text="Для передачи IP оба Host должны быть доступны. После восстановления WEB IP автоматически не возвращается. Автоматическое переключение PostgreSQL настраивается отдельно."
-                       TextWrapping="Wrap" Margin="0,0,0,8" />
-
-            <TextBlock Text="Последовательных наблюдений отказа WEB владельца" />
-            <ui:TextBox Text="{Binding FailureThresholdText, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
-
-            <TextBlock Text="Последовательных наблюдений готовности WEB резерва" />
-            <ui:TextBox Text="{Binding RecoveryThresholdText, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
-
-            <TextBlock Text="Автоматическое переключение при отказе Host" FontSize="18" Margin="0,12,0,8" />
-
-            <CheckBox Content="Включить переключение и возврат при отказе Host"
-                      IsChecked="{Binding ServiceFailover.Enabled}" Margin="0,0,0,8" />
-            <TextBlock Text="Включите на обоих узлах. Основной узел — координатор с меньшим IPv4 (.11), резерв — второй узел (.12)."
-                       TextWrapping="Wrap" Margin="0,0,0,8" />
-
-            <TextBlock Text="Полное DNS-имя координатора — заполните на резерве (.12)" />
-            <ui:TextBox Text="{Binding ServiceFailover.PreferredComputerName, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,4" />
-            <TextBlock Text="Укажите доменное имя компьютера .11, например srv1.plant.local. На .11 оставьте поле пустым."
-                       TextWrapping="Wrap" Margin="0,0,0,10" />
-
-            <TextBlock Text="Доменная учётная запись резервного компьютера — заполните на координаторе (.11)" />
-            <ui:TextBox Text="{Binding PeerComputerAccount, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,4" />
-            <TextBlock Text="Укажите учётную запись компьютера .12 в формате DOMAIN\COMPUTER$. Для восстановления через WinRM Host на резерве должен работать под LocalSystem. Сохраните профиль на .11, затем зарегистрируйте восстановление на .11."
-                       TextWrapping="Wrap" Margin="0,0,0,10" />
-
-            <WrapPanel>
+            <WrapPanel Margin="0,0,0,8">
+                <ui:Button Content="Загрузить профиль" Click="OnLoadHostSetupClick" Margin="0,0,8,8" />
                 <ui:Button Content="Сохранить и перезапустить Host" Click="OnSaveHostSetupClick" Margin="0,0,8,8" />
-                <ui:Button Content="Зарегистрировать восстановление Host" Click="OnRegisterHostFailoverClick" Margin="0,0,8,8" />
-                <ui:Button Content="Открыть firewall Host" Click="OnOpenHostFirewallClick" Margin="0,0,8,8" />
+                <ui:Button Content="Состояние IP" Click="OnHostOwnerStatusClick" Margin="0,0,8,8" />
                 <ui:Button Content="Проверить второй Host" Click="OnCheckPeerHostClick" Margin="0,0,8,8" />
             </WrapPanel>
-
-            <TextBlock Text="Управление общим IP — по сохранённому профилю" FontSize="18" Margin="0,16,0,8" />
-            <TextBlock Text="Координатор — узел с меньшим IPv4. Передача удаляет IP у прежнего владельца перед назначением новому. Потеря связи не запускает захват IP. Во время передачи открытые WEB-сессии могут прерваться."
-                       TextWrapping="Wrap" Margin="0,0,0,8" />
-
-            <WrapPanel>
-                <ui:Button Content="Состояние IP" Click="OnHostOwnerStatusClick" Margin="0,0,8,8" />
-                <ui:Button Content="Первое назначение этому ПК" Click="OnHostOwnerInitializeClick" Margin="0,0,8,8" />
-                <ui:Button Content="Передать IP другому ПК" Click="OnHostOwnerTransferClick" Margin="0,0,8,8" />
-                <ui:Button Content="Продолжить операцию" Click="OnHostOwnerResumeClick" Margin="0,0,8,8" />
-            </WrapPanel>
-
-            <ui:TextBox Text="{Binding Report, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
-                        FontFamily="Consolas" MinHeight="200" Margin="0,8,0,0" />
         </StackPanel>
-    </ScrollViewer>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="16,0,16,0" IsEnabled="{Binding CanOperate}">
+                <views:MaintenanceSection Header="Автоматическое переключение при отказе Host" Margin="0,0,0,14">
+                    <StackPanel>
+                        <CheckBox IsChecked="{Binding ServiceFailover.Enabled}" Margin="0,0,0,4">
+                            <TextBlock Text="Включить переключение и возврат при отказе Host" TextWrapping="Wrap" />
+                        </CheckBox>
+                        <TextBlock Text="Включите на обоих узлах. После переключения из-за отказа Host адрес возвращается на координатор, когда его Host и WEB готовы."
+                                   Style="{StaticResource HostHint}" />
+
+                        <StackPanel Style="{StaticResource StandbySettings}" Margin="0,12,0,0">
+                            <TextBlock Text="Полное DNS-имя координатора" TextWrapping="Wrap" />
+                            <ui:TextBox Text="{Binding ServiceFailover.PreferredComputerName, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="srv1.plant.local" Style="{StaticResource HostField}" />
+                            <TextBlock Text="Укажите полное доменное имя координатора. Оно используется для восстановления через WinRM."
+                                       Style="{StaticResource HostHint}" />
+                        </StackPanel>
+
+                        <StackPanel Style="{StaticResource CoordinatorSettings}" Margin="0,12,0,0">
+                            <TextBlock Text="Доменная учётная запись резервного компьютера" TextWrapping="Wrap" />
+                            <ui:TextBox Text="{Binding PeerComputerAccount, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="DOMAIN\COMPUTER$" Style="{StaticResource HostField}" />
+                            <TextBlock Text="На резерве служба Host должна работать под LocalSystem. Сохраните профиль на координаторе, затем зарегистрируйте восстановление."
+                                       Style="{StaticResource HostHint}" Margin="0,0,0,8" />
+                            <ui:Button Content="Зарегистрировать восстановление Host" Click="OnRegisterHostFailoverClick"
+                                       HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </StackPanel>
+                </views:MaintenanceSection>
+
+                <StackPanel Style="{StaticResource CoordinatorSettings}" Margin="0,0,0,14">
+                    <views:MaintenanceSection Header="Автоматическая передача при отказе WEB">
+                        <StackPanel>
+                            <CheckBox IsChecked="{Binding WebFailover.Enabled}" Margin="0,0,0,4">
+                                <TextBlock Text="Включить автоматическую передачу IP при отказе WEB владельца" TextWrapping="Wrap" />
+                            </CheckBox>
+                            <TextBlock Text="Для передачи нужны оба Host. После восстановления WEB адрес остаётся на текущем владельце до следующей передачи."
+                                       Style="{StaticResource HostHint}" Margin="0,0,0,10" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Наблюдений отказа WEB владельца" TextWrapping="Wrap" />
+                                    <ui:TextBox Text="{Binding FailureThresholdText, UpdateSourceTrigger=PropertyChanged}"
+                                                Style="{StaticResource HostField}" Margin="0,4,0,0" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Наблюдений готовности WEB резерва" TextWrapping="Wrap" />
+                                    <ui:TextBox Text="{Binding RecoveryThresholdText, UpdateSourceTrigger=PropertyChanged}"
+                                                Style="{StaticResource HostField}" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </views:MaintenanceSection>
+                </StackPanel>
+
+                <Expander Header="Сеть и сертификаты" Margin="0,0,0,14" HorizontalContentAlignment="Stretch">
+                    <StackPanel Margin="12">
+                        <TextBlock Text="Локальный сетевой интерфейс" TextWrapping="Wrap" />
+                        <ComboBox ItemsSource="{Binding Adapters}" DisplayMemberPath="Display" SelectedValuePath="Id"
+                                  SelectedValue="{Binding Shared.InterfaceId, Mode=TwoWay}" Margin="0,4,0,10" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="IPv4 этого компьютера" TextWrapping="Wrap" />
+                                <ui:TextBox Text="{Binding NodeAddress, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource HostField}" />
+                                <TextBlock Text="Общий IPv4 (VIP)" TextWrapping="Wrap" />
+                                <ui:TextBox Text="{Binding VirtualAddress, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource HostField}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="IPv4 второго компьютера" TextWrapping="Wrap" />
+                                <ui:TextBox Text="{Binding PeerAddress, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource HostField}" />
+                                <TextBlock Text="Префикс подсети" TextWrapping="Wrap" />
+                                <ui:TextBox Text="{Binding PrefixLengthText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource HostField}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <CheckBox Content="Включить защищённое соединение между Host" IsChecked="{Binding Control.Enabled}" Margin="0,4,0,10" />
+                        <TextBlock Text="Порт HTTPS Host, одинаковый на обоих узлах" TextWrapping="Wrap" />
+                        <ui:TextBox Text="{Binding ControlPortText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource HostField}" />
+                        <TextBlock Text="SHA256 сертификата этого узла" TextWrapping="Wrap" />
+                        <ui:TextBox Text="{Binding Control.CertificateSha256, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource HostField}" />
+                        <TextBlock Text="SHA256 сертификата второго узла" TextWrapping="Wrap" />
+                        <ui:TextBox Text="{Binding Control.PeerCertificateSha256, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource HostField}" />
+
+                        <WrapPanel>
+                            <ui:Button Content="Проверить сеть" Click="OnCheckHostSetupClick" Margin="0,0,8,8" />
+                            <ui:Button Content="Создать сертификат узла" Click="OnCreateHostCertificateClick" Margin="0,0,8,8" />
+                            <ui:Button Content="Открыть firewall Host" Click="OnOpenHostFirewallClick" Margin="0,0,8,8" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Expander>
+
+                <views:MaintenanceSection Header="Ручное управление общим IP" Margin="0,0,0,14">
+                    <StackPanel>
+                        <TextBlock Text="Используется сохранённый профиль. Во время передачи IP открытые WEB-сессии могут прерваться."
+                                   Style="{StaticResource HostHint}" Margin="0,0,0,8" />
+                        <WrapPanel>
+                            <ui:Button Content="Первое назначение этому ПК" Click="OnHostOwnerInitializeClick" Margin="0,0,8,8" />
+                            <ui:Button Content="Передать IP другому ПК" Click="OnHostOwnerTransferClick" Margin="0,0,8,8" />
+                            <ui:Button Content="Продолжить операцию" Click="OnHostOwnerResumeClick" Margin="0,0,8,8" />
+                        </WrapPanel>
+                    </StackPanel>
+                </views:MaintenanceSection>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <views:MaintenanceSection Grid.Row="2" Header="Отчёт Host" Margin="16,8,16,16">
+            <ui:TextBox Text="{Binding Report, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                        AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                        FontFamily="Consolas" Height="105" />
+        </views:MaintenanceSection>
+    </Grid>
 </views:MaintenancePageControl>

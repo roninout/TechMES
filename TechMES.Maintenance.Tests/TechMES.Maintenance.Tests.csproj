@@ -21,6 +21,8 @@
 		<Compile Include="..\TechMES.Maintenance\Models\ServerOptions.cs" Link="ServerOptions.cs" />
         <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
         <Compile Include="..\TechMES.Maintenance\Services\HostSetupScripts.cs" Link="HostSetupScripts.cs" />
+        <Compile Include="..\TechMES.Maintenance\ViewModels\HostSetupViewModel.cs" Link="HostSetupViewModel.cs" />
+        <Compile Include="..\TechMES.Maintenance\ViewModels\ObservableObject.cs" Link="ObservableObject.cs" />
 		<Compile Include="..\TechMES.Maintenance\Services\WebCertificateTrust.cs" Link="WebCertificateTrust.cs" />
 		<Compile Include="..\TechMES.Maintenance\Models\PostgreSqlSetupProfile.cs" Link="PostgreSqlSetupProfile.cs" />
 		<Compile Include="..\TechMES.Maintenance\Services\PostgreSqlSetupService.cs" Link="PostgreSqlSetupService.cs" />

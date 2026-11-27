@@ -19,7 +19,94 @@ public sealed class HostSetupViewModel : ObservableObject
     private string _failureThresholdText = "4";
     private string _recoveryThresholdText = "3";
 
-    public HostSharedAddressSettings Shared { get => _shared; set { SetProperty(ref _shared, value); PrefixLengthText = value.PrefixLength.ToString(CultureInfo.InvariantCulture); } }
+    public HostSharedAddressSettings Shared
+    {
+        get => _shared;
+        set
+        {
+            if (!SetProperty(ref _shared, value))
+                return;
+
+            PrefixLengthText = value.PrefixLength.ToString(CultureInfo.InvariantCulture);
+            OnPropertyChanged(nameof(NodeAddress));
+            OnPropertyChanged(nameof(PeerAddress));
+            OnPropertyChanged(nameof(VirtualAddress));
+            NotifyRoleChanged();
+        }
+    }
+
+    public string NodeAddress
+    {
+        get => Shared.NodeAddress;
+        set
+        {
+            if (Shared.NodeAddress == value)
+                return;
+
+            Shared.NodeAddress = value;
+            OnPropertyChanged();
+            NotifyRoleChanged();
+        }
+    }
+
+    public string PeerAddress
+    {
+        get => Shared.PeerAddress;
+        set
+        {
+            if (Shared.PeerAddress == value)
+                return;
+
+            Shared.PeerAddress = value;
+            OnPropertyChanged();
+            NotifyRoleChanged();
+        }
+    }
+
+    public string VirtualAddress
+    {
+        get => Shared.VirtualAddress;
+        set
+        {
+            if (Shared.VirtualAddress == value)
+                return;
+
+            Shared.VirtualAddress = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AddressSummary));
+        }
+    }
+
+    public bool? IsCoordinator
+    {
+        get
+        {
+            if (!HostNetworkPolicy.TryAddress(NodeAddress, out var node)
+                || !HostNetworkPolicy.TryAddress(PeerAddress, out var peer) || node.Equals(peer))
+                return null;
+
+            return HostOwnerIdentity.Coordinator(Shared) == NodeAddress;
+        }
+    }
+
+    public string NodeTitle => IsCoordinator switch
+    {
+        true => "Host · Координатор",
+        false => "Host · Резервный узел",
+        _ => "Host"
+    };
+
+    public string AddressSummary => IsCoordinator.HasValue
+        ? $"{Environment.MachineName} · Локальный IPv4 {NodeAddress} · Второй узел {PeerAddress} · VIP {(string.IsNullOrWhiteSpace(VirtualAddress) ? "—" : VirtualAddress)}"
+        : "Загрузите профиль Host или укажите адреса обоих узлов в разделе «Сеть и сертификаты».";
+
+    private void NotifyRoleChanged()
+    {
+        OnPropertyChanged(nameof(IsCoordinator));
+        OnPropertyChanged(nameof(NodeTitle));
+        OnPropertyChanged(nameof(AddressSummary));
+    }
+
     public HostControlSettings Control { get => _control; set { SetProperty(ref _control, value); ControlPortText = value.Port.ToString(CultureInfo.InvariantCulture); } }
     public HostWebFailoverSettings WebFailover { get => _webFailover; set { SetProperty(ref _webFailover, value); FailureThresholdText = value.FailureThreshold.ToString(CultureInfo.InvariantCulture); RecoveryThresholdText = value.RecoveryThreshold.ToString(CultureInfo.InvariantCulture); } }
     public HostServiceFailoverOptions ServiceFailover { get => _serviceFailover; set => SetProperty(ref _serviceFailover, value); }
