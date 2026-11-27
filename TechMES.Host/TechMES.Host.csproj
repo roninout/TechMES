@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="TechMES.Host.Tests" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
     <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
   </ItemGroup>

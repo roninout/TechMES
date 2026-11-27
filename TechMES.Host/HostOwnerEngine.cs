@@ -33,7 +33,7 @@ public sealed partial class HostOwnerEngine(HostSharedAddressSettings settings, 
         bool Known(string address) => address == settings.NodeAddress || address == settings.PeerAddress;
 
         var invalidEmpty = journal.Phase == "Empty"
-            && (journal.Epoch != 0 || journal.Owner != "" || journal.Target != "" || journal.Operation != Guid.Empty || journal.AutomaticWebFailover);
+            && (journal.Epoch != 0 || journal.Owner != "" || journal.Target != "" || journal.Operation != Guid.Empty || journal.AutomaticWebFailover || journal.AutomaticHostTransfer);
 
         var invalidOperation = journal.Phase != "Empty"
             && (journal.Epoch <= 0 || journal.Operation == Guid.Empty || !Known(journal.Target) || journal.Owner != "" && !Known(journal.Owner));
@@ -96,7 +96,7 @@ public sealed partial class HostOwnerEngine(HostSharedAddressSettings settings, 
     }
 
     /// <summary>Начинает операцию с проверкой версии; потерянный ответ не создаёт новую передачу.</summary>
-    public async Task<HostOwnerStatus> ChangeAsync(HostOwnerRequest request, bool initialize, bool requireOwnerWebFailure = false)
+    public async Task<HostOwnerStatus> ChangeAsync(HostOwnerRequest request, bool initialize, bool requireOwnerWebFailure = false, bool automaticHostTransfer = false)
     {
         if (!IsCoordinator || _stopping)
             throw new InvalidOperationException("Операцию принимает работающий координатор пары.");
@@ -156,7 +156,10 @@ public sealed partial class HostOwnerEngine(HostSharedAddressSettings settings, 
             if (!initialize && journal.Owner == request.Target)
                 return local;
 
-            store.SaveJournal(new(checked(journal.Epoch + 1), journal.Owner, request.Target, "Releasing", request.Operation, requireOwnerWebFailure));
+            store.SaveJournal(new(checked(journal.Epoch + 1), journal.Owner, request.Target, "Releasing", request.Operation, requireOwnerWebFailure)
+            {
+                AutomaticHostTransfer = automaticHostTransfer
+            });
 
             await ContinueAsync();
 
@@ -166,6 +169,24 @@ public sealed partial class HostOwnerEngine(HostSharedAddressSettings settings, 
         {
             _operation.Release();
         }
+    }
+
+    // Штатная остановка и консоль восстановления используют один журнал координатора.
+    internal async Task TransferVipBeforeHostStopAsync()
+    {
+        if (!IsCoordinator || _stopping)
+            return;
+
+        var journal = store.Current.Journal;
+
+        if (journal is { Phase: "Releasing" or "Granting", AutomaticHostTransfer: true } && journal.Target == settings.PeerAddress)
+        {
+            await ResumeAsync(journal.Operation);
+            return;
+        }
+
+        if (journal.Phase == "Stable" && journal.Owner == settings.NodeAddress)
+            await ChangeAsync(new(settings.PeerAddress, journal.Epoch, Guid.NewGuid()), false, automaticHostTransfer: true);
     }
 
     /// <summary>Продолжает только сохранённую операцию; не создаёт новый grant после неопределённого ответа.</summary>

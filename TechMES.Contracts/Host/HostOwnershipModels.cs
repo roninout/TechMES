@@ -6,7 +6,10 @@ using System.Text;
 namespace TechMES.Contracts.Host;
 
 // Epoch повышается отдельно при отзыве старого и при выдаче нового разрешения.
-public sealed record HostOwnerJournal(long Epoch = 0, string Owner = "", string Target = "", string Phase = "Empty", Guid Operation = default, bool AutomaticWebFailover = false);
+public sealed record HostOwnerJournal(long Epoch = 0, string Owner = "", string Target = "", string Phase = "Empty", Guid Operation = default, bool AutomaticWebFailover = false)
+{
+    public bool AutomaticHostTransfer { get; init; }
+}
 
 public sealed record HostNodeGrant(long Epoch = 0, bool Assigned = false, bool Managed = false);
 

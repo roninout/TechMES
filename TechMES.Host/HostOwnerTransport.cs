@@ -30,7 +30,7 @@ public sealed class HostOwnerTransport(HostSharedAddressSettings settings, HostC
 }
 
 /// <summary>Восстанавливает существующее разрешение; по таймауту peer не создаёт нового владельца.</summary>
-public sealed class HostOwnerWorker(HostOwnerEngine owner, ILogger<HostOwnerWorker> logger) : BackgroundService
+public sealed class HostOwnerWorker(HostOwnerEngine owner, ILogger<HostOwnerWorker> logger, bool transferOnStop = false) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -76,6 +76,18 @@ public sealed class HostOwnerWorker(HostOwnerEngine owner, ILogger<HostOwnerWork
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
+        if (transferOnStop && !cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await owner.TransferVipBeforeHostStopAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Host service shutdown VIP handoff was not completed.");
+            }
+        }
+
         await owner.StopAsync();
         await base.StopAsync(cancellationToken);
     }

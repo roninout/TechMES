@@ -4,10 +4,12 @@ using TechMES.Contracts.Host;
 using TechMES.Host;
 using TechMES.Host.Control;
 
+var handoff = args is ["--handoff-host-service"];
+
 // Windows-служба читает настройки рядом с exe независимо от текущего каталога SCM.
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
-    Args = args,
+    Args = handoff ? [] : args,
     ContentRootPath = AppContext.BaseDirectory
 });
 
@@ -19,6 +21,7 @@ settings.Validate();
 var shared = builder.Configuration.GetSection("HostSharedAddress").Get<HostSharedAddressSettings>() ?? new();
 var control = builder.Configuration.GetSection("HostControl").Get<HostControlSettings>() ?? new();
 var webFailover = builder.Configuration.GetSection("HostWebFailover").Get<HostWebFailoverSettings>() ?? new();
+var serviceFailover = builder.Configuration.GetSection("HostServiceFailover").Get<HostServiceFailoverOptions>() ?? new();
 
 control.Validate(settings.Port);
 webFailover.Validate();
@@ -32,6 +35,24 @@ var nodeCertificate = control.Enabled
 
 if (control.Enabled && (!HostNetworkPolicy.TryAddress(shared.NodeAddress, out _) || !HostNetworkPolicy.TryAddress(shared.PeerAddress, out _) || shared.NodeAddress == shared.PeerAddress))
     throw new InvalidOperationException("HostControl requires different IPv4 node addresses.");
+
+var preferred = control.Enabled && HostOwnerIdentity.Coordinator(shared) == shared.NodeAddress;
+serviceFailover.Validate(control.Enabled, preferred);
+
+if (handoff)
+{
+    using (nodeCertificate)
+    {
+        if (!OperatingSystem.IsWindows() || !serviceFailover.Enabled || !preferred)
+            throw new InvalidOperationException("Аварийная передача Host доступна только на настроенном предпочтительном узле Windows.");
+
+        var identity = HostOwnerIdentity.Pair(shared, control);
+        using var store = new HostOwnerStore(OwnerDirectory(), identity, shared.InterfaceId);
+        var coordinator = new HostOwnerEngine(shared, identity, store, new HostVipWindows(shared), new HostOwnerTransport(shared, control), () => false);
+        await coordinator.TransferVipBeforeHostStopAsync();
+    }
+    return;
+}
 
 // Локальная диагностика всегда доступна; сетевой endpoint требует mTLS.
 builder.WebHost.ConfigureKestrel(options =>
@@ -71,13 +92,15 @@ if (control.Enabled)
 {
     var pair = HostOwnerIdentity.Pair(shared, control);
 
-    var store = ownerStore = new HostOwnerStore(
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "TechMES", "Host"),
-        pair,
-        shared.InterfaceId);
+    var store = ownerStore = new HostOwnerStore(OwnerDirectory(), pair, shared.InterfaceId);
+    var peer = new HostOwnerTransport(shared, control);
 
-    builder.Services.AddSingleton(sp => owner = new HostOwnerEngine(shared, pair, store, new HostVipWindows(shared), new HostOwnerTransport(shared, control), () => sp.GetRequiredService<HostMonitor>().IsWebReady, webFailover));
-    builder.Services.AddHostedService<HostOwnerWorker>();
+    builder.Services.AddSingleton(sp => owner = new HostOwnerEngine(shared, pair, store, new HostVipWindows(shared), peer, () => sp.GetRequiredService<HostMonitor>().IsWebReady, webFailover));
+    builder.Services.AddHostedService(sp => new HostOwnerWorker(sp.GetRequiredService<HostOwnerEngine>(), sp.GetRequiredService<ILogger<HostOwnerWorker>>(), serviceFailover.Enabled));
+    if (serviceFailover.Enabled)
+        builder.Services.AddHostedService(sp => new HostServiceFailoverWorker(sp.GetRequiredService<HostOwnerEngine>(), peer, shared, serviceFailover,
+            serviceFailover.PreferredComputerName.Length == 0 ? null : ct => HostServiceFailoverWorker.RequestRecoveryAsync(serviceFailover.PreferredComputerName, ct),
+            sp.GetRequiredService<ILogger<HostServiceFailoverWorker>>()));
 }
 
 builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(90));
@@ -218,3 +241,6 @@ app.MapPost("/api/host/owner/{action}", async (string action, HttpContext contex
 });
 
 app.Run();
+
+static string OwnerDirectory() =>
+    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "TechMES", "Host");
