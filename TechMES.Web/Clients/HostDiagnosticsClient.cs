@@ -5,10 +5,10 @@ using TechMES.Contracts.Host;
 namespace TechMES.Web.Clients;
 
 /// <summary>Снимок локального Host, который обслуживает текущий экземпляр WEB.</summary>
-public sealed record HostDiagnosticsState(string Service = "", string Computer = "", string Mode = "", bool SharedAddressEnabled = false, bool WebReady = false, HostOwnerStatus? Ownership = null);
+public sealed record HostDiagnosticsState(string Service = "", string Computer = "", string Mode = "", bool SharedAddressEnabled = false, bool WebReady = false, HostOwnerStatus? Ownership = null, HostPeerDiagnostics? Peer = null);
 
 /// <summary>
-/// Читает только локальную диагностику Host. Клиент принадлежит панели и освобождается вместе с ней.
+/// Читает локальную диагностику Host и health WEB на физических адресах настроенных Runtime.
 /// </summary>
 public sealed class HostDiagnosticsClient : IDisposable
 {
@@ -58,4 +58,21 @@ public sealed class HostDiagnosticsClient : IDisposable
 
     /// <summary>Завершает HTTP-клиент и принадлежащий ему handler.</summary>
     public void Dispose() => _client.Dispose();
+
+    /// <summary>Проверяет WEB по тому же контракту health, который использует Host.</summary>
+    internal async Task ReadWebAsync(Uri endpoint, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(3));
+
+        using var response = await _client.GetAsync(endpoint, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        response.EnsureSuccessStatusCode();
+
+        await response.Content.LoadIntoBufferAsync(16 * 1024, timeout.Token);
+        var health = await response.Content.ReadFromJsonAsync<WebHealth>(JsonOptions, timeout.Token);
+        if (health is not { Service: "TechMES.Web", Status: "OK" })
+            throw new InvalidDataException("Адрес не подтвердил готовность TechMES.Web.");
+    }
+
+    private sealed record WebHealth(string? Service, string? Status);
 }

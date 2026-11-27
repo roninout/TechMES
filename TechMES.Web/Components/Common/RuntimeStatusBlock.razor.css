@@ -76,7 +76,8 @@ summary {
 
 .dependency-table {
     display: grid;
-    grid-template-columns: auto repeat(7, max-content);
+    /* Profile, SCADA, Runtime, WEB, Host, Calc, ODBC, Main DB, PostgreSQL. */
+    grid-template-columns: 50px 80px 138px 108px 345px 98px 82px 96px 102px;
     gap: 5px 7px;
     flex: 0 0 auto;
 }
@@ -100,21 +101,32 @@ summary {
 }
 
 .dependency-table ::deep .rz-badge {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 10px;
     line-height: 20px;
     padding: 0 5px;
 }
 
+.host-status-row {
+    display: grid;
+    grid-template-columns: 104px 75px 64px minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
+}
+
 .runtime-nodes {
     display: grid;
     gap: 4px;
-    flex: 1 0 auto;
+    flex: 1 0 18rem;
 }
 
 .runtime-node {
     display: grid;
-    grid-template-columns: minmax(120px, 1fr) 110px 52px;
+    grid-template-columns: minmax(0, 1fr) 110px 52px;
     gap: 8px;
     align-items: center;
     min-height: 24px;

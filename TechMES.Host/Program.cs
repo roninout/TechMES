@@ -87,6 +87,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<HostMonitor>());
 // Файлы ownership живут в ProgramData и не заменяются пакетом обновления.
 HostOwnerEngine? owner = null;
 HostOwnerStore? ownerStore = null;
+HostPeerDiagnosticsWorker? peerDiagnostics = null;
 
 if (control.Enabled)
 {
@@ -94,9 +95,11 @@ if (control.Enabled)
 
     var store = ownerStore = new HostOwnerStore(OwnerDirectory(), pair, shared.InterfaceId);
     var peer = new HostOwnerTransport(shared, control);
+    var diagnostics = peerDiagnostics = new HostPeerDiagnosticsWorker(peer, shared.PeerAddress, pair, HostOwnerIdentity.Coordinator(shared));
 
     builder.Services.AddSingleton(sp => owner = new HostOwnerEngine(shared, pair, store, new HostVipWindows(shared), peer, () => sp.GetRequiredService<HostMonitor>().IsWebReady, webFailover));
     builder.Services.AddHostedService(sp => new HostOwnerWorker(sp.GetRequiredService<HostOwnerEngine>(), sp.GetRequiredService<ILogger<HostOwnerWorker>>(), serviceFailover.Enabled));
+    builder.Services.AddHostedService(_ => diagnostics);
     if (serviceFailover.Enabled)
         builder.Services.AddHostedService(sp => new HostServiceFailoverWorker(sp.GetRequiredService<HostOwnerEngine>(), peer, shared, serviceFailover,
             string.IsNullOrEmpty(serviceFailover.PreferredComputerName) ? null : (action, ct) => HostServiceFailoverWorker.RequestRecoveryAsync(serviceFailover.PreferredComputerName, action, ct),
@@ -142,7 +145,7 @@ app.MapGet("/api/health", () => Results.Ok(new
     SharedAddressEnabled = owner is not null
 }));
 
-app.MapGet("/api/host/status", (HostMonitor monitor) => Results.Ok(new
+app.MapGet("/api/host/status", (HostMonitor monitor, HttpContext context) => Results.Ok(new
 {
     Service = "TechMES.Host",
     DisplayName = "TechMes Host",
@@ -156,7 +159,8 @@ app.MapGet("/api/host/status", (HostMonitor monitor) => Results.Ok(new
     WebReady = monitor.IsWebReady,
     WebHealthUrl = settings.WebHealthUrl,
     Web = monitor.Status,
-    Ownership = owner?.Status()
+    Ownership = owner?.Status(),
+    Peer = context.Connection.LocalPort == settings.Port ? peerDiagnostics?.Latest : null
 }));
 
 app.MapGet("/api/health/ready", (HostMonitor monitor) => Results.Json(

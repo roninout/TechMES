@@ -19,6 +19,9 @@ public sealed record HostApplyGrant(string Pair, long Epoch, bool Assigned);
 
 public sealed record HostOwnerStatus(string Pair, string Node, string Coordinator, bool WebReady, bool NetworkReady, string[] Errors, bool AddressPresent, bool AddressReady, HostNodeGrant Grant, HostOwnerJournal Journal, HostWebFailoverStatus? WebFailover = null);
 
+/// <summary>Последняя проверка второго Host по защищённому каналу пары.</summary>
+public sealed record HostPeerDiagnostics(string Node, DateTimeOffset? CheckedAtUtc = null, HostOwnerStatus? Status = null, string Error = "");
+
 /// <summary>Общая идентичность пары без зависимости от роли Runtime.</summary>
 public static class HostOwnerIdentity
 {

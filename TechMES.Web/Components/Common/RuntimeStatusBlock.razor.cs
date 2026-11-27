@@ -70,14 +70,16 @@ public partial class RuntimeStatusBlock
     {
         _healthLoop = RunHealthLoopAsync(_stop.Token);
 
-        await RefreshActivityAsync();
+        await RefreshNodesAsync();
 
         if (!_disposed)
             _activityLoop = RunActivityLoopAsync(_stop.Token);
     }
 
-    /// <summary>Ручная кнопка обновляет обе части диагностики параллельно.</summary>
-    private Task RefreshAsync() => Task.WhenAll(RefreshActivityAsync(), RefreshHealthAsync());
+    /// <summary>Ручная кнопка обновляет диагностику всех служб параллельно.</summary>
+    private Task RefreshAsync() => Task.WhenAll(RefreshNodesAsync(), RefreshHealthAsync());
+
+    private Task RefreshNodesAsync() => Task.WhenAll(RefreshActivityAsync(), RefreshNodeServicesAsync());
 
     /// <summary>
     /// Прямой опрос сохраняет сведения о Standby даже при отсутствии Active.
@@ -165,7 +167,7 @@ public partial class RuntimeStatusBlock
         try
         {
             while (await _activityTimer.WaitForNextTickAsync(ct))
-                await InvokeAsync(RefreshActivityAsync);
+                await InvokeAsync(RefreshNodesAsync);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -345,6 +347,7 @@ public partial class RuntimeStatusBlock
         }
         finally
         {
+            _serviceProbe.Dispose();
             _stop.Dispose();
         }
     }

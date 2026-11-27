@@ -1,5 +1,6 @@
 ﻿@inject RuntimeStatusApiClient RuntimeStatusApi
 @inject RuntimeEndpointSelector RuntimeEndpoints
+@inject IConfiguration Configuration
 @implements IAsyncDisposable
 
 @{
@@ -30,7 +31,7 @@
             </summary>
 
             <div class="details-panel">
-                <strong>Runtime — состояние каждого узла</strong>
+                <strong>Диагностика узлов</strong>
 
                 @if (!string.IsNullOrEmpty(_activityError))
                 {
@@ -51,6 +52,18 @@
                 {
                     <p>Второй отдельный адрес Runtime отсутствует.</p>
                 }
+
+                <div class="health-details">
+                    <strong>WEB и Host по профилям</strong>
+                    @for (var index = 0; index < 2; index++)
+                    {
+                        <article>
+                            <strong>@(index == 0 ? "Primary" : "Secondary")</strong>
+                            <pre>WEB: @DescribeWeb(index).Hint</pre>
+                            <pre>Host: @DescribeHost(index).Hint</pre>
+                        </article>
+                    }
+                </div>
 
                 <div class="health-details">
                     <strong>Репликация PostgreSQL</strong>
@@ -80,13 +93,13 @@
             </div>
         </details>
 
-        <button type="button" class="diagnostic-refresh" disabled="@_isLoading" @onclick="RefreshAsync" title="Обновить диагностику" aria-label="Обновить диагностику">
+        <button type="button" class="diagnostic-refresh" disabled="@(_isLoading || _isServiceLoading)" @onclick="RefreshAsync" title="Обновить диагностику" aria-label="Обновить диагностику">
             <RadzenIcon Icon="refresh" aria-hidden="true" />
         </button>
     </div>
 
     <div class="diagnostics-body">
-        <div class="dependency-table" aria-label="Диагностика SCADA, Runtime, Calc, баз данных и локального Host">
+        <div class="dependency-table" aria-label="Диагностика SCADA, Runtime, WEB, Host, Calc и баз данных">
             <span class="dependency-heading">Профиль</span>
 
             <span class="dependency-heading">
@@ -97,6 +110,16 @@
             <span class="dependency-heading" title="Режим каждого настроенного Runtime">
                 <RadzenIcon Icon="dns" aria-hidden="true" />
                 Runtime
+            </span>
+
+            <span class="dependency-heading" title="Прямой health WEB по адресу каждого профиля">
+                <RadzenIcon Icon="desktop_windows" aria-hidden="true" />
+                WEB
+            </span>
+
+            <span class="dependency-heading" title="Host, VIP и автоматика на каждом узле">
+                <RadzenIcon Icon="hub" aria-hidden="true" />
+                Host
             </span>
 
             <span class="dependency-heading" title="Calc 1 и Calc 2 относятся к адресам Runtime 1 и Runtime 2">
@@ -119,11 +142,6 @@
                 PostgreSQL
             </span>
 
-            <span class="dependency-heading" title="Локальный Host текущего WEB">
-                <RadzenIcon Icon="hub" aria-hidden="true" />
-                Host
-            </span>
-
             <div class="server-status-column server-roles">
                 <span>Primary</span>
                 <span>Secondary</span>
@@ -136,6 +154,40 @@
                 {
                     var runtime = DescribeRuntime(index);
                     <RadzenBadge Text="@($"Runtime {index + 1}: {runtime.Text}")" BadgeStyle="@runtime.Style" title="@runtime.Hint" />
+                }
+            </div>
+
+            <div class="server-status-column" aria-label="Состояние WEB на каждом узле">
+                @for (var index = 0; index < 2; index++)
+                {
+                    var web = DescribeWeb(index);
+                    <RadzenBadge Text="@($"WEB {index + 1}: {web.Text}")" BadgeStyle="@web.Style" title="@web.Hint" />
+                }
+            </div>
+
+            <div class="server-status-column" aria-label="Состояние Host, VIP и автоматики на каждом узле">
+                @for (var index = 0; index < 2; index++)
+                {
+                    var host = DescribeHost(index);
+                    var probe = NodeServicesAt(index)?.Host;
+                    var owner = probe?.Ownership;
+                    <div class="host-status-row">
+                        <RadzenBadge Text="@($"Host: {host.Text}")" BadgeStyle="@host.Style" title="@host.Hint" />
+                        @if (probe?.Online == true)
+                        {
+                            var vip = DescribeVip(owner);
+                            <RadzenBadge Text="@($"VIP: {vip.Text}")" BadgeStyle="@vip.Style" title="@host.Hint" />
+                        }
+                        @if (owner is not null)
+                        {
+                            <RadzenBadge Text="@($"Epoch: {owner.Grant.Epoch}")" BadgeStyle="BadgeStyle.Base" title="@host.Hint" />
+                            @if (owner.Node == owner.Coordinator && owner.WebFailover is { } auto)
+                            {
+                                var style = auto.State == "Blocked" ? BadgeStyle.Warning : auto.Enabled ? BadgeStyle.Info : BadgeStyle.Base;
+                                <RadzenBadge Text="@($"Auto: {auto.State}")" BadgeStyle="@style" title="@auto.Details" />
+                            }
+                        }
+                    </div>
                 }
             </div>
 
@@ -158,7 +210,6 @@
                 }
             </div>
 
-            <HostStatusBlock />
         </div>
 
         <div class="runtime-nodes" aria-label="Адреса, команды и операции Runtime">

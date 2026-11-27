@@ -7,11 +7,13 @@ namespace TechMES.Host;
 /// <summary>Команды между службами идут только по закреплённому mTLS endpoint второго узла.</summary>
 public sealed class HostOwnerTransport(HostSharedAddressSettings settings, HostControlSettings control) : IHostOwnerPeer
 {
-    public async Task<HostOwnerStatus> StatusAsync()
+    public Task<HostOwnerStatus> StatusAsync() => StatusAsync(CancellationToken.None);
+
+    internal async Task<HostOwnerStatus> StatusAsync(CancellationToken ct)
     {
         using var client = HostNodeCertificates.CreateClient(control, settings.NodeAddress);
 
-        return await client.GetFromJsonAsync<HostOwnerStatus>(Url("status"))
+        return await client.GetFromJsonAsync<HostOwnerStatus>(Url("status"), ct)
             ?? throw new InvalidDataException("Пустой статус второго Host.");
     }
 

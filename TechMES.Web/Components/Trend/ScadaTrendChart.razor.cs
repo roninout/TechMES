@@ -10,7 +10,7 @@ namespace TechMES.Web.Components.Trend;
 
 public partial class ScadaTrendChart : IAsyncDisposable
 {
-    private const int MaxSeries = 8, MaxStoredPoints = 90_001, RequestChunkMinutes = 60, RequestTimeoutSeconds = 30;
+    private const int MaxSeries = 8, MaxStoredPoints = 90_001, RequestChunkMinutes = 60;
     private static readonly string[] Palette = ["var(--rz-primary)", "#00a65a", "#e69500", "#e91e63", "#9263d9", "#00a8b5", "#795548", "#607d8b"];
 
     [Inject] private ParamApiClient ParamApi { get; set; } = default!;
@@ -209,9 +209,6 @@ public partial class ScadaTrendChart : IAsyncDisposable
         {
             if (from >= to) return;
 
-            using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
-            requestCts.CancelAfter(TimeSpan.FromSeconds(RequestTimeoutSeconds));
-
             var updates = new List<(SeriesState Series, bool Supported, List<TrendPoint> History)>();
 
             foreach (var series in _series.ToArray())
@@ -221,7 +218,9 @@ public partial class ScadaTrendChart : IAsyncDisposable
                 if (series.Options.TrendAvailable == false || (!reset && series.Supported == false))
                     continue;
 
-                var response = await ReadRangeAsync(series.Tag, from, to, _dayToUtc, version, requestCts.Token);
+                // RuntimeService ограничивает каждый HTTP-запрос вместе с выбором Active.
+                // Полная загрузка дня состоит из нескольких таких запросов.
+                var response = await ReadRangeAsync(series.Tag, from, to, _dayToUtc, version, _cts.Token);
                 var existing = reset ? Enumerable.Empty<TrendPoint>() : series.History;
 
                 var history = response.Supported ? existing.Concat(response.Points.Select(p => new TrendPoint { Time = AsUtc(p.Time), Value = p.Value }))
