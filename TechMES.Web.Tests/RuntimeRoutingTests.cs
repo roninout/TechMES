@@ -1,6 +1,9 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using TechMES.Contracts.Param;
 using TechMES.Contracts.Runtime;
 using TechMES.Web.Clients;
 using TechMES.Web.Settings;
@@ -66,6 +69,112 @@ public sealed class RuntimeRoutingTests
 
         Assert.Equal("a", first.RequestMessage!.RequestUri!.Host);
         Assert.Equal("b", second.RequestMessage!.RequestUri!.Host);
+    }
+
+    [Theory]
+    [InlineData("a")]
+    [InlineData("b")]
+    public async Task FullTrendDayProbesUnavailablePeerOnce(string active)
+    {
+        var probes = 0;
+        var sends = 0;
+        using var services = Services(request =>
+        {
+            Interlocked.Increment(ref probes);
+            return Task.FromResult(Status(request.RequestUri!.Host == active ? "Active" : "offline"));
+        }, request =>
+        {
+            Assert.Equal(active, request.RequestUri!.Host);
+            sends++;
+            return Task.FromResult(TrendResponse());
+        });
+
+        var param = TrendClient(services);
+        var route = new TagTrendRoute();
+        var day = DateTime.UtcNow.Date.AddDays(-1);
+        for (var hour = 0; hour < 24; hour++)
+            await param.GetTagTrendAsync("Trend", day.AddHours(hour), day.AddHours(hour + 1), route, default);
+
+        Assert.Equal(24, sends);
+        Assert.Equal(2, probes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TrendRepeatsOnlyInterruptedChunkAfterRoleChange(bool disconnected)
+    {
+        var active = "a";
+        var probes = 0;
+        var sends = new List<string>();
+        var ranges = new List<ParamTagTrendRequest>();
+        using var services = Services(request =>
+        {
+            Interlocked.Increment(ref probes);
+            return Task.FromResult(Status(request.RequestUri!.Host == active ? "Active" : "Standby"));
+        }, async request =>
+        {
+            var node = request.RequestUri!.Host;
+            sends.Add(node);
+            ranges.Add((await request.Content!.ReadFromJsonAsync<ParamTagTrendRequest>())!);
+            if (node == active)
+                return TrendResponse();
+
+            if (disconnected)
+                throw new HttpRequestException("Connection refused.");
+
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = JsonContent.Create(new { code = "runtime.not-active" })
+            };
+        });
+
+        var param = TrendClient(services);
+        var route = new TagTrendRoute();
+        var day = DateTime.UtcNow.Date.AddDays(-1);
+        await param.GetTagTrendAsync("Trend", day, day.AddHours(1), route, default);
+        active = "b";
+        await param.GetTagTrendAsync("Trend", day.AddHours(1), day.AddHours(2), route, default);
+        await param.GetTagTrendAsync("Trend", day.AddHours(2), day.AddHours(3), route, default);
+
+        Assert.Equal(new[] { "a", "a", "b", "b" }, sends);
+        Assert.Equal(ranges[1].FromUtc, ranges[2].FromUtc);
+        Assert.Equal(ranges[1].ToUtc, ranges[2].ToUtc);
+        Assert.Equal(4, probes);
+    }
+
+    [Fact]
+    public async Task TrendDoesNotRetryDatabaseBlock()
+    {
+        var sends = 0;
+        using var services = Services(_ => Task.FromResult(Status("Active")), _ =>
+        {
+            sends++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = JsonContent.Create(new { code = "database.write-blocked" })
+            });
+        }, secondary: "");
+
+        var now = DateTime.UtcNow;
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            TrendClient(services).GetTagTrendAsync("Trend", now.AddHours(-1), now, new TagTrendRoute(), default));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, error.StatusCode);
+        Assert.Equal(1, sends);
+    }
+
+    private static ParamApiClient TrendClient(ServiceProvider services) =>
+        new(services.GetRequiredService<IHttpClientFactory>(), new AnonymousAuth(), new HttpContextAccessor());
+
+    private static HttpResponseMessage TrendResponse() => new(HttpStatusCode.OK)
+    {
+        Content = JsonContent.Create(new ParamTrendResponse { Supported = true })
+    };
+
+    private sealed class AnonymousAuth : AuthenticationStateProvider
+    {
+        public override Task<AuthenticationState> GetAuthenticationStateAsync() =>
+            Task.FromResult(new AuthenticationState(new System.Security.Claims.ClaimsPrincipal()));
     }
 
     // Ошибка отправленной команды возвращается без повтора; тело и заголовки сохраняются.

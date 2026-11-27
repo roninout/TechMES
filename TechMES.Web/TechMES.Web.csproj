@@ -20,6 +20,7 @@
   <ItemGroup>
     <!-- Web использует Contracts, чтобы понимать DTO/request/response классы Runtime Service. -->
     <ProjectReference Include="..\TechMES.Contracts\TechMES.Contracts.csproj" />
+    <InternalsVisibleTo Include="TechMES.Web.Tests" />
   </ItemGroup>
 
 </Project>

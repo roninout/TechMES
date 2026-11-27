@@ -33,7 +33,9 @@ public partial class ScadaTrendChart : IAsyncDisposable
     private List<SeriesState> _series = [];
 
     private DateTime _selectedDate, _dayFromUtc, _dayToUtc, _toUtc;
-    private bool _loading, _disposed, _reloadChart, _live = true, _autoScale;
+    private CancellationTokenSource? _loadCancellation;
+    private bool _loading => _loadCancellation is not null;
+    private bool _disposed, _reloadChart, _live = true, _autoScale, _viewAdjusted;
     private int _version, _navigatorVersion, _windowMinutes;
     private double _viewStart, _viewEnd = 1;
     private double? _navigatorStart;
@@ -92,6 +94,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
 
         if (_configurationError.Length > 0)
         {
+            CancelLoad();
             _version++;
             _configuration = [];
             _series = [];
@@ -126,6 +129,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
 
     private void BeginDay(DateTime date)
     {
+        CancelLoad();
         _selectedDate = date.Date;
         (_dayFromUtc, _dayToUtc) = GetDayBounds(_selectedDate, TimeZoneInfo.Local);
         _version++;
@@ -134,6 +138,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
         _navigatorStart = null;
         _viewStart = 0;
         _viewEnd = 1;
+        _viewAdjusted = false;
 
         foreach (var series in _series)
         {
@@ -162,6 +167,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
             BeginDay(DateTime.Today);
 
         _live = true;
+        _viewAdjusted = false;
         await LoadAsync(reset: _toUtc == default);
     }
 
@@ -192,10 +198,12 @@ public partial class ScadaTrendChart : IAsyncDisposable
     {
         if (_loading || _disposed || _configurationError.Length > 0 || _series.Count == 0) return;
 
-        _loading = true;
+        using var load = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        _loadCancellation = load;
+        var ct = load.Token;
 
         var version = _version;
-        var followLive = _live;
+        var newestFirst = reset && _live;
         var now = DateTime.UtcNow;
         var to = now < _dayToUtc ? now : _dayToUtc;
         var from = reset || _toUtc == default ? _dayFromUtc : _toUtc.AddSeconds(-5);
@@ -209,53 +217,65 @@ public partial class ScadaTrendChart : IAsyncDisposable
         {
             if (from >= to) return;
 
-            var updates = new List<(SeriesState Series, bool Supported, List<TrendPoint> History)>();
+            var route = new TagTrendRoute();
+            var pending = _series.Select(series => new PendingSeries(series, reset, to)).ToArray();
+            var preview = false;
+            var cursor = newestFirst ? to : from;
 
-            foreach (var series in _series.ToArray())
+            while (newestFirst ? cursor > from : cursor < to)
             {
-                activeTag = series.Tag;
+                var start = newestFirst ? cursor.AddMinutes(-RequestChunkMinutes) : cursor;
+                var end = newestFirst ? cursor : cursor.AddMinutes(RequestChunkMinutes);
+                if (start < from) start = from;
+                if (end > to) end = to;
 
-                if (series.Options.TrendAvailable == false || (!reset && series.Supported == false))
-                    continue;
+                foreach (var item in pending.Where(item => item.Supported != false))
+                {
+                    activeTag = item.Series.Tag;
+                    var response = await ParamApi.GetTagTrendAsync(activeTag, start, end, route, ct);
+                    ct.ThrowIfCancellationRequested();
+                    item.Supported = response.Supported;
 
-                // RuntimeService ограничивает каждый HTTP-запрос вместе с выбором Active.
-                // Полная загрузка дня состоит из нескольких таких запросов.
-                var response = await ReadRangeAsync(series.Tag, from, to, _dayToUtc, version, _cts.Token);
-                var existing = reset ? Enumerable.Empty<TrendPoint>() : series.History;
+                    if (!response.Supported)
+                    {
+                        item.Points.Clear();
+                        continue;
+                    }
 
-                var history = response.Supported ? existing.Concat(response.Points.Select(p => new TrendPoint { Time = AsUtc(p.Time), Value = p.Value }))
-                    .Where(p => p.Time >= _dayFromUtc && p.Time <= to && p.Time < _dayToUtc)
-                    .GroupBy(p => p.Time)
-                    .Select(g => g.Last())
-                    .OrderBy(p => p.Time)
-                    .Take(MaxStoredPoints + 1)
-                    .ToList() : [];
+                    foreach (var point in response.Points)
+                    {
+                        var time = AsUtc(point.Time);
+                        if (!double.IsFinite(point.Value) || time < start || time > end || time >= _dayToUtc)
+                            continue;
 
-                if (history.Count > MaxStoredPoints)
-                    throw new InvalidDataException();
+                        var sample = new TrendPoint { Time = time, Value = point.Value };
+                        if (newestFirst)
+                            item.Points.TryAdd(time, sample);
+                        else
+                            item.Points[time] = sample;
 
-                updates.Add((series, response.Supported, history));
-            }
+                        if (item.Points.Count > MaxStoredPoints)
+                            throw new InvalidDataException();
+                    }
+                }
 
-            if (_disposed || version != _version || (followLive && !_live)) return;
+                cursor = newestFirst ? start : end;
+                var hasMore = newestFirst ? cursor > from : cursor < to;
 
-            // Применяем результаты вместе, чтобы серии не получили разные временные окна.
-            foreach (var update in updates)
-            {
-                update.Series.Supported = update.Supported;
-                update.Series.History = update.History;
-                update.Series.Message = !update.Supported ? "No trend is configured." : update.History.Count == 0 ? "No data for the selected day." : "";
+                // Показываем первую порцию с данными, сохраняя одинаковый диапазон у всех серий.
+                if (reset && !preview && hasMore && pending.Any(item => item.Points.Count > 0))
+                {
+                    PublishHistory(pending);
+                    preview = true;
+                    StateHasChanged();
+                }
+
+                if (pending.All(item => item.Supported == false))
+                    break;
             }
 
             _toUtc = to;
-
-            foreach (var series in _series)
-                series.Navigator = ReducePoints(series.History, Math.Min(600, 1600 / _series.Count));
-
-            _navigatorVersion++;
-            SetVisibleRange(_selectedDate == DateTime.Today ? AxisTo.AddMinutes(-_windowMinutes) : AxisFrom, AxisTo);
-            RefreshChartPoints();
-            _message = "";
+            PublishHistory(pending);
         }
         catch (Exception) when (_disposed || version != _version) { }
         catch (Exception error)
@@ -267,52 +287,38 @@ public partial class ScadaTrendChart : IAsyncDisposable
         }
         finally
         {
-            _loading = false;
+            if (ReferenceEquals(_loadCancellation, load))
+                _loadCancellation = null;
         }
     }
 
-    private async Task<ParamTrendResponse> ReadRangeAsync(string tag, DateTime from, DateTime to, DateTime dayEnd, int version, CancellationToken cancellationToken)
+    private void PublishHistory(PendingSeries[] pending)
     {
-        var samples = new Dictionary<DateTime, ParamTrendPointDto>();
-
-        for (var cursor = from; cursor < to;)
+        var visible = VisibleRange();
+        foreach (var item in pending)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (version != _version)
-                throw new OperationCanceledException();
-
-            var end = cursor.AddMinutes(RequestChunkMinutes);
-
-            if (end > to)
-                end = to;
-
-            var response = await ParamApi.GetTagTrendAsync(tag, cursor, end, cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (version != _version)
-                throw new OperationCanceledException();
-
-            if (!response.Supported)
-                return response;
-
-            foreach (var point in response.Points)
-            {
-                var time = AsUtc(point.Time);
-
-                if (!double.IsFinite(point.Value) || time < cursor || time > end || time >= dayEnd)
-                    continue;
-
-                samples[time] = new ParamTrendPointDto { Time = time, Value = point.Value };
-
-                if (samples.Count > MaxStoredPoints)
-                    throw new InvalidDataException();
-            }
-
-            cursor = end;
+            var series = item.Series;
+            series.Supported = item.Supported;
+            series.History = item.Points.Values.OrderBy(point => point.Time).ToList();
+            series.Navigator = ReducePoints(series.History, Math.Min(600, 1600 / _series.Count));
+            series.Message = series.Supported == false ? "No trend is configured."
+                : series.History.Count == 0 ? "No data for the selected day." : "";
         }
 
-        return new ParamTrendResponse { Supported = true, Points = samples.Values.ToList() };
+        _navigatorVersion++;
+        if (_viewAdjusted)
+            SetVisibleRange(visible.From, visible.To);
+        else
+            SetVisibleRange(_selectedDate == DateTime.Today ? AxisTo.AddMinutes(-_windowMinutes) : AxisFrom, AxisTo);
+        RefreshChartPoints();
+        _message = "";
+    }
+
+    private void CancelLoad()
+    {
+        var load = _loadCancellation;
+        _loadCancellation = null;
+        load?.Cancel();
     }
 
     private enum OverlayHint
@@ -377,12 +383,16 @@ public partial class ScadaTrendChart : IAsyncDisposable
 
     private void HideOverlayTooltip() => OverlayTooltips.Close();
 
-    private void PauseLive() => _live = false;
+    private void PauseLive()
+    {
+        _live = false;
+        _viewAdjusted = true;
+    }
 
     private void OnNavigatorStartChanged(double value)
     {
         _navigatorStart = value;
-        _live = false;
+        PauseLive();
     }
 
     private void OnNavigatorEndChanged(double value)
@@ -397,7 +407,7 @@ public partial class ScadaTrendChart : IAsyncDisposable
 
         _viewStart = Math.Clamp(args.ViewStart, 0, 1);
         _viewEnd = Math.Clamp(args.ViewEnd, _viewStart, 1);
-        _live = false;
+        PauseLive();
 
         RefreshChartPoints();
     }
@@ -417,11 +427,16 @@ public partial class ScadaTrendChart : IAsyncDisposable
         _viewEnd = Math.Clamp((double)(to - AxisFrom).Ticks / ticks, _viewStart, 1);
     }
 
+    private (DateTime From, DateTime To) VisibleRange()
+    {
+        var (start, end) = TimeBounds;
+        var ticks = (end - start).Ticks;
+        return (start.AddTicks((long)(ticks * _viewStart)), start.AddTicks((long)(ticks * _viewEnd)));
+    }
+
     private void RefreshChartPoints()
     {
-        var from = AxisFrom.AddTicks((long)((AxisTo - AxisFrom).Ticks * _viewStart));
-        var to = AxisFrom.AddTicks((long)((AxisTo - AxisFrom).Ticks * _viewEnd));
-
+        var (from, to) = VisibleRange();
         foreach (var series in _series)
         {
             var first = series.History.FindIndex(p => p.Time >= from);
@@ -519,5 +534,14 @@ public partial class ScadaTrendChart : IAsyncDisposable
         public List<TrendPoint> History { get; set; } = [];
         public List<TrendPoint> Points { get; set; } = [];
         public List<TrendPoint> Navigator { get; set; } = [];
+    }
+
+    private sealed class PendingSeries(SeriesState series, bool reset, DateTime to)
+    {
+        public SeriesState Series { get; } = series;
+        public bool? Supported { get; set; } = reset ? series.Options.TrendAvailable : series.Supported;
+        public Dictionary<DateTime, TrendPoint> Points { get; } = reset
+            ? []
+            : series.History.Where(point => point.Time <= to).ToDictionary(point => point.Time);
     }
 }

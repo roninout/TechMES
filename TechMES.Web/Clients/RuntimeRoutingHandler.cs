@@ -109,6 +109,15 @@ public sealed class RuntimeEndpointSelector(IHttpClientFactory clients, IOptions
     }
 }
 
+// Маршрут живёт только в пределах одной загрузки графика.
+internal sealed class TagTrendRoute
+{
+    public const string Path = "api/param/tags/trend";
+    public static readonly HttpRequestOptionsKey<TagTrendRoute> Key = new(nameof(TagTrendRoute));
+
+    public Uri? Endpoint { get; set; }
+}
+
 public sealed class RuntimeRoutingHandler(RuntimeEndpointSelector selector) : DelegatingHandler
 {
     // Сохраняет путь, параметры, тело и заголовки. Автоматического повтора запроса нет.
@@ -120,7 +129,13 @@ public sealed class RuntimeRoutingHandler(RuntimeEndpointSelector selector) : De
         if (!primary.IsBaseOf(original))
             throw new InvalidOperationException("The Runtime client accepts only its configured API address.");
 
-        var endpoint = await selector.SelectAsync(ct);
+        TagTrendRoute? trend = null;
+        if (request.Method == HttpMethod.Post && original.AbsolutePath == "/" + TagTrendRoute.Path)
+            request.Options.TryGetValue(TagTrendRoute.Key, out trend);
+
+        var endpoint = trend?.Endpoint ?? await selector.SelectAsync(ct);
+        if (trend is not null)
+            trend.Endpoint = endpoint;
 
         request.RequestUri = new UriBuilder(original)
         {

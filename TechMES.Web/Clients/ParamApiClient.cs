@@ -1,6 +1,8 @@
 ﻿using System.Globalization;
+using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using TechMES.Contracts.Param;
 using TechMES.Web.Security;
@@ -164,16 +166,60 @@ public sealed class ParamApiClient
     }
 
     /// <summary>Читает историю произвольного Output через общий источник Param trends.</summary>
-    public async Task<ParamTrendResponse> GetTagTrendAsync(string tagName, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+    public Task<ParamTrendResponse> GetTagTrendAsync(string tagName, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) =>
+        GetTagTrendAsync(tagName, fromUtc, toUtc, null, ct);
+
+    internal async Task<ParamTrendResponse> GetTagTrendAsync(string tagName, DateTime fromUtc, DateTime toUtc, TagTrendRoute? route, CancellationToken ct)
     {
-        var client = CreateClient();
-        var request = new ParamTagTrendRequest { TagName = tagName, FromUtc = fromUtc, ToUtc = toUtc };
+        using var client = CreateClient();
+        var range = new ParamTagTrendRequest { TagName = tagName, FromUtc = fromUtc, ToUtc = toUtc };
 
-        using var response = await client.PostAsJsonAsync("api/param/tags/trend", request, ct);
-        response.EnsureSuccessStatusCode();
+        for (var retry = false; ; retry = true)
+        {
+            ct.ThrowIfCancellationRequested();
+            using var request = new HttpRequestMessage(HttpMethod.Post, TagTrendRoute.Path) { Content = JsonContent.Create(range) };
+            if (route is not null)
+                request.Options.Set(TagTrendRoute.Key, route);
 
-        return await response.Content.ReadFromJsonAsync<ParamTrendResponse>(cancellationToken: ct) ?? throw new InvalidOperationException("Runtime returned an empty trend response.");
+            try
+            {
+                using var response = await client.SendAsync(request, ct);
+                if (!retry && route?.Endpoint is not null && await IsInactiveRuntimeAsync(response, ct))
+                {
+                    route.Endpoint = null;
+                    continue;
+                }
+
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadFromJsonAsync<ParamTrendResponse>(cancellationToken: ct)
+                    ?? throw new InvalidOperationException("Runtime returned an empty trend response.");
+            }
+            catch (Exception ex) when (!retry && route?.Endpoint is not null && !ct.IsCancellationRequested
+                && ex is HttpRequestException { StatusCode: null } or OperationCanceledException)
+            {
+                // Запрос только читает историю. Повторяем одну порцию после нового выбора Active.
+                route.Endpoint = null;
+            }
+        }
     }
+
+    private static async Task<bool> IsInactiveRuntimeAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (response.StatusCode != HttpStatusCode.ServiceUnavailable)
+            return false;
+
+        try
+        {
+            var error = await response.Content.ReadFromJsonAsync<RuntimeTrendError>(cancellationToken: ct);
+            return error?.Code == "runtime.not-active";
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private sealed record RuntimeTrendError(string? Code);
 
     /// <summary>
     /// Проверяет произвольный числовой Plant SCADA Variable Tag через Runtime.Service.
