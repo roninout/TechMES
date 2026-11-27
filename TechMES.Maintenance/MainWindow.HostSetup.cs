@@ -1,6 +1,8 @@
 using System.IO;
+using System.Collections.Concurrent;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Net.NetworkInformation;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
@@ -62,6 +64,9 @@ public partial class MainWindow
 
         HostSetup.Control = root["HostControl"]?.Deserialize<HostControlSettings>(HostJson) ?? new();
         HostSetup.WebFailover = root["HostWebFailover"]?.Deserialize<HostWebFailoverSettings>(HostJson) ?? new();
+        var serviceFailover = root["HostServiceFailover"];
+        HostSetup.ServiceFailover = serviceFailover?.Deserialize<HostServiceFailoverOptions>(HostJson) ?? new();
+        HostSetup.PeerComputerAccount = serviceFailover?["PeerComputerAccount"]?.GetValue<string>() ?? "";
 
         using var client = LocalHostSetupClient();
 
@@ -108,7 +113,7 @@ public partial class MainWindow
         HostSetup.Report = "Создан сертификат узла. Скопируйте его SHA256 в поле второго узла на другом компьютере: " + pin;
     });
 
-    /// <summary>Сохраняет сеть, mTLS и автоматику WEB; восстанавливает исходный файл при неудачном запуске.</summary>
+    /// <summary>Сохраняет профиль Host и восстанавливает исходный файл при неудачном запуске.</summary>
     private async void OnSaveHostSetupClick(object sender, RoutedEventArgs e) => await RunHostSetupAsync(async () =>
     {
         RequireHostAdministrator();
@@ -124,6 +129,14 @@ public partial class MainWindow
         if (HostSetup.WebFailover.Enabled && !HostSetup.Control.Enabled)
             throw new InvalidOperationException("Для автоматической передачи WEB включите защищённый endpoint Host.");
 
+        HostSetup.ServiceFailover.PreferredComputerName = HostSetup.ServiceFailover.PreferredComputerName?.Trim() ?? "";
+        HostSetup.ServiceFailover.Validate(HostSetup.Control.Enabled,
+            HostOwnerIdentity.Coordinator(HostSetup.Shared) == HostSetup.Shared.NodeAddress);
+
+        var peerComputerAccount = HostSetup.PeerComputerAccount.Trim();
+        if (peerComputerAccount.Length > 0 && !HostSetupScripts.IsPeerComputerAccount(peerComputerAccount))
+            throw new InvalidOperationException(@"Укажите доменную учётную запись компьютера в виде DOMAIN\COMPUTER$.");
+
         if (HostSetup.Control.Enabled)
         {
             using var certificate = HostNodeCertificates.LoadLocal(HostSetup.Control.CertificateSha256, HostSetup.Shared.NodeAddress);
@@ -135,6 +148,14 @@ public partial class MainWindow
         root["HostSharedAddress"] = JsonSerializer.SerializeToNode(HostSetup.Shared);
         root["HostControl"] = JsonSerializer.SerializeToNode(HostSetup.Control);
         root["HostWebFailover"] = JsonSerializer.SerializeToNode(HostSetup.WebFailover);
+
+        var serviceFailover = root["HostServiceFailover"]?.AsObject();
+        if (serviceFailover is null)
+            root["HostServiceFailover"] = serviceFailover = new JsonObject();
+
+        serviceFailover["Enabled"] = HostSetup.ServiceFailover.Enabled;
+        serviceFailover["PreferredComputerName"] = HostSetup.ServiceFailover.PreferredComputerName;
+        serviceFailover["PeerComputerAccount"] = peerComputerAccount;
 
         var backup = HostSetupPath + "." + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "." + Guid.NewGuid().ToString("N")[..6] + ".bak";
 
@@ -163,6 +184,32 @@ public partial class MainWindow
         }
 
         HostSetup.Report = "Профиль сохранён, новый процесс Host подтверждён. Проверьте состояние IP. Резервная копия: " + backup;
+    });
+
+    private async void OnRegisterHostFailoverClick(object sender, RoutedEventArgs e) => await RunHostSetupAsync(async () =>
+    {
+        RequireHostAdministrator();
+        var root = ReadHostSetup();
+        var shared = root["HostSharedAddress"]?.Deserialize<HostSharedAddressSettings>(HostJson) ?? new();
+        if (!HostNetworkPolicy.TryAddress(shared.NodeAddress, out var node)
+            || !HostNetworkPolicy.TryAddress(shared.PeerAddress, out var peer) || node.Equals(peer)
+            || HostOwnerIdentity.Coordinator(shared) != shared.NodeAddress
+            || !NetworkInterface.GetAllNetworkInterfaces().SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                .Any(address => address.Address.Equals(node)))
+            throw new InvalidOperationException("Зарегистрируйте восстановление на координаторе с сохранённым локальным профилем Host.");
+
+        var account = root["HostServiceFailover"]?["PeerComputerAccount"]?.GetValue<string>() ?? "";
+        if (!HostSetupScripts.IsPeerComputerAccount(account))
+            throw new InvalidOperationException("Заполните учётную запись резервного компьютера и сохраните профиль.");
+
+        HostSetup.Report = "Регистрируется TechMES.HostFailover в WinRM координатора.";
+        var output = new ConcurrentQueue<string>();
+        var exitCode = await RunDeploymentToolAsync("Register-TechMESHostFailover.ps1", ["-PeerComputerAccount", account], output.Enqueue);
+        var details = string.Join(Environment.NewLine, output);
+        if (exitCode != 0)
+            throw new InvalidOperationException($"Не удалось зарегистрировать восстановление Host (код {exitCode}). {details}".TrimEnd());
+
+        HostSetup.Report = "Восстановление Host через WinRM зарегистрировано для " + account + ".";
     });
 
     /// <summary>Подтверждает ответ именно нового процесса службы после перезапуска.</summary>

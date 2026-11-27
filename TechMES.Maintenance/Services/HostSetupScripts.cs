@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using TechMES.Contracts.Host;
 
 namespace TechMES.Maintenance.Services;
@@ -5,6 +6,8 @@ namespace TechMES.Maintenance.Services;
 /// <summary>Проверенные параметры PowerShell: адреса проходят строгий IPv4 разбор до подстановки.</summary>
 public static class HostSetupScripts
 {
+    public static bool IsPeerComputerAccount(string account) => Regex.IsMatch(account, @"\A[A-Za-z0-9_.-]+\\[A-Za-z0-9_.-]+\$\z");
+
     /// <summary>Создаёт машинный сертификат с SAN IP и двумя EKU; приватный ключ не экспортируется.</summary>
     public static string Certificate(string nodeAddress)
     {

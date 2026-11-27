@@ -58,8 +58,26 @@
             <TextBlock Text="Последовательных наблюдений готовности WEB резерва" />
             <ui:TextBox Text="{Binding RecoveryThresholdText, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
 
+            <TextBlock Text="Автоматическое переключение при отказе Host" FontSize="18" Margin="0,12,0,8" />
+
+            <CheckBox Content="Включить переключение и возврат при отказе Host"
+                      IsChecked="{Binding ServiceFailover.Enabled}" Margin="0,0,0,8" />
+            <TextBlock Text="Включите на обоих узлах. Основной узел — координатор с меньшим IPv4 (.11), резерв — второй узел (.12)."
+                       TextWrapping="Wrap" Margin="0,0,0,8" />
+
+            <TextBlock Text="Полное DNS-имя координатора — заполните на резерве (.12)" />
+            <ui:TextBox Text="{Binding ServiceFailover.PreferredComputerName, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,4" />
+            <TextBlock Text="Укажите доменное имя компьютера .11, например srv1.plant.local. На .11 оставьте поле пустым."
+                       TextWrapping="Wrap" Margin="0,0,0,10" />
+
+            <TextBlock Text="Доменная учётная запись резервного компьютера — заполните на координаторе (.11)" />
+            <ui:TextBox Text="{Binding PeerComputerAccount, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,4" />
+            <TextBlock Text="Укажите учётную запись компьютера .12 в формате DOMAIN\COMPUTER$. Для восстановления через WinRM Host на резерве должен работать под LocalSystem. Сохраните профиль на .11, затем зарегистрируйте восстановление на .11."
+                       TextWrapping="Wrap" Margin="0,0,0,10" />
+
             <WrapPanel>
                 <ui:Button Content="Сохранить и перезапустить Host" Click="OnSaveHostSetupClick" Margin="0,0,8,8" />
+                <ui:Button Content="Зарегистрировать восстановление Host" Click="OnRegisterHostFailoverClick" Margin="0,0,8,8" />
                 <ui:Button Content="Открыть firewall Host" Click="OnOpenHostFirewallClick" Margin="0,0,8,8" />
                 <ui:Button Content="Проверить второй Host" Click="OnCheckPeerHostClick" Margin="0,0,8,8" />
             </WrapPanel>

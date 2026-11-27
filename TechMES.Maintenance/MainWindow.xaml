@@ -8,6 +8,7 @@
                  mc:Ignorable="d"
 
                  Title="TechMES Maintenance"
+                 Icon="Resources/Icons/app.ico"
 
                  Width="1320"
                  Height="900"
@@ -131,6 +132,10 @@
                      ShowClose="True"
 
                      CloseWindowByDoubleClickOnIcon="True">
+
+            <ui:TitleBar.Icon>
+                <ui:ImageIcon Source="Resources/Icons/app.ico" />
+            </ui:TitleBar.Icon>
 
             <ui:TitleBar.TrailingContent>
 

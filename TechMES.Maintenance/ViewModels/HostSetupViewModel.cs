@@ -10,6 +10,8 @@ public sealed class HostSetupViewModel : ObservableObject
     private HostSharedAddressSettings _shared = new();
     private HostControlSettings _control = new();
     private HostWebFailoverSettings _webFailover = new();
+    private HostServiceFailoverOptions _serviceFailover = new();
+    private string _peerComputerAccount = "";
     private string _report = "Загрузите настройки установленного Host.";
     private bool _busy;
     private string _prefixLengthText = "24";
@@ -20,6 +22,8 @@ public sealed class HostSetupViewModel : ObservableObject
     public HostSharedAddressSettings Shared { get => _shared; set { SetProperty(ref _shared, value); PrefixLengthText = value.PrefixLength.ToString(CultureInfo.InvariantCulture); } }
     public HostControlSettings Control { get => _control; set { SetProperty(ref _control, value); ControlPortText = value.Port.ToString(CultureInfo.InvariantCulture); } }
     public HostWebFailoverSettings WebFailover { get => _webFailover; set { SetProperty(ref _webFailover, value); FailureThresholdText = value.FailureThreshold.ToString(CultureInfo.InvariantCulture); RecoveryThresholdText = value.RecoveryThreshold.ToString(CultureInfo.InvariantCulture); } }
+    public HostServiceFailoverOptions ServiceFailover { get => _serviceFailover; set => SetProperty(ref _serviceFailover, value); }
+    public string PeerComputerAccount { get => _peerComputerAccount; set => SetProperty(ref _peerComputerAccount, value); }
 
     public string FailureThresholdText { get => _failureThresholdText; set => SetProperty(ref _failureThresholdText, value); }
     public string RecoveryThresholdText { get => _recoveryThresholdText; set => SetProperty(ref _recoveryThresholdText, value); }

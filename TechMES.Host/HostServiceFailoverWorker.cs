@@ -4,25 +4,6 @@ using TechMES.Contracts.Host;
 
 namespace TechMES.Host;
 
-internal sealed class HostServiceFailoverOptions
-{
-    public bool Enabled { get; init; }
-    public string PreferredComputerName { get; init; } = "";
-    public int FailureThreshold { get; init; } = 4;
-    public int RecoveryThreshold { get; init; } = 12;
-
-    public void Validate(bool controlEnabled, bool preferred)
-    {
-        if (!Enabled)
-            return;
-
-        if (!controlEnabled || FailureThreshold is < 2 or > 60 || RecoveryThreshold is < 2 or > 60
-            || (!preferred && PreferredComputerName.Length > 0 && (Uri.CheckHostName(PreferredComputerName) != UriHostNameType.Dns
-                || !PreferredComputerName.Contains('.') || PreferredComputerName.Any(c => !char.IsAsciiLetterOrDigit(c) && c != '.' && c != '-'))))
-            throw new InvalidOperationException("HostServiceFailover requires HostControl and valid thresholds. Windows recovery, if configured, requires the preferred host FQDN.");
-    }
-}
-
 internal enum HostRecoveryAction
 {
     HandoffVip,
