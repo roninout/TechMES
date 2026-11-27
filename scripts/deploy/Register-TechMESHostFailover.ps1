@@ -84,11 +84,23 @@ function Invoke-TechMESHostVipHandoff {
         if ($restoreService) { Start-Service -Name 'TechMES.Host' }
     }
 }
-Export-ModuleMember -Function Invoke-TechMESHostVipHandoff
+
+function Start-TechMESPreferredHost {
+    [CmdletBinding()]
+    param()
+
+    $ErrorActionPreference = 'Stop'
+    $controller = Get-Service -Name 'TechMES.Host'
+    if ($controller.Status -eq 'Stopped') { $controller.Start() }
+    $controller.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(40))
+}
+
+Export-ModuleMember -Function Invoke-TechMESHostVipHandoff, Start-TechMESPreferredHost
 '@ | Set-Content -LiteralPath $modulescript -Encoding UTF8
 
-New-ModuleManifest -Path $manifest -RootModule 'TechMES.HostFailover.psm1' -ModuleVersion '1.0.0' -FunctionsToExport @('Invoke-TechMESHostVipHandoff')
-New-PSRoleCapabilityFile -Path $capability -ModulesToImport @('TechMES.HostFailover') -VisibleFunctions @('Invoke-TechMESHostVipHandoff')
+$recoveryCommands = @('Invoke-TechMESHostVipHandoff', 'Start-TechMESPreferredHost')
+New-ModuleManifest -Path $manifest -RootModule 'TechMES.HostFailover.psm1' -ModuleVersion '1.0.0' -FunctionsToExport $recoveryCommands
+New-PSRoleCapabilityFile -Path $capability -ModulesToImport @('TechMES.HostFailover') -VisibleFunctions $recoveryCommands
 New-PSSessionConfigurationFile -Path $configuration -SessionType RestrictedRemoteServer -RunAsVirtualAccount -RoleDefinitions @{
     $PeerComputerAccount = @{ RoleCapabilities = 'TechMES.HostFailover' }
 }

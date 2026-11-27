@@ -23,11 +23,18 @@ internal sealed class HostServiceFailoverOptions
     }
 }
 
+internal enum HostRecoveryAction
+{
+    HandoffVip,
+    StartPreferredHost
+}
+
 // Отдельная политика для отказа Host. Проверки отказа WEB продолжаются в HostOwnerWorker.
 internal sealed class HostServiceFailoverWorker(HostOwnerEngine owner, IHostOwnerPeer peer, HostSharedAddressSettings shared,
-    HostServiceFailoverOptions options, Func<CancellationToken, Task>? recoverPreferredHost, ILogger<HostServiceFailoverWorker> logger) : BackgroundService
+    HostServiceFailoverOptions options, Func<HostRecoveryAction, CancellationToken, Task>? recoverPreferredHost, ILogger<HostServiceFailoverWorker> logger) : BackgroundService
 {
     private int _failures;
+    private int _standbyWebFailures;
     private int _successes;
     private long _observedEpoch;
     private DateTimeOffset _nextRecoveryAttempt;
@@ -43,8 +50,10 @@ internal sealed class HostServiceFailoverWorker(HostOwnerEngine owner, IHostOwne
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
+                _failures = 0;
+                _standbyWebFailures = 0;
                 _successes = 0;
-                logger.LogWarning(ex, "Host service VIP transfer blocked.");
+                logger.LogWarning(ex, "Automatic Host recovery blocked.");
             }
         }
     }
@@ -58,10 +67,14 @@ internal sealed class HostServiceFailoverWorker(HostOwnerEngine owner, IHostOwne
             return;
         }
 
+        if (recoverPreferredHost is null)
+            return;
+
         try
         {
             await peer.StatusAsync();
             _failures = 0;
+            _standbyWebFailures = 0;
             return;
         }
         catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or IOException or OperationCanceledException)
@@ -69,14 +82,30 @@ internal sealed class HostServiceFailoverWorker(HostOwnerEngine owner, IHostOwne
             _failures = Math.Min(_failures + 1, options.FailureThreshold);
         }
 
-        // Недоступность Host — сигнал для вызова координатора через Windows.
-        // Локального захвата VIP по таймауту здесь нет.
-        if (recoverPreferredHost is null || _failures < options.FailureThreshold || local.Grant.Assigned || local.AddressPresent
-            || !local.WebReady || !local.NetworkReady || DateTimeOffset.UtcNow < _nextRecoveryAttempt)
+        // Проверяем актуальный grant после ожидания ответа координатора.
+        local = owner.Status();
+        var standbyOwnsVip = local.NetworkReady && local.AddressReady && local.Grant is { Assigned: true, Managed: true };
+        _standbyWebFailures = standbyOwnsVip && !local.WebReady
+            ? Math.Min(_standbyWebFailures + 1, options.FailureThreshold)
+            : 0;
+
+        if (_failures < options.FailureThreshold || !local.NetworkReady
+            || DateTimeOffset.UtcNow < _nextRecoveryAttempt)
             return;
 
+        HostRecoveryAction action;
+        if (_standbyWebFailures >= options.FailureThreshold)
+            action = HostRecoveryAction.StartPreferredHost;
+        else if (!local.Grant.Assigned && !local.AddressPresent && local.WebReady)
+            action = HostRecoveryAction.HandoffVip;
+        else
+            return;
+
+        // Только координатор передаёт VIP через журнал, в том числе после перезапуска.
         _nextRecoveryAttempt = DateTimeOffset.UtcNow.AddSeconds(60);
-        await recoverPreferredHost(ct);
+        logger.LogInformation("Requesting Windows Host recovery on {Node}: {Action}.", local.Coordinator, action);
+        ct.ThrowIfCancellationRequested();
+        await recoverPreferredHost(action, ct);
     }
 
     private async Task CheckReturnAsync(HostOwnerStatus local, CancellationToken ct)
@@ -119,13 +148,19 @@ internal sealed class HostServiceFailoverWorker(HostOwnerEngine owner, IHostOwne
         await owner.ChangeAsync(new(local.Node, journal.Epoch, Guid.NewGuid()), false, automaticHostTransfer: true);
     }
 
-    // Имя проверено в настройках. Endpoint предоставляет одну операцию с фиксированными параметрами.
-    internal static async Task RequestRecoveryAsync(string computerName, CancellationToken ct)
+    // Имя проверено в настройках. Endpoint предоставляет только фиксированные команды без параметров.
+    internal static async Task RequestRecoveryAsync(string computerName, HostRecoveryAction action, CancellationToken ct)
     {
+        var command = action switch
+        {
+            HostRecoveryAction.HandoffVip => "Invoke-TechMESHostVipHandoff",
+            HostRecoveryAction.StartPreferredHost => "Start-TechMESPreferredHost",
+            _ => throw new ArgumentOutOfRangeException(nameof(action))
+        };
         var script = $$"""
         $ErrorActionPreference='Stop'
         $session=New-PSSessionOption -OpenTimeout 5000 -OperationTimeout 90000
-        Invoke-Command -ComputerName '{{computerName}}' -Authentication Kerberos -ConfigurationName 'TechMES.HostFailover' -SessionOption $session -ScriptBlock { Invoke-TechMESHostVipHandoff }
+        Invoke-Command -ComputerName '{{computerName}}' -Authentication Kerberos -ConfigurationName 'TechMES.HostFailover' -SessionOption $session -ScriptBlock { {{command}} }
         """;
         var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe"))
         {
@@ -156,6 +191,6 @@ internal sealed class HostServiceFailoverWorker(HostOwnerEngine owner, IHostOwne
         }
 
         if (process.ExitCode != 0)
-            throw new InvalidOperationException("Windows Host handoff: " + await error + await output);
+            throw new InvalidOperationException($"Windows Host recovery ({action}): " + await error + await output);
     }
 }

@@ -99,7 +99,7 @@ if (control.Enabled)
     builder.Services.AddHostedService(sp => new HostOwnerWorker(sp.GetRequiredService<HostOwnerEngine>(), sp.GetRequiredService<ILogger<HostOwnerWorker>>(), serviceFailover.Enabled));
     if (serviceFailover.Enabled)
         builder.Services.AddHostedService(sp => new HostServiceFailoverWorker(sp.GetRequiredService<HostOwnerEngine>(), peer, shared, serviceFailover,
-            serviceFailover.PreferredComputerName.Length == 0 ? null : ct => HostServiceFailoverWorker.RequestRecoveryAsync(serviceFailover.PreferredComputerName, ct),
+            serviceFailover.PreferredComputerName.Length == 0 ? null : (action, ct) => HostServiceFailoverWorker.RequestRecoveryAsync(serviceFailover.PreferredComputerName, action, ct),
             sp.GetRequiredService<ILogger<HostServiceFailoverWorker>>()));
 }
 
